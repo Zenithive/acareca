@@ -82,7 +82,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, ErrOAuthOnly
 	}
 
-	if err := util.CompareHash(user.Password, req.Password); err != nil {
+	if err := util.CompareHash(req.Password, user.Password); err != nil {
 		return nil, ErrInvalidPassword
 	}
 
