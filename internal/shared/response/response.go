@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type envelope struct {
@@ -26,4 +27,8 @@ func Error(c *gin.Context, status int, err error) {
 		msg = err.Error()
 	}
 	c.AbortWithStatusJSON(status, envelope{Error: msg})
+}
+
+func NewUUID() string {
+	return uuid.New().String()
 }
