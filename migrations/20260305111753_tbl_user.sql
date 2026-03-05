@@ -7,6 +7,7 @@ CREATE TABLE tbl_user (
     first_name    VARCHAR(255) NOT NULL,
     last_name     VARCHAR(255) NOT NULL,
     phone         VARCHAR(20),                             -- E.164 format
+    avatar_url TEXT,
     is_superadmin BOOLEAN NOT NULL DEFAULT FALSE,   -- Platform owner; no practice context
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
