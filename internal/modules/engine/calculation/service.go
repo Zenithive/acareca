@@ -29,52 +29,72 @@ func (s *service) TaxCalculate(ctx context.Context, taxType method.TaxTreatment,
 	})
 }
 
+func (s *service) calcInputs(ctx context.Context, inputs []Input, label string) (totals []float64, sum float64, results []*method.Result, err error) {
+	totals = make([]float64, 0, len(inputs))
+	results = make([]*method.Result, 0, len(inputs))
+	for i := range inputs {
+		res, e := s.TaxCalculate(ctx, inputs[i].TaxType, &inputs[i])
+		if e != nil {
+			return nil, 0, nil, fmt.Errorf("calculate %s[%d]: %w", label, i, e)
+		}
+		totals = append(totals, res.TotalAmount)
+		sum += res.TotalAmount
+		results = append(results, res)
+	}
+	return
+}
+
 func (s *service) NetResult(ctx context.Context, entry *Entry) (*Result, error) {
-	var incomeTotals []float64
-	var expenseTotals []float64
-	var netResult float64
-
-	// Calculate total for each income entry
-	for _, inc := range entry.Income {
-		res, err := s.TaxCalculate(ctx, inc.TaxType, &inc)
-		if err != nil {
-			return nil, fmt.Errorf("calculate income: %w", err)
-		}
-		incomeTotals = append(incomeTotals, res.TotalAmount)
-		netResult += res.TotalAmount
+	incomeTotals, incomeSum, _, err := s.calcInputs(ctx, entry.Income, "income")
+	if err != nil {
+		return nil, err
 	}
-
-	// Calculate total for each expense entry
-	for _, exp := range entry.Expense {
-		res, err := s.TaxCalculate(ctx, exp.TaxType, &exp)
-		if err != nil {
-			return nil, fmt.Errorf("calculate expense: %w", err)
-		}
-		expenseTotals = append(expenseTotals, res.TotalAmount)
-		netResult -= res.TotalAmount
+	expenseTotals, expenseSum, _, err := s.calcInputs(ctx, entry.Expense, "expense")
+	if err != nil {
+		return nil, err
 	}
-
 	return &Result{
 		Income:  incomeTotals,
 		Expense: expenseTotals,
-		Result:  netResult,
+		Result:  incomeSum - expenseSum,
 	}, nil
 }
 
 func (s *service) GrossResult(ctx context.Context, entry *Entry) (*GrossResult, error) {
-	netResult, err := s.NetResult(ctx, entry)
+	_, grossPatientFees, _, err := s.calcInputs(ctx, entry.Income, "income")
 	if err != nil {
-		return nil, fmt.Errorf("calculate net result: %w", err)
+		return nil, err
 	}
-	serviceFee := netResult.Result * 0.6
+
+	_, _, expResults, err := s.calcInputs(ctx, entry.Expense, "expense")
+	if err != nil {
+		return nil, err
+	}
+	var labBase, clinicExpenseGST float64
+	for i, exp := range entry.Expense {
+		if exp.PaidBy != nil && *exp.PaidBy == PaidByClinic {
+			labBase += expResults[i].Amount
+			clinicExpenseGST += expResults[i].GstAmount
+		}
+	}
+
+	_, otherCostsSum, _, err := s.calcInputs(ctx, entry.OtherCosts, "other_costs")
+	if err != nil {
+		return nil, err
+	}
+
+	otherCostsSum += clinicExpenseGST
+
+	netAmount := grossPatientFees - labBase
+	serviceFee := netAmount * (*entry.ClinicShare / 100)
 	gstServiceFee := serviceFee * 0.1
 	totalServiceFee := serviceFee + gstServiceFee
-	remittedAmount := netResult.Result - totalServiceFee
+
 	return &GrossResult{
-		NetResult:       netResult.Result,
+		NetAmount:       netAmount,
 		ServiceFee:      serviceFee,
 		GstServiceFee:   gstServiceFee,
 		TotalServiceFee: totalServiceFee,
-		RemittedAmount:  remittedAmount,
+		RemittedAmount:  netAmount - totalServiceFee - otherCostsSum,
 	}, nil
 }
