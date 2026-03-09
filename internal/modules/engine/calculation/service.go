@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
@@ -129,10 +130,10 @@ func (s *service) GrossResult(ctx context.Context, entry *Entry) (*GrossResult, 
 	remittedAmount := netAmount - totalServiceFee - otherCostsSum + incomeGST + paidByOwnerSum
 
 	return &GrossResult{
-		NetAmount:       netAmount,
-		ServiceFee:      serviceFee,
-		GstServiceFee:   gstServiceFee,
-		TotalServiceFee: totalServiceFee,
-		RemittedAmount:  remittedAmount,
+		NetAmount:       util.Round(netAmount, 2),
+		ServiceFee:      util.Round(serviceFee, 2),
+		GstServiceFee:   util.Round(gstServiceFee, 2),
+		TotalServiceFee: util.Round(totalServiceFee, 2),
+		RemittedAmount:  util.Round(remittedAmount, 2),
 	}, nil
 }

@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -50,4 +51,9 @@ func SignToken(userID string, ttl time.Duration, jwtSecret string) (string, erro
 		return "", fmt.Errorf("sign token: %w", err)
 	}
 	return signed, nil
+}
+
+func Round(value float64, precision int) float64 {
+	multiplier := math.Pow(10, float64(precision))
+	return math.Round(value*multiplier) / multiplier
 }
