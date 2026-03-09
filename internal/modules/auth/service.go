@@ -23,6 +23,8 @@ var (
 	ErrOAuthOnly       = errors.New("account uses Google sign-in; password login is not available")
 )
 
+type OnUserCreated func(ctx context.Context, userID string) error
+
 type Service interface {
 	Register(ctx context.Context, req *RqUser) (*RsUser, error)
 	Login(ctx context.Context, req *RqLogin) (*RsToken, error)
@@ -31,12 +33,13 @@ type Service interface {
 }
 
 type service struct {
-	repo        Repository
-	cfg         *config.Config
-	oauthConfig *oauth2.Config
+	repo          Repository
+	cfg           *config.Config
+	oauthConfig   *oauth2.Config
+	onUserCreated OnUserCreated
 }
 
-func NewService(repo Repository, cfg *config.Config) Service {
+func NewService(repo Repository, cfg *config.Config, onUserCreated OnUserCreated) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -47,7 +50,7 @@ func NewService(repo Repository, cfg *config.Config) Service {
 		},
 		Endpoint: google.Endpoint,
 	}
-	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg}
+	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, onUserCreated: onUserCreated}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -69,6 +72,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		return nil, err
 	}
 
+	if s.onUserCreated != nil {
+		_ = s.onUserCreated(ctx, created.ID)
+	}
 	return created.ToRsUser(), nil
 }
 
@@ -112,6 +118,7 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	}
 
 	user, err := s.repo.FindByEmail(ctx, googleUser.Email)
+	isNewUser := false
 	if err != nil {
 		if !errors.Is(err, ErrNotFound) {
 			return nil, err
@@ -125,6 +132,7 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		if err != nil {
 			return nil, err
 		}
+		isNewUser = true
 	}
 
 	expiresAt := oauthToken.Expiry
@@ -146,6 +154,9 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		return nil, err
 	}
 
+	if isNewUser && s.onUserCreated != nil {
+		_ = s.onUserCreated(ctx, user.ID)
+	}
 	return s.issueTokens(ctx, user)
 }
 
