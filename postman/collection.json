@@ -88,7 +88,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null\n}",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -108,7 +108,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null\n}",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -128,13 +128,33 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null\n}",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
               "raw": "{{base_url}}/api/v1/gross-result",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "gross-result"]
+            }
+          }
+        },
+        {
+          "name": "Out Work Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/out-work-result",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "out-work-result"]
             }
           }
         }

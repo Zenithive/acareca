@@ -18,12 +18,13 @@ type Input struct {
 }
 
 type Entry struct {
-	OwnerShare     *float64 `json:"owner_share" validate:"omitempty,min=0"`
-	ClinicShare    *float64 `json:"clinic_share" validate:"omitempty,min=0"`
-	Income         []Input  `json:"income" validate:"omitempty"`
-	Expense        []Input  `json:"expense" validate:"omitempty"`
-	OtherCosts     []Input  `json:"other_costs" validate:"omitempty"`
-	SuperComponent *float64 `json:"super_component" validate:"omitempty"`
+	OwnerShare        *float64 `json:"owner_share" validate:"omitempty,min=0"`
+	ClinicShare       *float64 `json:"clinic_share" validate:"omitempty,min=0"`
+	Income            []Input  `json:"income" validate:"omitempty"`
+	Expense           []Input  `json:"expense" validate:"omitempty"`
+	OtherCosts        []Input  `json:"other_costs" validate:"omitempty"`
+	SuperComponent    *float64 `json:"super_component" validate:"omitempty"`
+	OutWorkPercentage *float64 `json:"out_work_percentage" validate:"omitempty,min=0,max=100"`
 }
 
 type NetAmountResult struct {
@@ -49,4 +50,12 @@ type NetResult struct {
 	TotalRemuneration        *float64 `json:"total_remuneration"`
 	GstCommission            float64  `json:"gst_commission"`
 	TotalCommission          float64  `json:"total_commission"`
+}
+
+type OutWorkResult struct {
+	NetAmount       float64 `json:"net_amount"`
+	ServiceFee      float64 `json:"service_fee"`
+	GstServiceFee   float64 `json:"gst_service_fee"`
+	TotalServiceFee float64 `json:"total_service_fee"`
+	NetPayable      float64 `json:"net_payable"`
 }

@@ -12,6 +12,7 @@ type Service interface {
 	NetAmount(ctx context.Context, entry *Entry) (*NetAmountResult, error)
 	NetResult(ctx context.Context, entry *Entry) (*NetResult, error)
 	GrossResult(ctx context.Context, entry *Entry) (*GrossResult, error)
+	OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error)
 	TaxCalculate(ctx context.Context, taxType method.TaxTreatment, input *Input) (*method.Result, error)
 }
 
@@ -187,4 +188,72 @@ func (s *service) NetResult(ctx context.Context, entry *Entry) (*NetResult, erro
 	netResult.TotalRemuneration = &tr
 
 	return &netResult, nil
+}
+
+// OutWorkResult implements [Service].
+func (s *service) OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error) {
+	_, _, incResults, err := s.calcInputs(ctx, entry.Income, "income")
+	if err != nil {
+		return nil, err
+	}
+	incomeSum := 0.0
+	for _, r := range incResults {
+		incomeSum += r.Amount
+	}
+	incomeGST := 0.0
+	for _, r := range incResults {
+		incomeGST += r.GstAmount
+	}
+	incomeSum -= incomeGST
+
+	_, _, expenseResults, err := s.calcInputs(ctx, entry.Expense, "expense")
+	if err != nil {
+		return nil, err
+	}
+	expenseGST := 0.0
+	for i, exp := range entry.Expense {
+		if exp.PaidBy == nil {
+			continue
+		}
+		switch *exp.PaidBy {
+		case PaidByClinic:
+			expenseGST += expenseResults[i].GstAmount
+		}
+	}
+
+	expenseSum := 0.0
+	for _, r := range expenseResults {
+		expenseSum += r.Amount
+	}
+	expenseSum -= expenseGST
+
+	_, otherCostsSum, _, err := s.calcInputs(ctx, entry.OtherCosts, "other_costs")
+	if err != nil {
+		return nil, err
+	}
+	otherCostsSum += expenseSum
+
+	clinicShare := 0.0
+	if entry.ClinicShare != nil {
+		clinicShare = *entry.ClinicShare
+	}
+
+	outWorkPercentage := 0.0
+	if entry.OutWorkPercentage != nil {
+		outWorkPercentage = *entry.OutWorkPercentage
+	}
+
+	serviceFee := incomeSum * (clinicShare / 100)
+	outWorkAmount := otherCostsSum * (outWorkPercentage / 100)
+	outServiceFee := outWorkAmount + serviceFee
+	gstOutServiceFee := outServiceFee * 0.1
+	totalOutServiceFee := outServiceFee + gstOutServiceFee
+
+	return &OutWorkResult{
+		NetAmount:       util.Round(incomeSum-otherCostsSum, 2),
+		ServiceFee:      util.Round(outServiceFee, 2),
+		GstServiceFee:   util.Round(gstOutServiceFee, 2),
+		TotalServiceFee: util.Round(totalOutServiceFee, 2),
+		NetPayable:      util.Round(incomeSum-totalOutServiceFee, 2),
+	}, nil
 }

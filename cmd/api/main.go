@@ -30,7 +30,10 @@ func main() {
 	}
 	log.Println("migrations applied successfully")
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(gin.Logger())
+	gin.SetMode(gin.ReleaseMode)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
