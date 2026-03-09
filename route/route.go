@@ -30,12 +30,18 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	tentantSubRepo := tentantSub.NewRepository(dbConn)
 
 	onUserCreated := func(ctx context.Context, userID string) error {
+		existing, err := tentantRepo.GetByUserID(ctx, userID)
+		if err == nil && existing != nil {
+			return nil
+		}
 		t, err := tentantRepo.Create(ctx, &tentant.Tentant{UserID: userID})
 		if err != nil {
+			log.Printf("onboarding: create tentant for user %s: %v", userID, err)
 			return err
 		}
 		trial, err := subscriptionRepo.FindByName(ctx, "Trial")
 		if err != nil {
+			log.Printf("onboarding: find Trial subscription: %v", err)
 			return err
 		}
 		start := time.Now()
@@ -47,7 +53,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 			EndDate:        end,
 			Status:         tentantSub.StatusActive,
 		})
-		return err
+		if err != nil {
+			log.Printf("onboarding: create trial subscription for tentant %d: %v", t.ID, err)
+			return err
+		}
+		return nil
 	}
 
 	authSvc := auth.NewService(authRepo, cfg, onUserCreated)
