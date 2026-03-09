@@ -151,44 +151,40 @@ func (s *service) NetResult(ctx context.Context, entry *Entry) (*NetResult, erro
 		ownerShare = *entry.OwnerShare
 	}
 
-	superRate := 0.0
+	superDecimal := 0.0
 	if entry.SuperComponent != nil {
-		superRate = *entry.SuperComponent
+		superDecimal = *entry.SuperComponent / 100
 	}
 
 	totalRemuneration := netAmount.Result * (ownerShare / 100)
 
-	superDecimal := superRate / 100
-
-	commissionBase := totalRemuneration / (1 + superDecimal)
-
-	superAmount := commissionBase * superDecimal
+	commissionBase := totalRemuneration
+	var superAmount float64
+	if superDecimal > 0 {
+		commissionBase = totalRemuneration / (1 + superDecimal)
+		superAmount = commissionBase * superDecimal
+	}
 
 	gstCommission := commissionBase * 0.10
-
 	totalCommission := commissionBase + gstCommission
 
-	var netResult NetResult
-	netResult.NetAmount = util.Round(netAmount.Result, 2)
-	netResult.Commission = util.Round(totalRemuneration, 2)
+	netResult := NetResult{
+		NetAmount:       util.Round(netAmount.Result, 2),
+		Commission:      util.Round(totalRemuneration, 2),
+		GstCommission:   util.Round(gstCommission, 2),
+		TotalCommission: util.Round(totalCommission, 2),
+	}
 
-	if superRate > 0 {
-		superAmount := util.Round(superAmount, 2)
-		netResult.SuperComponent = &superAmount
+	if superDecimal > 0 {
+		sa := util.Round(superAmount, 2)
+		netResult.SuperComponent = &sa
+
+		cb := util.Round(commissionBase, 2)
+		netResult.SuperComponentCommission = &cb
 	}
-	if commissionBase > 0 {
-		commissionBase := util.Round(commissionBase, 2)
-		netResult.SuperComponentCommission = &commissionBase
-	}
-	if totalRemuneration > 0 {
-		totalRemuneration := util.Round(totalRemuneration, 2)
-		netResult.TotalRemuneration = &totalRemuneration
-	}
-	if gstCommission > 0 {
-		gstCommission := util.Round(gstCommission, 2)
-		netResult.GstCommission = gstCommission
-	}
-	netResult.TotalCommission = util.Round(totalCommission, 2)
+
+	tr := util.Round(totalRemuneration, 2)
+	netResult.TotalRemuneration = &tr
 
 	return &netResult, nil
 }

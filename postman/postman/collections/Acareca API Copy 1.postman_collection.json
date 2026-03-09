@@ -188,7 +188,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 40,\n  \"clinic_share\": 60,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 1200.00,\n      \"tax\": \"zero\",\n      \"tax_value\": null\n    //   \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    // {\n    //   \"name\": \"Supplies\",\n    //   \"value\": 50,\n    //   \"tax\": \"exclusive\",\n    //   \"tax_value\": null,\n    //   \"paid_by\": \"owner\"\n    // }\n  ],\n  \"other_costs\": [],\n  \"super_component\": 12\n}",
+              "raw": "{\n  \"owner_share\": 40,\n  \"clinic_share\": 60,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 1200.00 ,\n      \"tax\": \"zero\",\n      \"tax_value\": null\n    //   \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    // {\n    //   \"name\": \"Supplies\",\n    //   \"value\": 1000,\n    //   \"tax\": \"zero\",\n    //   \"tax_value\": null,\n    //   \"paid_by\": \"owner\"\n    // }\n  ],\n  \"other_costs\": [],\n  \"super_component\": 12\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -226,7 +226,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null\n}",
+              "raw": "{\n  \"owner_share\": 36,\n  \"clinic_share\": 64,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 29674.8,\n      \"tax\": \"manual\",\n      \"tax_value\": -15.62\n    //   \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 1427.00 ,\n      \"tax\": \"zero\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
