@@ -154,7 +154,7 @@ func (s *service) NetResult(ctx context.Context, entry *Entry) (*NetResult, erro
 		return nil, err
 	}
 	for _, r := range expResults {
-		expenseSum += r.Amount
+		expenseSum += r.Amount + r.GstAmount
 	}
 
 	netAmount := incomeSum - expenseSum
