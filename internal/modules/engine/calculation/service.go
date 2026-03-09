@@ -26,6 +26,13 @@ func NewService(repo Repository, method method.IService) Service {
 }
 
 func (s *service) TaxCalculate(ctx context.Context, taxType method.TaxTreatment, input *Input) (*method.Result, error) {
+	if taxType == method.TaxTreatmentManual && input.TaxValue != nil {
+		return s.method.Calculate(ctx, taxType, &method.Input{
+			Amount:    input.Value - *input.TaxValue,
+			GstAmount: input.TaxValue,
+		})
+	}
+
 	return s.method.Calculate(ctx, taxType, &method.Input{
 		Amount:    input.Value,
 		GstAmount: input.TaxValue,
