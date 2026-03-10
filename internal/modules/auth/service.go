@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -64,7 +65,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	}
 
 	u := req.ToDBModel()
-	u.ID = util.NewUUID()
 	u.Password = &hashedPassword
 
 	created, err := s.repo.CreateUser(ctx, u)
@@ -73,7 +73,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	}
 
 	if s.onUserCreated != nil {
-		_ = s.onUserCreated(ctx, created.ID)
+		_ = s.onUserCreated(ctx, created.ID.String())
 	}
 	return created.ToRsUser(), nil
 }
@@ -124,7 +124,6 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 			return nil, err
 		}
 		user, err = s.repo.CreateUser(ctx, &User{
-			ID:        util.NewUUID(),
 			Email:     googleUser.Email,
 			FirstName: googleUser.FirstName,
 			LastName:  googleUser.LastName,
@@ -140,7 +139,6 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	refreshTokenStr := oauthToken.RefreshToken
 
 	ap := &AuthProvider{
-		ID:             util.NewUUID(),
 		UserID:         user.ID,
 		Provider:       providerGoogle,
 		AccessToken:    &accessTokenStr,
@@ -155,7 +153,7 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	}
 
 	if isNewUser && s.onUserCreated != nil {
-		_ = s.onUserCreated(ctx, user.ID)
+		_ = s.onUserCreated(ctx, user.ID.String())
 	}
 	return s.issueTokens(ctx, user)
 }
@@ -181,12 +179,12 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 }
 
 func (s *service) issueTokens(ctx context.Context, user *User) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID, 15*time.Minute, s.cfg.JWTSecret)
+	accessToken, err := util.SignToken(user.ID.String(), 15*time.Minute, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +193,7 @@ func (s *service) issueTokens(ctx context.Context, user *User) (*RsToken, error)
 	ip := middleware.IPFromCtx(ctx)
 
 	sess := &Session{
-		ID:           util.NewUUID(),
+		ID:           uuid.New(),
 		UserID:       user.ID,
 		RefreshToken: refreshToken,
 		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),

@@ -1,9 +1,8 @@
 package subscription
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
@@ -22,7 +21,7 @@ func MiddlewarePractitionerID() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		id, err := strconv.Atoi(idStr)
+		id, err := uuid.Parse(idStr)
 		if err != nil {
 			c.Next()
 			return

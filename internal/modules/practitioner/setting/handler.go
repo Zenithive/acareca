@@ -3,9 +3,9 @@ package setting
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -29,11 +29,11 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-func parsePractitionerID(c *gin.Context) (int, bool) {
-	id, err := strconv.Atoi(c.Param("id"))
+func parsePractitionerID(c *gin.Context) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner id"))
-		return 0, false
+		return uuid.Nil, false
 	}
 	return id, true
 }

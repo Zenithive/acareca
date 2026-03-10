@@ -1,13 +1,17 @@
 package setting
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Practitioner matches tbl_practitioner (spelling from schema).
 type Practitioner struct {
-	ID        int        `db:"id"`
+	ID        uuid.UUID  `db:"id"`
 	UserID    string     `db:"user_id"`
 	ABN       *string    `db:"abn"`
-	verified  bool       `db:"verified"`
+	Verified  bool       `db:"verified"`
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
@@ -16,7 +20,7 @@ type Practitioner struct {
 // PractitionerSetting matches tbl_practitioner_setting.
 type PractitionerSetting struct {
 	ID             int        `db:"id"`
-	PractitionerID int        `db:"practitioner_id"`
+	PractitionerID uuid.UUID  `db:"practitioner_id"`
 	Timezone       string     `db:"timezone"`
 	Logo           *string    `db:"logo"`
 	Color          string     `db:"color"`
@@ -29,25 +33,25 @@ type PractitionerSetting struct {
 type RqCreatePractitioner struct {
 	UserID   string  `json:"user_id" validate:"required"`
 	ABN      *string `json:"abn" validate:"omitempty,max=20"`
-	verified *bool   `json:"verified"`
+	Verified *bool   `json:"verified"`
 }
 
 func (r *RqCreatePractitioner) ToPractitioner() *Practitioner {
 	verified := false
-	if r.verified != nil {
-		verified = *r.verified
+	if r.Verified != nil {
+		verified = *r.Verified
 	}
 	return &Practitioner{
 		UserID:   r.UserID,
 		ABN:      r.ABN,
-		verified: verified,
+		Verified: verified,
 	}
 }
 
 // RqUpdatePractitioner request to update a practitioner.
 type RqUpdatePractitioner struct {
 	ABN      *string `json:"abn" validate:"omitempty,max=20"`
-	verified *bool   `json:"verified"`
+	Verified *bool   `json:"verified"`
 }
 
 // RqUpsertPractitionerSetting request to create or update practitioner settings.
@@ -59,10 +63,10 @@ type RqUpsertPractitionerSetting struct {
 
 // RsPractitioner response for a practitioner.
 type RsPractitioner struct {
-	ID        int       `json:"id"`
+	ID        uuid.UUID `json:"id"`
 	UserID    string    `json:"user_id"`
 	ABN       *string   `json:"abn,omitempty"`
-	verified  bool      `json:"verified"`
+	Verified  bool      `json:"verified"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -72,7 +76,7 @@ func (t *Practitioner) ToRs() *RsPractitioner {
 		ID:        t.ID,
 		UserID:    t.UserID,
 		ABN:       t.ABN,
-		verified:  t.verified,
+		Verified:  t.Verified,
 		CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt,
 	}
@@ -81,7 +85,7 @@ func (t *Practitioner) ToRs() *RsPractitioner {
 // RsPractitionerSetting response for practitioner settings.
 type RsPractitionerSetting struct {
 	ID             int       `json:"id"`
-	PractitionerID int       `json:"practitioner_id"`
+	PractitionerID uuid.UUID `json:"practitioner_id"`
 	Timezone       string    `json:"timezone"`
 	Logo           *string   `json:"logo,omitempty"`
 	Color          string    `json:"color"`

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -16,7 +17,7 @@ type Repository interface {
 	// User
 	CreateUser(ctx context.Context, user *User) (*User, error)
 	FindByEmail(ctx context.Context, email string) (*User, error)
-	FindByID(ctx context.Context, id string) (*User, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 
 	// Auth provider
 	UpsertAuthProvider(ctx context.Context, p *AuthProvider) (*AuthProvider, error)
@@ -25,7 +26,7 @@ type Repository interface {
 	// Session
 	CreateSession(ctx context.Context, s *Session) (*Session, error)
 	FindSessionByRefreshToken(ctx context.Context, refreshToken string) (*Session, error)
-	DeleteSession(ctx context.Context, id string) error
+	DeleteSession(ctx context.Context, id uuid.UUID) error
 }
 
 type repository struct {
@@ -37,17 +38,31 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) CreateUser(ctx context.Context, user *User) (*User, error) {
-	query := `
-		INSERT INTO tbl_user (id, email, password, first_name, last_name, phone, is_superadmin)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, COALESCE($7, FALSE))
-		RETURNING id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at
-	`
+	const returning = `RETURNING id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at`
 	var u User
-	if err := r.db.QueryRowxContext(ctx, query,
-		user.ID, user.Email, user.Password,
-		user.FirstName, user.LastName,
-		user.Phone, user.IsSuperadmin,
-	).StructScan(&u); err != nil {
+	var err error
+	if user.ID == uuid.Nil {
+		query := `
+			INSERT INTO tbl_user (email, password, first_name, last_name, phone, is_superadmin)
+			VALUES ($1, NULLIF($2, ''), $3, $4, $5, COALESCE($6, FALSE))
+			` + returning
+		err = r.db.QueryRowxContext(ctx, query,
+			user.Email, user.Password,
+			user.FirstName, user.LastName,
+			user.Phone, user.IsSuperadmin,
+		).StructScan(&u)
+	} else {
+		query := `
+			INSERT INTO tbl_user (id, email, password, first_name, last_name, phone, is_superadmin)
+			VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, COALESCE($7, FALSE))
+			` + returning
+		err = r.db.QueryRowxContext(ctx, query,
+			user.ID, user.Email, user.Password,
+			user.FirstName, user.LastName,
+			user.Phone, user.IsSuperadmin,
+		).StructScan(&u)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return &u, nil
@@ -69,7 +84,7 @@ func (r *repository) FindByEmail(ctx context.Context, email string) (*User, erro
 	return &u, nil
 }
 
-func (r *repository) FindByID(ctx context.Context, id string) (*User, error) {
+func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	query := `
 		SELECT id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at
 		FROM tbl_user
@@ -86,22 +101,39 @@ func (r *repository) FindByID(ctx context.Context, id string) (*User, error) {
 }
 
 func (r *repository) UpsertAuthProvider(ctx context.Context, p *AuthProvider) (*AuthProvider, error) {
-	query := `
-		INSERT INTO tbl_auth_provider
-			(id, user_id, provider,
-			 access_token, refresh_token, token_expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (user_id, provider) DO UPDATE SET
-			access_token     = EXCLUDED.access_token,
-			refresh_token    = EXCLUDED.refresh_token,
-			token_expires_at = EXCLUDED.token_expires_at
-		RETURNING id, user_id, provider, access_token, refresh_token, token_expires_at, created_at, updated_at
-	`
+	const returning = `RETURNING id, user_id, provider, access_token, refresh_token, token_expires_at, created_at, updated_at`
 	var ap AuthProvider
-	if err := r.db.QueryRowxContext(ctx, query,
-		p.ID, p.UserID, p.Provider,
-		p.AccessToken, p.RefreshToken, p.TokenExpiresAt,
-	).StructScan(&ap); err != nil {
+	var err error
+	if p.ID == uuid.Nil {
+		query := `
+			INSERT INTO tbl_auth_provider
+				(user_id, provider, access_token, refresh_token, token_expires_at)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (user_id, provider) DO UPDATE SET
+				access_token     = EXCLUDED.access_token,
+				refresh_token    = EXCLUDED.refresh_token,
+				token_expires_at = EXCLUDED.token_expires_at
+			` + returning
+		err = r.db.QueryRowxContext(ctx, query,
+			p.UserID, p.Provider,
+			p.AccessToken, p.RefreshToken, p.TokenExpiresAt,
+		).StructScan(&ap)
+	} else {
+		query := `
+			INSERT INTO tbl_auth_provider
+				(id, user_id, provider, access_token, refresh_token, token_expires_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (user_id, provider) DO UPDATE SET
+				access_token     = EXCLUDED.access_token,
+				refresh_token    = EXCLUDED.refresh_token,
+				token_expires_at = EXCLUDED.token_expires_at
+			` + returning
+		err = r.db.QueryRowxContext(ctx, query,
+			p.ID, p.UserID, p.Provider,
+			p.AccessToken, p.RefreshToken, p.TokenExpiresAt,
+		).StructScan(&ap)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("upsert auth provider: %w", err)
 	}
 	return &ap, nil
@@ -155,7 +187,7 @@ func (r *repository) FindSessionByRefreshToken(ctx context.Context, refreshToken
 	return &sess, nil
 }
 
-func (r *repository) DeleteSession(ctx context.Context, id string) error {
+func (r *repository) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE tbl_session SET deleted_at = now() WHERE id = $1`
 	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
 		return fmt.Errorf("delete session: %w", err)

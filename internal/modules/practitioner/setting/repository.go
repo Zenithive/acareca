@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -14,13 +15,13 @@ var ErrNotFound = errors.New("practitioner not found")
 
 type Repository interface {
 	Create(ctx context.Context, t *Practitioner) (*Practitioner, error)
-	GetByID(ctx context.Context, id int) (*Practitioner, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*Practitioner, error)
 	GetByUserID(ctx context.Context, userID string) (*Practitioner, error)
 	List(ctx context.Context) ([]*Practitioner, error)
 	Update(ctx context.Context, t *Practitioner) (*Practitioner, error)
-	Delete(ctx context.Context, id int) error
+	Delete(ctx context.Context, id uuid.UUID) error
 
-	GetSettingByPractitionerID(ctx context.Context, practitionerID int) (*PractitionerSetting, error)
+	GetSettingByPractitionerID(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSetting, error)
 	UpsertSetting(ctx context.Context, s *PractitionerSetting) (*PractitionerSetting, error)
 }
 
@@ -41,14 +42,14 @@ func (r *repository) Create(ctx context.Context, t *Practitioner) (*Practitioner
 	now := time.Now()
 	var out Practitioner
 	if err := r.db.QueryRowxContext(ctx, query,
-		t.UserID, t.ABN, t.verified, now, now,
+		t.UserID, t.ABN, t.Verified, now, now,
 	).StructScan(&out); err != nil {
 		return nil, fmt.Errorf("create practitioner: %w", err)
 	}
 	return &out, nil
 }
 
-func (r *repository) GetByID(ctx context.Context, id int) (*Practitioner, error) {
+func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Practitioner, error) {
 	query := `
 		SELECT id, user_id, abn, verified, created_at, updated_at, deleted_at
 		FROM tbl_practitioner
@@ -85,7 +86,7 @@ func (r *repository) List(ctx context.Context) ([]*Practitioner, error) {
 		SELECT id, user_id, abn, verified, created_at, updated_at, deleted_at
 		FROM tbl_practitioner
 		WHERE deleted_at IS NULL
-		ORDER BY id
+		ORDER BY created_at
 	`
 	var list []*Practitioner
 	if err := r.db.SelectContext(ctx, &list, query); err != nil {
@@ -102,7 +103,7 @@ func (r *repository) Update(ctx context.Context, t *Practitioner) (*Practitioner
 		RETURNING id, user_id, abn, verified, created_at, updated_at, deleted_at
 	`
 	var out Practitioner
-	if err := r.db.QueryRowxContext(ctx, query, t.ID, t.ABN, t.verified, t.UpdatedAt).StructScan(&out); err != nil {
+	if err := r.db.QueryRowxContext(ctx, query, t.ID, t.ABN, t.Verified, t.UpdatedAt).StructScan(&out); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -111,7 +112,7 @@ func (r *repository) Update(ctx context.Context, t *Practitioner) (*Practitioner
 	return &out, nil
 }
 
-func (r *repository) Delete(ctx context.Context, id int) error {
+func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE tbl_practitioner SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
 	res, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -124,7 +125,7 @@ func (r *repository) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (r *repository) GetSettingByPractitionerID(ctx context.Context, practitionerID int) (*PractitionerSetting, error) {
+func (r *repository) GetSettingByPractitionerID(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSetting, error) {
 	query := `
 		SELECT id, practitioner_id, timezone, logo, color, created_at, updated_at, deleted_at
 		FROM tbl_practitioner_setting

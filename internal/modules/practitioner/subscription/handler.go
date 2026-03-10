@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -26,19 +27,19 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-// practitionerIDFromCtx is set by routes when mounting under /practitioners/:id/subscriptions
+// practitionerIDFromCtx is set by routes when mounting under /practitioner/:id/subscription
 const practitionerIDKey = "practitioner_id"
 
-func getPractitionerID(c *gin.Context) (int, bool) {
-	idStr, exists := c.Get(practitionerIDKey)
+func getPractitionerID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(practitionerIDKey)
 	if !exists {
 		response.Error(c, http.StatusBadRequest, errors.New("practitioner id not in context"))
-		return 0, false
+		return uuid.Nil, false
 	}
-	id, ok := idStr.(int)
+	id, ok := idVal.(uuid.UUID)
 	if !ok {
 		response.Error(c, http.StatusInternalServerError, errors.New("invalid practitioner id type"))
-		return 0, false
+		return uuid.Nil, false
 	}
 	return id, true
 }

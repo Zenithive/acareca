@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -15,7 +16,7 @@ var ErrNotFound = errors.New("practitioner subscription not found")
 type Repository interface {
 	Create(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*PractitionerSubscription, error)
-	ListByPractitionerID(ctx context.Context, practitionerID int) ([]*PractitionerSubscription, error)
+	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*PractitionerSubscription, error)
 	Update(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
 }
@@ -60,7 +61,7 @@ func (r *repository) GetByID(ctx context.Context, id int) (*PractitionerSubscrip
 	return &s, nil
 }
 
-func (r *repository) ListByPractitionerID(ctx context.Context, practitionerID int) ([]*PractitionerSubscription, error) {
+func (r *repository) ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*PractitionerSubscription, error) {
 	query := `
 		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, created_at, updated_at, deleted_at
 		FROM tbl_practitioner_subscription

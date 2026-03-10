@@ -57,3 +57,11 @@ func Round(value float64, precision int) float64 {
 	multiplier := math.Pow(10, float64(precision))
 	return math.Round(value*multiplier) / multiplier
 }
+
+func ParseUUID(s string) (uuid.UUID, error) {
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	return parsed, nil
+}

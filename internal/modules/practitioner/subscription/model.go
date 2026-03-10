@@ -1,6 +1,10 @@
 package subscription
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Status matches practitioner_subscription_status enum.
 type Status string
@@ -16,7 +20,7 @@ const (
 // PractitionerSubscription matches tbl_practitioner_subscription.
 type PractitionerSubscription struct {
 	ID             int        `db:"id"`
-	PractitionerID int        `db:"practitioner_id"`
+	PractitionerID uuid.UUID  `db:"practitioner_id"`
 	SubscriptionID int        `db:"subscription_id"`
 	StartDate      time.Time  `db:"start_date"`
 	EndDate        time.Time  `db:"end_date"`
@@ -42,7 +46,7 @@ type RqUpdatePractitionerSubscription struct {
 // RsPractitionerSubscription response.
 type RsPractitionerSubscription struct {
 	ID             int       `json:"id"`
-	PractitionerID int       `json:"practitioner_id"`
+	PractitionerID uuid.UUID `json:"practitioner_id"`
 	SubscriptionID int       `json:"subscription_id"`
 	StartDate      time.Time `json:"start_date"`
 	EndDate        time.Time `json:"end_date"`

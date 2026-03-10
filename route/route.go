@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
@@ -14,6 +15,7 @@ import (
 	practitionerSub "github.com/iamarpitzala/acareca/internal/modules/practitioner/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
@@ -54,7 +56,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 			Status:         practitionerSub.StatusActive,
 		})
 		if err != nil {
-			log.Printf("onboarding: create trial subscription for practitioner %d: %v", t.ID, err)
+			log.Printf("onboarding: create trial subscription for practitioner %s: %v", t.ID, err)
 			return err
 		}
 		return nil
@@ -69,7 +71,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	calculationHandler := calculation.NewHandler(calculationSvc)
 	calculation.RegisterRoutes(v1, calculationHandler)
 
-	superadminCheck := func(ctx context.Context, userID string) (bool, error) {
+	superadminCheck := func(ctx context.Context, userID uuid.UUID) (bool, error) {
 		u, err := authRepo.FindByID(ctx, userID)
 		if err != nil {
 			return false, err
@@ -78,7 +80,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	}
 	adminGroup := v1.Group("/admin")
 	subscriptionGroup := adminGroup.Group("/subscription")
-	subscriptionGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(superadminCheck))
+	subscriptionGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
+		id, err := util.ParseUUID(userID)
+		if err != nil {
+			return false, err
+		}
+		return superadminCheck(ctx, id)
+	}))
 	subscriptionSvc := subscription.NewService(subscriptionRepo)
 	subscriptionHandler := subscription.NewHandler(subscriptionSvc)
 	subscription.RegisterRoutes(subscriptionGroup, subscriptionHandler)

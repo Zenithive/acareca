@@ -3,18 +3,20 @@ package setting
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Service interface {
 	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error)
-	GetPractitioner(ctx context.Context, id int) (*RsPractitioner, error)
+	GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	ListPractitioners(ctx context.Context) ([]*RsPractitioner, error)
-	UpdatePractitioner(ctx context.Context, id int, req *RqUpdatePractitioner) (*RsPractitioner, error)
-	DeletePractitioner(ctx context.Context, id int) error
+	UpdatePractitioner(ctx context.Context, id uuid.UUID, req *RqUpdatePractitioner) (*RsPractitioner, error)
+	DeletePractitioner(ctx context.Context, id uuid.UUID) error
 
-	GetSetting(ctx context.Context, practitionerID int) (*RsPractitionerSetting, error)
-	UpsertSetting(ctx context.Context, practitionerID int, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error)
+	GetSetting(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSetting, error)
+	UpsertSetting(ctx context.Context, practitionerID uuid.UUID, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error)
 }
 
 type service struct {
@@ -34,7 +36,7 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 	return created.ToRs(), nil
 }
 
-func (s *service) GetPractitioner(ctx context.Context, id int) (*RsPractitioner, error) {
+func (s *service) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
 	t, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -62,7 +64,7 @@ func (s *service) ListPractitioners(ctx context.Context) ([]*RsPractitioner, err
 	return out, nil
 }
 
-func (s *service) UpdatePractitioner(ctx context.Context, id int, req *RqUpdatePractitioner) (*RsPractitioner, error) {
+func (s *service) UpdatePractitioner(ctx context.Context, id uuid.UUID, req *RqUpdatePractitioner) (*RsPractitioner, error) {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -79,17 +81,17 @@ func applyUpdate(t *Practitioner, req *RqUpdatePractitioner) {
 	if req.ABN != nil {
 		t.ABN = req.ABN
 	}
-	if req.verified != nil {
-		t.verified = *req.verified
+	if req.Verified != nil {
+		t.Verified = *req.Verified
 	}
 	t.UpdatedAt = time.Now()
 }
 
-func (s *service) DeletePractitioner(ctx context.Context, id int) error {
+func (s *service) DeletePractitioner(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *service) GetSetting(ctx context.Context, practitionerID int) (*RsPractitionerSetting, error) {
+func (s *service) GetSetting(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSetting, error) {
 	setting, err := s.repo.GetSettingByPractitionerID(ctx, practitionerID)
 	if err != nil {
 		return nil, err
@@ -97,7 +99,7 @@ func (s *service) GetSetting(ctx context.Context, practitionerID int) (*RsPracti
 	return setting.ToRs(), nil
 }
 
-func (s *service) UpsertSetting(ctx context.Context, practitionerID int, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error) {
+func (s *service) UpsertSetting(ctx context.Context, practitionerID uuid.UUID, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error) {
 	// Defaults
 	timezone := "Australia/Sydney"
 	color := "#000000"

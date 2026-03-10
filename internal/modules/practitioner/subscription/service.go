@@ -3,12 +3,14 @@ package subscription
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Service interface {
-	Create(ctx context.Context, practitionerID int, req *RqCreatePractitionerSubscription) (*RsPractitionerSubscription, error)
+	Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription) (*RsPractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*RsPractitionerSubscription, error)
-	ListByPractitionerID(ctx context.Context, practitionerID int) ([]*RsPractitionerSubscription, error)
+	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*RsPractitionerSubscription, error)
 	Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
 }
@@ -21,7 +23,7 @@ func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
-func (s *service) Create(ctx context.Context, practitionerID int, req *RqCreatePractitionerSubscription) (*RsPractitionerSubscription, error) {
+func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription) (*RsPractitionerSubscription, error) {
 	start, err := time.Parse(time.RFC3339, req.StartDate)
 	if err != nil {
 		return nil, err
@@ -56,7 +58,7 @@ func (s *service) GetByID(ctx context.Context, id int) (*RsPractitionerSubscript
 	return sub.ToRs(), nil
 }
 
-func (s *service) ListByPractitionerID(ctx context.Context, practitionerID int) ([]*RsPractitionerSubscription, error) {
+func (s *service) ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*RsPractitionerSubscription, error) {
 	list, err := s.repo.ListByPractitionerID(ctx, practitionerID)
 	if err != nil {
 		return nil, err
