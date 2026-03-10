@@ -32,7 +32,7 @@ func NewHandler(svc Service) IHandler {
 func parseTentantID(c *gin.Context) (int, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid tentant id"))
+		response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner id"))
 		return 0, false
 	}
 	return id, true

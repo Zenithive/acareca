@@ -75,7 +75,7 @@ func (s *service) UpdateTentant(ctx context.Context, id int, req *RqUpdateTentan
 	return updated.ToRs(), nil
 }
 
-func applyUpdate(t *Tentant, req *RqUpdateTentant) {
+func applyUpdate(t *Practitioner, req *RqUpdateTentant) {
 	if req.ABN != nil {
 		t.ABN = req.ABN
 	}

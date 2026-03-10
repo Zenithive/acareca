@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE TABLE IF NOT EXISTS tbl_tentant (
+CREATE TABLE IF NOT EXISTS tbl_practitioner (
     id            SERIAL PRIMARY KEY,
     user_id       VARCHAR(40) NOT NULL,
     abn           VARCHAR(20),
@@ -11,9 +11,9 @@ CREATE TABLE IF NOT EXISTS tbl_tentant (
     deleted_at    TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS tbl_tentant_setting   (
+CREATE TABLE IF NOT EXISTS tbl_practitioner_setting   (
     id            SERIAL PRIMARY KEY,
-    tentant_id    INTEGER NOT NULL REFERENCES tbl_tentant(id),
+    tentant_id    INTEGER NOT NULL REFERENCES tbl_practitioner(id),
     timezone      VARCHAR(255) NOT NULL DEFAULT 'Australia/Sydney',
     logo          VARCHAR(255),
     color         VARCHAR(7) NOT NULL DEFAULT '#000000',
@@ -26,6 +26,6 @@ CREATE TABLE IF NOT EXISTS tbl_tentant_setting   (
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS tbl_tentant;
-DROP TABLE IF EXISTS tbl_tentant_setting;
+DROP TABLE IF EXISTS tbl_practitioner;
+DROP TABLE IF EXISTS tbl_practitioner_setting;
 -- +goose StatementEnd

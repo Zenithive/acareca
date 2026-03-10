@@ -32,12 +32,12 @@ const tentantIDKey = "tentant_id"
 func getTentantID(c *gin.Context) (int, bool) {
 	idStr, exists := c.Get(tentantIDKey)
 	if !exists {
-		response.Error(c, http.StatusBadRequest, errors.New("tentant id not in context"))
+		response.Error(c, http.StatusBadRequest, errors.New("practitioner id not in context"))
 		return 0, false
 	}
 	id, ok := idStr.(int)
 	if !ok {
-		response.Error(c, http.StatusInternalServerError, errors.New("invalid tentant id type"))
+		response.Error(c, http.StatusInternalServerError, errors.New("invalid practitioner id type"))
 		return 0, false
 	}
 	return id, true

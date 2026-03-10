@@ -10,8 +10,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
-	tentant "github.com/iamarpitzala/acareca/internal/modules/tentant/setting"
-	tentantSub "github.com/iamarpitzala/acareca/internal/modules/tentant/subscription"
+	practitioner "github.com/iamarpitzala/acareca/internal/modules/practitioner/setting"
+	tentantSub "github.com/iamarpitzala/acareca/internal/modules/practitioner/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -26,7 +26,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	}
 	authRepo := auth.NewRepository(dbConn)
 	subscriptionRepo := subscription.NewRepository(dbConn)
-	tentantRepo := tentant.NewRepository(dbConn)
+	tentantRepo := practitioner.NewRepository(dbConn)
 	tentantSubRepo := tentantSub.NewRepository(dbConn)
 
 	onUserCreated := func(ctx context.Context, userID string) error {
@@ -34,9 +34,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 		if err == nil && existing != nil {
 			return nil
 		}
-		t, err := tentantRepo.Create(ctx, &tentant.Tentant{UserID: userID})
+		t, err := tentantRepo.Create(ctx, &practitioner.Practitioner{UserID: userID})
 		if err != nil {
-			log.Printf("onboarding: create tentant for user %s: %v", userID, err)
+			log.Printf("onboarding: create practitioner for user %s: %v", userID, err)
 			return err
 		}
 		trial, err := subscriptionRepo.FindByName(ctx, "Trial")
@@ -54,7 +54,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 			Status:         tentantSub.StatusActive,
 		})
 		if err != nil {
-			log.Printf("onboarding: create trial subscription for tentant %d: %v", t.ID, err)
+			log.Printf("onboarding: create trial subscription for practitioner %d: %v", t.ID, err)
 			return err
 		}
 		return nil
@@ -83,10 +83,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	subscriptionHandler := subscription.NewHandler(subscriptionSvc)
 	subscription.RegisterRoutes(subscriptionGroup, subscriptionHandler)
 
-	tentantSvc := tentant.NewService(tentantRepo)
-	tentantHandler := tentant.NewHandler(tentantSvc)
-	tentantGroup := v1.Group("/tentant")
-	tentant.RegisterRoutes(tentantGroup, tentantHandler)
+	tentantSvc := practitioner.NewService(tentantRepo)
+	tentantHandler := practitioner.NewHandler(tentantSvc)
+	tentantGroup := v1.Group("/practitioner")
+	practitioner.RegisterRoutes(tentantGroup, tentantHandler)
 	tentantSubSvc := tentantSub.NewService(tentantSubRepo)
 	tentantSubHandler := tentantSub.NewHandler(tentantSubSvc)
 	tentantSub.RegisterRoutes(tentantGroup.Group("/:id/subscription"), tentantSubHandler)
