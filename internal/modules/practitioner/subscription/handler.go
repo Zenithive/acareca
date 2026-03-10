@@ -3,10 +3,8 @@ package subscription
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -27,34 +25,8 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-// practitionerIDFromCtx is set by routes when mounting under /practitioner/:id/subscription
-const practitionerIDKey = "practitioner_id"
-
-func getPractitionerID(c *gin.Context) (uuid.UUID, bool) {
-	idVal, exists := c.Get(practitionerIDKey)
-	if !exists {
-		response.Error(c, http.StatusBadRequest, errors.New("practitioner id not in context"))
-		return uuid.Nil, false
-	}
-	id, ok := idVal.(uuid.UUID)
-	if !ok {
-		response.Error(c, http.StatusInternalServerError, errors.New("invalid practitioner id type"))
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-func parseID(c *gin.Context, param string) (int, bool) {
-	id, err := strconv.Atoi(c.Param(param))
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
-		return 0, false
-	}
-	return id, true
-}
-
 func (h *handler) Create(c *gin.Context) {
-	practitionerID, ok := getPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -72,7 +44,7 @@ func (h *handler) Create(c *gin.Context) {
 }
 
 func (h *handler) GetByID(c *gin.Context) {
-	id, ok := parseID(c, "sub_id")
+	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
 		return
 	}
@@ -89,7 +61,7 @@ func (h *handler) GetByID(c *gin.Context) {
 }
 
 func (h *handler) ListByPractitionerID(c *gin.Context) {
-	practitionerID, ok := getPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -102,7 +74,7 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 }
 
 func (h *handler) Update(c *gin.Context) {
-	id, ok := parseID(c, "sub_id")
+	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
 		return
 	}
@@ -124,7 +96,7 @@ func (h *handler) Update(c *gin.Context) {
 }
 
 func (h *handler) Delete(c *gin.Context) {
-	id, ok := parseID(c, "sub_id")
+	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
 		return
 	}

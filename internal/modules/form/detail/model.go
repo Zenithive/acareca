@@ -14,12 +14,13 @@ type RqFormDetail struct {
 }
 
 type RqUpdateFormDetail struct {
-	Name        *string `json:"name" validate:"omitempty"`
-	Description *string `json:"description" validate:"omitempty"`
-	Status      *string `json:"status" validate:"omitempty,oneof=active inactive"`
-	Method      *string `json:"method" validate:"omitempty"`
-	OwnerShare  *int    `json:"owner_share" validate:"omitempty,min=0,max=100"`
-	ClinicShare *int    `json:"clinic_share" validate:"omitempty,min=0,max=100"`
+	ID          uuid.UUID `json:"id" validate:"required"`
+	Name        *string   `json:"name" validate:"omitempty"`
+	Description *string   `json:"description" validate:"omitempty"`
+	Status      *string   `json:"status" validate:"omitempty,oneof=active inactive"`
+	Method      *string   `json:"method" validate:"omitempty"`
+	OwnerShare  *int      `json:"owner_share" validate:"omitempty,min=0,max=100"`
+	ClinicShare *int      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
 }
 
 type FormDetail struct {
@@ -36,6 +37,7 @@ type FormDetail struct {
 }
 
 func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
+
 	return &FormDetail{
 		ID:          uuid.New(),
 		ClinicID:    clinicID,
@@ -48,7 +50,8 @@ func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
 	}
 }
 
-func (r *RqUpdateFormDetail) Update(d *FormDetail) {
+func (r *RqUpdateFormDetail) Update() *FormDetail {
+	d := &FormDetail{}
 	if r.Name != nil {
 		d.Name = *r.Name
 	}
@@ -67,6 +70,7 @@ func (r *RqUpdateFormDetail) Update(d *FormDetail) {
 	if r.ClinicShare != nil {
 		d.ClinicShare = *r.ClinicShare
 	}
+	return d
 }
 
 func (d *FormDetail) ToRs() *RsFormDetail {
@@ -93,4 +97,10 @@ type RsFormDetail struct {
 	ClinicShare int       `json:"clinic_share"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
+}
+
+type Filter struct {
+	Status   *string   `form:"status" validate:"omitempty,oneof=active inactive"`
+	Method   *string   `form:"method" validate:"omitempty"`
+	ClinicID uuid.UUID `form:"clinic_id" validate:"required"`
 }
