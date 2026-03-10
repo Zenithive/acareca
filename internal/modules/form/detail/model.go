@@ -4,7 +4,26 @@ import (
 	"github.com/google/uuid"
 )
 
-type Detail struct {
+type RqFormDetail struct {
+	Name        string  `json:"name" validate:"required"`
+	Description *string `json:"description" validate:"omitempty"`
+	Status      string  `json:"status" validate:"required,oneof=active inactive"`
+	Method      string  `json:"method" validate:"required"`
+	OwnerShare  int     `json:"owner_share" validate:"required,min=0,max=100"`
+	ClinicShare int     `json:"clinic_share" validate:"required,min=0,max=100"`
+}
+
+type RqUpdateFormDetail struct {
+	Name        *string `json:"name" validate:"omitempty"`
+	Description *string `json:"description" validate:"omitempty"`
+	Status      *string `json:"status" validate:"omitempty,oneof=active inactive"`
+	Method      *string `json:"method" validate:"omitempty"`
+	OwnerShare  *int    `json:"owner_share" validate:"omitempty,min=0,max=100"`
+	ClinicShare *int    `json:"clinic_share" validate:"omitempty,min=0,max=100"`
+}
+
+type FormDetail struct {
+	ID          uuid.UUID `db:"id" json:"id"`
 	ClinicID    uuid.UUID `db:"clinic_id" json:"clinic_id"`
 	Name        string    `db:"name" json:"name"`
 	Description *string   `db:"description" json:"description,omitempty"`
@@ -12,4 +31,66 @@ type Detail struct {
 	Method      string    `db:"method" json:"method"`
 	OwnerShare  int       `db:"owner_share" json:"owner_share"`
 	ClinicShare int       `db:"clinic_share" json:"clinic_share"`
+	CreatedAt   string    `db:"created_at" json:"created_at"`
+	UpdatedAt   string    `db:"updated_at" json:"updated_at"`
+}
+
+func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
+	return &FormDetail{
+		ID:          uuid.New(),
+		ClinicID:    clinicID,
+		Name:        r.Name,
+		Description: r.Description,
+		Status:      r.Status,
+		Method:      r.Method,
+		OwnerShare:  r.OwnerShare,
+		ClinicShare: r.ClinicShare,
+	}
+}
+
+func (r *RqUpdateFormDetail) Update(d *FormDetail) {
+	if r.Name != nil {
+		d.Name = *r.Name
+	}
+	if r.Description != nil {
+		d.Description = r.Description
+	}
+	if r.Status != nil {
+		d.Status = *r.Status
+	}
+	if r.Method != nil {
+		d.Method = *r.Method
+	}
+	if r.OwnerShare != nil {
+		d.OwnerShare = *r.OwnerShare
+	}
+	if r.ClinicShare != nil {
+		d.ClinicShare = *r.ClinicShare
+	}
+}
+
+func (d *FormDetail) ToRs() *RsFormDetail {
+	return &RsFormDetail{
+		ClinicID:    d.ClinicID,
+		Name:        d.Name,
+		Description: d.Description,
+		Status:      d.Status,
+		Method:      d.Method,
+		OwnerShare:  d.OwnerShare,
+		ClinicShare: d.ClinicShare,
+		CreatedAt:   d.CreatedAt,
+		UpdatedAt:   d.UpdatedAt,
+	}
+}
+
+type RsFormDetail struct {
+	ClinicID    uuid.UUID `json:"clinic_id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description,omitempty"`
+	Status      string    `json:"status"`
+	Method      string    `json:"method"`
+	OwnerShare  int       `json:"owner_share"`
+	ClinicShare int       `json:"clinic_share"`
+	CreatedAt   string    `json:"created_at"`
+	UpdatedAt   string    `json:"updated_at"`
 }
