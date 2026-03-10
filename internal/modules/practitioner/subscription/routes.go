@@ -17,7 +17,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 
 func MiddlewarePractitionerID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("id")
+		idStr := c.Param("prac_id")
 		if idStr == "" {
 			c.Next()
 			return
