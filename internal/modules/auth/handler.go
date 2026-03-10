@@ -24,6 +24,17 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// GetUsers godoc
+// @Summary Register a new user
+// @Description register a new user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsUser
+// @Failure 400 {object} response.RsError
+// @Failure 409 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/register [post]
 func (h *handler) Register(c *gin.Context) {
 	var req RqUser
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -44,6 +55,17 @@ func (h *handler) Register(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, user)
 }
 
+// Login godoc
+// @Summary Login a user
+// @Description login a user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsToken
+// @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/login [post]
 func (h *handler) Login(c *gin.Context) {
 	var req RqLogin
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -64,7 +86,15 @@ func (h *handler) Login(c *gin.Context) {
 	response.JSON(c, http.StatusOK, token)
 }
 
-// GoogleLogin returns the Google OAuth consent-screen URL.
+// GoogleAuthURL godoc
+// @Summary Get Google OAuth consent-screen URL
+// @Description get Google OAuth consent-screen URL
+// @Tags auth
+// @Produce json
+// @Success 200 {object} RsGoogleAuthURL
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google [get]
 func (h *handler) GoogleLogin(c *gin.Context) {
 	state := util.NewUUID()
 	result := h.svc.GoogleAuthURL(state)
@@ -88,7 +118,15 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 	response.JSON(c, http.StatusOK, token)
 }
 
-// GoogleAuthURL implements [IHandler].
+// GoogleCallback godoc
+// @Summary Handle Google OAuth callback
+// @Description handle Google OAuth callback
+// @Tags auth
+// @Produce json
+// @Success 200 {object} RsToken
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google/callback [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
 	result := h.svc.GoogleAuthURL(state)

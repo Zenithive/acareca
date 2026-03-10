@@ -7,10 +7,15 @@ import (
 	"github.com/google/uuid"
 )
 
+type RsError struct {
+	Message string `json:"message" example:"internal server error"`
+	Code    int    `json:"code" example:"500"`
+}
+
 type envelope struct {
 	Data    any    `json:"data,omitempty"`
 	Message string `json:"message,omitempty"`
-	Error   string `json:"error,omitempty"`
+	RsError `json:"error"`
 }
 
 func JSON(c *gin.Context, status int, data any) {
@@ -26,7 +31,7 @@ func Error(c *gin.Context, status int, err error) {
 	if status < http.StatusInternalServerError {
 		msg = err.Error()
 	}
-	c.AbortWithStatusJSON(status, envelope{Error: msg})
+	c.AbortWithStatusJSON(status, envelope{RsError: RsError{Message: msg, Code: status}})
 }
 
 func NewUUID() string {
