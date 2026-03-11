@@ -32,6 +32,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	subscriptionRepo := subscription.NewRepository(dbConn)
 	practitionerRepo := practitioner.NewRepository(dbConn)
 	practitionerSubRepo := practitionerSub.NewRepository(dbConn)
+	coaRepo := coa.NewRepository(dbConn)
 
 	onUserCreated := func(ctx context.Context, userID string) error {
 		existing, err := practitionerRepo.GetByUserID(ctx, userID)
@@ -59,6 +60,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 		})
 		if err != nil {
 			log.Printf("onboarding: create trial subscription for practitioner %s: %v", t.ID, err)
+			return err
+		}
+		if err := coa.SeedDefaultsForPractitioner(ctx, coaRepo, t.ID); err != nil {
+			log.Printf("onboarding: seed default chart of accounts for practitioner %s: %v", t.ID, err)
 			return err
 		}
 		return nil
@@ -107,7 +112,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	clinicHandler := clinic.NewHandler(clinciSvc)
 	clinic.RegisterRoutes(v1, clinicHandler)
 
-	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)

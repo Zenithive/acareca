@@ -17,8 +17,8 @@ type IHandler interface {
 	ListAccountTaxes(c *gin.Context)
 	GetAccountTaxByID(c *gin.Context)
 
-	ListCharts(c *gin.Context)
-	GetChartByID(c *gin.Context)
+	ListChartsByCreatedBy(c *gin.Context)
+	GetChartByIDAndCreatedBy(c *gin.Context)
 	CreateChart(c *gin.Context)
 	UpdateChart(c *gin.Context)
 	DeleteChart(c *gin.Context)
@@ -86,8 +86,21 @@ func (h *handler) GetAccountTaxByID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, one)
 }
 
-func (h *handler) ListCharts(c *gin.Context) {
-	list, err := h.svc.ListCharts(c.Request.Context())
+func (h *handler) parseCreatedByID(c *gin.Context) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param("createdById"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid createdById"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func (h *handler) ListChartsByCreatedBy(c *gin.Context) {
+	createdBy, ok := h.parseCreatedByID(c)
+	if !ok {
+		return
+	}
+	list, err := h.svc.ListChartsByCreatedBy(c.Request.Context(), createdBy)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -95,13 +108,17 @@ func (h *handler) ListCharts(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
-func (h *handler) GetChartByID(c *gin.Context) {
+func (h *handler) GetChartByIDAndCreatedBy(c *gin.Context) {
+	createdBy, ok := h.parseCreatedByID(c)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
-	chart, err := h.svc.GetChartByID(c.Request.Context(), id)
+	chart, err := h.svc.GetChartByIDAndCreatedBy(c.Request.Context(), id, createdBy)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -114,12 +131,16 @@ func (h *handler) GetChartByID(c *gin.Context) {
 }
 
 func (h *handler) CreateChart(c *gin.Context) {
+	createdBy, ok := h.parseCreatedByID(c)
+	if !ok {
+		return
+	}
 	var req RqCreateChartOfAccount
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	created, err := h.svc.CreateChart(c.Request.Context(), &req)
+	created, err := h.svc.CreateChart(c.Request.Context(), createdBy, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {
 			response.Error(c, http.StatusConflict, err)
@@ -136,6 +157,10 @@ func (h *handler) CreateChart(c *gin.Context) {
 }
 
 func (h *handler) UpdateChart(c *gin.Context) {
+	createdBy, ok := h.parseCreatedByID(c)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
@@ -146,13 +171,13 @@ func (h *handler) UpdateChart(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	updated, err := h.svc.UpdateChart(c.Request.Context(), id, &req)
+	updated, err := h.svc.UpdateChart(c.Request.Context(), id, createdBy, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {
 			response.Error(c, http.StatusConflict, err)
 			return
 		}
-		if errors.Is(err, ErrSystemAccountProtected) {
+		if errors.Is(err, ErrSystemAccountProtected) || errors.Is(err, ErrSystemProviderProtected) {
 			response.Error(c, http.StatusForbidden, err)
 			return
 		}
@@ -167,13 +192,21 @@ func (h *handler) UpdateChart(c *gin.Context) {
 }
 
 func (h *handler) DeleteChart(c *gin.Context) {
+	createdBy, ok := h.parseCreatedByID(c)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
-	if err := h.svc.DeleteChart(c.Request.Context(), id); err != nil {
+	if err := h.svc.DeleteChart(c.Request.Context(), id, createdBy); err != nil {
 		if errors.Is(err, ErrSystemAccountProtected) {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
+		if errors.Is(err, ErrSystemProviderProtected) {
 			response.Error(c, http.StatusForbidden, err)
 			return
 		}

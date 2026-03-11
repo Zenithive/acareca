@@ -37,7 +37,7 @@ INSERT INTO tbl_account_tax (name, rate, bas_field, is_taxable, description) VAL
     ('GST Free Income',    0.00, '1B',  FALSE, NULL)
 ON CONFLICT (name) DO NOTHING;
 
--- 3) Chart of Accounts — one set per clinic
+-- 3) Chart of Accounts (global; created_by = practitioner id; unique per code+created_by)
 CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     id               UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
     created_by       UUID NOT NULL,
@@ -47,11 +47,12 @@ CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     name             VARCHAR(255) NOT NULL,
     description      TEXT,
     is_system        BOOLEAN NOT NULL DEFAULT FALSE,
+    system_provider  BOOLEAN NOT NULL DEFAULT FALSE,
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at       TIMESTAMPTZ,
-    CONSTRAINT uq_chart_of_accounts_code UNIQUE (code)
+    CONSTRAINT uq_chart_of_accounts_code_created_by UNIQUE (code, created_by)
 );
 
 
