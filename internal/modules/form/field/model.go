@@ -8,20 +8,20 @@ import (
 const (
 	SectionTypeCollection = "COLLECTION"
 	SectionTypeCost       = "COST"
-	SectionTypeOtherCost = "OTHER_COST"
+	SectionTypeOtherCost  = "OTHER_COST"
 )
 
 // PaymentResponsibility enum: OWNER, CLINIC
 const (
-	PaymentResponsibilityOwner = "OWNER"
-	PaymentResponsibilityClinic  = "CLINIC"
+	PaymentResponsibilityOwner  = "OWNER"
+	PaymentResponsibilityClinic = "CLINIC"
 )
 
 // TaxType enum: INCLUSIVE, EXCLUSIVE, MANUAL
 const (
 	TaxTypeInclusive = "INCLUSIVE"
 	TaxTypeExclusive = "EXCLUSIVE"
-	TaxTypeManual = "MANUAL"
+	TaxTypeManual    = "MANUAL"
 )
 
 type RqFormField struct {
@@ -49,8 +49,8 @@ type FormField struct {
 	PaymentResponsibility string    `db:"payment_responsibility" json:"payment_responsibility"`
 	TaxType               string    `db:"tax_type" json:"tax_type"`
 	CoaID                 uuid.UUID `db:"coa_id" json:"coa_id"`
-	CreatedAt             string   `db:"created_at" json:"created_at"`
-	UpdatedAt             string   `db:"updated_at" json:"updated_at"`
+	CreatedAt             string    `db:"created_at" json:"created_at"`
+	UpdatedAt             string    `db:"updated_at" json:"updated_at"`
 }
 
 func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
@@ -88,6 +88,6 @@ type RsFormField struct {
 	PaymentResponsibility string    `json:"payment_responsibility"`
 	TaxType               string    `json:"tax_type"`
 	CoaID                 uuid.UUID `json:"coa_id"`
-	CreatedAt             string   `json:"created_at"`
-	UpdatedAt             string   `json:"updated_at"`
+	CreatedAt             string    `json:"created_at"`
+	UpdatedAt             string    `json:"updated_at"`
 }

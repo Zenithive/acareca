@@ -71,8 +71,12 @@ func (s *service) Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpd
 		return nil, ErrForbidden
 	}
 
-	existing.Version++
-	existing.IsActive = true
+	if req.Version != nil {
+		existing.Version = *req.Version
+	}
+	if req.IsActive != nil {
+		existing.IsActive = *req.IsActive
+	}
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
