@@ -2,8 +2,16 @@
   "id": "b9c1d2e3-f4a5-6789-bcde-f01234567891",
   "name": "Local",
   "values": [
-    { "key": "base_url", "value": "http://localhost:8080", "enabled": true },
-    { "key": "token",    "value": "",                      "enabled": true }
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "enabled": true
+    },
+    {
+      "key": "token",
+      "value": "",
+      "enabled": true
+    }
   ],
   "_postman_variable_scope": "environment",
   "_exporter_id": "postman"

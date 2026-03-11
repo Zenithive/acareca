@@ -1,7 +1,6 @@
-package subscription
+package field
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,31 +10,32 @@ import (
 
 type IHandler interface {
 	Create(c *gin.Context)
-	GetByID(c *gin.Context)
-	ListByPractitionerID(c *gin.Context)
+	Get(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	List(c *gin.Context)
 }
 
 type handler struct {
-	svc Service
+	svc IService
 }
 
-func NewHandler(svc Service) IHandler {
+func NewHandler(svc IService) IHandler {
 	return &handler{svc: svc}
 }
 
+// Create implements [IHandler].
 func (h *handler) Create(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
+	versionID, ok := util.ParseUuidID(c, "version_id")
 	if !ok {
 		return
 	}
-	var req RqCreatePractitionerSubscription
+	var req RqFormField
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	created, err := h.svc.Create(c.Request.Context(), practitionerID, &req)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -43,49 +43,39 @@ func (h *handler) Create(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created)
 }
 
-func (h *handler) GetByID(c *gin.Context) {
-	id, ok := util.ParseIntID(c, "sub_id")
+// Get implements [IHandler].
+func (h *handler) Get(c *gin.Context) {
+	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
-	sub, err := h.svc.GetByID(c.Request.Context(), id)
+	f, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if err == ErrNotFound {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, sub)
+	response.JSON(c, http.StatusOK, f)
 }
 
-func (h *handler) ListByPractitionerID(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
-		return
-	}
-	list, err := h.svc.ListByPractitionerID(c.Request.Context(), practitionerID)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-	response.JSON(c, http.StatusOK, list)
-}
-
+// Update implements [IHandler].
 func (h *handler) Update(c *gin.Context) {
-	id, ok := util.ParseIntID(c, "sub_id")
+	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
-	var req RqUpdatePractitionerSubscription
+	var req RqUpdateFormField
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+	req.ID = id
 	updated, err := h.svc.Update(c.Request.Context(), id, &req)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if err == ErrNotFound {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
@@ -95,18 +85,33 @@ func (h *handler) Update(c *gin.Context) {
 	response.JSON(c, http.StatusOK, updated)
 }
 
+// Delete implements [IHandler].
 func (h *handler) Delete(c *gin.Context) {
-	id, ok := util.ParseIntID(c, "sub_id")
+	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if err == ErrNotFound {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"})
+	response.JSON(c, http.StatusNoContent, nil)
+}
+
+// List implements [IHandler].
+func (h *handler) List(c *gin.Context) {
+	versionID, ok := util.ParseUuidID(c, "version_id")
+	if !ok {
+		return
+	}
+	list, err := h.svc.ListByFormVersionID(c.Request.Context(), versionID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, list)
 }

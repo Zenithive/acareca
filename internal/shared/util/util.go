@@ -1,14 +1,18 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -64,4 +68,55 @@ func ParseUUID(s string) (uuid.UUID, error) {
 		return uuid.UUID{}, err
 	}
 	return parsed, nil
+}
+
+// practitionerIDFromCtx is set by routes when mounting under /practitioner/:id/subscription
+const PractitionerIDKey = "practitioner_id"
+
+func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(PractitionerIDKey)
+	if !exists {
+		response.Error(c, http.StatusBadRequest, errors.New("practitioner id not in context"))
+		return uuid.Nil, false
+	}
+	id, ok := idVal.(uuid.UUID)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("invalid practitioner id type"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+const ClinicIDKey = "clinic_id"
+
+func GetClinicID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(ClinicIDKey)
+	if !exists {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic id not in context"))
+		return uuid.Nil, false
+	}
+	id, ok := idVal.(uuid.UUID)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("invalid clinic id type"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func ParseIntID(c *gin.Context, param string) (int, bool) {
+	id, err := strconv.Atoi(c.Param(param))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
+		return 0, false
+	}
+	return id, true
+}
+
+func ParseUuidID(c *gin.Context, param string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param(param))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
+		return uuid.Nil, false
+	}
+	return id, true
 }

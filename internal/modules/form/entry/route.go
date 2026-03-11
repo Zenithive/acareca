@@ -1,4 +1,4 @@
-package subscription
+package entry
 
 import (
 	"github.com/gin-gonic/gin"
@@ -7,17 +7,17 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
-	rg.Use(MiddlewarePractitionerID())
-	rg.GET("", h.ListByPractitionerID)
+	rg.GET("", h.List)
 	rg.POST("", h.Create)
-	rg.GET("/:sub_id", h.GetByID)
-	rg.PATCH("/:sub_id", h.Update)
-	rg.DELETE("/:sub_id", h.Delete)
+	rg.GET("/:id", h.Get)
+	rg.PATCH("/:id", h.Update)
+	rg.DELETE("/:id", h.Delete)
 }
 
-func MiddlewarePractitionerID() gin.HandlerFunc {
+// MiddlewareClinicID sets clinic_id from path param for entry routes (clinic_id may be in parent path).
+func MiddlewareClinicID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("prac_id")
+		idStr := c.Param("clinic_id")
 		if idStr == "" {
 			c.Next()
 			return
@@ -27,7 +27,7 @@ func MiddlewarePractitionerID() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		c.Set(util.PractitionerIDKey, id)
+		c.Set(util.ClinicIDKey, id)
 		c.Next()
 	}
 }

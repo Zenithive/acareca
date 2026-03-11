@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 DROP TYPE IF EXISTS practitioner_subscription_status;
-CREATE TYPE practitioner_subscription_status AS ENUM ('active', 'past_due', 'cancelled', 'paused', 'expired');
+CREATE TYPE practitioner_subscription_status AS ENUM ('ACTIVE', 'PAST_DUE', 'CANCELLED', 'PAUSED', 'EXPIRED');
 
 CREATE TABLE IF NOT EXISTS tbl_practitioner_subscription (
     id SERIAL PRIMARY KEY,
@@ -9,11 +9,12 @@ CREATE TABLE IF NOT EXISTS tbl_practitioner_subscription (
     subscription_id INTEGER NOT NULL,
     start_date TIMESTAMPTZ NOT NULL,
     end_date TIMESTAMPTZ NOT NULL,
-    status practitioner_subscription_status NOT NULL DEFAULT 'active',
+    status practitioner_subscription_status NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
 );
+
 
 -- +goose StatementEnd
 

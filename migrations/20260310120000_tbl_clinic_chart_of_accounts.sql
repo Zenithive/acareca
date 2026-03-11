@@ -1,6 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
--- 1) Lookup: account categories (seeded)
+
 CREATE TABLE IF NOT EXISTS tbl_account_type (
     id          SMALLSERIAL PRIMARY KEY,
     name        VARCHAR(50) NOT NULL UNIQUE,
@@ -16,7 +16,6 @@ INSERT INTO tbl_account_type (name) VALUES
     ('Expense')
 ON CONFLICT (name) DO NOTHING;
 
--- 2) Lookup: GST tax treatment codes (seeded)
 CREATE TABLE IF NOT EXISTS tbl_account_tax (
     id          SMALLSERIAL PRIMARY KEY,
     name        VARCHAR(50) NOT NULL UNIQUE,

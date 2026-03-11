@@ -13,6 +13,10 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	formdetail "github.com/iamarpitzala/acareca/internal/modules/form/detail"
+	formentry "github.com/iamarpitzala/acareca/internal/modules/form/entry"
+	formfield "github.com/iamarpitzala/acareca/internal/modules/form/field"
+	formversion "github.com/iamarpitzala/acareca/internal/modules/form/version"
 	practitioner "github.com/iamarpitzala/acareca/internal/modules/practitioner/setting"
 	practitionerSub "github.com/iamarpitzala/acareca/internal/modules/practitioner/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
@@ -110,9 +114,37 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	clinicRepo := clinic.NewRepository(dbConn)
 	clinciSvc := clinic.NewService(clinicRepo)
 	clinicHandler := clinic.NewHandler(clinciSvc)
-	clinic.RegisterRoutes(v1, clinicHandler)
+	clinicGroup := v1.Group("/clinic")
+	clinic.RegisterRoutes(clinicGroup, clinicHandler)
 
 	coaSvc := coa.NewService(coaRepo)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)
+
+	// form (detail + version + field + entry) – clinic-scoped
+	formDetailRepo := formdetail.NewRepository(dbConn)
+	formVersionRepo := formversion.NewRepository(dbConn)
+	formVersionSvc := formversion.NewService(formVersionRepo, clinic.NewService(clinicRepo))
+	formDetailSvc := formdetail.NewService(formDetailRepo, formVersionSvc)
+	formDetailHandler := formdetail.NewHandler(formDetailSvc)
+
+	formDetailGroup := clinicGroup.Group("/:id")
+	formGroup := formDetailGroup.Group("/form")
+	formGroup.Use(middleware.Auth(cfg))
+	formdetail.RegisterRoutes(formGroup, formDetailHandler)
+
+	formVersionHandler := formversion.NewHandler(formVersionSvc)
+	formIdGroup := formGroup.Group("/:id")
+	formVersionGroup := formIdGroup.Group("/version")
+	formversion.RegisterRoutes(formVersionGroup, formVersionHandler)
+
+	formFieldRepo := formfield.NewRepository(dbConn)
+	formFieldSvc := formfield.NewService(formFieldRepo)
+	formFieldHandler := formfield.NewHandler(formFieldSvc)
+	formfield.RegisterRoutes(formIdGroup.Group("/field"), formFieldHandler)
+
+	formEntryRepo := formentry.NewRepository(dbConn)
+	formEntrySvc := formentry.NewService(formEntryRepo)
+	formEntryHandler := formentry.NewHandler(formEntrySvc)
+	formentry.RegisterRoutes(formVersionGroup.Group("/:id/entry"), formEntryHandler)
 }
