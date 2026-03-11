@@ -107,7 +107,7 @@ func (s *service) CreateChart(ctx context.Context, practice_id uuid.UUID, req *R
 		isSystem = *req.IsSystem
 	}
 	chart := &ChartOfAccount{
-		practice_id:     practice_id,
+		Practice_id:   practice_id,
 		AccountTypeID: req.AccountTypeID,
 		AccountTaxID:  req.AccountTaxID,
 		Code:          req.Code,

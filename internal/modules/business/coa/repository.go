@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	ErrNotFound                 = errors.New("coa not found")
-	ErrCodeExists               = errors.New("code already exists")
-	ErrSystemAccountProtected   = errors.New("system account cannot be updated or deleted")
+	ErrNotFound               = errors.New("coa not found")
+	ErrCodeExists             = errors.New("code already exists")
+	ErrSystemAccountProtected = errors.New("system account cannot be updated or deleted")
 )
 
 type Repository interface {
@@ -159,7 +159,7 @@ func (r *repository) CreateChart(ctx context.Context, c *ChartOfAccount) (*Chart
 	`
 	var out ChartOfAccount
 	err := r.db.QueryRowxContext(ctx, query,
-		c.practice_id, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem,
+		c.Practice_id, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem,
 	).StructScan(&out)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
