@@ -81,7 +81,7 @@ type RqClinicContact struct {
 }
 
 type RqFinancialSettings struct {
-	FinancialYearID uuid.UUID  `json:"financial_year_id" validate:"required"`
+	FinancialYearID *uuid.UUID `json:"financial_year_id"` // optional; omit or null to skip financial settings
 	LockDate        *time.Time `json:"lock_date"`
 }
 

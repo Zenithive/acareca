@@ -101,10 +101,10 @@ func (s *service) CreateClinic(ctx context.Context, req *RqCreateClinic) (*RsCli
 	}
 
 	var financialSettings *RsFinancialSettings
-	if req.FinancialSettings != nil {
+	if req.FinancialSettings != nil && req.FinancialSettings.FinancialYearID != nil {
 		fs := &FinancialSettings{
 			ClinicID:        created.ID,
-			FinancialYearID: req.FinancialSettings.FinancialYearID,
+			FinancialYearID: *req.FinancialSettings.FinancialYearID,
 			LockDate:        req.FinancialSettings.LockDate,
 		}
 

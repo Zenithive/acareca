@@ -2,7 +2,6 @@ package coa
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -93,8 +92,6 @@ func (s *service) GetChartByID(ctx context.Context, id uuid.UUID) (*RsChartOfAcc
 
 func (s *service) CreateChart(ctx context.Context, clinicID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error) {
 	createdBy, err := uuid.Parse(req.CreatedBy)
-	fmt.Println("--", createdBy)
-	fmt.Println("--", err.Error())
 	if err != nil {
 		return nil, err
 	}
