@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tbl_form(
 );
 
 CREATE TABLE IF NOT EXISTS tbl_custom_form_version(
-    id SERIAL PRIMARY KEY NOT NULL,
+    id UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
     form_id UUID NOT NULL REFERENCES tbl_form(id),
     version INTEGER NOT NULL,
     is_active BOOLEAN NOT NULL,

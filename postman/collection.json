@@ -559,9 +559,9 @@
               { "key": "Authorization", "value": "Bearer {{token}}" }
             ],
             "url": {
-"raw": "{{base_url}}/api/v1/clinic/:id",
-            "host": ["{{base_url}}"],
-            "path": ["api", "v1", "clinic", ":id"],
+              "raw": "{{base_url}}/api/v1/clinic/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "clinic", ":id"],
               "variable": [{ "key": "id", "value": "" }]
             }
           }
@@ -762,13 +762,34 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"\"\n}",
+                  "raw": "{\n  \"name\": \"\",\n  \"description\": null,\n  \"status\": \"DRAFT\",\n  \"method\": \"INDEPENDENT_CONTRACTOR\",\n  \"owner_share\": 60,\n  \"clinic_share\": 40\n}",
                   "options": { "raw": { "language": "json" } }
                 },
                 "url": {
                   "raw": "{{base_url}}/api/v1/clinic/:id/form",
                   "host": ["{{base_url}}"],
                   "path": ["api", "v1", "clinic", ":id", "form"],
+                  "variable": [{ "key": "id", "value": "" }]
+                }
+              }
+            },
+            {
+              "name": "Create Form With Fields",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\",\n  \"description\": null,\n  \"status\": \"DRAFT\",\n  \"method\": \"INDEPENDENT_CONTRACTOR\",\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"fields\": []\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/with-fields",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":id", "form", "with-fields"],
                   "variable": [{ "key": "id", "value": "" }]
                 }
               }
@@ -801,7 +822,31 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"\"\n}",
+                  "raw": "{\n  \"name\": \"\",\n  \"description\": null,\n  \"status\": \"DRAFT\",\n  \"method\": \"INDEPENDENT_CONTRACTOR\",\n  \"owner_share\": 60,\n  \"clinic_share\": 40\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id"],
+                  "variable": [
+                    { "key": "id", "value": "" },
+                    { "key": "form_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Form With Fields",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": null,\n  \"description\": null,\n  \"status\": null,\n  \"method\": null,\n  \"owner_share\": null,\n  \"clinic_share\": null,\n  \"fields\": []\n}",
                   "options": { "raw": { "language": "json" } }
                 },
                 "url": {
@@ -866,7 +911,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"\"\n}",
+                  "raw": "{\n  \"version\": 1,\n  \"is_active\": true\n}",
                   "options": { "raw": { "language": "json" } }
                 },
                 "url": {
@@ -909,7 +954,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"\"\n}",
+                  "raw": "{\n  \"version\": null,\n  \"is_active\": null\n}",
                   "options": { "raw": { "language": "json" } }
                 },
                 "url": {
@@ -956,13 +1001,12 @@
                   { "key": "Authorization", "value": "Bearer {{token}}" }
                 ],
                 "url": {
-                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/version/:version_id/field",
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/field",
                   "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "version", ":version_id", "field"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "field"],
                   "variable": [
                     { "key": "id", "value": "" },
-                    { "key": "form_id", "value": "" },
-                    { "key": "version_id", "value": "" }
+                    { "key": "form_id", "value": "" }
                   ]
                 }
               }
@@ -977,17 +1021,16 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{}",
+                  "raw": "{\n  \"label\": \"\",\n  \"section_type\": \"COLLECTION\",\n  \"payment_responsibility\": \"OWNER\",\n  \"tax_type\": \"INCLUSIVE\",\n  \"coa_id\": \"\",\n  \"sort_order\": 0\n}",
                   "options": { "raw": { "language": "json" } }
                 },
                 "url": {
-                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/version/:version_id/field",
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/field",
                   "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "version", ":version_id", "field"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "field"],
                   "variable": [
                     { "key": "id", "value": "" },
-                    { "key": "form_id", "value": "" },
-                    { "key": "version_id", "value": "" }
+                    { "key": "form_id", "value": "" }
                   ]
                 }
               }
@@ -1000,13 +1043,12 @@
                   { "key": "Authorization", "value": "Bearer {{token}}" }
                 ],
                 "url": {
-                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/version/:version_id/field/:field_id",
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/field/:field_id",
                   "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "version", ":version_id", "field", ":field_id"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "field", ":field_id"],
                   "variable": [
                     { "key": "id", "value": "" },
                     { "key": "form_id", "value": "" },
-                    { "key": "version_id", "value": "" },
                     { "key": "field_id", "value": "" }
                   ]
                 }
@@ -1022,17 +1064,16 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{}",
+                  "raw": "{\n  \"label\": null,\n  \"section_type\": null,\n  \"payment_responsibility\": null,\n  \"tax_type\": null,\n  \"coa_id\": null,\n  \"sort_order\": null\n}",
                   "options": { "raw": { "language": "json" } }
                 },
                 "url": {
-                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/version/:version_id/field/:field_id",
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/field/:field_id",
                   "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "version", ":version_id", "field", ":field_id"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "field", ":field_id"],
                   "variable": [
                     { "key": "id", "value": "" },
                     { "key": "form_id", "value": "" },
-                    { "key": "version_id", "value": "" },
                     { "key": "field_id", "value": "" }
                   ]
                 }
@@ -1046,14 +1087,38 @@
                   { "key": "Authorization", "value": "Bearer {{token}}" }
                 ],
                 "url": {
-                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/version/:version_id/field/:field_id",
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/field/:field_id",
                   "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "version", ":version_id", "field", ":field_id"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "field", ":field_id"],
                   "variable": [
                     { "key": "id", "value": "" },
                     { "key": "form_id", "value": "" },
-                    { "key": "version_id", "value": "" },
                     { "key": "field_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Sync Fields",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"create\": [],\n  \"update\": [],\n  \"delete\": []\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:id/form/:form_id/version/:version_id/field/sync",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":id", "form", ":form_id", "version", ":version_id", "field", "sync"],
+                  "variable": [
+                    { "key": "id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" }
                   ]
                 }
               }
