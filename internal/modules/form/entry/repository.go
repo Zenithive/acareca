@@ -18,6 +18,7 @@ type IRepository interface {
 	Update(ctx context.Context, e *FormEntry, values []*FormEntryValue) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID) ([]*FormEntry, error)
+	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
 }
 
 type Repository struct {
@@ -156,4 +157,18 @@ func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid
 		return nil, fmt.Errorf("list form entries: %w", err)
 	}
 	return list, nil
+}
+
+// HasSubmittedEntryValuesForField implements [IRepository]. Returns true if the field has any entry values in SUBMITTED entries.
+func (r *Repository) HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error) {
+	query := `SELECT EXISTS (
+		SELECT 1 FROM tbl_form_entry_value v
+		INNER JOIN tbl_form_entry e ON e.id = v.entry_id AND e.deleted_at IS NULL
+		WHERE v.form_field_id = $1 AND e.status = $2
+	)`
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, formFieldID, EntryStatusSubmitted).Scan(&exists); err != nil {
+		return false, fmt.Errorf("has submitted entry values for field: %w", err)
+	}
+	return exists, nil
 }

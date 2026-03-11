@@ -96,14 +96,14 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	formVersionGroup := formIdGroup.Group("/version")
 	formversion.RegisterRoutes(formVersionGroup, formVersionHandler)
 
+	formEntryRepo := formentry.NewRepository(dbConn)
 	formFieldRepo := formfield.NewRepository(dbConn)
-	formFieldSvc := formfield.NewService(formFieldRepo, coaSvc, clinicSvc, practitionerSvc)
+	formFieldSvc := formfield.NewService(formFieldRepo, coaSvc, clinicSvc, practitionerSvc, formEntryRepo)
 	formFieldHandler := formfield.NewHandler(formFieldSvc)
 	formfield.RegisterRoutes(formIdGroup.Group("/field"), formFieldHandler)
 
 	formVersionGroup.Group("/:version_id/field").PUT("/sync", formFieldHandler.Sync)
 
-	formEntryRepo := formentry.NewRepository(dbConn)
 	formEntrySvc := formentry.NewService(formEntryRepo)
 	formEntryHandler := formentry.NewHandler(formEntrySvc)
 	formentry.RegisterRoutes(formVersionGroup.Group("/:id/entry"), formEntryHandler)

@@ -8,6 +8,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	"github.com/iamarpitzala/acareca/internal/modules/form/entry"
 )
 
 type IService interface {
@@ -21,20 +22,23 @@ type IService interface {
 
 var ErrCoaNotFound = errors.New("chart of account not found or does not belong to this practice")
 var ErrFieldWrongVersion = errors.New("field does not belong to this form version")
+var ErrFieldHasSubmittedEntries = errors.New("cannot delete field: it has submitted entry values")
 
 type Service struct {
 	repo            IRepository
 	coaSvc          coa.Service
 	clinicSvc       clinic.Service
 	practitionerSvc practitioner.IService
+	entryRepo       entry.IRepository
 }
 
-func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, practitionerSvc practitioner.IService) IService {
+func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, practitionerSvc practitioner.IService, entryRepo entry.IRepository) IService {
 	return &Service{
 		repo:            repo,
 		coaSvc:          coaSvc,
 		clinicSvc:       clinicSvc,
 		practitionerSvc: practitionerSvc,
+		entryRepo:       entryRepo,
 	}
 }
 
@@ -113,8 +117,17 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormFie
 	return updated.ToRs(), nil
 }
 
-// Delete implements [IService].
+// Delete implements [IService]. Rejects delete if the field has SUBMITTED entry values.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	if s.entryRepo != nil {
+		has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
+		if err != nil {
+			return err
+		}
+		if has {
+			return ErrFieldHasSubmittedEntries
+		}
+	}
 	return s.repo.Delete(ctx, id)
 }
 
@@ -147,6 +160,15 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 			}
 			if existing.FormVersionID != formVersionID {
 				return ErrFieldWrongVersion
+			}
+			if s.entryRepo != nil {
+				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
+				if err != nil {
+					return err
+				}
+				if has {
+					return ErrFieldHasSubmittedEntries
+				}
 			}
 			if err := r.Delete(ctx, id); err != nil {
 				return err

@@ -110,6 +110,10 @@ func (h *handler) Delete(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
+		if errors.Is(err, ErrFieldHasSubmittedEntries) {
+			response.Error(c, http.StatusConflict, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -153,6 +157,10 @@ func (h *handler) Sync(c *gin.Context) {
 		}
 		if errors.Is(err, ErrFieldWrongVersion) {
 			response.Error(c, http.StatusBadRequest, err)
+			return
+		}
+		if errors.Is(err, ErrFieldHasSubmittedEntries) {
+			response.Error(c, http.StatusConflict, err)
 			return
 		}
 		if err == ErrNotFound {

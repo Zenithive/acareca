@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -29,15 +28,6 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-func parsePractitionerID(c *gin.Context) (uuid.UUID, bool) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner id"))
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
 func (h *handler) CreatePractitioner(c *gin.Context) {
 	var req RqCreatePractitioner
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -53,7 +43,7 @@ func (h *handler) CreatePractitioner(c *gin.Context) {
 }
 
 func (h *handler) GetPractitioner(c *gin.Context) {
-	id, ok := parsePractitionerID(c)
+	id, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -97,7 +87,7 @@ func (h *handler) ListPractitioners(c *gin.Context) {
 }
 
 func (h *handler) UpdatePractitioner(c *gin.Context) {
-	id, ok := parsePractitionerID(c)
+	id, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -119,7 +109,7 @@ func (h *handler) UpdatePractitioner(c *gin.Context) {
 }
 
 func (h *handler) DeletePractitioner(c *gin.Context) {
-	id, ok := parsePractitionerID(c)
+	id, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -135,7 +125,7 @@ func (h *handler) DeletePractitioner(c *gin.Context) {
 }
 
 func (h *handler) GetSetting(c *gin.Context) {
-	id, ok := parsePractitionerID(c)
+	id, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -152,7 +142,7 @@ func (h *handler) GetSetting(c *gin.Context) {
 }
 
 func (h *handler) UpsertSetting(c *gin.Context) {
-	id, ok := parsePractitionerID(c)
+	id, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
