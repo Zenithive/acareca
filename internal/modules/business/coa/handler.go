@@ -17,8 +17,8 @@ type IHandler interface {
 	ListAccountTaxes(c *gin.Context)
 	GetAccountTaxByID(c *gin.Context)
 
-	ListChartsByCreatedBy(c *gin.Context)
-	GetChartByIDAndCreatedBy(c *gin.Context)
+	ListChartsBypractice_id(c *gin.Context)
+	GetChartByIDAndpractice_id(c *gin.Context)
 	CreateChart(c *gin.Context)
 	UpdateChart(c *gin.Context)
 	DeleteChart(c *gin.Context)
@@ -86,21 +86,21 @@ func (h *handler) GetAccountTaxByID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, one)
 }
 
-func (h *handler) parseCreatedByID(c *gin.Context) (uuid.UUID, bool) {
-	id, err := uuid.Parse(c.Param("createdById"))
+func (h *handler) parsepractice_idID(c *gin.Context) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param("practice_idId"))
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid createdById"))
+		response.Error(c, http.StatusBadRequest, errors.New("invalid practice_idId"))
 		return uuid.Nil, false
 	}
 	return id, true
 }
 
-func (h *handler) ListChartsByCreatedBy(c *gin.Context) {
-	createdBy, ok := h.parseCreatedByID(c)
+func (h *handler) ListChartsBypractice_id(c *gin.Context) {
+	practice_id, ok := h.parsepractice_idID(c)
 	if !ok {
 		return
 	}
-	list, err := h.svc.ListChartsByCreatedBy(c.Request.Context(), createdBy)
+	list, err := h.svc.ListChartsBypractice_id(c.Request.Context(), practice_id)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -108,8 +108,8 @@ func (h *handler) ListChartsByCreatedBy(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
-func (h *handler) GetChartByIDAndCreatedBy(c *gin.Context) {
-	createdBy, ok := h.parseCreatedByID(c)
+func (h *handler) GetChartByIDAndpractice_id(c *gin.Context) {
+	practice_id, ok := h.parsepractice_idID(c)
 	if !ok {
 		return
 	}
@@ -118,7 +118,7 @@ func (h *handler) GetChartByIDAndCreatedBy(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
-	chart, err := h.svc.GetChartByIDAndCreatedBy(c.Request.Context(), id, createdBy)
+	chart, err := h.svc.GetChartByIDAndpractice_id(c.Request.Context(), id, practice_id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -131,7 +131,7 @@ func (h *handler) GetChartByIDAndCreatedBy(c *gin.Context) {
 }
 
 func (h *handler) CreateChart(c *gin.Context) {
-	createdBy, ok := h.parseCreatedByID(c)
+	practice_id, ok := h.parsepractice_idID(c)
 	if !ok {
 		return
 	}
@@ -140,7 +140,7 @@ func (h *handler) CreateChart(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	created, err := h.svc.CreateChart(c.Request.Context(), createdBy, &req)
+	created, err := h.svc.CreateChart(c.Request.Context(), practice_id, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {
 			response.Error(c, http.StatusConflict, err)
@@ -157,7 +157,7 @@ func (h *handler) CreateChart(c *gin.Context) {
 }
 
 func (h *handler) UpdateChart(c *gin.Context) {
-	createdBy, ok := h.parseCreatedByID(c)
+	practice_id, ok := h.parsepractice_idID(c)
 	if !ok {
 		return
 	}
@@ -171,7 +171,7 @@ func (h *handler) UpdateChart(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	updated, err := h.svc.UpdateChart(c.Request.Context(), id, createdBy, &req)
+	updated, err := h.svc.UpdateChart(c.Request.Context(), id, practice_id, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {
 			response.Error(c, http.StatusConflict, err)
@@ -192,7 +192,7 @@ func (h *handler) UpdateChart(c *gin.Context) {
 }
 
 func (h *handler) DeleteChart(c *gin.Context) {
-	createdBy, ok := h.parseCreatedByID(c)
+	practice_id, ok := h.parsepractice_idID(c)
 	if !ok {
 		return
 	}
@@ -201,7 +201,7 @@ func (h *handler) DeleteChart(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
-	if err := h.svc.DeleteChart(c.Request.Context(), id, createdBy); err != nil {
+	if err := h.svc.DeleteChart(c.Request.Context(), id, practice_id); err != nil {
 		if errors.Is(err, ErrSystemAccountProtected) {
 			response.Error(c, http.StatusForbidden, err)
 			return
