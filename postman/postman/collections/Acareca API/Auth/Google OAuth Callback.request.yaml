@@ -1,0 +1,6 @@
+$kind: http-request
+url: "{{base_url}}/api/v1/auth/google/callback?code=OAUTH_CODE"
+method: GET
+queryParams:
+  code: OAUTH_CODE
+order: 4000

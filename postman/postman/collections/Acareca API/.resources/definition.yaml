@@ -1,0 +1,6 @@
+$kind: collection
+name: Acareca API
+variables:
+  base_url: http://localhost:8080
+  token: ""
+  baseUrl: ""

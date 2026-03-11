@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{base_url}}/api/v1/auth/google"
+method: GET
+order: 3000

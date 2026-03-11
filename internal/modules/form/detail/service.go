@@ -51,8 +51,29 @@ func (s *Service) ListForm(ctx context.Context, filter Filter) ([]*RsFormDetail,
 
 // Update implements [IService].
 func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error) {
-	form := d.Update()
-	updatedForm, err := s.repo.Update(ctx, form)
+	existing, err := s.repo.GetByID(ctx, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	if d.Name != nil {
+		existing.Name = *d.Name
+	}
+	if d.Description != nil {
+		existing.Description = d.Description
+	}
+	if d.Status != nil {
+		existing.Status = *d.Status
+	}
+	if d.Method != nil {
+		existing.Method = *d.Method
+	}
+	if d.OwnerShare != nil {
+		existing.OwnerShare = *d.OwnerShare
+	}
+	if d.ClinicShare != nil {
+		existing.ClinicShare = *d.ClinicShare
+	}
+	updatedForm, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
 	}

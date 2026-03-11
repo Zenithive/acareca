@@ -1,0 +1,35 @@
+$kind: http-request
+url: "{{base_url}}/api/v1/gross-result"
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{token}}
+body:
+  type: json
+  content: |-
+    {
+      "owner_share": 60,
+      "clinic_share": 40,
+      "income": [
+        {
+          "name": "Consultation",
+          "value": 500,
+          "tax": "inclusive",
+          "tax_value": null,
+          "paid_by": "clinic"
+        }
+      ],
+      "expense": [
+        {
+          "name": "Supplies",
+          "value": 50,
+          "tax": "exclusive",
+          "tax_value": null,
+          "paid_by": "owner"
+        }
+      ],
+      "other_costs": [],
+      "super_component": null,
+      "out_work_percentage": null
+    }
+order: 3000

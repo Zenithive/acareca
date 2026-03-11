@@ -7,7 +7,7 @@ import (
 type RqFormDetail struct {
 	Name        string  `json:"name" validate:"required"`
 	Description *string `json:"description" validate:"omitempty"`
-	Status      string  `json:"status" validate:"required,oneof=ACTIVE INACTIVE"`
+	Status      string  `json:"status" validate:"required,oneof=DRAFT PUBLISHED ARCHIVED"`
 	Method      string  `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	OwnerShare  int     `json:"owner_share" validate:"required,min=0,max=100"`
 	ClinicShare int     `json:"clinic_share" validate:"required,min=0,max=100"`
@@ -17,7 +17,7 @@ type RqUpdateFormDetail struct {
 	ID          uuid.UUID `json:"id" validate:"required"`
 	Name        *string   `json:"name" validate:"omitempty"`
 	Description *string   `json:"description" validate:"omitempty"`
-	Status      *string   `json:"status" validate:"omitempty,oneof=ACTIVE INACTIVE"`
+	Status      *string   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
 	Method      *string   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	OwnerShare  *int      `json:"owner_share" validate:"omitempty,min=0,max=100"`
 	ClinicShare *int      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
@@ -51,7 +51,7 @@ func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
 }
 
 func (r *RqUpdateFormDetail) Update() *FormDetail {
-	d := &FormDetail{}
+	d := &FormDetail{ID: r.ID}
 	if r.Name != nil {
 		d.Name = *r.Name
 	}
@@ -75,6 +75,7 @@ func (r *RqUpdateFormDetail) Update() *FormDetail {
 
 func (d *FormDetail) ToRs() *RsFormDetail {
 	return &RsFormDetail{
+		ID:          d.ID,
 		ClinicID:    d.ClinicID,
 		Name:        d.Name,
 		Description: d.Description,
@@ -88,6 +89,7 @@ func (d *FormDetail) ToRs() *RsFormDetail {
 }
 
 type RsFormDetail struct {
+	ID          uuid.UUID `json:"id"`
 	ClinicID    uuid.UUID `json:"clinic_id"`
 	Name        string    `json:"name"`
 	Description *string   `json:"description,omitempty"`
@@ -100,7 +102,7 @@ type RsFormDetail struct {
 }
 
 type Filter struct {
-	Status   *string   `form:"status" validate:"omitempty,oneof=ACTIVE INACTIVE"`
+	Status   *string   `form:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
 	Method   *string   `form:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	ClinicID uuid.UUID `form:"clinic_id" validate:"required"`
 }

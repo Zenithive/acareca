@@ -31,12 +31,13 @@ func NewRepository(db *sqlx.DB) IRepository {
 // Create implements [IRepository].
 func (r *Repository) Create(ctx context.Context, d *FormDetail) error {
 	query := `
-		INSERT INTO tbl_form (clinic_id, name, description, status, method, owner_share, clinic_share)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO tbl_form (id, clinic_id, name, description, status, method, owner_share, clinic_share)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING created_at, updated_at
 	`
-	if _, err := r.db.ExecContext(ctx, query,
-		d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare,
-	); err != nil {
+	if err := r.db.QueryRowContext(ctx, query,
+		d.ID, d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare,
+	).Scan(&d.CreatedAt, &d.UpdatedAt); err != nil {
 		return fmt.Errorf("create form detail: %w", err)
 	}
 	return nil
@@ -58,14 +59,16 @@ func (r *Repository) Delete(ctx context.Context, formID uuid.UUID) error {
 
 // ListForm implements [IRepository].
 func (r *Repository) ListForm(ctx context.Context, filter Filter) ([]*FormDetail, error) {
-	query := `SELECT id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at FROM tbl_form WHERE deleted_at IS NULL`
-	var args []interface{}
+	query := `SELECT id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at FROM tbl_form WHERE deleted_at IS NULL AND clinic_id = $1`
+	args := []any{filter.ClinicID}
+	argNum := 2
 	if filter.Status != nil {
-		query += ` AND status = $1`
+		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, *filter.Status)
+		argNum++
 	}
 	if filter.Method != nil {
-		query += ` AND method = $2`
+		query += fmt.Sprintf(` AND method = $%d`, argNum)
 		args = append(args, *filter.Method)
 	}
 	var details []*FormDetail

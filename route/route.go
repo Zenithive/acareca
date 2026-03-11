@@ -11,6 +11,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	formdetail "github.com/iamarpitzala/acareca/internal/modules/form/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	practitioner "github.com/iamarpitzala/acareca/internal/modules/practitioner/setting"
@@ -111,4 +112,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	coaSvc := coa.NewService(coaRepo)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)
+
+	// form (detail) – clinic-scoped
+	formDetailRepo := formdetail.NewRepository(dbConn)
+	formDetailSvc := formdetail.NewService(formDetailRepo)
+	formDetailHandler := formdetail.NewHandler(formDetailSvc)
+	formdetail.RegisterRoutes(v1.Group("/clinic/:clinic_id/forms"), formDetailHandler)
 }
