@@ -45,7 +45,7 @@ func (h *handler) CreateForm(c *gin.Context) {
 
 // DeleteForm implements [IHandler].
 func (h *handler) DeleteForm(c *gin.Context) {
-	id, ok := util.ParseUuidID(c, "id")
+	id, ok := util.ParseUuidID(c, "form_id")
 	if !ok {
 		return
 	}
@@ -60,7 +60,7 @@ func (h *handler) DeleteForm(c *gin.Context) {
 
 // GetForm implements [IHandler].
 func (h *handler) GetForm(c *gin.Context) {
-	id, ok := util.ParseUuidID(c, "id")
+	id, ok := util.ParseUuidID(c, "form_id")
 	if !ok {
 		return
 	}
@@ -93,7 +93,7 @@ func (h *handler) ListForm(c *gin.Context) {
 
 // UpdateForm implements [IHandler].
 func (h *handler) UpdateForm(c *gin.Context) {
-	id, ok := util.ParseUuidID(c, "id")
+	id, ok := util.ParseUuidID(c, "form_id")
 	if !ok {
 		return
 	}

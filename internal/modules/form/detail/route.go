@@ -9,9 +9,9 @@ import (
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.GET("", h.ListForm)
 	rg.POST("", h.CreateForm)
-	rg.GET("/:id", h.GetForm)
-	rg.PATCH("/:id", h.UpdateForm)
-	rg.DELETE("/:id", h.DeleteForm)
+	rg.GET("/:form_id", h.GetForm)
+	rg.PATCH("/:form_id", h.UpdateForm)
+	rg.DELETE("/:form_id", h.DeleteForm)
 }
 
 func MiddlewareClinicID() gin.HandlerFunc {
