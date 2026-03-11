@@ -1,6 +1,13 @@
 package version
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/response"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
+)
 
 type IHandler interface {
 	Create(c *gin.Context)
@@ -20,25 +27,92 @@ func NewHandler(svc IService) IHandler {
 
 // Create implements [IHandler].
 func (h *handler) Create(c *gin.Context) {
-	panic("unimplemented")
-}
-
-// Delete implements [IHandler].
-func (h *handler) Delete(c *gin.Context) {
-	panic("unimplemented")
+	formID, ok := util.ParseUuidID(c, "form_id")
+	if !ok {
+		return
+	}
+	var req RqFormVersion
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	userID := uuid.Nil // TODO: from auth context when available
+	created, err := h.svc.Create(c.Request.Context(), formID, &req, userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusCreated, created)
 }
 
 // Get implements [IHandler].
 func (h *handler) Get(c *gin.Context) {
-	panic("unimplemented")
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+	v, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		if err == ErrNotFound {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, v)
 }
 
 // Update implements [IHandler].
 func (h *handler) Update(c *gin.Context) {
-	panic("unimplemented")
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+	var req RqUpdateFormVersion
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	updated, err := h.svc.Update(c.Request.Context(), id, &req)
+	if err != nil {
+		if err == ErrNotFound {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, updated)
+}
+
+// Delete implements [IHandler].
+func (h *handler) Delete(c *gin.Context) {
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		if err == ErrNotFound {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusNoContent, nil)
 }
 
 // List implements [IHandler].
 func (h *handler) List(c *gin.Context) {
-	panic("unimplemented")
+	formID, ok := util.ParseUuidID(c, "form_id")
+	if !ok {
+		return
+	}
+	list, err := h.svc.List(c.Request.Context(), formID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, list)
 }

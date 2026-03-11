@@ -1,10 +1,17 @@
 package version
 
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
+
 type IService interface {
-	Create(formVersion *FormVersion) error
-	Get(id string) (*RsFormVersion, error)
-	Update(formVersion *FormVersion) error
-	Delete(id string) error
+	Create(ctx context.Context, formID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error)
+	Get(ctx context.Context, id uuid.UUID) (*RsFormVersion, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormVersion) (*RsFormVersion, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, formID uuid.UUID) ([]*RsFormVersion, error)
 }
 
 type service struct {
@@ -16,21 +23,56 @@ func NewService(repo IRepository) IService {
 }
 
 // Create implements [IService].
-func (s *service) Create(formVersion *FormVersion) error {
-	panic("unimplemented")
-}
-
-// Delete implements [IService].
-func (s *service) Delete(id string) error {
-	panic("unimplemented")
+func (s *service) Create(ctx context.Context, formID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error) {
+	v := req.ToDB(formID, userID)
+	if err := s.repo.Create(ctx, v); err != nil {
+		return nil, err
+	}
+	return v.ToRs(), nil
 }
 
 // Get implements [IService].
-func (s *service) Get(id string) (*RsFormVersion, error) {
-	panic("unimplemented")
+func (s *service) Get(ctx context.Context, id uuid.UUID) (*RsFormVersion, error) {
+	v, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return v.ToRs(), nil
 }
 
 // Update implements [IService].
-func (s *service) Update(formVersion *FormVersion) error {
-	panic("unimplemented")
+func (s *service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormVersion) (*RsFormVersion, error) {
+	existing, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if req.Version != nil {
+		existing.Version = *req.Version
+	}
+	if req.IsActive != nil {
+		existing.IsActive = *req.IsActive
+	}
+	updated, err := s.repo.Update(ctx, existing)
+	if err != nil {
+		return nil, err
+	}
+	return updated.ToRs(), nil
+}
+
+// Delete implements [IService].
+func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
+}
+
+// List implements [IService].
+func (s *service) List(ctx context.Context, formID uuid.UUID) ([]*RsFormVersion, error) {
+	list, err := s.repo.ListByFormID(ctx, formID)
+	if err != nil {
+		return nil, err
+	}
+	rs := make([]*RsFormVersion, 0, len(list))
+	for _, v := range list {
+		rs = append(rs, v.ToRs())
+	}
+	return rs, nil
 }
