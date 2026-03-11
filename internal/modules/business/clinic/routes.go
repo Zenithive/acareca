@@ -5,10 +5,8 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
-	clinic := rg.Group("/clinic")
-
-	clinic.PUT("/create", h.CreateClinic)
-	clinic.GET("/all", h.GetClinics)
-	clinic.GET("/:id", h.GetClinicByID)
-	clinic.DELETE("/:id", h.DeleteClinic)
+	rg.PUT("/create", h.CreateClinic)
+	rg.GET("/all", h.GetClinics)
+	rg.GET("/:id", h.GetClinicByID)
+	rg.DELETE("/:id", h.DeleteClinic)
 }

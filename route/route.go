@@ -125,7 +125,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	clinicRepo := clinic.NewRepository(dbConn)
 	clinciSvc := clinic.NewService(clinicRepo)
 	clinicHandler := clinic.NewHandler(clinciSvc)
-	clinic.RegisterRoutes(v1, clinicHandler)
+	clinicGroup := v1.Group("/clinic")
+	clinic.RegisterRoutes(clinicGroup, clinicHandler)
 
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo)
@@ -136,23 +137,25 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	formDetailRepo := formdetail.NewRepository(dbConn)
 	formDetailSvc := formdetail.NewService(formDetailRepo)
 	formDetailHandler := formdetail.NewHandler(formDetailSvc)
-	formGroup := v1.Group("/clinic/:clinic_id/forms")
+
+	formDetailGroup := clinicGroup.Group("/:id")
+	formGroup := formDetailGroup.Group("/form")
 	formGroup.Use(formdetail.MiddlewareClinicID())
 	formdetail.RegisterRoutes(formGroup, formDetailHandler)
 
 	formVersionRepo := formversion.NewRepository(dbConn)
 	formVersionSvc := formversion.NewService(formVersionRepo, &formClinicResolver{repo: formDetailRepo})
 	formVersionHandler := formversion.NewHandler(formVersionSvc)
-	formVersionGroup := formGroup.Group("/:form_id/versions")
+	formVersionGroup := formGroup.Group("/:id/version")
 	formversion.RegisterRoutes(formVersionGroup, formVersionHandler)
 
 	formFieldRepo := formfield.NewRepository(dbConn)
 	formFieldSvc := formfield.NewService(formFieldRepo)
 	formFieldHandler := formfield.NewHandler(formFieldSvc)
-	formfield.RegisterRoutes(formVersionGroup.Group("/:version_id/fields"), formFieldHandler)
+	formfield.RegisterRoutes(formVersionGroup.Group("/:id/field"), formFieldHandler)
 
 	formEntryRepo := formentry.NewRepository(dbConn)
 	formEntrySvc := formentry.NewService(formEntryRepo)
 	formEntryHandler := formentry.NewHandler(formEntrySvc)
-	formentry.RegisterRoutes(formVersionGroup.Group("/:version_id/entries"), formEntryHandler)
+	formentry.RegisterRoutes(formVersionGroup.Group("/:id/entry"), formEntryHandler)
 }

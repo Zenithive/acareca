@@ -6,6 +6,23 @@
   },
   "item": [
     {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Auth",
       "item": [
         {
@@ -108,7 +125,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [],\n  \"expense\": [],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -128,7 +145,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [],\n  \"expense\": [],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": null\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -148,7 +165,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [\n    {\n      \"name\": \"Consultation\",\n      \"value\": 500,\n      \"tax\": \"inclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"clinic\"\n    }\n  ],\n  \"expense\": [\n    {\n      \"name\": \"Supplies\",\n      \"value\": 50,\n      \"tax\": \"exclusive\",\n      \"tax_value\": null,\n      \"paid_by\": \"owner\"\n    }\n  ],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": 10\n}",
+              "raw": "{\n  \"owner_share\": 60,\n  \"clinic_share\": 40,\n  \"income\": [],\n  \"expense\": [],\n  \"other_costs\": [],\n  \"super_component\": null,\n  \"out_work_percentage\": 10\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -157,6 +174,1006 @@
               "path": ["api", "v1", "out-work-result"]
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Subscription",
+          "item": [
+            {
+              "name": "Create Subscription",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\",\n  \"duration_days\": 30\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/admin/subscription/subscriptions",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "admin", "subscription", "subscriptions"]
+                }
+              }
+            },
+            {
+              "name": "List Subscriptions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/admin/subscription/subscriptions",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "admin", "subscription", "subscriptions"]
+                }
+              }
+            },
+            {
+              "name": "Get Subscription",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/admin/subscription/subscriptions/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "admin", "subscription", "subscriptions", ":id"],
+                  "variable": [{ "key": "id", "value": "" }]
+                }
+              }
+            },
+            {
+              "name": "Update Subscription",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\",\n  \"duration_days\": 30\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/admin/subscription/subscriptions/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "admin", "subscription", "subscriptions", ":id"],
+                  "variable": [{ "key": "id", "value": "" }]
+                }
+              }
+            },
+            {
+              "name": "Delete Subscription",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/admin/subscription/subscriptions/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "admin", "subscription", "subscriptions", ":id"],
+                  "variable": [{ "key": "id", "value": "" }]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Practitioner",
+      "item": [
+        {
+          "name": "Create Practitioner",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner"]
+            }
+          }
+        },
+        {
+          "name": "List Practitioners",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner"]
+            }
+          }
+        },
+        {
+          "name": "Get Practitioner By User ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/by-user/:user_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", "by-user", ":user_id"],
+              "variable": [{ "key": "user_id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Get Practitioner",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Update Practitioner",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Delete Practitioner",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Get Setting",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/setting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "setting"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Upsert Setting",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/setting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "setting"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Practitioner Subscription",
+      "item": [
+        {
+          "name": "List By Practitioner ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/subscription",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "subscription"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subscription_id\": \"\",\n  \"start_date\": \"\",\n  \"end_date\": \"\",\n  \"status\": \"active\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/subscription",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "subscription"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Get By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/subscription/:sub_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "subscription", ":sub_id"],
+              "variable": [
+                { "key": "id", "value": "" },
+                { "key": "sub_id", "value": "" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/subscription/:sub_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "subscription", ":sub_id"],
+              "variable": [
+                { "key": "id", "value": "" },
+                { "key": "sub_id", "value": "" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/practitioner/:id/subscription/:sub_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "practitioner", ":id", "subscription", ":sub_id"],
+              "variable": [
+                { "key": "id", "value": "" },
+                { "key": "sub_id", "value": "" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clinic",
+      "item": [
+        {
+          "name": "Create Clinic",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"address\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/clinics/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "clinics", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get Clinics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clinics/all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "clinics", "all"]
+            }
+          }
+        },
+        {
+          "name": "Get Clinic By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clinics/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "clinics", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Delete Clinic",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/clinics/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "clinics", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "COA",
+      "item": [
+        {
+          "name": "List Account Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/account-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "account-types"]
+            }
+          }
+        },
+        {
+          "name": "Get Account Type By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/account-types/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "account-types", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "List Account Taxes",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/account-taxes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "account-taxes"]
+            }
+          }
+        },
+        {
+          "name": "Get Account Tax By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/account-taxes/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "account-taxes", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "List Charts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/accounts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "accounts"]
+            }
+          }
+        },
+        {
+          "name": "Get Chart By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/accounts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "accounts", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Create Chart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/accounts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "accounts"]
+            }
+          }
+        },
+        {
+          "name": "Update Chart",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/accounts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "accounts", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Delete Chart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/coa/accounts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "coa", "accounts", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Form",
+      "item": [
+        {
+          "name": "Form Detail",
+          "item": [
+            {
+              "name": "List Forms",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms"],
+                  "variable": [{ "key": "clinic_id", "value": "" }]
+                }
+              }
+            },
+            {
+              "name": "Create Form",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms"],
+                  "variable": [{ "key": "clinic_id", "value": "" }]
+                }
+              }
+            },
+            {
+              "name": "Get Form",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Form",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Delete Form",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Form Version",
+          "item": [
+            {
+              "name": "List Versions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Version",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Version",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Version",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Delete Version",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Form Field",
+          "item": [
+            {
+              "name": "List Fields",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/fields",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "fields"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Field",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/fields",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "fields"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Field",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/fields/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "fields", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Field",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/fields/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "fields", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Delete Field",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/fields/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "fields", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Form Entry",
+          "item": [
+            {
+              "name": "List Entries",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/entries",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "entries"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Entry",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/entries",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "entries"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Entry",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/entries/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "entries", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Entry",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/entries/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "entries", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Delete Entry",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/clinic/:clinic_id/forms/:form_id/versions/:version_id/entries/:id",
+                  "host": ["{{base_url}}"],
+                  "path": ["api", "v1", "clinic", ":clinic_id", "forms", ":form_id", "versions", ":version_id", "entries", ":id"],
+                  "variable": [
+                    { "key": "clinic_id", "value": "" },
+                    { "key": "form_id", "value": "" },
+                    { "key": "version_id", "value": "" },
+                    { "key": "id", "value": "" }
+                  ]
+                }
+              }
+            }
+          ]
         }
       ]
     }
