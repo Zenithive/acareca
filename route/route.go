@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
+	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
@@ -99,6 +100,12 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	practitionerSubSvc := practitionerSub.NewService(practitionerSubRepo)
 	practitionerSubHandler := practitionerSub.NewHandler(practitionerSubSvc)
 	practitionerSub.RegisterRoutes(practitionerGroup.Group("/:id/subscription"), practitionerSubHandler)
+
+	// clinic
+	clinicRepo := clinic.NewRepository(dbConn)
+	clinciSvc := clinic.NewService(clinicRepo)
+	clinicHandler := clinic.NewHandler(clinciSvc)
+	clinic.RegisterRoutes(v1, clinicHandler)
 
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo)
