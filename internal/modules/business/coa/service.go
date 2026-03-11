@@ -12,9 +12,9 @@ type Service interface {
 	ListAccountTaxes(ctx context.Context) ([]AccountTax, error)
 	GetAccountTaxByID(ctx context.Context, id int16) (*AccountTax, error)
 
-	ListChartByClinic(ctx context.Context, clinicID uuid.UUID) ([]RsChartOfAccount, error)
+	ListCharts(ctx context.Context) ([]RsChartOfAccount, error)
 	GetChartByID(ctx context.Context, id uuid.UUID) (*RsChartOfAccount, error)
-	CreateChart(ctx context.Context, clinicID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error)
+	CreateChart(ctx context.Context, req *RqCreateChartOfAccount) (*RsChartOfAccount, error)
 	UpdateChart(ctx context.Context, id uuid.UUID, req *RqUpdateChartOfAccount) (*RsChartOfAccount, error)
 	DeleteChart(ctx context.Context, id uuid.UUID) error
 }
@@ -69,8 +69,8 @@ func (s *service) GetAccountTaxByID(ctx context.Context, id int16) (*AccountTax,
 	return &rs, nil
 }
 
-func (s *service) ListChartByClinic(ctx context.Context, clinicID uuid.UUID) ([]RsChartOfAccount, error) {
-	list, err := s.repo.ListChartByClinic(ctx, clinicID)
+func (s *service) ListCharts(ctx context.Context) ([]RsChartOfAccount, error) {
+	list, err := s.repo.ListCharts(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (s *service) GetChartByID(ctx context.Context, id uuid.UUID) (*RsChartOfAcc
 	return &rs, nil
 }
 
-func (s *service) CreateChart(ctx context.Context, clinicID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error) {
+func (s *service) CreateChart(ctx context.Context, req *RqCreateChartOfAccount) (*RsChartOfAccount, error) {
 	createdBy, err := uuid.Parse(req.CreatedBy)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,6 @@ func (s *service) CreateChart(ctx context.Context, clinicID uuid.UUID, req *RqCr
 		isActive = *req.IsActive
 	}
 	chart := &ChartOfAccount{
-		ClinicID:      clinicID,
 		CreatedBy:     createdBy,
 		AccountTypeID: req.AccountTypeID,
 		AccountTaxID:  req.AccountTaxID,

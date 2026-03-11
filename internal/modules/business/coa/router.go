@@ -8,11 +8,11 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.GET("/account-taxes", h.ListAccountTaxes)
 	rg.GET("/account-taxes/:id", h.GetAccountTaxByID)
 
-	// Chart of Accounts CRUD (4 routes: Create, Read, Update, Delete)
-	accounts := rg.Group("/clinic/:clinicId/accounts")
-	accounts.GET("", h.ListChartByClinic)     // Read (list)
-	accounts.GET("/:id", h.GetChartByID)      // Read (one)
-	accounts.POST("", h.CreateChart)           // Create
-	accounts.PUT("/:id", h.UpdateChart)        // Update
-	accounts.DELETE("/:id", h.DeleteChart)    // Delete
+	// Chart of Accounts CRUD (global, no clinic)
+	accounts := rg.Group("/accounts")
+	accounts.GET("", h.ListCharts)
+	accounts.GET("/:id", h.GetChartByID)
+	accounts.POST("", h.CreateChart)
+	accounts.PUT("/:id", h.UpdateChart)
+	accounts.DELETE("/:id", h.DeleteChart)
 }

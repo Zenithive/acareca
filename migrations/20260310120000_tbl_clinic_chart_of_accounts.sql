@@ -40,7 +40,6 @@ ON CONFLICT (name) DO NOTHING;
 -- 3) Chart of Accounts — one set per clinic
 CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     id               UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    clinic_id        UUID NOT NULL REFERENCES tbl_clinic(id) ON DELETE CASCADE,
     created_by       UUID NOT NULL,
     account_type_id  SMALLINT NOT NULL REFERENCES tbl_account_type(id),
     account_tax_id   SMALLINT NOT NULL REFERENCES tbl_account_tax(id),
@@ -52,10 +51,10 @@ CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at       TIMESTAMPTZ,
-    CONSTRAINT uq_chart_of_accounts_code UNIQUE (clinic_id, code)
+    CONSTRAINT uq_chart_of_accounts_code UNIQUE (code)
 );
 
-CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_id ON tbl_chart_of_accounts(clinic_id);
+
 -- +goose StatementEnd
 
 -- +goose Down

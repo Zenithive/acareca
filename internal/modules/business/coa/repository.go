@@ -18,7 +18,7 @@ type Repository interface {
 	ListAccountTaxes(ctx context.Context) ([]*AccountTax, error)
 	GetAccountTaxByID(ctx context.Context, id int16) (*AccountTax, error)
 
-	ListChartByClinic(ctx context.Context, clinicID uuid.UUID) ([]*ChartOfAccount, error)
+	ListCharts(ctx context.Context) ([]*ChartOfAccount, error)
 	GetChartByID(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error)
 	CreateChart(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	UpdateChart(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
@@ -91,16 +91,16 @@ func (r *repository) GetAccountTaxByID(ctx context.Context, id int16) (*AccountT
 	return &a, nil
 }
 
-func (r *repository) ListChartByClinic(ctx context.Context, clinicID uuid.UUID) ([]*ChartOfAccount, error) {
+func (r *repository) ListCharts(ctx context.Context) ([]*ChartOfAccount, error) {
 	query := `
-		SELECT id, clinic_id, created_by, account_type_id, account_tax_id, code, name, description,
+		SELECT id, created_by, account_type_id, account_tax_id, code, name, description,
 		       is_system, is_active, created_at, updated_at, deleted_at
 		FROM tbl_chart_of_accounts
-		WHERE clinic_id = $1 AND deleted_at IS NULL
+		WHERE deleted_at IS NULL
 		ORDER BY code
 	`
 	var list []*ChartOfAccount
-	if err := r.db.SelectContext(ctx, &list, query, clinicID); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query); err != nil {
 		return nil, fmt.Errorf("list chart of accounts: %w", err)
 	}
 	return list, nil
@@ -108,7 +108,7 @@ func (r *repository) ListChartByClinic(ctx context.Context, clinicID uuid.UUID) 
 
 func (r *repository) GetChartByID(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT id, clinic_id, created_by, account_type_id, account_tax_id, code, name, description,
+		SELECT id, created_by, account_type_id, account_tax_id, code, name, description,
 		       is_system, is_active, created_at, updated_at, deleted_at
 		FROM tbl_chart_of_accounts
 		WHERE id = $1 AND deleted_at IS NULL
@@ -125,13 +125,13 @@ func (r *repository) GetChartByID(ctx context.Context, id uuid.UUID) (*ChartOfAc
 
 func (r *repository) CreateChart(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
 	query := `
-		INSERT INTO tbl_chart_of_accounts (clinic_id, created_by, account_type_id, account_tax_id, code, name, description, is_system, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, clinic_id, created_by, account_type_id, account_tax_id, code, name, description, is_system, is_active, created_at, updated_at, deleted_at
+		INSERT INTO tbl_chart_of_accounts (created_by, account_type_id, account_tax_id, code, name, description, is_system, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, created_by, account_type_id, account_tax_id, code, name, description, is_system, is_active, created_at, updated_at, deleted_at
 	`
 	var out ChartOfAccount
 	err := r.db.QueryRowxContext(ctx, query,
-		c.ClinicID, c.CreatedBy, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Description, c.IsSystem, c.IsActive,
+		c.CreatedBy, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Description, c.IsSystem, c.IsActive,
 	).StructScan(&out)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
@@ -144,7 +144,7 @@ func (r *repository) UpdateChart(ctx context.Context, c *ChartOfAccount) (*Chart
 		UPDATE tbl_chart_of_accounts
 		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, description = $6, is_active = $7, updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, clinic_id, created_by, account_type_id, account_tax_id, code, name, description, is_system, is_active, created_at, updated_at, deleted_at
+		RETURNING id, created_by, account_type_id, account_tax_id, code, name, description, is_system, is_active, created_at, updated_at, deleted_at
 	`
 	var out ChartOfAccount
 	err := r.db.QueryRowxContext(ctx, query,

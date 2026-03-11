@@ -51,7 +51,6 @@ func (a *AccountType) ToRs() AccountType {
 
 type ChartOfAccount struct {
 	ID            uuid.UUID  `db:"id"`
-	ClinicID      uuid.UUID  `db:"clinic_id"`
 	CreatedBy     uuid.UUID  `db:"created_by"`
 	AccountTypeID int16      `db:"account_type_id"`
 	AccountTaxID  int16      `db:"account_tax_id"`
@@ -67,7 +66,6 @@ type ChartOfAccount struct {
 
 type RsChartOfAccount struct {
 	ID            uuid.UUID `json:"id"`
-	ClinicID      uuid.UUID `json:"clinic_id"`
 	CreatedBy     uuid.UUID `json:"created_by"`
 	AccountTypeID int16     `json:"account_type_id"`
 	AccountTaxID  int16     `json:"account_tax_id"`
@@ -83,7 +81,6 @@ type RsChartOfAccount struct {
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 	return RsChartOfAccount{
 		ID:            c.ID,
-		ClinicID:      c.ClinicID,
 		CreatedBy:     c.CreatedBy,
 		AccountTypeID: c.AccountTypeID,
 		AccountTaxID:  c.AccountTaxID,
