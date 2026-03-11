@@ -31,14 +31,26 @@ func (h *handler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
 	var req RqFormVersion
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 	userID := uuid.Nil // TODO: from auth context when available
-	created, err := h.svc.Create(c.Request.Context(), formID, &req, userID)
+	created, err := h.svc.Create(c.Request.Context(), formID, clinicID, &req, userID)
 	if err != nil {
+		if err == ErrForbidden {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
+		if err == ErrNotFound {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -51,8 +63,16 @@ func (h *handler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, err := h.svc.Get(c.Request.Context(), id)
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
+	v, err := h.svc.Get(c.Request.Context(), id, clinicID)
 	if err != nil {
+		if err == ErrForbidden {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		if err == ErrNotFound {
 			response.Error(c, http.StatusNotFound, err)
 			return
@@ -69,13 +89,21 @@ func (h *handler) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
 	var req RqUpdateFormVersion
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	updated, err := h.svc.Update(c.Request.Context(), id, &req)
+	updated, err := h.svc.Update(c.Request.Context(), id, clinicID, &req)
 	if err != nil {
+		if err == ErrForbidden {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		if err == ErrNotFound {
 			response.Error(c, http.StatusNotFound, err)
 			return
@@ -92,7 +120,15 @@ func (h *handler) Delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), id, clinicID); err != nil {
+		if err == ErrForbidden {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		if err == ErrNotFound {
 			response.Error(c, http.StatusNotFound, err)
 			return
@@ -109,8 +145,16 @@ func (h *handler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	list, err := h.svc.List(c.Request.Context(), formID)
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
+	list, err := h.svc.List(c.Request.Context(), formID, clinicID)
 	if err != nil {
+		if err == ErrForbidden {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

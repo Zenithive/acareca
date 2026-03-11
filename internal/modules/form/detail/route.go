@@ -7,7 +7,6 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
-	rg.Use(MiddlewareClinicID())
 	rg.GET("", h.ListForm)
 	rg.POST("", h.CreateForm)
 	rg.GET("/:id", h.GetForm)

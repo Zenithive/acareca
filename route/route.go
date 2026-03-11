@@ -2,6 +2,7 @@ package route
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -24,6 +25,21 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
+
+type formClinicResolver struct {
+	repo formdetail.IRepository
+}
+
+func (r *formClinicResolver) FormClinicID(ctx context.Context, formID uuid.UUID) (uuid.UUID, error) {
+	f, err := r.repo.GetByID(ctx, formID)
+	if err != nil {
+		if errors.Is(err, formdetail.ErrNotFound) {
+			return uuid.Nil, formversion.ErrNotFound
+		}
+		return uuid.Nil, err
+	}
+	return f.ClinicID, nil
+}
 
 func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	v1 := r.Group("/api/v1")
@@ -116,15 +132,16 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)
 
-	// form (detail + version) – clinic-scoped
+	// form (detail + version + field + entry) – clinic-scoped
 	formDetailRepo := formdetail.NewRepository(dbConn)
 	formDetailSvc := formdetail.NewService(formDetailRepo)
 	formDetailHandler := formdetail.NewHandler(formDetailSvc)
 	formGroup := v1.Group("/clinic/:clinic_id/forms")
+	formGroup.Use(formdetail.MiddlewareClinicID())
 	formdetail.RegisterRoutes(formGroup, formDetailHandler)
 
 	formVersionRepo := formversion.NewRepository(dbConn)
-	formVersionSvc := formversion.NewService(formVersionRepo)
+	formVersionSvc := formversion.NewService(formVersionRepo, &formClinicResolver{repo: formDetailRepo})
 	formVersionHandler := formversion.NewHandler(formVersionSvc)
 	formVersionGroup := formGroup.Group("/:form_id/versions")
 	formversion.RegisterRoutes(formVersionGroup, formVersionHandler)

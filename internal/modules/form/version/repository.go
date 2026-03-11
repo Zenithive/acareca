@@ -11,6 +11,7 @@ import (
 )
 
 var ErrNotFound = errors.New("form version not found")
+var ErrForbidden = errors.New("form does not belong to clinic")
 
 type IRepository interface {
 	Create(ctx context.Context, v *FormVersion) error
