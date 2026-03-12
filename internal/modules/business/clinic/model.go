@@ -9,7 +9,7 @@ import (
 // Database models
 type Clinic struct {
 	ID             uuid.UUID  `db:"id"`
-	PracticeID     string     `db:"practice_id"`
+	PractitionerID uuid.UUID  `db:"practitioner_id"`
 	ProfilePicture *string    `db:"profile_picture"`
 	Name           string     `db:"name"`
 	ABN            *string    `db:"abn"`
@@ -54,15 +54,13 @@ type FinancialSettings struct {
 
 // Request models
 type RqCreateClinic struct {
-	PracticeID        string               `json:"practice_id" validate:"required"`
-	ProfilePicture    *string              `json:"profile_picture"`
-	Name              string               `json:"name" validate:"required"`
-	ABN               *string              `json:"abn" validate:"omitempty,len=11"`
-	Description       *string              `json:"description"`
-	IsActive          *bool                `json:"is_active"`
-	Addresses         []RqClinicAddress    `json:"addresses"`
-	Contacts          []RqClinicContact    `json:"contacts"`
-	FinancialSettings *RqFinancialSettings `json:"financial_settings"`
+	ProfilePicture *string           `json:"profile_picture"`
+	Name           string            `json:"name" validate:"required"`
+	ABN            *string           `json:"abn" validate:"omitempty,len=11"`
+	Description    *string           `json:"description"`
+	IsActive       *bool             `json:"is_active"`
+	Addresses      []RqClinicAddress `json:"addresses"`
+	Contacts       []RqClinicContact `json:"contacts"`
 }
 
 type RqClinicAddress struct {
@@ -85,10 +83,30 @@ type RqFinancialSettings struct {
 	LockDate        *time.Time `json:"lock_date"`
 }
 
+type RqUpdateClinic struct {
+	Name           *string           `json:"name"`
+	ProfilePicture *string           `json:"profile_picture"`
+	ABN            *string           `json:"abn" validate:"omitempty,len=11"`
+	Description    *string           `json:"description"`
+	IsActive       *bool             `json:"is_active"`
+	AddressData    *RqUpdateAddress  `json:"address_data"`
+	ContactData    map[string]string `json:"contact_data"`
+	FinancialYear  *uuid.UUID        `json:"financial_year"`
+	LockDate       *time.Time        `json:"lock_date"`
+}
+
+type RqUpdateAddress struct {
+	Address   *string `json:"address"`
+	City      *string `json:"city"`
+	State     *string `json:"state"`
+	Postcode  *string `json:"postcode" validate:"omitempty,len=4"`
+	IsPrimary *bool   `json:"is_primary"`
+}
+
 // Response models
 type RsClinic struct {
 	ID                uuid.UUID            `json:"id"`
-	PracticeID        string               `json:"practice_id"`
+	PractitionerID    uuid.UUID            `json:"practitioner_id"`
 	ProfilePicture    *string              `json:"profile_picture,omitempty"`
 	Name              string               `json:"name"`
 	ABN               *string              `json:"abn,omitempty"`

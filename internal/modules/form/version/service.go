@@ -27,7 +27,7 @@ func NewService(repo IRepository, clinicSvc clinic.Service) IService {
 
 // Create implements [IService].
 func (s *service) Create(ctx context.Context, formID, clinicID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error) {
-	clinic, err := s.formClinic.GetClinicByID(ctx, clinicID)
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (s *service) Get(ctx context.Context, id, clinicID uuid.UUID) (*RsFormVersi
 	if err != nil {
 		return nil, err
 	}
-	clinic, err := s.formClinic.GetClinicByID(ctx, clinicID)
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (s *service) Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpd
 	if err != nil {
 		return nil, err
 	}
-	clinic, err := s.formClinic.GetClinicByID(ctx, clinicID)
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (s *service) Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpd
 
 // Delete implements [IService].
 func (s *service) Delete(ctx context.Context, id, clinicID uuid.UUID) error {
-	clinic, err := s.formClinic.GetClinicByID(ctx, clinicID)
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func (s *service) Delete(ctx context.Context, id, clinicID uuid.UUID) error {
 
 // List implements [IService].
 func (s *service) List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error) {
-	clinic, err := s.formClinic.GetClinicByID(ctx, clinicID)
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}

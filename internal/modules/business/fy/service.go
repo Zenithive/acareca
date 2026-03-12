@@ -117,12 +117,23 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 }
 
 func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdateFYLabel) (*RsFinancialYear, error) {
+	// Validate that at least one field is provided
+	hasLabel := req.Label != nil && strings.TrimSpace(*req.Label) != ""
+	hasIsActive := req.IsActive != nil
+
+	if !hasLabel && !hasIsActive {
+		return nil, errors.New("label --or-- is_active is required in payload")
+	}
+
 	fy, err := s.repo.GetFinancialYearByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	fy.Label = req.Label
+	// Update label only if provided and not empty after trimming
+	if hasLabel {
+		fy.Label = strings.TrimSpace(*req.Label)
+	}
 
 	// If is_active is provided and set to true, deactivate all other financial years
 	if req.IsActive != nil && *req.IsActive {

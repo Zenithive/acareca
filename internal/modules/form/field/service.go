@@ -132,7 +132,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormFie
 	if err != nil {
 		return nil, err
 	}
-	clinic, err := s.clinicSvc.GetClinicByID(ctx, form.ClinicID)
+	clinic, err := s.clinicSvc.GetClinicByIDInternal(ctx, form.ClinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -141,11 +141,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormFie
 		if err != nil {
 			return nil, err
 		}
-		practiceID, err := uuid.Parse(clinic.PracticeID)
+		practitionerID, err := uuid.Parse(clinic.PractitionerID.String())
 		if err != nil {
 			return nil, err
 		}
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practiceID); err != nil {
+		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
 			if errors.Is(err, coa.ErrNotFound) {
 				return nil, ErrCoaNotFound
 			}

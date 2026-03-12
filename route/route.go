@@ -74,8 +74,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	clinicRepo := clinic.NewRepository(dbConn)
 	clinicSvc := clinic.NewService(clinicRepo)
 	clinicHandler := clinic.NewHandler(clinicSvc)
-	clinicGroup := v1.Group("/clinic")
-	clinic.RegisterRoutes(clinicGroup, clinicHandler)
+	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
 	coaSvc := coa.NewService(coaRepo)
 	coaHandler := coa.NewHandler(coaSvc)
@@ -96,7 +95,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	formOrch := formorchestrate.NewOrchestrator(formDetailSvc, formVersionSvc, formFieldSvc)
 	formDetailHandler := formdetail.NewHandler(formDetailSvc, formOrch)
 
-	formDetailGroup := clinicGroup.Group("/:id")
+	formDetailGroup := v1.Group("/clinic/:id")
 	formGroup := formDetailGroup.Group("/form")
 	formGroup.Use(middleware.Auth(cfg))
 	formdetail.RegisterRoutes(formGroup, formDetailHandler)

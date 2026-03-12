@@ -2,6 +2,7 @@ package clinic
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ type IHandler interface {
 	CreateClinic(c *gin.Context)
 	GetClinics(c *gin.Context)
 	GetClinicByID(c *gin.Context)
+	UpdateClinic(c *gin.Context)
 	DeleteClinic(c *gin.Context)
 }
 
@@ -26,14 +28,29 @@ func NewHandler(svc Service) IHandler {
 }
 
 func (h *handler) CreateClinic(c *gin.Context) {
+	// Get user ID from JWT token context
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("user not authenticated"))
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user ID"))
+		return
+	}
+
 	var req RqCreateClinic
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	clinic, err := h.svc.CreateClinic(c.Request.Context(), &req)
+	clinic, err := h.svc.CreateClinic(c.Request.Context(), userIDStr, &req)
 	if err != nil {
+		// Log the detailed error for debugging
+		fmt.Printf("CreateClinic error: %v\n", err)
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -42,7 +59,20 @@ func (h *handler) CreateClinic(c *gin.Context) {
 }
 
 func (h *handler) GetClinics(c *gin.Context) {
-	clinics, err := h.svc.GetClinics(c.Request.Context())
+	// Get user ID from JWT token context
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("user not authenticated"))
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user ID"))
+		return
+	}
+
+	clinics, err := h.svc.GetClinics(c.Request.Context(), userIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -52,6 +82,19 @@ func (h *handler) GetClinics(c *gin.Context) {
 }
 
 func (h *handler) GetClinicByID(c *gin.Context) {
+	// Get user ID from JWT token context
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("user not authenticated"))
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user ID"))
+		return
+	}
+
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
@@ -59,7 +102,7 @@ func (h *handler) GetClinicByID(c *gin.Context) {
 		return
 	}
 
-	clinic, err := h.svc.GetClinicByID(c.Request.Context(), id)
+	clinic, err := h.svc.GetClinicByID(c.Request.Context(), userIDStr, id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -72,7 +115,22 @@ func (h *handler) GetClinicByID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, clinic)
 }
 
-func (h *handler) DeleteClinic(c *gin.Context) {
+func (h *handler) UpdateClinic(c *gin.Context) {
+	// Get user ID from JWT token context
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("user not authenticated"))
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user ID"))
+		return
+	}
+
+	fmt.Printf("UpdateClinic Handler - Extracted userID from JWT: %s\n", userIDStr)
+
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
@@ -80,7 +138,52 @@ func (h *handler) DeleteClinic(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.DeleteClinic(c.Request.Context(), id); err != nil {
+	fmt.Printf("UpdateClinic Handler - Clinic ID to update: %s\n", id.String())
+
+	var req RqUpdateClinic
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	clinic, err := h.svc.UpdateClinic(c.Request.Context(), userIDStr, id, &req)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			fmt.Printf("UpdateClinic Handler - Clinic not found or access denied\n")
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		fmt.Printf("UpdateClinic Handler - Internal server error: %v\n", err)
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	fmt.Printf("UpdateClinic Handler - Successfully updated clinic\n")
+	response.JSON(c, http.StatusOK, clinic)
+}
+
+func (h *handler) DeleteClinic(c *gin.Context) {
+	// Get user ID from JWT token context
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("user not authenticated"))
+		return
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user ID"))
+		return
+	}
+
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+		return
+	}
+
+	if err := h.svc.DeleteClinic(c.Request.Context(), userIDStr, id); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return

@@ -19,10 +19,19 @@ type Repository interface {
 	CreateFinancialSettings(ctx context.Context, settings *FinancialSettings) (*FinancialSettings, error)
 
 	GetClinics(ctx context.Context) ([]Clinic, error)
+	GetClinicsByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error)
 	GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error)
+	GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error)
 	GetClinicAddresses(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error)
 	GetClinicContacts(ctx context.Context, clinicID uuid.UUID) ([]ClinicContact, error)
 	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
+	GetActiveFinancialYear(ctx context.Context) (*uuid.UUID, error)
+	GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error)
+
+	UpdateClinic(ctx context.Context, clinic *Clinic) (*Clinic, error)
+	UpdateClinicAddress(ctx context.Context, address *ClinicAddress) error
+	UpdateClinicContact(ctx context.Context, contact *ClinicContact) error
+	UpdateFinancialSettings(ctx context.Context, settings *FinancialSettings) error
 
 	DeleteClinic(ctx context.Context, id uuid.UUID) error
 }
@@ -37,13 +46,13 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) CreateClinic(ctx context.Context, clinic *Clinic) (*Clinic, error) {
 	query := `
-		INSERT INTO tbl_clinic (practice_id, profile_picture, name, abn, description, is_active)
+		INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
 		VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
-		RETURNING id, practice_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 	`
 	var c Clinic
 	err := r.db.QueryRowxContext(ctx, query,
-		clinic.PracticeID, clinic.ProfilePicture, clinic.Name,
+		clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
 		clinic.ABN, clinic.Description, clinic.IsActive,
 	).StructScan(&c)
 	if err != nil {
@@ -104,7 +113,7 @@ func (r *repository) CreateFinancialSettings(ctx context.Context, settings *Fina
 
 func (r *repository) GetClinics(ctx context.Context) ([]Clinic, error) {
 	query := `
-		SELECT id, practice_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -118,7 +127,7 @@ func (r *repository) GetClinics(ctx context.Context) ([]Clinic, error) {
 
 func (r *repository) GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practice_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -192,4 +201,137 @@ func (r *repository) DeleteClinic(ctx context.Context, id uuid.UUID) error {
 	}
 
 	return nil
+}
+func (r *repository) GetActiveFinancialYear(ctx context.Context) (*uuid.UUID, error) {
+	query := `SELECT id FROM tbl_financial_year WHERE is_active = TRUE LIMIT 1`
+	var id uuid.UUID
+	if err := r.db.QueryRowxContext(ctx, query).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("no active financial year found")
+		}
+		return nil, fmt.Errorf("get active financial year: %w", err)
+	}
+	return &id, nil
+}
+
+func (r *repository) UpdateClinic(ctx context.Context, clinic *Clinic) (*Clinic, error) {
+	query := `
+		UPDATE tbl_clinic 
+		SET practitioner_id = $1, profile_picture = $2, name = $3, abn = $4, 
+		    description = $5, is_active = $6, updated_at = now()
+		WHERE id = $7 AND deleted_at IS NULL
+		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+	`
+	var c Clinic
+	err := r.db.QueryRowxContext(ctx, query,
+		clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
+		clinic.ABN, clinic.Description, clinic.IsActive, clinic.ID,
+	).StructScan(&c)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update clinic: %w", err)
+	}
+	return &c, nil
+}
+func (r *repository) UpdateClinicAddress(ctx context.Context, address *ClinicAddress) error {
+	query := `
+		UPDATE tbl_clinic_address 
+		SET address = $1, city = $2, state = $3, postcode = $4, is_primary = $5, updated_at = now()
+		WHERE id = $6
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		address.Address, address.City, address.State,
+		address.Postcode, address.IsPrimary, address.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update clinic address: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) UpdateClinicContact(ctx context.Context, contact *ClinicContact) error {
+	query := `
+		UPDATE tbl_clinic_contact 
+		SET value = $1, label = $2, is_primary = $3, updated_at = now()
+		WHERE id = $4
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		contact.Value, contact.Label, contact.IsPrimary, contact.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update clinic contact: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) UpdateFinancialSettings(ctx context.Context, settings *FinancialSettings) error {
+	query := `
+		UPDATE tbl_financial_settings 
+		SET financial_year_id = $1, lock_date = $2, updated_at = now()
+		WHERE id = $3
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		settings.FinancialYearID, settings.LockDate, settings.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update financial settings: %w", err)
+	}
+	return nil
+}
+func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error) {
+	// Convert string userID to UUID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		fmt.Printf("GetPractitionerIDByUserID - Invalid user ID format: %s, error: %v\n", userID, err)
+		return nil, fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	query := `SELECT id FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1`
+	var id uuid.UUID
+	if err := r.db.QueryRowxContext(ctx, query, userUUID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Printf("GetPractitionerIDByUserID - No practitioner found for user_id: %s\n", userID)
+			return nil, errors.New("practitioner not found for user")
+		}
+		fmt.Printf("GetPractitionerIDByUserID - Database error for user_id: %s, error: %v\n", userID, err)
+		return nil, fmt.Errorf("get practitioner by user_id: %w", err)
+	}
+	fmt.Printf("GetPractitionerIDByUserID - Found practitioner_id: %s for user_id: %s\n", id.String(), userID)
+	return &id, nil
+}
+func (r *repository) GetClinicsByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error) {
+	query := `
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		FROM tbl_clinic
+		WHERE practitioner_id = $1 AND deleted_at IS NULL
+		ORDER BY created_at DESC
+	`
+	var clinics []Clinic
+	if err := r.db.SelectContext(ctx, &clinics, query, practitionerID); err != nil {
+		return nil, fmt.Errorf("get clinics by practitioner: %w", err)
+	}
+	return clinics, nil
+}
+
+func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
+	query := `
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		FROM tbl_clinic
+		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
+	`
+	fmt.Printf("GetClinicByIDAndPractitioner - Querying clinic_id: %s, practitioner_id: %s\n", id.String(), practitionerID.String())
+
+	var c Clinic
+	if err := r.db.QueryRowxContext(ctx, query, id, practitionerID).StructScan(&c); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Printf("GetClinicByIDAndPractitioner - No clinic found for clinic_id: %s, practitioner_id: %s\n", id.String(), practitionerID.String())
+			return nil, ErrNotFound
+		}
+		fmt.Printf("GetClinicByIDAndPractitioner - Database error: %v\n", err)
+		return nil, fmt.Errorf("get clinic by id and practitioner: %w", err)
+	}
+	fmt.Printf("GetClinicByIDAndPractitioner - Found clinic: %s owned by practitioner: %s\n", c.ID.String(), c.PractitionerID.String())
+	return &c, nil
 }

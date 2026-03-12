@@ -35,8 +35,8 @@ type RqCreateFY struct {
 }
 
 type RqUpdateFYLabel struct {
-	Label    string `json:"label" validate:"required"`
-	IsActive *bool  `json:"is_active"`
+	Label    *string `json:"label"`
+	IsActive *bool   `json:"is_active"`
 }
 
 // Response models
