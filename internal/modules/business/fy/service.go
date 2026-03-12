@@ -2,12 +2,13 @@ package fy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -19,17 +20,18 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	db   *sqlx.DB
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, db *sqlx.DB) Service {
+	return &service{repo: repo, db: db}
 }
 
 func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYear, error) {
 	// Parse fy_year (e.g., "2025-2026")
 	years := strings.Split(req.FYYear, "-")
 	if len(years) != 2 {
-		return nil, errors.New("invalid fy_year format, expected format: YYYY-YYYY")
+		return nil, ErrInvalidFYYearFormat
 	}
 
 	startYear := years[0]
@@ -38,74 +40,84 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 	// Create start_date: 01-07-startYear
 	startDate, err := time.Parse("02-01-2006", fmt.Sprintf("01-07-%s", startYear))
 	if err != nil {
-		return nil, fmt.Errorf("invalid start year: %w", err)
+		return nil, ErrInvalidFYYearFormat
 	}
 
 	// Create end_date: 30-06-endYear
 	endDate, err := time.Parse("02-01-2006", fmt.Sprintf("30-06-%s", endYear))
 	if err != nil {
-		return nil, fmt.Errorf("invalid end year: %w", err)
+		return nil, ErrInvalidFYYearFormat
 	}
 
-	// If is_active is true, deactivate all other financial years
-	if req.IsActive {
-		if err := s.repo.DeactivateAllFinancialYears(ctx); err != nil {
-			return nil, fmt.Errorf("deactivate existing financial years: %w", err)
+	// create transection
+
+	var createdFY *FinancialYear
+
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// If is_active is true, deactivate all other financial years
+		if req.IsActive {
+			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
+				return fmt.Errorf("deactivate existing financial years: %w", err)
+			}
 		}
-	}
+		// Create financial year
+		fy := &FinancialYear{
+			Label:     req.Label,
+			IsActive:  req.IsActive,
+			StartDate: startDate,
+			EndDate:   endDate,
+		}
 
-	// Create financial year
-	fy := &FinancialYear{
-		Label:     req.Label,
-		IsActive:  req.IsActive,
-		StartDate: startDate,
-		EndDate:   endDate,
-	}
+		newFY, err := s.repo.CreateFinancialYear(ctx, fy, tx)
+		if err != nil {
+			return fmt.Errorf("create financial year: %w", err)
+		}
+		createdFY = newFY
+		// Create 4 quarters
+		quarters := []struct {
+			label      string
+			startDate  string
+			endDate    string
+			useEndYear bool
+		}{
+			{"Q1", "01-07", "30-09", false},
+			{"Q2", "01-10", "31-12", false},
+			{"Q3", "01-01", "31-03", true},
+			{"Q4", "01-04", "30-06", true},
+		}
 
-	createdFY, err := s.repo.CreateFinancialYear(ctx, fy)
+		for _, q := range quarters {
+			year := startYear
+			if q.useEndYear {
+				year = endYear
+			}
+
+			qStartDate, err := time.Parse("02-01-2006", fmt.Sprintf("%s-%s", q.startDate, year))
+			if err != nil {
+				return fmt.Errorf("parse quarter start date: %w", err)
+			}
+
+			qEndDate, err := time.Parse("02-01-2006", fmt.Sprintf("%s-%s", q.endDate, year))
+			if err != nil {
+				return fmt.Errorf("parse quarter end date: %w", err)
+			}
+
+			quarter := &FinancialQuarter{
+				FinancialYearID: newFY.ID,
+				Label:           q.label,
+				StartDate:       qStartDate,
+				EndDate:         qEndDate,
+			}
+
+			if _, err := s.repo.CreateFinancialQuarter(ctx, quarter, tx); err != nil {
+				return fmt.Errorf("create quarter %s: %w", q.label, err)
+			}
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	// Create 4 quarters
-	quarters := []struct {
-		label      string
-		startDate  string
-		endDate    string
-		useEndYear bool
-	}{
-		{"Q1", "01-07", "30-09", false},
-		{"Q2", "01-10", "31-12", false},
-		{"Q3", "01-01", "31-03", true},
-		{"Q4", "01-04", "30-06", true},
-	}
-
-	for _, q := range quarters {
-		year := startYear
-		if q.useEndYear {
-			year = endYear
-		}
-
-		qStartDate, err := time.Parse("02-01-2006", fmt.Sprintf("%s-%s", q.startDate, year))
-		if err != nil {
-			return nil, fmt.Errorf("parse quarter start date: %w", err)
-		}
-
-		qEndDate, err := time.Parse("02-01-2006", fmt.Sprintf("%s-%s", q.endDate, year))
-		if err != nil {
-			return nil, fmt.Errorf("parse quarter end date: %w", err)
-		}
-
-		quarter := &FinancialQuarter{
-			FinancialYearID: createdFY.ID,
-			Label:           q.label,
-			StartDate:       qStartDate,
-			EndDate:         qEndDate,
-		}
-
-		if _, err := s.repo.CreateFinancialQuarter(ctx, quarter); err != nil {
-			return nil, fmt.Errorf("create quarter %s: %w", q.label, err)
-		}
 	}
 
 	return &RsFinancialYear{
@@ -123,18 +135,27 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 	}
 
 	fy.Label = req.Label
+	var updatedFY *FinancialYear
 
-	// If is_active is provided and set to true, deactivate all other financial years
-	if req.IsActive != nil && *req.IsActive {
-		if err := s.repo.DeactivateAllFinancialYears(ctx); err != nil {
-			return nil, fmt.Errorf("deactivate existing financial years: %w", err)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// If is_active is provided and set to true, deactivate all other financial years
+		if req.IsActive != nil && *req.IsActive {
+			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
+				return fmt.Errorf("deactivate existing financial years: %w", err)
+			}
+			fy.IsActive = true
+		} else if req.IsActive != nil {
+			fy.IsActive = *req.IsActive
 		}
-		fy.IsActive = true
-	} else if req.IsActive != nil {
-		fy.IsActive = *req.IsActive
-	}
 
-	updatedFY, err := s.repo.UpdateFinancialYear(ctx, fy)
+		up, err := s.repo.UpdateFinancialYear(ctx, fy, tx)
+		if err != nil {
+			return fmt.Errorf("update financial year: %w", err)
+		}
+		updatedFY = up
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +188,9 @@ func (s *service) GetFinancialYears(ctx context.Context) ([]RsFinancialYear, err
 }
 
 func (s *service) GetFinancialQuarters(ctx context.Context, financialYearID uuid.UUID) ([]RsFinancialQuarter, error) {
+	if _, err := s.repo.GetFinancialYearByID(ctx, financialYearID); err != nil {
+		return nil, err
+	}
 	quarters, err := s.repo.GetFinancialQuarters(ctx, financialYearID)
 	if err != nil {
 		return nil, err

@@ -10,16 +10,19 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-var ErrNotFound = errors.New("financial year not found")
+var (
+	ErrNotFound            = errors.New("financial year not found")
+	ErrInvalidFYYearFormat = errors.New("invalid fy_year format, expected YYYY-YYYY (e.g. 2025-2026)")
+)
 
 type Repository interface {
-	CreateFinancialYear(ctx context.Context, fy *FinancialYear) (*FinancialYear, error)
-	CreateFinancialQuarter(ctx context.Context, fq *FinancialQuarter) (*FinancialQuarter, error)
+	CreateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error)
+	CreateFinancialQuarter(ctx context.Context, fq *FinancialQuarter, tx *sqlx.Tx) (*FinancialQuarter, error)
 	GetFinancialYears(ctx context.Context) ([]FinancialYear, error)
 	GetFinancialYearByID(ctx context.Context, id uuid.UUID) (*FinancialYear, error)
 	GetFinancialQuarters(ctx context.Context, financialYearID uuid.UUID) ([]FinancialQuarter, error)
-	UpdateFinancialYear(ctx context.Context, fy *FinancialYear) (*FinancialYear, error)
-	DeactivateAllFinancialYears(ctx context.Context) error
+	UpdateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error)
+	DeactivateAllFinancialYears(ctx context.Context, tx *sqlx.Tx) error
 }
 
 type repository struct {
@@ -30,31 +33,30 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) CreateFinancialYear(ctx context.Context, fy *FinancialYear) (*FinancialYear, error) {
+func (r *repository) CreateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error) {
 	query := `
 		INSERT INTO tbl_financial_year (label, is_active, start_date, end_date)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, label, is_active, start_date, end_date, created_at, updated_at
 	`
 	var f FinancialYear
-	err := r.db.QueryRowxContext(ctx, query,
+	err := tx.QueryRowxContext(ctx, query,
 		fy.Label, fy.IsActive, fy.StartDate, fy.EndDate,
 	).StructScan(&f)
 	if err != nil {
-		fmt.Println(err.Error())
 		return nil, fmt.Errorf("create financial year: %w", err)
 	}
 	return &f, nil
 }
 
-func (r *repository) CreateFinancialQuarter(ctx context.Context, fq *FinancialQuarter) (*FinancialQuarter, error) {
+func (r *repository) CreateFinancialQuarter(ctx context.Context, fq *FinancialQuarter, tx *sqlx.Tx) (*FinancialQuarter, error) {
 	query := `
 		INSERT INTO tbl_financial_quarter (financial_year_id, label, start_date, end_date)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, financial_year_id, label, start_date, end_date, created_at, updated_at
 	`
 	var q FinancialQuarter
-	err := r.db.QueryRowxContext(ctx, query,
+	err := tx.QueryRowxContext(ctx, query,
 		fq.FinancialYearID, fq.Label, fq.StartDate, fq.EndDate,
 	).StructScan(&q)
 	if err != nil {
@@ -106,7 +108,7 @@ func (r *repository) GetFinancialQuarters(ctx context.Context, financialYearID u
 	return quarters, nil
 }
 
-func (r *repository) UpdateFinancialYear(ctx context.Context, fy *FinancialYear) (*FinancialYear, error) {
+func (r *repository) UpdateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error) {
 	query := `
 		UPDATE tbl_financial_year 
 		SET label = $1, is_active = $2, updated_at = now()
@@ -114,7 +116,7 @@ func (r *repository) UpdateFinancialYear(ctx context.Context, fy *FinancialYear)
 		RETURNING id, label, is_active, start_date, end_date, created_at, updated_at
 	`
 	var f FinancialYear
-	err := r.db.QueryRowxContext(ctx, query, fy.Label, fy.IsActive, fy.ID).StructScan(&f)
+	err := tx.QueryRowxContext(ctx, query, fy.Label, fy.IsActive, fy.ID).StructScan(&f)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -124,9 +126,9 @@ func (r *repository) UpdateFinancialYear(ctx context.Context, fy *FinancialYear)
 	return &f, nil
 }
 
-func (r *repository) DeactivateAllFinancialYears(ctx context.Context) error {
+func (r *repository) DeactivateAllFinancialYears(ctx context.Context, tx *sqlx.Tx) error {
 	query := `UPDATE tbl_financial_year SET is_active = FALSE, updated_at = now() WHERE is_active = TRUE`
-	_, err := r.db.ExecContext(ctx, query)
+	_, err := tx.ExecContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("deactivate all financial years: %w", err)
 	}

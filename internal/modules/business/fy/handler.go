@@ -32,8 +32,16 @@ func (h *handler) CreateFY(c *gin.Context) {
 		return
 	}
 
-	fy, err := h.svc.CreateFY(c, &req)
+	fy, err := h.svc.CreateFY(c.Request.Context(), &req)
 	if err != nil {
+		if errors.Is(err, ErrInvalidFYYearFormat) {
+			response.Error(c, http.StatusBadRequest, err)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -88,6 +96,10 @@ func (h *handler) GetFinancialQuarters(c *gin.Context) {
 
 	quarters, err := h.svc.GetFinancialQuarters(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
