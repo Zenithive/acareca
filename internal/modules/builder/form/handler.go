@@ -2,7 +2,6 @@ package form
 
 import (
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +32,7 @@ func (h *handler) Sync(c *gin.Context) {
 	if !ok {
 		return
 	}
+
 	var req RqBulkSyncFields
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -48,20 +48,22 @@ func (h *handler) Sync(c *gin.Context) {
 
 func (h *handler) CreateFormWithFields(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
+
 	if !ok {
 		return
 	}
+
 	var req RqCreateFormWithFields
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	if req.Status == "" {
 		req.Status = detail.StatusDraft
 	}
 	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, practitionerID)
 	if err != nil {
-		log.Fatal(err)
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

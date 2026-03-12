@@ -8,7 +8,7 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formID, clinicID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error)
+	Create(ctx context.Context, formID, clinicID uuid.UUID, req *RqFormVersion, practitionerID uuid.UUID) (*RsFormVersion, error)
 	Get(ctx context.Context, id, clinicID uuid.UUID) (*RsFormVersion, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormVersion, error)
 	Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpdateFormVersion) (*RsFormVersion, error)
@@ -26,7 +26,7 @@ func NewService(repo IRepository, clinicSvc clinic.Service) IService {
 }
 
 // Create implements [IService].
-func (s *service) Create(ctx context.Context, formID, clinicID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error) {
+func (s *service) Create(ctx context.Context, formID, clinicID uuid.UUID, req *RqFormVersion, practitionerID uuid.UUID) (*RsFormVersion, error) {
 	clinic, err := s.formClinic.GetClinicByID(ctx, clinicID)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func (s *service) Create(ctx context.Context, formID, clinicID uuid.UUID, req *R
 	if clinic.ID != clinicID {
 		return nil, ErrForbidden
 	}
-	v := req.ToDB(formID, userID)
+	v := req.ToDB(formID, practitionerID)
 	if err := s.repo.Create(ctx, v); err != nil {
 		return nil, err
 	}

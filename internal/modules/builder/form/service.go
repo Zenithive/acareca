@@ -34,7 +34,11 @@ func NewService(detailSvc detail.IService, versionSvc version.IService, fieldSvc
 }
 
 func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error) {
-	versions, err := s.versionSvc.List(ctx, req.ClinicID, req.ClinicID)
+	formID := req.FormID
+	if formID == uuid.Nil {
+		formID = req.ClinicID
+	}
+	versions, err := s.versionSvc.List(ctx, formID, req.ClinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -48,12 +52,12 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 	if activeVersionID == uuid.Nil {
 		return nil, errors.New("no active version found")
 	}
-	if s.detailSvc != nil && s.versionSvc != nil {
-		status, err := s.versionSvc.GetByID(ctx, activeVersionID)
+	if s.detailSvc != nil {
+		formDetail, err := s.detailSvc.GetByID(ctx, formID)
 		if err != nil {
 			return nil, err
 		}
-		if status.IsActive {
+		if formDetail.Status != detail.StatusDraft {
 			return nil, errors.New("form is not draft for fields")
 		}
 	}
@@ -176,6 +180,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	if formReq.Status == "" {
 		formReq.Status = detail.StatusDraft
 	}
+
 	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, practitionerID)
 	if err != nil {
 		return nil, nil, err
@@ -214,6 +219,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		createList = append(createList, r)
 	}
 	bulk, err := s.BulkSyncFields(ctx, practitionerID, &RqBulkSyncFields{
+		FormID:   created.ID,
 		ClinicID: d.ClinicID,
 		Create:   createList,
 		Update:   nil,
@@ -316,6 +322,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		}
 	}
 	bulk, err := s.BulkSyncFields(ctx, practitionerID, &RqBulkSyncFields{
+		FormID:   existing.ID,
 		ClinicID: req.ClinicID,
 		Create:   createList,
 		Update:   updateList,

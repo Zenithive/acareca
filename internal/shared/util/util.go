@@ -3,7 +3,6 @@ package util
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -48,19 +47,26 @@ func BindAndValidate(c *gin.Context, v any) error {
 	return nil
 }
 
+type CustomClaims struct {
+	PractitionerID string `json:"prac"`
+	jwt.RegisteredClaims
+}
+
 func SignToken(userID string, practitionerID string, ttl time.Duration, jwtSecret string) (string, error) {
-	claims := jwt.MapClaims{
-		"sub":  userID,
-		"prac": practitionerID,
-		"exp":  time.Now().Add(ttl).Unix(),
-		"iat":  time.Now().Unix(),
+	now := time.Now()
+
+	claims := CustomClaims{
+		PractitionerID: practitionerID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		},
 	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(jwtSecret))
-	if err != nil {
-		return "", fmt.Errorf("sign token: %w", err)
-	}
-	return signed, nil
+
+	return token.SignedString([]byte(jwtSecret))
 }
 
 func Round(value float64, precision int) float64 {

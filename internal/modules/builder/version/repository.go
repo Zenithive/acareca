@@ -33,14 +33,14 @@ func NewRepository(db *sqlx.DB) IRepository {
 // Create implements [IRepository].
 func (r *repository) Create(ctx context.Context, v *FormVersion) error {
 	query := `
-		INSERT INTO tbl_custom_form_version (id, form_id, version, is_active, created_by)
+		INSERT INTO tbl_custom_form_version (id, form_id, version, is_active, practitioner_id)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING created_at, updated_at
 	`
 	err := util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		return tx.QueryRowxContext(ctx, query,
-			v.ID, v.FormId, v.Version, v.IsActive, v.CreatedBy,
-		).StructScan(&v)
+			v.ID, v.FormId, v.Version, v.IsActive, v.PractitionerID,
+		).StructScan(v)
 	})
 	if err != nil {
 		return fmt.Errorf("create form version: %w", err)
@@ -50,11 +50,11 @@ func (r *repository) Create(ctx context.Context, v *FormVersion) error {
 
 // Get implements [IRepository].
 func (r *repository) Get(ctx context.Context, id uuid.UUID) (*FormVersion, error) {
-	query := `SELECT id, form_id, version, is_active, created_by, created_at, updated_at
+	query := `SELECT id, form_id, version, is_active, practitioner_id, created_at, updated_at
 		FROM tbl_custom_form_version WHERE id = $1 AND deleted_at IS NULL`
 	var v FormVersion
 	if err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&v.ID, &v.FormId, &v.Version, &v.IsActive, &v.CreatedBy, &v.CreatedAt, &v.UpdatedAt,
+		&v.ID, &v.FormId, &v.Version, &v.IsActive, &v.PractitionerID, &v.CreatedAt, &v.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -70,11 +70,11 @@ func (r *repository) Update(ctx context.Context, v *FormVersion) (*FormVersion, 
 		UPDATE tbl_custom_form_version
 		SET version = $1, is_active = $2, updated_at = now()
 		WHERE id = $3 AND deleted_at IS NULL
-		RETURNING id, form_id, version, is_active, created_by, created_at, updated_at
+		RETURNING id, form_id, version, is_active, practitioner_id, created_at, updated_at
 	`
 	var out FormVersion
 	if err := r.db.QueryRowContext(ctx, query, v.Version, v.IsActive, v.ID).Scan(
-		&out.ID, &out.FormId, &out.Version, &out.IsActive, &out.CreatedBy, &out.CreatedAt, &out.UpdatedAt,
+		&out.ID, &out.FormId, &out.Version, &out.IsActive, &out.PractitionerID, &out.CreatedAt, &out.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -100,7 +100,7 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 
 // ListByFormID implements [IRepository].
 func (r *repository) ListByFormID(ctx context.Context, formID uuid.UUID) ([]*FormVersion, error) {
-	query := `SELECT id, form_id, version, is_active, created_by, created_at, updated_at
+	query := `SELECT id, form_id, version, is_active, practitioner_id, created_at, updated_at
 		FROM tbl_custom_form_version WHERE form_id = $1 AND deleted_at IS NULL
 		ORDER BY version ASC`
 	var list []*FormVersion

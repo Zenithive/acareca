@@ -7,6 +7,7 @@ import (
 )
 
 type RqBulkSyncFields struct {
+	FormID   uuid.UUID                 `json:"form_id" validate:"omitempty,uuid"`
 	ClinicID uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
 	Create   []field.RqFormField       `json:"create" validate:"omitempty,dive"`
 	Update   []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
