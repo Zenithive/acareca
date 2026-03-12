@@ -8,11 +8,11 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID, clinicID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
-	Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID) ([]*RsFormEntry, error)
+	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) ([]*RsFormEntry, error)
 }
 
 type Service struct {
@@ -24,7 +24,7 @@ func NewService(repo IRepository) IService {
 }
 
 // Create implements [IService].
-func (s *Service) Create(ctx context.Context, formVersionID, clinicID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
 	status := EntryStatusDraft
 	if req.Status != "" {
 		status = req.Status
@@ -37,7 +37,7 @@ func (s *Service) Create(ctx context.Context, formVersionID, clinicID uuid.UUID,
 	e := &FormEntry{
 		ID:            uuid.New(),
 		FormVersionID: formVersionID,
-		ClinicID:      clinicID,
+		ClinicID:      req.ClinicID,
 		SubmittedBy:   submittedBy,
 		SubmittedAt:   submittedAt,
 		Status:        status,
@@ -63,7 +63,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 }
 
 // Update implements [IService].
-func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,13 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID) ([]*RsFormEntry, error) {
+func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter) ([]*RsFormEntry, error) {
+
+	clinicID := filter.ClinicID
+	if clinicID == nil {
+		clinicID = &uuid.Nil
+	}
+
 	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, clinicID)
 	if err != nil {
 		return nil, err

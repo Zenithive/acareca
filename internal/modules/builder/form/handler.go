@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -72,6 +73,15 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 }
 
 func (h *handler) UpdateFormWithFields(c *gin.Context) {
+	formID, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	if formID == uuid.Nil {
+		response.Error(c, http.StatusBadRequest, errors.New("form id is required"))
+		return
+	}
 
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -82,6 +92,7 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+	req.ID = &formID
 	form, syncResult, err := h.svc.UpdateWithFields(c.Request.Context(), &req, practitionerID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -109,16 +120,12 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 }
 
 func (h *handler) List(c *gin.Context) {
-	clinicID, ok := util.GetClinicID(c)
-	if !ok {
-		return
-	}
-	filter := detail.Filter{ClinicID: clinicID}
-	if err := c.ShouldBindQuery(&filter); err != nil {
+
+	var filter Filter
+	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	filter.ClinicID = clinicID
 	list, err := h.svc.List(c.Request.Context(), filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)

@@ -88,7 +88,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	coaSvc := coa.NewService(coaRepo)
 	coaHandler := coa.NewHandler(coaSvc)
-	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)
+	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
 	fyRepo := fy.NewRepository(dbConn)
 	fySvc := fy.NewService(fyRepo, dbConn)
 	fyHandler := fy.NewHandler(fySvc)
