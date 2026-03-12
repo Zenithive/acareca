@@ -17,8 +17,9 @@ type RqEntryValue struct {
 }
 
 type RqFormEntry struct {
-	Status string         `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Values []RqEntryValue `json:"values,omitempty"`
+	ClinicID uuid.UUID      `json:"clinic_id" validate:"required,uuid"`
+	Status   string         `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Values   []RqEntryValue `json:"values,omitempty"`
 }
 
 type RqUpdateFormEntry struct {
@@ -57,9 +58,7 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 		CreatedAt:     d.CreatedAt,
 		UpdatedAt:     d.UpdatedAt,
 	}
-	if d.SubmittedBy != nil {
-		rs.SubmittedBy = *d.SubmittedBy
-	}
+	rs.SubmittedBy = d.SubmittedBy
 	if d.SubmittedAt != nil {
 		rs.SubmittedAt = *d.SubmittedAt
 	}
@@ -79,7 +78,7 @@ type RsFormEntry struct {
 	ID            uuid.UUID      `json:"id"`
 	FormVersionID uuid.UUID      `json:"form_version_id"`
 	ClinicID      uuid.UUID      `json:"clinic_id"`
-	SubmittedBy   uuid.UUID      `json:"submitted_by,omitempty"`
+	SubmittedBy   *uuid.UUID     `json:"submitted_by,omitempty"`
 	SubmittedAt   string         `json:"submitted_at,omitempty"`
 	Status        string         `json:"status"`
 	Values        []RsEntryValue `json:"values,omitempty"`
@@ -92,4 +91,8 @@ type RsEntryValue struct {
 	NetAmount   *float64  `json:"net_amount,omitempty"`
 	GstAmount   *float64  `json:"gst_amount,omitempty"`
 	GrossAmount *float64  `json:"gross_amount,omitempty"`
+}
+
+type Filter struct {
+	ClinicID *uuid.UUID `json:"clinic_id,omitempty"`
 }

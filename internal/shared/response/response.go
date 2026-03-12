@@ -10,6 +10,7 @@ import (
 type ErrorDetail struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 type envelope struct {
@@ -37,16 +38,20 @@ func Error(c *gin.Context, status int, err error) {
 	var msg string
 	if status >= http.StatusInternalServerError {
 		msg = "internal server error"
-	} else if err != nil {
-		msg = err.Error()
 	} else {
 		msg = "unknown error"
+	}
+
+	details := ""
+	if err != nil {
+		details = err.Error()
 	}
 
 	c.AbortWithStatusJSON(status, envelope{
 		Error: &ErrorDetail{
 			Code:    status,
 			Message: msg,
+			Detail:  details,
 		},
 	})
 }

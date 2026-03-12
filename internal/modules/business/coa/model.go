@@ -42,46 +42,45 @@ func (a *AccountType) ToRs() AccountType {
 }
 
 type ChartOfAccount struct {
-	ID            uuid.UUID  `db:"id"`
+	ID             uuid.UUID  `db:"id"`
 	PractitionerID uuid.UUID  `db:"practitioner_id"`
-	AccountTypeID int16      `db:"account_type_id"`
-	AccountTaxID  int16      `db:"account_tax_id"`
-	Code          int16      `db:"code"`
-	Name          string     `db:"name"`
-	IsSystem      bool       `db:"is_system"`
-	CreatedAt     time.Time  `db:"created_at"`
-	UpdatedAt     time.Time  `db:"updated_at"`
-	DeletedAt     *time.Time `db:"deleted_at"`
+	AccountTypeID  int16      `db:"account_type_id"`
+	AccountTaxID   int16      `db:"account_tax_id"`
+	Code           int16      `db:"code"`
+	Name           string     `db:"name"`
+	IsSystem       bool       `db:"is_system"`
+	CreatedAt      time.Time  `db:"created_at"`
+	UpdatedAt      time.Time  `db:"updated_at"`
+	DeletedAt      *time.Time `db:"deleted_at"`
 }
 
 type RsChartOfAccount struct {
-	ID            uuid.UUID `json:"id"`
+	ID             uuid.UUID `json:"id"`
 	PractitionerID uuid.UUID `json:"practitioner_id"`
-	AccountTypeID int16     `json:"account_type_id"`
-	AccountTaxID  int16     `json:"account_tax_id"`
-	Code          int16     `json:"code"`
-	Name          string    `json:"name"`
-	IsSystem      bool      `json:"is_system"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	AccountTypeID  int16     `json:"account_type_id"`
+	AccountTaxID   int16     `json:"account_tax_id"`
+	Code           int16     `json:"code"`
+	Name           string    `json:"name"`
+	IsSystem       bool      `json:"is_system"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 	return RsChartOfAccount{
-		ID:            c.ID,
+		ID:             c.ID,
 		PractitionerID: c.PractitionerID,
-		AccountTypeID: c.AccountTypeID,
-		AccountTaxID:  c.AccountTaxID,
-		Code:          c.Code,
-		Name:          c.Name,
-		IsSystem:      c.IsSystem,
-		CreatedAt:     c.CreatedAt,
-		UpdatedAt:     c.UpdatedAt,
+		AccountTypeID:  c.AccountTypeID,
+		AccountTaxID:   c.AccountTaxID,
+		Code:           c.Code,
+		Name:           c.Name,
+		IsSystem:       c.IsSystem,
+		CreatedAt:      c.CreatedAt,
+		UpdatedAt:      c.UpdatedAt,
 	}
 }
 
 type RqCreateChartOfAccountOfAccount struct {
-	PractitionerID string `json:"practitioner_id" validate:"omitempty,uuid"` // optional; from path when present
 	AccountTypeID int16  `json:"account_type_id" validate:"required,min=1"`
 	AccountTaxID  int16  `json:"account_tax_id" validate:"required,min=1"`
 	Code          int16  `json:"code" validate:"required,gte=100,lte=9999"`

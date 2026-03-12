@@ -41,7 +41,7 @@ type RqCreateFormWithFields struct {
 }
 
 type RqUpdateFormWithFields struct {
-	ID          uuid.UUID                 `json:"id" validate:"required"`
+	ID          *uuid.UUID                `json:"id" validate:"omitempty,uuid"`
 	Name        *string                   `json:"name" validate:"omitempty"`
 	Description *string                   `json:"description" validate:"omitempty"`
 	Status      *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
@@ -56,4 +56,8 @@ type RsFormWithFields struct {
 	Form            detail.RsFormDetail `json:"form"`
 	ActiveVersionID uuid.UUID           `json:"active_version_id"`
 	Fields          []field.RsFormField `json:"fields"`
+}
+
+type Filter struct {
+	ClinicID *uuid.UUID `json:"clinic_id,omitempty"`
 }
