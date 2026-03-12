@@ -1,7 +1,5 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE EXTENSION IF NOT EXISTS btree_gist;
-
 CREATE TABLE tbl_financial_year (
     id              UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
     label           TEXT NOT NULL UNIQUE,

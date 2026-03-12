@@ -281,10 +281,8 @@ func (r *repository) UpdateFinancialSettings(ctx context.Context, settings *Fina
 	return nil
 }
 func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error) {
-	// Convert string userID to UUID
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
-		fmt.Printf("GetPractitionerIDByUserID - Invalid user ID format: %s, error: %v\n", userID, err)
 		return nil, fmt.Errorf("invalid user ID format: %w", err)
 	}
 
@@ -292,13 +290,10 @@ func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID strin
 	var id uuid.UUID
 	if err := r.db.QueryRowxContext(ctx, query, userUUID).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			fmt.Printf("GetPractitionerIDByUserID - No practitioner found for user_id: %s\n", userID)
 			return nil, errors.New("practitioner not found for user")
 		}
-		fmt.Printf("GetPractitionerIDByUserID - Database error for user_id: %s, error: %v\n", userID, err)
 		return nil, fmt.Errorf("get practitioner by user_id: %w", err)
 	}
-	fmt.Printf("GetPractitionerIDByUserID - Found practitioner_id: %s for user_id: %s\n", id.String(), userID)
 	return &id, nil
 }
 func (r *repository) GetClinicsByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error) {
@@ -321,17 +316,13 @@ func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.U
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
-	fmt.Printf("GetClinicByIDAndPractitioner - Querying clinic_id: %s, practitioner_id: %s\n", id.String(), practitionerID.String())
 
 	var c Clinic
 	if err := r.db.QueryRowxContext(ctx, query, id, practitionerID).StructScan(&c); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			fmt.Printf("GetClinicByIDAndPractitioner - No clinic found for clinic_id: %s, practitioner_id: %s\n", id.String(), practitionerID.String())
 			return nil, ErrNotFound
 		}
-		fmt.Printf("GetClinicByIDAndPractitioner - Database error: %v\n", err)
 		return nil, fmt.Errorf("get clinic by id and practitioner: %w", err)
 	}
-	fmt.Printf("GetClinicByIDAndPractitioner - Found clinic: %s owned by practitioner: %s\n", c.ID.String(), c.PractitionerID.String())
 	return &c, nil
 }
