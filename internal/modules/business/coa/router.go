@@ -8,7 +8,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.GET("/account-taxes", h.ListAccountTaxes)
 	rg.GET("/account-taxes/:id", h.GetAccountTax)
 
-	// Chart of Accounts CRUD — scoped by practice_id (practitioner id)
+	// Chart of Accounts CRUD — scoped by practitioner_id
 	accounts := rg.Group("/chat-of-account")
 	accounts.GET("", h.ListChartOfAccount)
 	accounts.GET("/:id", h.GetChartOfAccount)

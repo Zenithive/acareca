@@ -37,13 +37,13 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) CreateClinic(ctx context.Context, clinic *Clinic) (*Clinic, error) {
 	query := `
-		INSERT INTO tbl_clinic (practice_id, profile_picture, name, abn, description, is_active)
+		INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
 		VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
-		RETURNING id, practice_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 	`
 	var c Clinic
 	err := r.db.QueryRowxContext(ctx, query,
-		clinic.PracticeID, clinic.ProfilePicture, clinic.Name,
+		clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
 		clinic.ABN, clinic.Description, clinic.IsActive,
 	).StructScan(&c)
 	if err != nil {
@@ -104,7 +104,7 @@ func (r *repository) CreateFinancialSettings(ctx context.Context, settings *Fina
 
 func (r *repository) GetClinics(ctx context.Context) ([]Clinic, error) {
 	query := `
-		SELECT id, practice_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -118,7 +118,7 @@ func (r *repository) GetClinics(ctx context.Context) ([]Clinic, error) {
 
 func (r *repository) GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practice_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND deleted_at IS NULL
 	`

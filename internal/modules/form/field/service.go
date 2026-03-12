@@ -141,7 +141,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormFie
 		if err != nil {
 			return nil, err
 		}
-		practiceID, err := uuid.Parse(clinic.PracticeID)
+		practiceID, err := uuid.Parse(clinic.PractitionerID)
 		if err != nil {
 			return nil, err
 		}

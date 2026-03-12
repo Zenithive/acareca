@@ -87,11 +87,11 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 }
 
 func (h *handler) ListChartOfAccount(c *gin.Context) {
-	practice_id, ok := util.GetPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
-	list, err := h.svc.ListChartOfAccount(c.Request.Context(), practice_id)
+	list, err := h.svc.ListChartOfAccount(c.Request.Context(), practitionerID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -100,7 +100,7 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 }
 
 func (h *handler) GetChartOfAccount(c *gin.Context) {
-	practice_id, ok := util.GetPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
-	chart, err := h.svc.GetChartOfAccount(c.Request.Context(), id, practice_id)
+	chart, err := h.svc.GetChartOfAccount(c.Request.Context(), id, practitionerID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -122,7 +122,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 }
 
 func (h *handler) CreateChartOfAccount(c *gin.Context) {
-	practice_id, ok := util.GetPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -131,7 +131,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	created, err := h.svc.CreateChartOfAccount(c.Request.Context(), practice_id, &req)
+	created, err := h.svc.CreateChartOfAccount(c.Request.Context(), practitionerID, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {
 			response.Error(c, http.StatusConflict, err)
@@ -148,7 +148,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 }
 
 func (h *handler) UpdateCharOfAccount(c *gin.Context) {
-	practice_id, ok := util.GetPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -162,7 +162,7 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	updated, err := h.svc.UpdateCharOfAccount(c.Request.Context(), id, practice_id, &req)
+	updated, err := h.svc.UpdateCharOfAccount(c.Request.Context(), id, practitionerID, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {
 			response.Error(c, http.StatusConflict, err)
@@ -183,7 +183,7 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 }
 
 func (h *handler) DeleteChartOfAccount(c *gin.Context) {
-	practice_id, ok := util.GetPractitionerID(c)
+	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -192,7 +192,7 @@ func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
-	if err := h.svc.DeleteChartOfAccount(c.Request.Context(), id, practice_id); err != nil {
+	if err := h.svc.DeleteChartOfAccount(c.Request.Context(), id, practitionerID); err != nil {
 		if errors.Is(err, ErrSystemAccountProtected) {
 			response.Error(c, http.StatusForbidden, err)
 			return

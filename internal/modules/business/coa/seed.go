@@ -85,11 +85,11 @@ func DefaultChartOfAccounts() []DefaultChartRow {
 }
 
 // SeedDefaultsForPractitioner creates default chart-of-account rows for a practitioner.
-// practice_id = practitionerID; is_system is taken from each DefaultChartRow (true only for owner fund side).
+// practitioner_id = practitionerID; is_system is taken from each DefaultChartRow (true only for owner fund side).
 func SeedDefaultsForPractitioner(ctx context.Context, repo Repository, practitionerID uuid.UUID) error {
 	for _, row := range DefaultChartOfAccounts() {
 		chart := &ChartOfAccount{
-			Practice_id:   practitionerID,
+			PractitionerID: practitionerID,
 			AccountTypeID: row.AccountTypeID,
 			AccountTaxID:  row.AccountTaxID,
 			Code:          row.Code,

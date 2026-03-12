@@ -22,12 +22,12 @@ type Repository interface {
 	ListAccountTaxes(ctx context.Context) ([]*AccountTax, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 
-	ListChartOfAccount(ctx context.Context, practice_id uuid.UUID) ([]*ChartOfAccount, error)
-	GetChartOfAccount(ctx context.Context, id uuid.UUID, practice_id uuid.UUID) (*ChartOfAccount, error)
-	GetChartByCodeAndpractice_id(ctx context.Context, code int16, practice_id uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
+	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID) ([]*ChartOfAccount, error)
+	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
+	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
 	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
-	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practice_id uuid.UUID) error
+	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 }
 
 type repository struct {
@@ -96,46 +96,46 @@ func (r *repository) GetAccountTax(ctx context.Context, id int16) (*AccountTax, 
 	return &a, nil
 }
 
-func (r *repository) ListChartOfAccount(ctx context.Context, practice_id uuid.UUID) ([]*ChartOfAccount, error) {
+func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID) ([]*ChartOfAccount, error) {
 	query := `
-		SELECT id, practice_id, account_type_id, account_tax_id, code, name,
+		SELECT id, practitioner_id, account_type_id, account_tax_id, code, name,
 		       is_system, created_at, updated_at, deleted_at
 		FROM tbl_chart_of_accounts
-		WHERE practice_id = $1 AND deleted_at IS NULL
+		WHERE practitioner_id = $1 AND deleted_at IS NULL
 		ORDER BY code
 	`
 	var list []*ChartOfAccount
-	if err := r.db.SelectContext(ctx, &list, query, practice_id); err != nil {
-		return nil, fmt.Errorf("list chart of accounts by practice_id: %w", err)
+	if err := r.db.SelectContext(ctx, &list, query, practitionerID); err != nil {
+		return nil, fmt.Errorf("list chart of accounts by practitioner_id: %w", err)
 	}
 	return list, nil
 }
 
-func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practice_id uuid.UUID) (*ChartOfAccount, error) {
+func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT id, practice_id, account_type_id, account_tax_id, code, name,
+		SELECT id, practitioner_id, account_type_id, account_tax_id, code, name,
 		       is_system, created_at, updated_at, deleted_at
 		FROM tbl_chart_of_accounts
-		WHERE id = $1 AND practice_id = $2 AND deleted_at IS NULL
+		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
 	var c ChartOfAccount
-	if err := r.db.QueryRowxContext(ctx, query, id, practice_id).StructScan(&c); err != nil {
+	if err := r.db.QueryRowxContext(ctx, query, id, practitionerID).StructScan(&c); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("get chart by id and practice_id: %w", err)
+		return nil, fmt.Errorf("get chart by id and practitioner_id: %w", err)
 	}
 	return &c, nil
 }
 
-func (r *repository) GetChartByCodeAndpractice_id(ctx context.Context, code int16, practice_id uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error) {
+func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT id, practice_id, account_type_id, account_tax_id, code, name,
+		SELECT id, practitioner_id, account_type_id, account_tax_id, code, name,
 		       is_system, created_at, updated_at, deleted_at
 		FROM tbl_chart_of_accounts
-		WHERE code = $1 AND practice_id = $2 AND deleted_at IS NULL
+		WHERE code = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
-	args := []interface{}{code, practice_id}
+	args := []interface{}{code, practitionerID}
 	if excludeID != nil {
 		query += ` AND id != $3`
 		args = append(args, *excludeID)
@@ -146,20 +146,20 @@ func (r *repository) GetChartByCodeAndpractice_id(ctx context.Context, code int1
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("get chart by code and practice_id: %w", err)
+		return nil, fmt.Errorf("get chart by code and practitioner_id: %w", err)
 	}
 	return &c, nil
 }
 
 func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
 	query := `
-		INSERT INTO tbl_chart_of_accounts (practice_id, account_type_id, account_tax_id, code, name, is_system)
+		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, practice_id, account_type_id, account_tax_id, code, name, is_system, created_at, updated_at, deleted_at
+		RETURNING id, practitioner_id, account_type_id, account_tax_id, code, name, is_system, created_at, updated_at, deleted_at
 	`
 	var out ChartOfAccount
 	err := r.db.QueryRowxContext(ctx, query,
-		c.Practice_id, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem,
+		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem,
 	).StructScan(&out)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
@@ -172,7 +172,7 @@ func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount)
 		UPDATE tbl_chart_of_accounts
 		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, practice_id, account_type_id, account_tax_id, code, name, is_system, created_at, updated_at, deleted_at
+		RETURNING id, practitioner_id, account_type_id, account_tax_id, code, name, is_system, created_at, updated_at, deleted_at
 	`
 	var out ChartOfAccount
 	err := r.db.QueryRowxContext(ctx, query,
@@ -187,9 +187,9 @@ func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount)
 	return &out, nil
 }
 
-func (r *repository) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practice_id uuid.UUID) error {
-	query := `UPDATE tbl_chart_of_accounts SET deleted_at = now(), updated_at = now() WHERE id = $1 AND practice_id = $2 AND deleted_at IS NULL`
-	res, err := r.db.ExecContext(ctx, query, id, practice_id)
+func (r *repository) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error {
+	query := `UPDATE tbl_chart_of_accounts SET deleted_at = now(), updated_at = now() WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL`
+	res, err := r.db.ExecContext(ctx, query, id, practitionerID)
 	if err != nil {
 		return fmt.Errorf("delete chart of account: %w", err)
 	}

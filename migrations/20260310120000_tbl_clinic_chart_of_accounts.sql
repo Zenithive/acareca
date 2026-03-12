@@ -35,7 +35,7 @@ ON CONFLICT (name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     id               UUID PRIMARY KEY NOT NULL DEFAULT uuid_generate_v4(),
-    practice_id       UUID NOT NULL,
+    practitioner_id   UUID NOT NULL,
     account_type_id  SMALLINT NOT NULL REFERENCES tbl_account_type(id),
     account_tax_id   SMALLINT NOT NULL REFERENCES tbl_account_tax(id),
     code             SMALLINT NOT NULL CHECK (code >= 100 AND code <= 9999),
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at       TIMESTAMPTZ,
-    CONSTRAINT uq_chart_of_accounts_code_practice_id UNIQUE (code, practice_id)
+    CONSTRAINT uq_chart_of_accounts_code_practitioner_id UNIQUE (code, practitioner_id)
 );
 
 

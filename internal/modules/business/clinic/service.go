@@ -24,7 +24,7 @@ func NewService(repo Repository) Service {
 
 func (s *service) CreateClinic(ctx context.Context, req *RqCreateClinic) (*RsClinic, error) {
 	clinic := &Clinic{
-		PracticeID:     req.PracticeID,
+		PractitionerID:  req.PractitionerID,
 		ProfilePicture: req.ProfilePicture,
 		Name:           req.Name,
 		ABN:            req.ABN,
@@ -122,7 +122,7 @@ func (s *service) CreateClinic(ctx context.Context, req *RqCreateClinic) (*RsCli
 
 	return &RsClinic{
 		ID:                created.ID,
-		PracticeID:        created.PracticeID,
+		PractitionerID:        created.PractitionerID,
 		ProfilePicture:    created.ProfilePicture,
 		Name:              created.Name,
 		ABN:               created.ABN,
@@ -146,7 +146,7 @@ func (s *service) GetClinics(ctx context.Context) ([]RsClinic, error) {
 	for _, clinic := range clinics {
 		result = append(result, RsClinic{
 			ID:             clinic.ID,
-			PracticeID:     clinic.PracticeID,
+			PractitionerID:     clinic.PractitionerID,
 			ProfilePicture: clinic.ProfilePicture,
 			Name:           clinic.Name,
 			ABN:            clinic.ABN,
@@ -215,7 +215,7 @@ func (s *service) GetClinicByID(ctx context.Context, id uuid.UUID) (*RsClinic, e
 
 	return &RsClinic{
 		ID:                clinic.ID,
-		PracticeID:        clinic.PracticeID,
+		PractitionerID:        clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,

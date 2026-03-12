@@ -9,7 +9,7 @@ import (
 // Database models
 type Clinic struct {
 	ID             uuid.UUID  `db:"id"`
-	PracticeID     string     `db:"practice_id"`
+	PractitionerID string     `db:"practitioner_id"`
 	ProfilePicture *string    `db:"profile_picture"`
 	Name           string     `db:"name"`
 	ABN            *string    `db:"abn"`
@@ -54,7 +54,7 @@ type FinancialSettings struct {
 
 // Request models
 type RqCreateClinic struct {
-	PracticeID        string               `json:"practice_id" validate:"required"`
+	PractitionerID    string               `json:"practitioner_id" validate:"required"`
 	ProfilePicture    *string              `json:"profile_picture"`
 	Name              string               `json:"name" validate:"required"`
 	ABN               *string              `json:"abn" validate:"omitempty,len=11"`
@@ -88,7 +88,7 @@ type RqFinancialSettings struct {
 // Response models
 type RsClinic struct {
 	ID                uuid.UUID            `json:"id"`
-	PracticeID        string               `json:"practice_id"`
+	PractitionerID    string               `json:"practitioner_id"`
 	ProfilePicture    *string              `json:"profile_picture,omitempty"`
 	Name              string               `json:"name"`
 	ABN               *string              `json:"abn,omitempty"`
