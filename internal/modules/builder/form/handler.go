@@ -1,6 +1,7 @@
 package form
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,9 @@ type IHandler interface {
 	Sync(c *gin.Context)
 	CreateFormWithFields(c *gin.Context)
 	UpdateFormWithFields(c *gin.Context)
+	GetFormWithFields(c *gin.Context)
+	List(c *gin.Context)
+	Delete(c *gin.Context)
 }
 
 type handler struct {
@@ -24,10 +28,6 @@ func NewHandler(svc IService) IHandler {
 }
 
 func (h *handler) Sync(c *gin.Context) {
-	versionID, ok := util.ParseUuidID(c, "version_id")
-	if !ok {
-		return
-	}
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
@@ -37,7 +37,7 @@ func (h *handler) Sync(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	result, err := h.svc.BulkSyncFields(c.Request.Context(), versionID, practitionerID, &req)
+	result, err := h.svc.BulkSyncFields(c.Request.Context(), practitionerID, &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -93,4 +93,64 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, gin.H{"form": form, "fields_sync": syncResult})
+}
+
+func (h *handler) GetFormWithFields(c *gin.Context) {
+	formID, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
+	out, err := h.svc.GetFormWithFields(c.Request.Context(), formID, clinicID)
+	if err != nil {
+		if errors.Is(err, detail.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, out)
+}
+
+func (h *handler) List(c *gin.Context) {
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
+	filter := detail.Filter{ClinicID: clinicID}
+	if err := c.ShouldBindQuery(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	filter.ClinicID = clinicID
+	list, err := h.svc.List(c.Request.Context(), filter)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, list)
+}
+
+func (h *handler) Delete(c *gin.Context) {
+	formID, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+	clinicID, ok := util.GetClinicID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), formID, clinicID); err != nil {
+		if errors.Is(err, detail.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusNoContent, nil)
 }

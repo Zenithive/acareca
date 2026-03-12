@@ -2,6 +2,7 @@ package form
 
 import (
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 )
 
@@ -48,4 +49,10 @@ type RqUpdateFormWithFields struct {
 	ClinicShare *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
 	ClinicID    uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
 	Fields      []field.RqUpdateFormField `json:"fields" validate:"omitempty,dive"`
+}
+
+type RsFormWithFields struct {
+	Form            detail.RsFormDetail `json:"form"`
+	ActiveVersionID uuid.UUID           `json:"active_version_id"`
+	Fields          []field.RsFormField `json:"fields"`
 }

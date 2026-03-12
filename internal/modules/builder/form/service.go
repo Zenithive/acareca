@@ -13,9 +13,12 @@ import (
 )
 
 type IService interface {
-	BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error)
+	BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error)
 	CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	UpdateWithFields(ctx context.Context, d *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
+	GetFormWithFields(ctx context.Context, formID, clinicID uuid.UUID) (*RsFormWithFields, error)
+	List(ctx context.Context, filter detail.Filter) ([]*detail.RsFormDetail, error)
+	Delete(ctx context.Context, formID, clinicID uuid.UUID) error
 }
 
 type service struct {
@@ -30,9 +33,23 @@ func NewService(detailSvc detail.IService, versionSvc version.IService, fieldSvc
 	return &service{detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc}
 }
 
-func (s *service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error) {
+func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error) {
+	versions, err := s.versionSvc.List(ctx, req.ClinicID, req.ClinicID)
+	if err != nil {
+		return nil, err
+	}
+	var activeVersionID uuid.UUID
+	for _, v := range versions {
+		if v.IsActive {
+			activeVersionID = v.Id
+			break
+		}
+	}
+	if activeVersionID == uuid.Nil {
+		return nil, errors.New("no active version found")
+	}
 	if s.detailSvc != nil && s.versionSvc != nil {
-		status, err := s.versionSvc.GetByID(ctx, formVersionID)
+		status, err := s.versionSvc.GetByID(ctx, activeVersionID)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +69,7 @@ func (s *service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 		if err != nil {
 			return nil, err
 		}
-		if existing.FormVersionID != formVersionID {
+		if existing.FormVersionID != activeVersionID {
 			return nil, errors.New("field is not in the correct version")
 		}
 		if s.entryRepo != nil {
@@ -75,7 +92,7 @@ func (s *service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 		if err != nil {
 			return nil, err
 		}
-		if existing.FormVersionID != formVersionID {
+		if existing.FormVersionID != activeVersionID {
 			return nil, errors.New("field is not in the correct version")
 		}
 		if item.CoaID != nil {
@@ -131,7 +148,7 @@ func (s *service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 			}
 			return nil, err
 		}
-		created, err := s.fieldSvc.Create(ctx, formVersionID, req.ClinicID, practitionerID, &field.RqFormField{
+		created, err := s.fieldSvc.Create(ctx, activeVersionID, req.ClinicID, practitionerID, &field.RqFormField{
 			CoaID:                 item.CoaID,
 			Label:                 item.Label,
 			SectionType:           item.SectionType,
@@ -196,7 +213,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		}
 		createList = append(createList, r)
 	}
-	bulk, err := s.BulkSyncFields(ctx, activeVersionID, practitionerID, &RqBulkSyncFields{
+	bulk, err := s.BulkSyncFields(ctx, practitionerID, &RqBulkSyncFields{
 		ClinicID: d.ClinicID,
 		Create:   createList,
 		Update:   nil,
@@ -298,7 +315,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			deleteList = append(deleteList, id)
 		}
 	}
-	bulk, err := s.BulkSyncFields(ctx, activeVersionID, practitionerID, &RqBulkSyncFields{
+	bulk, err := s.BulkSyncFields(ctx, practitionerID, &RqBulkSyncFields{
 		ClinicID: req.ClinicID,
 		Create:   createList,
 		Update:   updateList,
@@ -312,4 +329,55 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	syncResult.DeletedCount = len(bulk.Deleted)
 	syncResult.DeletedIDs = bulk.Deleted
 	return updated, syncResult, nil
+}
+
+func (s *service) GetFormWithFields(ctx context.Context, formID, clinicID uuid.UUID) (*RsFormWithFields, error) {
+	formDetail, err := s.detailSvc.GetByID(ctx, formID)
+	if err != nil {
+		return nil, err
+	}
+	if formDetail.ClinicID != clinicID {
+		return nil, detail.ErrNotFound
+	}
+	out := &RsFormWithFields{
+		Form:   *formDetail,
+		Fields: []field.RsFormField{},
+	}
+	versions, err := s.versionSvc.List(ctx, formDetail.ID, clinicID)
+	if err != nil {
+		return nil, err
+	}
+	var activeVersionID uuid.UUID
+	for _, v := range versions {
+		if v.IsActive {
+			activeVersionID = v.Id
+			break
+		}
+	}
+	if activeVersionID != uuid.Nil {
+		out.ActiveVersionID = activeVersionID
+		fields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range fields {
+			out.Fields = append(out.Fields, *f)
+		}
+	}
+	return out, nil
+}
+
+func (s *service) List(ctx context.Context, filter detail.Filter) ([]*detail.RsFormDetail, error) {
+	return s.detailSvc.ListForm(ctx, filter)
+}
+
+func (s *service) Delete(ctx context.Context, formID, clinicID uuid.UUID) error {
+	formDetail, err := s.detailSvc.GetByID(ctx, formID)
+	if err != nil {
+		return err
+	}
+	if formDetail.ClinicID != clinicID {
+		return detail.ErrNotFound
+	}
+	return s.detailSvc.Delete(ctx, formID)
 }

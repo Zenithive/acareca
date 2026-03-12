@@ -81,7 +81,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)
 
-	formGroup := clinicGroup.Group("/:clinic_id/form")
+	formGroup := v1.Group("/form")
 	// formGroup.Use(middleware.Auth(cfg))
 
 	detailRepo := detail.NewRepository(dbConn)
