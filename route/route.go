@@ -16,6 +16,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
@@ -80,6 +81,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	coaSvc := coa.NewService(coaRepo)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler)
+	fyRepo := fy.NewRepository(dbConn)
+	fySvc := fy.NewService(fyRepo, dbConn)
+	fyHandler := fy.NewHandler(fySvc)
+	fy.RegisterRoutes(v1, fyHandler)
 
 	formGroup := v1.Group("/form")
 	formGroup.Use(middleware.Auth(cfg))

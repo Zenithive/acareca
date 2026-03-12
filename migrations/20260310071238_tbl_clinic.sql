@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS tbl_clinic (
     id              UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(), 
-    practice_id     VARCHAR(40) NOT NULL, 
+    practitioner_id VARCHAR(40) NOT NULL, 
     profile_picture TEXT, 
     name            TEXT NOT NULL, 
     abn             VARCHAR(11), 

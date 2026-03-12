@@ -43,7 +43,7 @@ func (a *AccountType) ToRs() AccountType {
 
 type ChartOfAccount struct {
 	ID            uuid.UUID  `db:"id"`
-	Practice_id   uuid.UUID  `db:"practice_id"`
+	PractitionerID uuid.UUID  `db:"practitioner_id"`
 	AccountTypeID int16      `db:"account_type_id"`
 	AccountTaxID  int16      `db:"account_tax_id"`
 	Code          int16      `db:"code"`
@@ -56,7 +56,7 @@ type ChartOfAccount struct {
 
 type RsChartOfAccount struct {
 	ID            uuid.UUID `json:"id"`
-	Practice_id   uuid.UUID `json:"practice_id"`
+	PractitionerID uuid.UUID `json:"practitioner_id"`
 	AccountTypeID int16     `json:"account_type_id"`
 	AccountTaxID  int16     `json:"account_tax_id"`
 	Code          int16     `json:"code"`
@@ -69,7 +69,7 @@ type RsChartOfAccount struct {
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 	return RsChartOfAccount{
 		ID:            c.ID,
-		Practice_id:   c.Practice_id,
+		PractitionerID: c.PractitionerID,
 		AccountTypeID: c.AccountTypeID,
 		AccountTaxID:  c.AccountTaxID,
 		Code:          c.Code,
@@ -81,7 +81,7 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 }
 
 type RqCreateChartOfAccountOfAccount struct {
-	Practice_id   string `json:"practice_id" validate:"omitempty,uuid"` // optional; use path practice_idId when present
+	PractitionerID string `json:"practitioner_id" validate:"omitempty,uuid"` // optional; from path when present
 	AccountTypeID int16  `json:"account_type_id" validate:"required,min=1"`
 	AccountTaxID  int16  `json:"account_tax_id" validate:"required,min=1"`
 	Code          int16  `json:"code" validate:"required,gte=100,lte=9999"`
