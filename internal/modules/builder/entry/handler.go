@@ -32,17 +32,13 @@ func (h *handler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
-	clinicID, ok := util.GetClinicID(c)
-	if !ok {
-		return
-	}
 	var req RqFormEntry
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 	var submittedBy *uuid.UUID
-	created, err := h.svc.Create(c.Request.Context(), versionID, clinicID, &req, submittedBy)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, submittedBy)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -74,17 +70,14 @@ func (h *handler) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
-	clinicID, ok := util.GetClinicID(c)
-	if !ok {
-		return
-	}
+
 	var req RqUpdateFormEntry
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 	var submittedBy *uuid.UUID
-	updated, err := h.svc.Update(c.Request.Context(), id, clinicID, &req, submittedBy)
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, submittedBy)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -119,11 +112,14 @@ func (h *handler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	clinicID, ok := util.GetClinicID(c)
-	if !ok {
+
+	var filter Filter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	list, err := h.svc.List(c.Request.Context(), versionID, &clinicID)
+
+	list, err := h.svc.List(c.Request.Context(), versionID, filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
