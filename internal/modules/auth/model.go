@@ -1,9 +1,13 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type User struct {
-	ID           string     `db:"id"`
+	ID           uuid.UUID  `db:"id"`
 	Email        string     `db:"email"`
 	Password     *string    `db:"password"`
 	FirstName    string     `db:"first_name"`
@@ -16,8 +20,8 @@ type User struct {
 }
 
 type AuthProvider struct {
-	ID             string     `db:"id"`
-	UserID         string     `db:"user_id"`
+	ID             uuid.UUID  `db:"id"`
+	UserID         uuid.UUID  `db:"user_id"`
 	Provider       string     `db:"provider"`
 	AccessToken    *string    `db:"access_token"`
 	RefreshToken   *string    `db:"refresh_token"`
@@ -28,8 +32,8 @@ type AuthProvider struct {
 }
 
 type Session struct {
-	ID           string     `db:"id"`
-	UserID       string     `db:"user_id"`
+	ID           uuid.UUID  `db:"id"`
+	UserID       uuid.UUID  `db:"user_id"`
 	RefreshToken string     `db:"refresh_token"`
 	UserAgent    *string    `db:"user_agent"`
 	IPAddress    *string    `db:"ip_address"`
@@ -73,7 +77,7 @@ type RsToken struct {
 }
 
 type RsUser struct {
-	ID           string    `json:"id"`
+	ID           uuid.UUID `json:"id"`
 	Email        string    `json:"email"`
 	FirstName    string    `json:"first_name"`
 	LastName     string    `json:"last_name"`
@@ -100,7 +104,6 @@ type RsGoogleAuthURL struct {
 	URL string `json:"url"`
 }
 
-// GoogleUserInfo is the response from the Google userinfo endpoint.
 type GoogleUserInfo struct {
 	ID        string `json:"id"`
 	Email     string `json:"email"`

@@ -14,6 +14,7 @@ var ErrNotFound = errors.New("subscription not found")
 type Repository interface {
 	Create(ctx context.Context, s *Subscription) (*Subscription, error)
 	GetByID(ctx context.Context, id int) (*Subscription, error)
+	FindByName(ctx context.Context, name string) (*Subscription, error)
 	List(ctx context.Context) ([]*Subscription, error)
 	Update(ctx context.Context, s *Subscription) (*Subscription, error)
 	Delete(ctx context.Context, id int) error
@@ -54,6 +55,22 @@ func (r *repository) GetByID(ctx context.Context, id int) (*Subscription, error)
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get subscription: %w", err)
+	}
+	return &s, nil
+}
+
+func (r *repository) FindByName(ctx context.Context, name string) (*Subscription, error) {
+	query := `
+		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
+		FROM tbl_subscription
+		WHERE name = $1 AND deleted_at IS NULL
+	`
+	var s Subscription
+	if err := r.db.QueryRowxContext(ctx, query, name).StructScan(&s); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("find subscription by name: %w", err)
 	}
 	return &s, nil
 }

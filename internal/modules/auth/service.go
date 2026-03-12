@@ -8,6 +8,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -23,6 +25,8 @@ var (
 	ErrOAuthOnly       = errors.New("account uses Google sign-in; password login is not available")
 )
 
+type OnUserCreated func(ctx context.Context, userID string) error
+
 type Service interface {
 	Register(ctx context.Context, req *RqUser) (*RsUser, error)
 	Login(ctx context.Context, req *RqLogin) (*RsToken, error)
@@ -31,12 +35,13 @@ type Service interface {
 }
 
 type service struct {
-	repo        Repository
-	cfg         *config.Config
-	oauthConfig *oauth2.Config
+	repo            Repository
+	cfg             *config.Config
+	oauthConfig     *oauth2.Config
+	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, cfg *config.Config) Service {
+func NewService(repo Repository, cfg *config.Config, practitionerSvc practitioner.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -47,7 +52,7 @@ func NewService(repo Repository, cfg *config.Config) Service {
 		},
 		Endpoint: google.Endpoint,
 	}
-	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg}
+	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, practitionerSvc: practitionerSvc}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -61,12 +66,15 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	}
 
 	u := req.ToDBModel()
-	u.ID = util.NewUUID()
 	u.Password = &hashedPassword
 
 	created, err := s.repo.CreateUser(ctx, u)
 	if err != nil {
 		return nil, err
+	}
+	_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()})
+	if err != nil {
+		return nil, fmt.Errorf("create practitioner: %w", err)
 	}
 
 	return created.ToRsUser(), nil
@@ -92,7 +100,12 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		}
 	}
 
-	return s.issueTokens(ctx, user)
+	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, user, practitionerID.ID.String())
 }
 
 func (s *service) GoogleAuthURL(state string) *RsGoogleAuthURL {
@@ -112,12 +125,12 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	}
 
 	user, err := s.repo.FindByEmail(ctx, googleUser.Email)
+	isNewUser := false
 	if err != nil {
 		if !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
 		user, err = s.repo.CreateUser(ctx, &User{
-			ID:        util.NewUUID(),
 			Email:     googleUser.Email,
 			FirstName: googleUser.FirstName,
 			LastName:  googleUser.LastName,
@@ -125,6 +138,7 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		if err != nil {
 			return nil, err
 		}
+		isNewUser = true
 	}
 
 	expiresAt := oauthToken.Expiry
@@ -132,7 +146,6 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	refreshTokenStr := oauthToken.RefreshToken
 
 	ap := &AuthProvider{
-		ID:             util.NewUUID(),
 		UserID:         user.ID,
 		Provider:       providerGoogle,
 		AccessToken:    &accessTokenStr,
@@ -146,7 +159,19 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		return nil, err
 	}
 
-	return s.issueTokens(ctx, user)
+	if isNewUser {
+		_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, user, practitionerID.ID.String())
 }
 
 func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*GoogleUserInfo, error) {
@@ -169,13 +194,13 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) issueTokens(ctx context.Context, user *User) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID, 15*time.Minute, s.cfg.JWTSecret)
+func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
+	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Minute, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +209,7 @@ func (s *service) issueTokens(ctx context.Context, user *User) (*RsToken, error)
 	ip := middleware.IPFromCtx(ctx)
 
 	sess := &Session{
-		ID:           util.NewUUID(),
+		ID:           uuid.New(),
 		UserID:       user.ID,
 		RefreshToken: refreshToken,
 		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),

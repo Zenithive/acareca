@@ -1,9 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS tbl_auth_provider (
-    id                VARCHAR(40) PRIMARY KEY,
+    id                UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
 
-    user_id           VARCHAR(40) NOT NULL REFERENCES tbl_user(id),
+    user_id           UUID NOT NULL REFERENCES tbl_user(id),
 
     provider          VARCHAR(50) NOT NULL,
 

@@ -30,10 +30,22 @@ func main() {
 	}
 	log.Println("migrations applied successfully")
 
+	// Set Gin mode; prefer env GIN_MODE over hardcoded
+	// ginMode := os.Getenv("GIN_MODE")
+	// if ginMode == "" {
+	// 	ginMode = gin.ReleaseMode
+	// }
+	// gin.SetMode(ginMode)
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
-	gin.SetMode(gin.ReleaseMode)
+
+	if gin.Mode() != gin.ReleaseMode {
+		log.Printf("[GIN-debug] [WARNING] Running in %q mode. Switch to \"release\" mode in production.\n", gin.Mode())
+		log.Print(" - using env:   export GIN_MODE=release\n")
+		log.Print(" - using code:  gin.SetMode(gin.ReleaseMode)\n\n")
+	}
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

@@ -11,6 +11,7 @@ type Service interface {
 	ListSubscriptions(ctx context.Context) ([]*RsSubscription, error)
 	UpdateSubscription(ctx context.Context, id int, req *RqUpdateSubscription) (*RsSubscription, error)
 	DeleteSubscription(ctx context.Context, id int) error
+	FindByName(ctx context.Context, name string) (*RsSubscription, error)
 }
 
 type service struct {
@@ -84,4 +85,12 @@ func applyUpdate(s *Subscription, req *RqUpdateSubscription) {
 
 func (s *service) DeleteSubscription(ctx context.Context, id int) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *service) FindByName(ctx context.Context, name string) (*RsSubscription, error) {
+	sub, err := s.repo.FindByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return sub.ToRs(), nil
 }

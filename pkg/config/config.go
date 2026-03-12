@@ -20,7 +20,7 @@ type Config struct {
 
 func getEnv(key, fallback string) string {
 	val, ok := os.LookupEnv(key)
-	if !ok {
+	if !ok || val == "" {
 		return fallback
 	}
 	return val
@@ -43,57 +43,57 @@ func NewConfig() *Config {
 }
 
 func (c *Config) GetDBHost() string {
-	if c.DBHost == "" {
-		return os.Getenv("DB_HOST")
+	if val := os.Getenv("DB_HOST"); val != "" {
+		return val
 	}
 	return c.DBHost
 }
 
 func (c *Config) GetDBPort() string {
-	if c.DBPort == "" {
-		return os.Getenv("DB_PORT")
+	if val := os.Getenv("DB_PORT"); val != "" {
+		return val
 	}
 	return c.DBPort
 }
 
 func (c *Config) GetDBUser() string {
-	if c.DBUser == "" {
-		return os.Getenv("DB_USER")
+	if val := os.Getenv("DB_USER"); val != "" {
+		return val
 	}
 	return c.DBUser
 }
 
 func (c *Config) GetDBPassword() string {
-	if c.DBPassword == "" {
-		return os.Getenv("DB_PASSWORD")
+	if val := os.Getenv("DB_PASSWORD"); val != "" {
+		return val
 	}
 	return c.DBPassword
 }
 
 func (c *Config) GetDBName() string {
-	if c.DBName == "" {
-		return os.Getenv("DB_NAME")
+	if val := os.Getenv("DB_NAME"); val != "" {
+		return val
 	}
 	return c.DBName
 }
 
 func (c *Config) GetDBSSLMode() string {
-	if c.DBSSLMode == "" {
-		return os.Getenv("DB_SSLMODE")
+	if val := os.Getenv("DB_SSLMODE"); val != "" {
+		return val
 	}
 	return c.DBSSLMode
 }
 
 func (c *Config) GetServerPort() string {
-	if c.ServerPort == "" {
-		return os.Getenv("SERVER_PORT")
+	if val := os.Getenv("SERVER_PORT"); val != "" {
+		return val
 	}
 	return c.ServerPort
 }
 
 func (c *Config) GetJWTSecret() string {
-	if c.JWTSecret == "" {
-		return os.Getenv("JWT_SECRET")
+	if val := os.Getenv("JWT_SECRET"); val != "" {
+		return val
 	}
 	return c.JWTSecret
 }
