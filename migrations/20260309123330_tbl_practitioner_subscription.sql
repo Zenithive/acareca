@@ -1,6 +1,5 @@
 -- +goose Up
 -- +goose StatementBegin
-DROP TYPE IF EXISTS practitioner_subscription_status;
 CREATE TYPE practitioner_subscription_status AS ENUM ('ACTIVE', 'PAST_DUE', 'CANCELLED', 'PAUSED', 'EXPIRED');
 
 CREATE TABLE IF NOT EXISTS tbl_practitioner_subscription (
