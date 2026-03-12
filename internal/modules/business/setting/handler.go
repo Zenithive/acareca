@@ -28,27 +28,6 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-<<<<<<< HEAD:internal/modules/practitioner/setting/handler.go
-func parsePractitionerID(c *gin.Context) (uuid.UUID, bool) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner id"))
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-// @Summary Create a new practitioner
-// @Description create a new practitioner
-// @Tags practitioner
-// @Accept json
-// @Produce json
-// @Success 200 {object} RsPractitioner
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /practitioner [post]
-=======
->>>>>>> stagging:internal/modules/business/setting/handler.go
 func (h *handler) CreatePractitioner(c *gin.Context) {
 	var req RqCreatePractitioner
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -190,7 +169,7 @@ func (h *handler) DeletePractitioner(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-		response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"})
+	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"})
 }
 
 // @Summary Get a setting by practitioner ID

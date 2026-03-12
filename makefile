@@ -12,3 +12,6 @@ postman: docs/swagger.json
 
 docs/swagger.json: swagger
 	@:
+
+vet:
+	go vet ./...
