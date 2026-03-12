@@ -45,11 +45,12 @@ func BindAndValidate(c *gin.Context, v any) error {
 	return nil
 }
 
-func SignToken(userID string, ttl time.Duration, jwtSecret string) (string, error) {
+func SignToken(userID string, practitionerID string, ttl time.Duration, jwtSecret string) (string, error) {
 	claims := jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(ttl).Unix(),
-		"iat": time.Now().Unix(),
+		"sub":  userID,
+		"prac": practitionerID,
+		"exp":  time.Now().Add(ttl).Unix(),
+		"iat":  time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(jwtSecret))

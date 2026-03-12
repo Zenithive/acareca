@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -36,9 +37,12 @@ func (r *repository) Create(ctx context.Context, v *FormVersion) error {
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING created_at, updated_at
 	`
-	if err := r.db.QueryRowContext(ctx, query,
-		v.ID, v.FormId, v.Version, v.IsActive, v.CreatedBy,
-	).Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
+	err := util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		return tx.QueryRowxContext(ctx, query,
+			v.ID, v.FormId, v.Version, v.IsActive, v.CreatedBy,
+		).StructScan(&v)
+	})
+	if err != nil {
 		return fmt.Errorf("create form version: %w", err)
 	}
 	return nil

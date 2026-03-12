@@ -93,7 +93,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	formDetailGroup := clinicGroup.Group("/:id")
 	formGroup := formDetailGroup.Group("/form")
-	formGroup.Use(middleware.Auth(cfg))
+	// formGroup.Use(middleware.Auth(cfg))
 	formdetail.RegisterRoutes(formGroup, formDetailHandler)
 
 	formVersionHandler := formversion.NewHandler(formVersionSvc)

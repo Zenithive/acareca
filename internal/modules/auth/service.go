@@ -99,7 +99,12 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		}
 	}
 
-	return s.issueTokens(ctx, user)
+	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, user, practitionerID.ID.String())
 }
 
 func (s *service) GoogleAuthURL(state string) *RsGoogleAuthURL {
@@ -159,7 +164,13 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 			return nil, err
 		}
 	}
-	return s.issueTokens(ctx, user)
+
+	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return s.issueTokens(ctx, user, practitionerID.ID.String())
 }
 
 func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*GoogleUserInfo, error) {
@@ -182,13 +193,13 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) issueTokens(ctx context.Context, user *User) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), 15*time.Minute, s.cfg.JWTSecret)
+func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
+	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Minute, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

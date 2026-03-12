@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -37,9 +38,12 @@ func (r *repository) Create(ctx context.Context, s *PractitionerSubscription) (*
 	`
 	now := time.Now()
 	var out PractitionerSubscription
-	if err := r.db.QueryRowxContext(ctx, query,
-		s.PractitionerID, s.SubscriptionID, s.StartDate, s.EndDate, string(s.Status), now, now,
-	).StructScan(&out); err != nil {
+	err := util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		return tx.QueryRowxContext(ctx, query,
+			s.PractitionerID, s.SubscriptionID, s.StartDate, s.EndDate, string(s.Status), now, now,
+		).StructScan(&out)
+	})
+	if err != nil {
 		return nil, fmt.Errorf("create practitioner subscription: %w", err)
 	}
 	return &out, nil

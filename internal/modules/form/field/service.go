@@ -8,6 +8,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	formpkg "github.com/iamarpitzala/acareca/internal/modules/form"
 	"github.com/iamarpitzala/acareca/internal/modules/form/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/form/entry"
 	"github.com/iamarpitzala/acareca/internal/modules/form/version"
@@ -21,12 +22,6 @@ type IService interface {
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error)
 	BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error)
 }
-
-var ErrCoaNotFound = errors.New("chart of account not found or does not belong to this practice")
-var ErrFieldWrongVersion = errors.New("field does not belong to this form version")
-var ErrFieldHasSubmittedEntries = errors.New("cannot delete field: it has submitted entry values")
-var ErrFormNotDraft = errors.New("only forms in DRAFT status can be edited; publish or archive prevents field changes")
-var ErrTooManyFields = errors.New("max fields per form version exceeded")
 
 // MaxFieldsPerVersion is the maximum number of fields allowed per form version.
 const MaxFieldsPerVersion = 200
@@ -73,7 +68,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, practitio
 			return nil, err
 		}
 		if status != detail.StatusDraft {
-			return nil, ErrFormNotDraft
+			return nil, formpkg.ErrFormNotDraftForFields
 		}
 	}
 	current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
@@ -81,7 +76,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, practitio
 		return nil, err
 	}
 	if len(current)+1 > MaxFieldsPerVersion {
-		return nil, ErrTooManyFields
+		return nil, formpkg.ErrTooManyFields
 	}
 	coaID, err := uuid.Parse(req.CoaID)
 	if err != nil {
@@ -89,7 +84,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, practitio
 	}
 	if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
 		if errors.Is(err, coa.ErrNotFound) {
-			return nil, ErrCoaNotFound
+			return nil, formpkg.ErrCoaNotFound
 		}
 		return nil, err
 	}
@@ -121,7 +116,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormFie
 			return nil, err
 		}
 		if status != detail.StatusDraft {
-			return nil, ErrFormNotDraft
+			return nil, formpkg.ErrFormNotDraftForFields
 		}
 	}
 	v, err := s.versionSvc.GetByID(ctx, existing.FormVersionID)
@@ -147,7 +142,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormFie
 		}
 		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practiceID); err != nil {
 			if errors.Is(err, coa.ErrNotFound) {
-				return nil, ErrCoaNotFound
+				return nil, formpkg.ErrCoaNotFound
 			}
 			return nil, err
 		}
@@ -187,7 +182,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 		if status != detail.StatusDraft {
-			return ErrFormNotDraft
+			return formpkg.ErrFormNotDraftForFields
 		}
 	}
 	if s.entryRepo != nil {
@@ -196,7 +191,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 		if has {
-			return ErrFieldHasSubmittedEntries
+			return formpkg.ErrFieldHasSubmittedEntries
 		}
 	}
 	return s.repo.Delete(ctx, id)
@@ -215,8 +210,6 @@ func (s *Service) ListByFormVersionID(ctx context.Context, formVersionID uuid.UU
 	return rs, nil
 }
 
-// BulkSyncFields implements [IService]. Runs delete → update → create in one transaction (repo uses util.RunInTransaction).
-// Rejects if total fields after sync would exceed MaxFieldsPerVersion. Delete policy: reject delete when field has SUBMITTED entry values (hard delete only when no submitted data).
 func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error) {
 	if s.detailSvc != nil && s.versionSvc != nil {
 		status, err := s.formStatusByVersionID(ctx, formVersionID)
@@ -224,7 +217,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 			return nil, err
 		}
 		if status != detail.StatusDraft {
-			return nil, ErrFormNotDraft
+			return nil, formpkg.ErrFormNotDraftForFields
 		}
 	}
 	current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
@@ -233,7 +226,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 	}
 	afterCount := len(current) - len(req.Delete) + len(req.Create)
 	if afterCount > MaxFieldsPerVersion {
-		return nil, ErrTooManyFields
+		return nil, formpkg.ErrTooManyFields
 	}
 	out := &RsBulkSyncFields{
 		Created: make([]RsFormField, 0, len(req.Create)),
@@ -248,7 +241,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 				return err
 			}
 			if existing.FormVersionID != formVersionID {
-				return ErrFieldWrongVersion
+				return formpkg.ErrFieldWrongVersion
 			}
 			if s.entryRepo != nil {
 				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
@@ -256,7 +249,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 					return err
 				}
 				if has {
-					return ErrFieldHasSubmittedEntries
+					return formpkg.ErrFieldHasSubmittedEntries
 				}
 			}
 			if err := r.Delete(ctx, id); err != nil {
@@ -271,7 +264,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 				return err
 			}
 			if existing.FormVersionID != formVersionID {
-				return ErrFieldWrongVersion
+				return formpkg.ErrFieldWrongVersion
 			}
 			if item.CoaID != nil {
 				coaID, err := uuid.Parse(*item.CoaID)
@@ -280,7 +273,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 				}
 				if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
 					if errors.Is(err, coa.ErrNotFound) {
-						return ErrCoaNotFound
+						return formpkg.ErrCoaNotFound
 					}
 					return err
 				}
@@ -315,7 +308,7 @@ func (s *Service) BulkSyncFields(ctx context.Context, formVersionID uuid.UUID, p
 			}
 			if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
 				if errors.Is(err, coa.ErrNotFound) {
-					return ErrCoaNotFound
+					return formpkg.ErrCoaNotFound
 				}
 				return err
 			}

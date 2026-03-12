@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	formpkg "github.com/iamarpitzala/acareca/internal/modules/form"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -28,7 +29,7 @@ type IHandler interface {
 }
 
 type handler struct {
-	svc IService
+	svc  IService
 	orch FormWithFieldsOrchestrator
 }
 
@@ -86,6 +87,14 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		if errors.Is(err, formpkg.ErrCoaNotFound) || errors.Is(err, formpkg.ErrTooManyFields) || errors.Is(err, formpkg.ErrFieldWrongVersion) {
+			response.Error(c, http.StatusBadRequest, err)
+			return
+		}
+		if errors.Is(err, formpkg.ErrFormNotDraftForFields) || errors.Is(err, formpkg.ErrFieldHasSubmittedEntries) {
+			response.Error(c, http.StatusConflict, err)
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, err)
@@ -209,11 +218,14 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
-		if errors.Is(err, ErrFormArchived) || errors.Is(err, ErrFormPublishedRestricted) || errors.Is(err, ErrFormNotDraftForFields) {
+		if errors.Is(err, ErrFormArchived) || errors.Is(err, ErrFormPublishedRestricted) || errors.Is(err, ErrFormNotDraftForFields) || errors.Is(err, formpkg.ErrFormNotDraftForFields) || errors.Is(err, formpkg.ErrFieldHasSubmittedEntries) {
 			response.Error(c, http.StatusConflict, err)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, err)
+		if errors.Is(err, formpkg.ErrCoaNotFound) || errors.Is(err, formpkg.ErrTooManyFields) || errors.Is(err, formpkg.ErrFieldWrongVersion) {
+			response.Error(c, http.StatusBadRequest, err)
+			return
+		}
 		return
 	}
 	response.JSON(c, http.StatusOK, gin.H{"form": form, "fields_sync": syncResult})

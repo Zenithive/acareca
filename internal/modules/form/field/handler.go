@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/iamarpitzala/acareca/internal/modules/form"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -43,11 +44,11 @@ func (h *handler) Create(c *gin.Context) {
 	}
 	created, err := h.svc.Create(c.Request.Context(), versionID, practitionerID, &req)
 	if err != nil {
-		if errors.Is(err, ErrCoaNotFound) || errors.Is(err, ErrTooManyFields) {
+		if errors.Is(err, form.ErrCoaNotFound) || errors.Is(err, form.ErrTooManyFields) {
 			response.Error(c, http.StatusBadRequest, err)
 			return
 		}
-		if errors.Is(err, ErrFormNotDraft) {
+		if errors.Is(err, form.ErrFormNotDraftForFields) {
 			response.Error(c, http.StatusConflict, err)
 			return
 		}
@@ -93,11 +94,11 @@ func (h *handler) Update(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
-		if errors.Is(err, ErrCoaNotFound) {
+		if errors.Is(err, form.ErrCoaNotFound) {
 			response.Error(c, http.StatusBadRequest, err)
 			return
 		}
-		if errors.Is(err, ErrFormNotDraft) {
+		if errors.Is(err, form.ErrFormNotDraftForFields) {
 			response.Error(c, http.StatusConflict, err)
 			return
 		}
@@ -118,7 +119,7 @@ func (h *handler) Delete(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}
-		if errors.Is(err, ErrFieldHasSubmittedEntries) || errors.Is(err, ErrFormNotDraft) {
+		if errors.Is(err, form.ErrFieldHasSubmittedEntries) || errors.Is(err, form.ErrFormNotDraftForFields) {
 			response.Error(c, http.StatusConflict, err)
 			return
 		}
@@ -159,11 +160,11 @@ func (h *handler) Sync(c *gin.Context) {
 	}
 	result, err := h.svc.BulkSyncFields(c.Request.Context(), versionID, practitionerID, &req)
 	if err != nil {
-		if errors.Is(err, ErrCoaNotFound) || errors.Is(err, ErrFieldWrongVersion) || errors.Is(err, ErrTooManyFields) {
+		if errors.Is(err, form.ErrCoaNotFound) || errors.Is(err, form.ErrFieldWrongVersion) || errors.Is(err, form.ErrTooManyFields) {
 			response.Error(c, http.StatusBadRequest, err)
 			return
 		}
-		if errors.Is(err, ErrFieldHasSubmittedEntries) || errors.Is(err, ErrFormNotDraft) {
+		if errors.Is(err, form.ErrFieldHasSubmittedEntries) || errors.Is(err, form.ErrFormNotDraftForFields) {
 			response.Error(c, http.StatusConflict, err)
 			return
 		}
