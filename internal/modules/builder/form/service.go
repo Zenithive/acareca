@@ -185,7 +185,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	if err != nil {
 		return nil, nil, err
 	}
-	syncResult := &RsFormWithFieldsSyncResult{}
+	syncResult := &RsFormWithFieldsSyncResult{ClinicID: created.ClinicID}
 	if len(d.Fields) == 0 {
 		return created, syncResult, nil
 	}
@@ -228,6 +228,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	if err != nil {
 		return nil, nil, err
 	}
+	syncResult.ClinicID = created.ClinicID
 	syncResult.CreatedCount = len(bulk.Created)
 	syncResult.UpdatedCount = len(bulk.Updated)
 	syncResult.DeletedCount = len(bulk.Deleted)
@@ -240,7 +241,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if err != nil {
 		return nil, nil, err
 	}
-	syncResult := &RsFormWithFieldsSyncResult{}
+	syncResult := &RsFormWithFieldsSyncResult{ClinicID: existing.ClinicID}
 	updateReq := &detail.RqUpdateFormDetail{
 		ID:          req.ID,
 		Name:        req.Name,
