@@ -44,6 +44,11 @@ func BindAndValidate(c *gin.Context, v any) error {
 	if err := validate.Struct(v); err != nil {
 		return err
 	}
+
+	if err := c.ShouldBindQuery(v); err != nil {
+		return err
+	}
+
 	return nil
 }
 
