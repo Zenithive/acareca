@@ -56,7 +56,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 	var contacts []RsClinicContact
 	var addresses []RsClinicAddress
 
-	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		Created, err := s.repo.CreateClinic(ctx, clinic, tx)
 		if err != nil {
 			return fmt.Errorf("failed to create clinic: %w", err)
@@ -136,6 +136,9 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 		return nil
 
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &RsClinic{
 		ID:             created.ID,

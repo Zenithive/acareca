@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
 var ErrNotFound = errors.New("practitioner subscription not found")
 
 type Repository interface {
-	Create(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
+	Create(ctx context.Context, s *PractitionerSubscription, tx *sqlx.Tx) (*PractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*PractitionerSubscription, error)
 	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*PractitionerSubscription, error)
 	Update(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
@@ -30,7 +29,7 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) Create(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error) {
+func (r *repository) Create(ctx context.Context, s *PractitionerSubscription, tx *sqlx.Tx) (*PractitionerSubscription, error) {
 	query := `
 		INSERT INTO tbl_practitioner_subscription (practitioner_id, subscription_id, start_date, end_date, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -38,12 +37,10 @@ func (r *repository) Create(ctx context.Context, s *PractitionerSubscription) (*
 	`
 	now := time.Now()
 	var out PractitionerSubscription
-	err := util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		return tx.QueryRowxContext(ctx, query,
-			s.PractitionerID, s.SubscriptionID, s.StartDate, s.EndDate, string(s.Status), now, now,
-		).StructScan(&out)
-	})
-	if err != nil {
+
+	if err := tx.QueryRowxContext(ctx, query,
+		s.PractitionerID, s.SubscriptionID, s.StartDate, s.EndDate, string(s.Status), now, now,
+	).StructScan(&out); err != nil {
 		return nil, fmt.Errorf("create practitioner subscription: %w", err)
 	}
 	return &out, nil

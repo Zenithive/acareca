@@ -1,12 +1,14 @@
 package subscription
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type IHandler interface {
@@ -19,10 +21,11 @@ type IHandler interface {
 
 type handler struct {
 	svc Service
+	db  *sqlx.DB
 }
 
-func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc Service, db *sqlx.DB) IHandler {
+	return &handler{svc: svc, db: db}
 }
 
 // @Summary Get a subscription by ID
@@ -45,11 +48,20 @@ func (h *handler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	created, err := h.svc.Create(c.Request.Context(), practitionerID, &req)
+	var created *RsPractitionerSubscription
+	err := util.RunInTransaction(c, h.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		Created, err := h.svc.Create(c.Request.Context(), practitionerID, &req, tx)
+		if err != nil {
+			return err
+		}
+		created = Created
+		return nil
+	})
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
+
 	response.JSON(c, http.StatusCreated, created)
 }
 
