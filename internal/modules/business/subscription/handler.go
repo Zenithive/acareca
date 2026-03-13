@@ -25,6 +25,16 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// @Summary Get a subscription by ID
+// @Description get a subscription by ID
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/subscription/{id} [get]
+// @Param id path int true "Subscription ID"
 func (h *handler) Create(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -43,6 +53,16 @@ func (h *handler) Create(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created)
 }
 
+// @Summary List subscriptions by practitioner ID
+// @Description list subscriptions by practitioner ID
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/subscription [get]
+// @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) GetByID(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
@@ -60,6 +80,16 @@ func (h *handler) GetByID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, sub)
 }
 
+// @Summary List subscriptions by practitioner ID
+// @Description list subscriptions by practitioner ID
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/subscription [get]
+// @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) ListByPractitionerID(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -73,6 +103,17 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
+// @Summary Update a subscription
+// @Description update a subscription
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/subscription/{id} [put]
+// @Param id path int true "Subscription ID"
+// @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) Update(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
@@ -95,6 +136,17 @@ func (h *handler) Update(c *gin.Context) {
 	response.JSON(c, http.StatusOK, updated)
 }
 
+// @Summary Delete a subscription
+// @Description delete a subscription
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/subscription/{id} [delete]
+// @Param id path int true "Subscription ID"
+// @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) Delete(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
@@ -108,5 +160,5 @@ func (h *handler) Delete(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"})
+	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"})
 }

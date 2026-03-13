@@ -26,7 +26,17 @@ func NewHandler(svc IService) IHandler {
 	return &handler{svc: svc}
 }
 
-// Create implements [IHandler].
+// @Summary Create a new form entry
+// @Description Create a new entry for a specific form version
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param version_id path string true "Version ID"
+// @Param request body RqFormEntry true "Entry details"
+// @Success 201 {object} RsFormEntry
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /entry/version/{version_id} [post]
 func (h *handler) Create(c *gin.Context) {
 	versionID, ok := util.ParseUuidID(c, "version_id")
 	if !ok {
@@ -46,7 +56,16 @@ func (h *handler) Create(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created)
 }
 
-// Get implements [IHandler].
+// @Summary Get a form entry by ID
+// @Description Fetch details of a specific entry
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param id path string true "Entry ID"
+// @Success 200 {object} RsFormEntry
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /entry/{id} [get]
 func (h *handler) Get(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -64,7 +83,18 @@ func (h *handler) Get(c *gin.Context) {
 	response.JSON(c, http.StatusOK, e)
 }
 
-// Update implements [IHandler].
+// @Summary Update a form entry
+// @Description Update data for an existing entry
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param id path string true "Entry ID"
+// @Param request body RqUpdateFormEntry true "Updated details"
+// @Success 200 {object} RsFormEntry
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /entry/{id} [put]
 func (h *handler) Update(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -89,7 +119,16 @@ func (h *handler) Update(c *gin.Context) {
 	response.JSON(c, http.StatusOK, updated)
 }
 
-// Delete implements [IHandler].
+// @Summary Delete a form entry
+// @Description Remove an entry from the system
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param id path string true "Entry ID"
+// @Success 204 "No Content"
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /entry/{id} [delete]
 func (h *handler) Delete(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -106,7 +145,15 @@ func (h *handler) Delete(c *gin.Context) {
 	response.JSON(c, http.StatusNoContent, nil)
 }
 
-// List implements [IHandler].
+// @Summary List form entries
+// @Description List all entries for a specific version and clinic
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param version_id path string true "Version ID"
+// @Success 200 {array} RsFormEntry
+// @Failure 500 {object} response.RsError
+// @Router /entry/version/{version_id} [get]
 func (h *handler) List(c *gin.Context) {
 	versionID, ok := util.ParseUuidID(c, "version_id")
 	if !ok {

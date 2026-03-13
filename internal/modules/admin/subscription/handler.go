@@ -26,6 +26,15 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// @Summary Create a new subscription
+// @Description create a new subscription
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /admin/subscription [post]
 func (h *handler) CreateSubscription(c *gin.Context) {
 	var req RqCreateSubscription
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -40,6 +49,16 @@ func (h *handler) CreateSubscription(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created)
 }
 
+// @Summary Get a subscription
+// @Description get a subscription
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /admin/subscription/{id} [get]
+// @Param id path int true "Subscription ID"
 func (h *handler) GetSubscription(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -58,6 +77,14 @@ func (h *handler) GetSubscription(c *gin.Context) {
 	response.JSON(c, http.StatusOK, sub)
 }
 
+// @Summary List subscriptions
+// @Description list subscriptions
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 500 {object} response.RsError
+// @Router /admin/subscription [get]
 func (h *handler) ListSubscriptions(c *gin.Context) {
 	list, err := h.svc.ListSubscriptions(c.Request.Context())
 	if err != nil {
@@ -67,6 +94,16 @@ func (h *handler) ListSubscriptions(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
+// @Summary Update a subscription
+// @Description update a subscription
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /admin/subscription/{id} [put]
+// @Param id path int true "Subscription ID"
 func (h *handler) UpdateSubscription(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -90,6 +127,16 @@ func (h *handler) UpdateSubscription(c *gin.Context) {
 	response.JSON(c, http.StatusOK, updated)
 }
 
+// @Summary Delete a subscription
+// @Description delete a subscription
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /admin/subscription/{id} [delete]
+// @Param id path int true "Subscription ID"
 func (h *handler) DeleteSubscription(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -104,5 +151,5 @@ func (h *handler) DeleteSubscription(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"})
+	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"})
 }

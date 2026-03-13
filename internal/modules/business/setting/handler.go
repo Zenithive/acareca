@@ -42,6 +42,16 @@ func (h *handler) CreatePractitioner(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created)
 }
 
+// @Summary Get a practitioner by ID
+// @Description get a practitioner by ID
+// @Tags practitioner
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitioner
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/{id} [get]
+// @Param id path string true "Practitioner ID"
 func (h *handler) GetPractitioner(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -59,6 +69,16 @@ func (h *handler) GetPractitioner(c *gin.Context) {
 	response.JSON(c, http.StatusOK, t)
 }
 
+// @Summary Get a practitioner by user ID
+// @Description get a practitioner by user ID
+// @Tags practitioner
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitioner
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/user/{user_id} [get]
+// @Param user_id path string true "User ID"
 func (h *handler) GetPractitionerByUserID(c *gin.Context) {
 	userID := c.Param("user_id")
 	if userID == "" {
@@ -77,6 +97,14 @@ func (h *handler) GetPractitionerByUserID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, t)
 }
 
+// @Summary List practitioners
+// @Description list practitioners
+// @Tags practitioner
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitioner
+// @Failure 500 {object} response.RsError
+// @Router /practitioner [get]
 func (h *handler) ListPractitioners(c *gin.Context) {
 	list, err := h.svc.ListPractitioners(c.Request.Context())
 	if err != nil {
@@ -86,6 +114,16 @@ func (h *handler) ListPractitioners(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
+// @Summary Update a practitioner
+// @Description update a practitioner
+// @Tags practitioner
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitioner
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/{id} [put]
+// @Param id path string true "Practitioner ID"
 func (h *handler) UpdatePractitioner(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -108,6 +146,16 @@ func (h *handler) UpdatePractitioner(c *gin.Context) {
 	response.JSON(c, http.StatusOK, updated)
 }
 
+// @Summary Delete a practitioner
+// @Description delete a practitioner
+// @Tags practitioner
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/{id} [delete]
+// @Param id path string true "Practitioner ID"
 func (h *handler) DeletePractitioner(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -121,9 +169,19 @@ func (h *handler) DeletePractitioner(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"})
+	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"})
 }
 
+// @Summary Get a setting by practitioner ID
+// @Description get a setting by practitioner ID
+// @Tags setting
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitionerSetting
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/setting/{id} [get]
+// @Param id path string true "Practitioner ID"
 func (h *handler) GetSetting(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -141,6 +199,16 @@ func (h *handler) GetSetting(c *gin.Context) {
 	response.JSON(c, http.StatusOK, setting)
 }
 
+// @Summary Upsert a setting by practitioner ID
+// @Description upsert a setting by practitioner ID
+// @Tags setting
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitionerSetting
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /practitioner/setting/{id} [put]
+// @Param id path string true "Practitioner ID"
 func (h *handler) UpsertSetting(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {

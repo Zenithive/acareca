@@ -25,6 +25,16 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// @Summary Create a new financial year
+// @Tags fy
+// @Accept json
+// @Produce json
+// @Param request body RqCreateFY true "Financial Year Data"
+// @Success 201 {object} RsFinancialYear
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /fy [post]
 func (h *handler) CreateFY(c *gin.Context) {
 	var req RqCreateFY
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -49,6 +59,17 @@ func (h *handler) CreateFY(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, fy)
 }
 
+// @Summary Update the label of a financial year
+// @Tags fy
+// @Accept json
+// @Produce json
+// @Param financial_year_id path string true "Financial Year UUID"
+// @Param request body RqUpdateFYLabel true "Updated Label Data"
+// @Success 200 {object} RsFinancialYear
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /fy/{financial_year_id}/label [put]
 func (h *handler) UpdateFYLabel(c *gin.Context) {
 	idParam := c.Param("financial_year_id")
 	id, err := uuid.Parse(idParam)
@@ -76,6 +97,12 @@ func (h *handler) UpdateFYLabel(c *gin.Context) {
 	response.JSON(c, http.StatusOK, fy)
 }
 
+// @Summary Get all financial years
+// @Tags fy
+// @Produce json
+// @Success 200 {array} RsFinancialYear
+// @Failure 500 {object} response.RsError
+// @Router /fy [get]
 func (h *handler) GetFinancialYears(c *gin.Context) {
 	years, err := h.svc.GetFinancialYears(c.Request.Context())
 	if err != nil {
@@ -86,6 +113,15 @@ func (h *handler) GetFinancialYears(c *gin.Context) {
 	response.JSON(c, http.StatusOK, years)
 }
 
+// @Summary Get all quarters for a specific financial year
+// @Tags fy
+// @Produce json
+// @Param financial_year_id path string true "Financial Year UUID"
+// @Success 200 {array} RsFinancialQuarter
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /fy/{financial_year_id}/quarters [get]
 func (h *handler) GetFinancialQuarters(c *gin.Context) {
 	idParam := c.Param("financial_year_id")
 	id, err := uuid.Parse(idParam)

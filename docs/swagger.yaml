@@ -1,0 +1,2335 @@
+basePath: /api/v1
+definitions:
+  auth.RsGoogleAuthURL:
+    properties:
+      url:
+        type: string
+    type: object
+  auth.RsToken:
+    properties:
+      access_token:
+        type: string
+      is_superadmin:
+        type: boolean
+      refresh_token:
+        type: string
+    type: object
+  auth.RsUser:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      is_superadmin:
+        type: boolean
+      last_name:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  calculation.Entry:
+    properties:
+      clinic_share:
+        minimum: 0
+        type: number
+      expense:
+        items:
+          $ref: '#/definitions/calculation.Input'
+        type: array
+      income:
+        items:
+          $ref: '#/definitions/calculation.Input'
+        type: array
+      other_costs:
+        items:
+          $ref: '#/definitions/calculation.Input'
+        type: array
+      out_work_percentage:
+        maximum: 100
+        minimum: 0
+        type: number
+      owner_share:
+        minimum: 0
+        type: number
+      super_component:
+        type: number
+    type: object
+  calculation.GrossResult:
+    properties:
+      gst_service_fee:
+        type: number
+      net_amount:
+        type: number
+      remitted_amount:
+        type: number
+      service_fee:
+        type: number
+      total_service_fee:
+        type: number
+    type: object
+  calculation.Input:
+    properties:
+      name:
+        maxLength: 255
+        type: string
+      paid_by:
+        allOf:
+        - $ref: '#/definitions/calculation.PaidBy'
+        enum:
+        - clinic
+        - owner
+      tax:
+        allOf:
+        - $ref: '#/definitions/method.TaxTreatment'
+        enum:
+        - inclusive
+        - exclusive
+        - manual
+        - zero
+      tax_value:
+        type: number
+      value:
+        minimum: 0
+        type: number
+    type: object
+  calculation.NetAmountResult:
+    properties:
+      expense:
+        items:
+          type: number
+        type: array
+      income:
+        items:
+          type: number
+        type: array
+      result:
+        type: number
+    type: object
+  calculation.NetResult:
+    properties:
+      commission:
+        type: number
+      gst_commission:
+        type: number
+      net_amount:
+        type: number
+      super_component:
+        type: number
+      super_component_commission:
+        type: number
+      total_commission:
+        type: number
+      total_remuneration:
+        type: number
+    type: object
+  calculation.OutWorkResult:
+    properties:
+      gst_service_fee:
+        type: number
+      net_amount:
+        type: number
+      net_payable:
+        type: number
+      service_fee:
+        type: number
+      total_service_fee:
+        type: number
+    type: object
+  calculation.PaidBy:
+    enum:
+    - clinic
+    - owner
+    type: string
+    x-enum-varnames:
+    - PaidByClinic
+    - PaidByOwner
+  clinic.RqClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  clinic.RqClinicContact:
+    properties:
+      contact_type:
+        enum:
+        - PHONE
+        - EMAIL
+        - WEBSITE
+        - FAX
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    required:
+    - contact_type
+    - value
+    type: object
+  clinic.RqCreateClinic:
+    properties:
+      abn:
+        type: string
+      addresses:
+        items:
+          $ref: '#/definitions/clinic.RqClinicAddress'
+        type: array
+      contacts:
+        items:
+          $ref: '#/definitions/clinic.RqClinicContact'
+        type: array
+      description:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      profile_picture:
+        type: string
+    required:
+    - name
+    type: object
+  clinic.RqUpdateAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  clinic.RqUpdateClinic:
+    properties:
+      abn:
+        type: string
+      address_data:
+        $ref: '#/definitions/clinic.RqUpdateAddress'
+      contact_data:
+        additionalProperties:
+          type: string
+        type: object
+      description:
+        type: string
+      financial_year:
+        type: string
+      is_active:
+        type: boolean
+      lock_date:
+        type: string
+      name:
+        type: string
+      profile_picture:
+        type: string
+    type: object
+  clinic.RsClinic:
+    properties:
+      abn:
+        type: string
+      addresses:
+        items:
+          $ref: '#/definitions/clinic.RsClinicAddress'
+        type: array
+      contacts:
+        items:
+          $ref: '#/definitions/clinic.RsClinicContact'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      financial_settings:
+        $ref: '#/definitions/clinic.RsFinancialSettings'
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      practitioner_id:
+        type: string
+      profile_picture:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  clinic.RsClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  clinic.RsClinicContact:
+    properties:
+      contact_type:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  clinic.RsFinancialSettings:
+    properties:
+      financial_year_id:
+        type: string
+      id:
+        type: string
+      lock_date:
+        type: string
+    type: object
+  coa.AccountTax:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      isTaxable:
+        type: boolean
+      name:
+        type: string
+      rate:
+        type: number
+      updatedAt:
+        type: string
+    type: object
+  coa.AccountType:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  coa.RqCreateChartOfAccountOfAccount:
+    properties:
+      account_tax_id:
+        minimum: 1
+        type: integer
+      account_type_id:
+        minimum: 1
+        type: integer
+      code:
+        maximum: 9999
+        minimum: 100
+        type: integer
+      is_system:
+        type: boolean
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - account_tax_id
+    - account_type_id
+    - code
+    - name
+    type: object
+  coa.RqUpdateCharOfAccountOfAccount:
+    properties:
+      account_tax_id:
+        minimum: 1
+        type: integer
+      account_type_id:
+        minimum: 1
+        type: integer
+      code:
+        maximum: 9999
+        minimum: 100
+        type: integer
+      name:
+        maxLength: 255
+        type: string
+    type: object
+  coa.RsChartOfAccount:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      is_system:
+        type: boolean
+      name:
+        type: string
+      practitioner_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  detail.RsFormDetail:
+    properties:
+      clinic_id:
+        type: string
+      clinic_share:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      method:
+        type: string
+      name:
+        type: string
+      owner_share:
+        type: integer
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  entry.RqEntryValue:
+    properties:
+      form_field_id:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      net_amount:
+        type: number
+    required:
+    - form_field_id
+    type: object
+  entry.RqFormEntry:
+    properties:
+      clinic_id:
+        type: string
+      status:
+        enum:
+        - DRAFT
+        - SUBMITTED
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/entry.RqEntryValue'
+        type: array
+    required:
+    - clinic_id
+    type: object
+  entry.RqUpdateFormEntry:
+    properties:
+      status:
+        enum:
+        - DRAFT
+        - SUBMITTED
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/entry.RqEntryValue'
+        type: array
+    type: object
+  entry.RsEntryValue:
+    properties:
+      form_field_id:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      net_amount:
+        type: number
+    type: object
+  entry.RsFormEntry:
+    properties:
+      clinic_id:
+        type: string
+      created_at:
+        type: string
+      form_version_id:
+        type: string
+      id:
+        type: string
+      status:
+        type: string
+      submitted_at:
+        type: string
+      submitted_by:
+        type: string
+      updated_at:
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/entry.RsEntryValue'
+        type: array
+    type: object
+  field.RqFormField:
+    properties:
+      coa_id:
+        type: string
+      label:
+        maxLength: 255
+        type: string
+      payment_responsibility:
+        enum:
+        - OWNER
+        - CLINIC
+        type: string
+      section_type:
+        enum:
+        - COLLECTION
+        - COST
+        - OTHER_COST
+        type: string
+      sort_order:
+        minimum: 0
+        type: integer
+      tax_type:
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - MANUAL
+        type: string
+    required:
+    - coa_id
+    - label
+    - payment_responsibility
+    - section_type
+    - tax_type
+    type: object
+  field.RqUpdateFormField:
+    properties:
+      coa_id:
+        type: string
+      id:
+        type: string
+      label:
+        maxLength: 255
+        type: string
+      payment_responsibility:
+        enum:
+        - OWNER
+        - CLINIC
+        type: string
+      section_type:
+        enum:
+        - COLLECTION
+        - COST
+        - OTHER_COST
+        type: string
+      sort_order:
+        minimum: 0
+        type: integer
+      tax_type:
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - MANUAL
+        type: string
+    required:
+    - id
+    type: object
+  field.RsFormField:
+    properties:
+      coa_id:
+        type: string
+      created_at:
+        type: string
+      form_version_id:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      payment_responsibility:
+        type: string
+      section_type:
+        type: string
+      sort_order:
+        type: integer
+      tax_type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  form.RqBulkSyncFields:
+    properties:
+      clinic_id:
+        type: string
+      create:
+        items:
+          $ref: '#/definitions/field.RqFormField'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
+      form_id:
+        type: string
+      update:
+        items:
+          $ref: '#/definitions/field.RqUpdateFormField'
+        type: array
+    required:
+    - clinic_id
+    type: object
+  form.RqCreateFormWithFields:
+    properties:
+      clinic_id:
+        type: string
+      clinic_share:
+        maximum: 100
+        minimum: 0
+        type: integer
+      description:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/field.RqFormField'
+        type: array
+      method:
+        enum:
+        - INDEPENDENT_CONTRACTOR
+        - SERVICE_FEE
+        type: string
+      name:
+        type: string
+      owner_share:
+        maximum: 100
+        minimum: 0
+        type: integer
+      status:
+        enum:
+        - DRAFT
+        - PUBLISHED
+        - ARCHIVED
+        type: string
+    required:
+    - clinic_id
+    - clinic_share
+    - method
+    - name
+    - owner_share
+    type: object
+  form.RqUpdateFormWithFields:
+    properties:
+      clinic_id:
+        type: string
+      clinic_share:
+        maximum: 100
+        minimum: 0
+        type: integer
+      description:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/field.RqUpdateFormField'
+        type: array
+      id:
+        type: string
+      method:
+        enum:
+        - INDEPENDENT_CONTRACTOR
+        - SERVICE_FEE
+        type: string
+      name:
+        type: string
+      owner_share:
+        maximum: 100
+        minimum: 0
+        type: integer
+      status:
+        enum:
+        - DRAFT
+        - PUBLISHED
+        - ARCHIVED
+        type: string
+    required:
+    - clinic_id
+    type: object
+  form.RsBulkSyncFields:
+    properties:
+      clinic_id:
+        type: string
+      created:
+        items:
+          $ref: '#/definitions/field.RsFormField'
+        type: array
+      deleted:
+        items:
+          type: string
+        type: array
+      updated:
+        items:
+          $ref: '#/definitions/field.RsFormField'
+        type: array
+    type: object
+  form.RsFormWithFields:
+    properties:
+      active_version_id:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/field.RsFormField'
+        type: array
+      form:
+        $ref: '#/definitions/detail.RsFormDetail'
+    type: object
+  fy.RqCreateFY:
+    properties:
+      fy_year:
+        type: string
+      is_active:
+        type: boolean
+      label:
+        type: string
+    required:
+    - fy_year
+    - label
+    type: object
+  fy.RqUpdateFYLabel:
+    properties:
+      is_active:
+        type: boolean
+      label:
+        type: string
+    type: object
+  fy.RsFinancialQuarter:
+    properties:
+      end_date:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      start_date:
+        type: string
+    type: object
+  fy.RsFinancialYear:
+    properties:
+      end_date:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      start_date:
+        type: string
+    type: object
+  method.TaxTreatment:
+    enum:
+    - inclusive
+    - exclusive
+    - manual
+    - zero
+    type: string
+    x-enum-varnames:
+    - TaxTreatmentInclusive
+    - TaxTreatmentExclusive
+    - TaxTreatmentManual
+    - TaxTreatmentZero
+  response.RsError:
+    properties:
+      code:
+        type: integer
+      detail:
+        type: string
+      message:
+        type: string
+    type: object
+  setting.RsPractitioner:
+    properties:
+      abn:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      verified:
+        type: boolean
+    type: object
+  setting.RsPractitionerSetting:
+    properties:
+      color:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      logo:
+        type: string
+      practitioner_id:
+        type: string
+      timezone:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  subscription.RsSubscription:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      duration_days:
+        type: integer
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        type: string
+      price:
+        type: number
+      updated_at:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: API Support
+  description: Backend API for acareca
+  title: Backend API
+  version: 1.0.0
+paths:
+  /admin/subscription:
+    get:
+      consumes:
+      - application/json
+      description: list subscriptions
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List subscriptions
+      tags:
+      - subscription
+    post:
+      consumes:
+      - application/json
+      description: create a new subscription
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new subscription
+      tags:
+      - subscription
+  /admin/subscription/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: delete a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete a subscription
+      tags:
+      - subscription
+    get:
+      consumes:
+      - application/json
+      description: get a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get a subscription
+      tags:
+      - subscription
+    put:
+      consumes:
+      - application/json
+      description: update a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update a subscription
+      tags:
+      - subscription
+  /auth/google:
+    get:
+      description: get Google OAuth consent-screen URL
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsGoogleAuthURL'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get Google OAuth consent-screen URL
+      tags:
+      - auth
+  /auth/google/callback:
+    get:
+      description: handle Google OAuth callback
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsToken'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Handle Google OAuth callback
+      tags:
+      - auth
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: login a user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsToken'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Login a user
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: register a new user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsUser'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Register a new user
+      tags:
+      - auth
+  /calculation/gross-result:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Calculation Entry Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.Entry'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.GrossResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Calculate gross result
+      tags:
+      - calculation
+  /calculation/net-amount:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Calculation Entry Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.Entry'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.NetAmountResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Calculate net amount
+      tags:
+      - calculation
+  /calculation/net-result:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Calculation Entry Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.Entry'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.NetResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Calculate net result
+      tags:
+      - calculation
+  /calculation/outwork-result:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Calculation Entry Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.Entry'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.OutWorkResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Calculate outwork result
+      tags:
+      - calculation
+  /clinic:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clinic.RsClinic'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get all clinics for practitioner
+      tags:
+      - clinic
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Clinic Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqCreateClinic'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/clinic.RsClinic'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new clinic
+      tags:
+      - clinic
+  /clinic/{id}:
+    delete:
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete a clinic
+      tags:
+      - clinic
+    get:
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/clinic.RsClinic'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get clinic by ID
+      tags:
+      - clinic
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated Clinic Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqUpdateClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/clinic.RsClinic'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update clinic details
+      tags:
+      - clinic
+  /coa/account-taxes:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/coa.AccountTax'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List all account tax types
+      tags:
+      - coa
+  /coa/account-taxes/{id}:
+    get:
+      parameters:
+      - description: Account Tax ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.AccountTax'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get account tax by ID
+      tags:
+      - coa
+  /coa/account-types:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/coa.AccountType'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List all account types
+      tags:
+      - coa
+  /coa/account-types/{id}:
+    get:
+      parameters:
+      - description: Account Type ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.AccountType'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get account type by ID
+      tags:
+      - coa
+  /coa/chart:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/coa.RsChartOfAccount'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List chart of accounts for practitioner
+      tags:
+      - coa
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: COA Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqCreateChartOfAccountOfAccount'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/coa.RsChartOfAccount'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new chart of account
+      tags:
+      - coa
+  /coa/chart/{id}:
+    delete:
+      parameters:
+      - description: Chart of Account UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete chart of account
+      tags:
+      - coa
+    get:
+      parameters:
+      - description: Chart of Account UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.RsChartOfAccount'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get chart of account by ID
+      tags:
+      - coa
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Chart of Account UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated COA Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqUpdateCharOfAccountOfAccount'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.RsChartOfAccount'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update an existing chart of account
+      tags:
+      - coa
+  /entry/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove an entry from the system
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete a form entry
+      tags:
+      - entry
+    get:
+      consumes:
+      - application/json
+      description: Fetch details of a specific entry
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entry.RsFormEntry'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get a form entry by ID
+      tags:
+      - entry
+    put:
+      consumes:
+      - application/json
+      description: Update data for an existing entry
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entry.RqUpdateFormEntry'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entry.RsFormEntry'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update a form entry
+      tags:
+      - entry
+  /entry/version/{version_id}:
+    get:
+      consumes:
+      - application/json
+      description: List all entries for a specific version and clinic
+      parameters:
+      - description: Version ID
+        in: path
+        name: version_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entry.RsFormEntry'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List form entries
+      tags:
+      - entry
+    post:
+      consumes:
+      - application/json
+      description: Create a new entry for a specific form version
+      parameters:
+      - description: Version ID
+        in: path
+        name: version_id
+        required: true
+        type: string
+      - description: Entry details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entry.RqFormEntry'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/entry.RsFormEntry'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new form entry
+      tags:
+      - entry
+  /form:
+    get:
+      consumes:
+      - application/json
+      description: List forms filtered by clinic and query parameters
+      parameters:
+      - description: Clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/detail.RsFormDetail'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List forms
+      tags:
+      - form
+    post:
+      consumes:
+      - application/json
+      description: Create a new custom form along with its associated fields
+      parameters:
+      - description: Form creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqCreateFormWithFields'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/form.RsFormWithFields'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create form with fields
+      tags:
+      - form
+    put:
+      consumes:
+      - application/json
+      description: Update an existing form and sync its fields
+      parameters:
+      - description: Form update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateFormWithFields'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/form.RsFormWithFields'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update form with fields
+      tags:
+      - form
+  /form/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a form by its ID
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete form
+      tags:
+      - form
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific form and its fields by ID
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/form.RsFormWithFields'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get form by ID
+      tags:
+      - form
+  /form/sync:
+    post:
+      consumes:
+      - application/json
+      description: Synchronize multiple fields for a practitioner
+      parameters:
+      - description: Sync request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqBulkSyncFields'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/form.RsBulkSyncFields'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Bulk sync fields
+      tags:
+      - form
+  /fy:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/fy.RsFinancialYear'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get all financial years
+      tags:
+      - fy
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Financial Year Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/fy.RqCreateFY'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new financial year
+      tags:
+      - fy
+  /fy/{financial_year_id}/label:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      - description: Updated Label Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/fy.RqUpdateFYLabel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update the label of a financial year
+      tags:
+      - fy
+  /fy/{financial_year_id}/quarters:
+    get:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/fy.RsFinancialQuarter'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get all quarters for a specific financial year
+      tags:
+      - fy
+  /practitioner:
+    get:
+      consumes:
+      - application/json
+      description: list practitioners
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List practitioners
+      tags:
+      - practitioner
+  /practitioner/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: delete a practitioner
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete a practitioner
+      tags:
+      - practitioner
+    get:
+      consumes:
+      - application/json
+      description: get a practitioner by ID
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get a practitioner by ID
+      tags:
+      - practitioner
+    put:
+      consumes:
+      - application/json
+      description: update a practitioner
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update a practitioner
+      tags:
+      - practitioner
+  /practitioner/setting/{id}:
+    get:
+      consumes:
+      - application/json
+      description: get a setting by practitioner ID
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitionerSetting'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get a setting by practitioner ID
+      tags:
+      - setting
+    put:
+      consumes:
+      - application/json
+      description: upsert a setting by practitioner ID
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitionerSetting'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Upsert a setting by practitioner ID
+      tags:
+      - setting
+  /practitioner/subscription:
+    get:
+      consumes:
+      - application/json
+      description: list subscriptions by practitioner ID
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List subscriptions by practitioner ID
+      tags:
+      - subscription
+  /practitioner/subscription/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: delete a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Practitioner ID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Delete a subscription
+      tags:
+      - subscription
+    get:
+      consumes:
+      - application/json
+      description: get a subscription by ID
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get a subscription by ID
+      tags:
+      - subscription
+    put:
+      consumes:
+      - application/json
+      description: update a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Practitioner ID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update a subscription
+      tags:
+      - subscription
+  /practitioner/user/{user_id}:
+    get:
+      consumes:
+      - application/json
+      description: get a practitioner by user ID
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get a practitioner by user ID
+      tags:
+      - practitioner
+schemes:
+- http
+swagger: "2.0"

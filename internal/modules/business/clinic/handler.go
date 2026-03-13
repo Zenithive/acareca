@@ -29,6 +29,15 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// @Summary Create a new clinic
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param request body RqCreateClinic true "Clinic Data"
+// @Success 201 {object} RsClinic
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /clinic [post]
 func (h *handler) CreateClinic(c *gin.Context) {
 	PractID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -51,6 +60,12 @@ func (h *handler) CreateClinic(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, clinic)
 }
 
+// @Summary Get all clinics for practitioner
+// @Tags clinic
+// @Produce json
+// @Success 200 {array} RsClinic
+// @Failure 500 {object} response.RsError
+// @Router /clinic [get]
 func (h *handler) GetClinics(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)
@@ -67,6 +82,16 @@ func (h *handler) GetClinics(c *gin.Context) {
 	response.JSON(c, http.StatusOK, clinics)
 }
 
+// GetClinicByID
+// @Summary Get clinic by ID
+// @Tags clinic
+// @Produce json
+// @Param id path string true "Clinic UUID"
+// @Success 200 {object} RsClinic
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /clinic/{id} [get]
 func (h *handler) GetClinicByID(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)
@@ -94,6 +119,17 @@ func (h *handler) GetClinicByID(c *gin.Context) {
 	response.JSON(c, http.StatusOK, clinic)
 }
 
+// @Summary Update clinic details
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param id path string true "Clinic UUID"
+// @Param request body RqUpdateClinic true "Updated Clinic Data"
+// @Success 200 {object} RsClinic
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /clinic/{id} [put]
 func (h *handler) UpdateClinic(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)
@@ -127,6 +163,15 @@ func (h *handler) UpdateClinic(c *gin.Context) {
 	response.JSON(c, http.StatusOK, clinic)
 }
 
+// @Summary Delete a clinic
+// @Tags clinic
+// @Produce json
+// @Param id path string true "Clinic UUID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /clinic/{id} [delete]
 func (h *handler) DeleteClinic(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)

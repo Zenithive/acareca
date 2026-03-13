@@ -23,7 +23,15 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-// NetAmount implements [IHandler].
+// @Summary Calculate net amount
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body Entry true "Calculation Entry Data"
+// @Success 200 {object} NetAmountResult
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /calculation/net-amount [post]
 func (h *handler) NetAmount(c *gin.Context) {
 	var entry Entry
 	if err := util.BindAndValidate(c, &entry); err != nil {
@@ -38,7 +46,15 @@ func (h *handler) NetAmount(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result)
 }
 
-// NetResult implements [IHandler].
+// @Summary Calculate net result
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body Entry true "Calculation Entry Data"
+// @Success 200 {object} NetResult
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /calculation/net-result [post]
 func (h *handler) NetResult(c *gin.Context) {
 	var entry Entry
 	if err := util.BindAndValidate(c, &entry); err != nil {
@@ -53,7 +69,15 @@ func (h *handler) NetResult(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result)
 }
 
-// GrossResult implements [IHandler].
+// @Summary Calculate gross result
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body Entry true "Calculation Entry Data"
+// @Success 200 {object} GrossResult
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /calculation/gross-result [post]
 func (h *handler) GrossResult(c *gin.Context) {
 	var entry Entry
 	if err := util.BindAndValidate(c, &entry); err != nil {
@@ -68,7 +92,15 @@ func (h *handler) GrossResult(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result)
 }
 
-// OutWorkResult implements [IHandler].
+// @Summary Calculate outwork result
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body Entry true "Calculation Entry Data"
+// @Success 200 {object} OutWorkResult
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /calculation/outwork-result [post]
 func (h *handler) OutWorkResult(c *gin.Context) {
 	var entry Entry
 	if err := util.BindAndValidate(c, &entry); err != nil {

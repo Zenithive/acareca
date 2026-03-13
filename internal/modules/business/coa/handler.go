@@ -32,6 +32,12 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// @Summary List all account types
+// @Tags coa
+// @Produce json
+// @Success 200 {array} AccountType
+// @Failure 500 {object} response.RsError
+// @Router /coa/account-types [get]
 func (h *handler) ListAccountTypes(c *gin.Context) {
 	list, err := h.svc.ListAccountTypes(c.Request.Context())
 	if err != nil {
@@ -41,6 +47,15 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
+// @Summary Get account type by ID
+// @Tags coa
+// @Produce json
+// @Param id path int true "Account Type ID"
+// @Success 200 {object} AccountType
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /coa/account-types/{id} [get]
 func (h *handler) GetAccountType(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 16)
 	if err != nil {
@@ -59,6 +74,12 @@ func (h *handler) GetAccountType(c *gin.Context) {
 	response.JSON(c, http.StatusOK, one)
 }
 
+// @Summary List all account tax types
+// @Tags coa
+// @Produce json
+// @Success 200 {array} AccountTax
+// @Failure 500 {object} response.RsError
+// @Router /coa/account-taxes [get]
 func (h *handler) ListAccountTaxes(c *gin.Context) {
 	list, err := h.svc.ListAccountTaxes(c.Request.Context())
 	if err != nil {
@@ -68,6 +89,15 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 	response.JSON(c, http.StatusOK, list)
 }
 
+// @Summary Get account tax by ID
+// @Tags coa
+// @Produce json
+// @Param id path int true "Account Tax ID"
+// @Success 200 {object} AccountTax
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /coa/account-taxes/{id} [get]
 func (h *handler) GetAccountTax(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 16)
 	if err != nil {
@@ -86,6 +116,12 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 	response.JSON(c, http.StatusOK, one)
 }
 
+// @Summary List chart of accounts for practitioner
+// @Tags coa
+// @Produce json
+// @Success 200 {array} RsChartOfAccount
+// @Failure 500 {object} response.RsError
+// @Router /coa/chart [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -119,6 +155,15 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result)
 }
 
+// @Summary Get chart of account by ID
+// @Tags coa
+// @Produce json
+// @Param id path string true "Chart of Account UUID"
+// @Success 200 {object} RsChartOfAccount
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /coa/chart/{id} [get]
 func (h *handler) GetChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -141,6 +186,16 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 	response.JSON(c, http.StatusOK, chart)
 }
 
+// @Summary Create a new chart of account
+// @Tags coa
+// @Accept json
+// @Produce json
+// @Param request body RqCreateChartOfAccountOfAccount true "COA Data"
+// @Success 201 {object} RsChartOfAccount
+// @Failure 400 {object} response.RsError
+// @Failure 409 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /coa/chart [post]
 func (h *handler) CreateChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -167,6 +222,19 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created)
 }
 
+// @Summary Update an existing chart of account
+// @Tags coa
+// @Accept json
+// @Produce json
+// @Param id path string true "Chart of Account UUID"
+// @Param request body RqUpdateCharOfAccountOfAccount true "Updated COA Data"
+// @Success 200 {object} RsChartOfAccount
+// @Failure 400 {object} response.RsError
+// @Failure 403 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 409 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /coa/chart/{id} [put]
 func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -202,6 +270,16 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 	response.JSON(c, http.StatusOK, updated)
 }
 
+// @Summary Delete chart of account
+// @Tags coa
+// @Produce json
+// @Param id path string true "Chart of Account UUID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 403 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /coa/chart/{id} [delete]
 func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {

@@ -8,6 +8,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
+	_ "github.com/iamarpitzala/acareca/docs"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -15,6 +17,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// @title Backend API
+// @version 1.0.0
+// @description Backend API for acareca
+// @contact.name API Support
+// @host localhost:8080
+// @BasePath /api/v1
+// @schemes http
+// @consumes application/json
+// @produces application/json
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
@@ -58,12 +69,7 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
 	r.Use(middleware.ClientInfo())
-
 	route.RegisterRoutes(r, cfg)
 
 	log.Printf("server starting on :%s", cfg.ServerPort)
