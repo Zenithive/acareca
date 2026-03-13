@@ -52,7 +52,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, practitionerSvc)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler)
 
@@ -86,7 +86,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
-	coaSvc := coa.NewService(coaRepo)
+	coaSvc := coa.NewService(coaRepo, dbConn)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
 	fyRepo := fy.NewRepository(dbConn)

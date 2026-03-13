@@ -13,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -37,11 +38,12 @@ type Service interface {
 type service struct {
 	repo            Repository
 	cfg             *config.Config
+	db              *sqlx.DB
 	oauthConfig     *oauth2.Config
 	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -52,7 +54,7 @@ func NewService(repo Repository, cfg *config.Config, practitionerSvc practitione
 		},
 		Endpoint: google.Endpoint,
 	}
-	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, practitionerSvc: practitionerSvc}
+	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, db: db, practitionerSvc: practitionerSvc}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -68,13 +70,21 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	u := req.ToDBModel()
 	u.Password = &hashedPassword
 
-	created, err := s.repo.CreateUser(ctx, u)
+	var created *User
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var err error
+		created, err = s.repo.CreateUser(ctx, u, tx)
+		if err != nil {
+			return err
+		}
+		_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+		if err != nil {
+			return fmt.Errorf("create practitioner: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()})
-	if err != nil {
-		return nil, fmt.Errorf("create practitioner: %w", err)
 	}
 
 	return created.ToRsUser(), nil
@@ -126,45 +136,49 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 
 	user, err := s.repo.FindByEmail(ctx, googleUser.Email)
 	isNewUser := false
-	if err != nil {
-		if !errors.Is(err, ErrNotFound) {
-			return nil, err
-		}
-		user, err = s.repo.CreateUser(ctx, &User{
-			Email:     googleUser.Email,
-			FirstName: googleUser.FirstName,
-			LastName:  googleUser.LastName,
-		})
+
+	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if err != nil {
-			return nil, err
+			if !errors.Is(err, ErrNotFound) {
+				return err
+			}
+			user, err = s.repo.CreateUser(ctx, &User{
+				Email:     googleUser.Email,
+				FirstName: googleUser.FirstName,
+				LastName:  googleUser.LastName,
+			}, tx)
+			if err != nil {
+				return err
+			}
+			isNewUser = true
 		}
-		isNewUser = true
-	}
 
-	expiresAt := oauthToken.Expiry
-	accessTokenStr := oauthToken.AccessToken
-	refreshTokenStr := oauthToken.RefreshToken
+		expiresAt := oauthToken.Expiry
+		accessTokenStr := oauthToken.AccessToken
+		refreshTokenStr := oauthToken.RefreshToken
 
-	ap := &AuthProvider{
-		UserID:         user.ID,
-		Provider:       providerGoogle,
-		AccessToken:    &accessTokenStr,
-		TokenExpiresAt: &expiresAt,
-	}
-	if refreshTokenStr != "" {
-		ap.RefreshToken = &refreshTokenStr
-	}
-
-	if _, err := s.repo.UpsertAuthProvider(ctx, ap); err != nil {
-		return nil, err
-	}
-
-	if isNewUser {
-		_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()})
-		if err != nil {
-			return nil, err
+		ap := &AuthProvider{
+			UserID:         user.ID,
+			Provider:       providerGoogle,
+			AccessToken:    &accessTokenStr,
+			TokenExpiresAt: &expiresAt,
 		}
-	}
+		if refreshTokenStr != "" {
+			ap.RefreshToken = &refreshTokenStr
+		}
+
+		if _, err := s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
+			return err
+		}
+
+		if isNewUser {
+			_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 
 	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
 	if err != nil {

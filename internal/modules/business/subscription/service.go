@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
-	Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription) (*RsPractitionerSubscription, error)
+	Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription, tx *sqlx.Tx) (*RsPractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*RsPractitionerSubscription, error)
 	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*RsPractitionerSubscription, error)
 	Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error)
@@ -23,7 +24,7 @@ func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
-func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription) (*RsPractitionerSubscription, error) {
+func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription, tx *sqlx.Tx) (*RsPractitionerSubscription, error) {
 	start, err := time.Parse(time.RFC3339, req.StartDate)
 	if err != nil {
 		return nil, err
@@ -39,7 +40,7 @@ func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqC
 		EndDate:        end,
 		Status:         req.Status,
 	}
-	created, err := s.repo.Create(ctx, sub)
+	created, err := s.repo.Create(ctx, sub, tx)
 	if err != nil {
 		return nil, err
 	}
