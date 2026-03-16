@@ -17,7 +17,7 @@ type IService interface {
 	CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	UpdateWithFields(ctx context.Context, d *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsFormWithFields, error)
-	List(ctx context.Context, clinic_id uuid.UUID) ([]*detail.RsFormDetail, error)
+	List(ctx context.Context, filter Filter) ([]*detail.RsFormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 }
 
@@ -373,9 +373,13 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 	return out, nil
 }
 
-func (s *service) List(ctx context.Context, clinic_id uuid.UUID) ([]*detail.RsFormDetail, error) {
+func (s *service) List(ctx context.Context, filter Filter) ([]*detail.RsFormDetail, error) {
+	clinicID := filter.ClinicID
+	if clinicID == nil {
+		clinicID = &uuid.Nil
+	}
 
-	return s.detailSvc.ListForm(ctx, detail.Filter{ClinicID: clinic_id})
+	return s.detailSvc.ListForm(ctx, detail.Filter{ClinicID: *clinicID})
 }
 
 func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {

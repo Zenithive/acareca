@@ -171,16 +171,22 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /form [get]
 func (h *handler) List(c *gin.Context) {
-
-	clinic_id, err := util.ParseUUID(c.Query("clinic_id"))
-
+	clinicId, err := util.ParseUUID(c.Query("clinic_id"))
 	if err != nil {
-		fmt.Println(err.Error())
-		response.Error(c, http.StatusBadRequest, fmt.Errorf("clinic id not found"))
 		return
 	}
 
-	list, err := h.svc.List(c.Request.Context(), clinic_id)
+	var filter Filter
+	if clinicId != uuid.Nil {
+		filter.ClinicID = &clinicId
+	}
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		fmt.Println(err.Error())
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	list, err := h.svc.List(c.Request.Context(), filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
