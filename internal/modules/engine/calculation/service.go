@@ -266,25 +266,19 @@ func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFi
 	if err != nil {
 		return nil, err
 	}
-
 	version, err := s.versionSvc.GetVersionByFormID(ctx, form.ID)
 	if err != nil {
 		return nil, err
 	}
-
 	entries, err := s.entries.GetByVersionID(ctx, version.Id)
 	if err != nil {
 		return nil, err
 	}
-
 	switch Method(form.Method) {
-
 	case IndependentContractor:
 		return s.NetMethod(ctx, form, entries.Values, filter)
-
 	case ServiceFee:
 		return s.GrossMethod(ctx, form, entries.Values)
-
 	default:
 		return nil, fmt.Errorf("unsupported method: %s", form.Method)
 	}

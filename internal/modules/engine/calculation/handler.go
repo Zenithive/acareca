@@ -1,11 +1,14 @@
 package calculation
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -52,6 +55,10 @@ func (h *handler) Calculation(c *gin.Context) {
 
 	result, err := h.svc.Calculate(ctx, formID, &filter)
 	if err != nil {
+		if errors.Is(err, entry.ErrNotFound) || errors.Is(err, version.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
