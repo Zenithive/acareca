@@ -769,6 +769,47 @@ definitions:
       start_date:
         type: string
     type: object
+  invitation.InvitationStatus:
+    enum:
+    - SENT
+    - ACCEPTED
+    - COMPLETED
+    - REJECTED
+    type: string
+    x-enum-varnames:
+    - StatusSent
+    - StatusAccepted
+    - StatusCompleted
+    - StatusRejected
+  invitation.RqSendInvitation:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  invitation.RsInvitation:
+    properties:
+      email:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      invite_link:
+        type: string
+      status:
+        $ref: '#/definitions/invitation.InvitationStatus'
+    type: object
+  invitation.RsInviteProcess:
+    properties:
+      invitation_id:
+        type: string
+      is_found:
+        type: boolean
+      status:
+        $ref: '#/definitions/invitation.InvitationStatus'
+    type: object
   method.TaxTreatment:
     enum:
     - inclusive
@@ -2037,6 +2078,69 @@ paths:
       summary: Get all quarters for a specific financial year
       tags:
       - fy
+  /invite/:
+    post:
+      consumes:
+      - application/json
+      description: Practitioner sends an invitation to a person's email.
+      parameters:
+      - description: Email of the Accountant/Bookkeeper
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invitation.RqSendInvitation'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/invitation.RsInvitation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Send an invitation
+      tags:
+      - invitation
+  /invite/{id}:
+    get:
+      description: Processes the invitation link.
+      parameters:
+      - description: Invitation UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Set to 'reject' to decline the invitation
+        in: query
+        name: action
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/invitation.RsInviteProcess'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Process invitation
+      tags:
+      - invitation
   /practitioner:
     get:
       consumes:

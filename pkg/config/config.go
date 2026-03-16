@@ -16,6 +16,7 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURL  string
+	ResendAPIKey       string
 }
 
 func getEnv(key, fallback string) string {
@@ -39,6 +40,7 @@ func NewConfig() *Config {
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/oauth"),
+		ResendAPIKey:       getEnv("RESEND_API_KEY", "re_Qfg9Fi8G_3f2PukV7Ns4aTVQUsTzVjALK"),
 	}
 }
 

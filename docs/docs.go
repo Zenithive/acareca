@@ -1829,6 +1829,104 @@ const docTemplate = `{
                 }
             }
         },
+        "/invite/": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Practitioner sends an invitation to a person's email.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Send an invitation",
+                "parameters": [
+                    {
+                        "description": "Email of the Accountant/Bookkeeper",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invitation.RqSendInvitation"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/invitation.RsInvitation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/{id}": {
+            "get": {
+                "description": "Processes the invitation link.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Process invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Set to 'reject' to decline the invitation",
+                        "name": "action",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/invitation.RsInviteProcess"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/practitioner": {
             "get": {
                 "description": "list practitioners",
@@ -3451,6 +3549,66 @@ const docTemplate = `{
                 },
                 "start_date": {
                     "type": "string"
+                }
+            }
+        },
+        "invitation.InvitationStatus": {
+            "type": "string",
+            "enum": [
+                "SENT",
+                "ACCEPTED",
+                "COMPLETED",
+                "REJECTED"
+            ],
+            "x-enum-varnames": [
+                "StatusSent",
+                "StatusAccepted",
+                "StatusCompleted",
+                "StatusRejected"
+            ]
+        },
+        "invitation.RqSendInvitation": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "invitation.RsInvitation": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invite_link": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/invitation.InvitationStatus"
+                }
+            }
+        },
+        "invitation.RsInviteProcess": {
+            "type": "object",
+            "properties": {
+                "invitation_id": {
+                    "type": "string"
+                },
+                "is_found": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "$ref": "#/definitions/invitation.InvitationStatus"
                 }
             }
         },

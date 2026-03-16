@@ -18,6 +18,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
@@ -53,7 +54,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc)
+	// invitation
+	invitationRepo := invitation.NewRepository(dbConn)
+	invitationSvc := invitation.NewService(invitationRepo, cfg.ResendAPIKey)
+	invitationHandler := invitation.NewHandler(invitationSvc)
+	invitation.RegisterRoutes(v1, invitationHandler, cfg)
+
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, invitationSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler)
 
@@ -116,4 +123,5 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	settingHandler := setting.NewHandler(settingSvc)
 
 	setting.RegisterRoutes(settingGroup, settingHandler, cfg)
+
 }

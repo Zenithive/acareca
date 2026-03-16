@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -41,9 +42,10 @@ type service struct {
 	db              *sqlx.DB
 	oauthConfig     *oauth2.Config
 	practitionerSvc practitioner.IService
+	invitationSvc   invitation.Service
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, invitationSvc invitation.Service) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -54,7 +56,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		},
 		Endpoint: google.Endpoint,
 	}
-	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, db: db, practitionerSvc: practitionerSvc}
+	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, db: db, practitionerSvc: practitionerSvc, invitationSvc: invitationSvc}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -81,6 +83,13 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		if err != nil {
 			return fmt.Errorf("create practitioner: %w", err)
 		}
+
+		// This function looks for an invitation by email and links it to the user id
+		err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, created.ID)
+		if err != nil {
+			return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
+		}
+
 		return nil
 	})
 	if err != nil {
