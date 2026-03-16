@@ -10,106 +10,25 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
-	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
-	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
-	OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error)
-
 	GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue) (*GrossResult, error)
 	NetMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, filter *NetFilter) (*NetResult, error)
-
 	Calculate(ctx context.Context, formId uuid.UUID, filter *NetFilter) (interface{}, error)
 }
 
 type service struct {
-	method     method.IService
-	clinicSrv  clinic.Service
 	formSvc    form.IService
 	versionSvc version.IService
 	fieldSvc   field.IService
 	entries    entry.IService
 }
 
-// OutWorkResult implements [Service].
-
-func NewService(method method.IService, clinicSvc clinic.Service, formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService) Service {
-	return &service{method: method, clinicSrv: clinicSvc, formSvc: formSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entries: entries}
+func NewService(formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService) Service {
+	return &service{formSvc: formSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entries: entries}
 }
-
-func (s *service) OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error) {
-	panic("unimplemented")
-}
-
-// OutWorkResult implements [Service].
-// func (s *service) OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error) {
-// 	_, _, incResults, err := s.calcInputs(ctx, entry.Income, "income")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	incomeSum := 0.0
-// 	for _, r := range incResults {
-// 		incomeSum += r.Amount
-// 	}
-// 	incomeGST := 0.0
-// 	for _, r := range incResults {
-// 		incomeGST += r.GstAmount
-// 	}
-// 	incomeSum -= incomeGST
-
-// 	_, _, expenseResults, err := s.calcInputs(ctx, entry.Expense, "expense")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	expenseGST := 0.0
-// 	for i, exp := range entry.Expense {
-// 		if exp.PaidBy == nil {
-// 			continue
-// 		}
-// 		switch *exp.PaidBy {
-// 		case PaidByClinic:
-// 			expenseGST += expenseResults[i].GstAmount
-// 		}
-// 	}
-
-// 	expenseSum := 0.0
-// 	for _, r := range expenseResults {
-// 		expenseSum += r.Amount
-// 	}
-// 	expenseSum -= expenseGST
-
-// 	_, otherCostsSum, _, err := s.calcInputs(ctx, entry.OtherCosts, "other_costs")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	otherCostsSum += expenseSum
-
-// 	clinicShare := 0.0
-// 	if entry.ClinicShare != nil {
-// 		clinicShare = *entry.ClinicShare
-// 	}
-
-// 	outWorkPercentage := 0.0
-// 	if entry.OutWorkPercentage != nil {
-// 		outWorkPercentage = *entry.OutWorkPercentage
-// 	}
-
-// 	serviceFee := incomeSum * (clinicShare / 100)
-// 	outWorkAmount := otherCostsSum * (outWorkPercentage / 100)
-// 	outServiceFee := outWorkAmount + serviceFee
-// 	gstOutServiceFee := outServiceFee * 0.1
-// 	totalOutServiceFee := outServiceFee + gstOutServiceFee
-
-// 	return &OutWorkResult{
-// 		NetAmount:       util.Round(incomeSum-otherCostsSum, 2),
-// 		ServiceFee:      util.Round(outServiceFee, 2),
-// 		GstServiceFee:   util.Round(gstOutServiceFee, 2),
-// 		TotalServiceFee: util.Round(totalOutServiceFee, 2),
-// 		NetPayable:      util.Round(incomeSum-totalOutServiceFee, 2),
-// 	}, nil
-// }
 
 func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue) (*GrossResult, error) {
 	var (

@@ -112,7 +112,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	entry.RegisterRoutes(entryGroup, entriesHandler)
 
-	calculationSvc := calculation.NewService(method.NewService(), clinicSvc, formSvc, versionSvc, fieldSvc, entriesSvc)
+	calculationSvc := calculation.NewService(formSvc, versionSvc, fieldSvc, entriesSvc)
 	calculationHandler := calculation.NewHandler(calculationSvc)
 	calculation.RegisterRoutes(v1, calculationHandler)
 

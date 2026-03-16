@@ -38,13 +38,7 @@ func (h *handler) Calculation(c *gin.Context) {
 
 	var filter NetFilter
 
-	if err := c.ShouldBindQuery(&filter); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
-	superComponent := c.Query("super_component")
-	if superComponent != "" {
+	if superComponent := c.Query("super_component"); superComponent != "" {
 		val, err := strconv.ParseFloat(superComponent, 64)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid super_component"))

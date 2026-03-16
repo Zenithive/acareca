@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -33,27 +32,23 @@ func NewRepository(db *sqlx.DB) IRepository {
 }
 
 // Create implements [IRepository].
-// If v.IsActive is true, deactivates all existing active versions for the same form_id atomically.
 func (r *repository) Create(ctx context.Context, v *FormVersion) error {
-	insertQuery := `
+	if v.IsActive {
+		if _, err := r.db.ExecContext(ctx,
+			`UPDATE tbl_custom_form_version SET is_active = false WHERE form_id = $1 AND is_active = true AND deleted_at IS NULL`,
+			v.FormId,
+		); err != nil {
+			return fmt.Errorf("deactivate existing versions: %w", err)
+		}
+	}
+	query := `
 		INSERT INTO tbl_custom_form_version (id, form_id, version, is_active, practitioner_id)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING created_at, updated_at
 	`
-	err := util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		if v.IsActive {
-			if _, err := tx.ExecContext(ctx,
-				`UPDATE tbl_custom_form_version SET is_active = false WHERE form_id = $1 AND is_active = true AND deleted_at IS NULL`,
-				v.FormId,
-			); err != nil {
-				return fmt.Errorf("deactivate existing versions: %w", err)
-			}
-		}
-		return tx.QueryRowxContext(ctx, insertQuery,
-			v.ID, v.FormId, v.Version, v.IsActive, v.PractitionerID,
-		).StructScan(v)
-	})
-	if err != nil {
+	if err := r.db.QueryRowxContext(ctx, query,
+		v.ID, v.FormId, v.Version, v.IsActive, v.PractitionerID,
+	).StructScan(v); err != nil {
 		return fmt.Errorf("create form version: %w", err)
 	}
 	return nil

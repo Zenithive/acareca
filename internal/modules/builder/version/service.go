@@ -21,11 +21,10 @@ type IService interface {
 type service struct {
 	repo       IRepository
 	formClinic clinic.Service
-	db         *sqlx.DB
 }
 
 func NewService(db *sqlx.DB, repo IRepository, clinicSvc clinic.Service) IService {
-	return &service{db: db, repo: repo, formClinic: clinicSvc}
+	return &service{repo: repo, formClinic: clinicSvc}
 }
 
 // Create implements [IService].
