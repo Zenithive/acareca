@@ -37,7 +37,7 @@ func NewHandler(svc Service) IHandler {
 // @Success 201 {object} RsClinic
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /clinic [post]
+// @Router /clinic/create [post]
 func (h *handler) CreateClinic(c *gin.Context) {
 	PractID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -65,7 +65,7 @@ func (h *handler) CreateClinic(c *gin.Context) {
 // @Produce json
 // @Success 200 {array} RsClinic
 // @Failure 500 {object} response.RsError
-// @Router /clinic [get]
+// @Router /clinic/all [get]
 func (h *handler) GetClinics(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)

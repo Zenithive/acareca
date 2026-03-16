@@ -210,6 +210,8 @@ definitions:
         type: string
       city:
         type: string
+      id:
+        type: string
       is_primary:
         type: boolean
       postcode:
@@ -221,15 +223,19 @@ definitions:
     properties:
       abn:
         type: string
-      address_data:
-        $ref: '#/definitions/clinic.RqUpdateAddress'
-      contact_data:
-        additionalProperties:
-          type: string
-        type: object
+      addresses:
+        items:
+          $ref: '#/definitions/clinic.RqUpdateAddress'
+        type: array
+      contacts:
+        items:
+          $ref: '#/definitions/clinic.RqUpdateContact'
+        type: array
       description:
         type: string
-      financial_year:
+      financial_year_id:
+        type: string
+      id:
         type: string
       is_active:
         type: boolean
@@ -238,6 +244,24 @@ definitions:
       name:
         type: string
       profile_picture:
+        type: string
+    type: object
+  clinic.RqUpdateContact:
+    properties:
+      contact_type:
+        enum:
+        - PHONE
+        - EMAIL
+        - WEBSITE
+        - FAX
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
         type: string
     type: object
   clinic.RsClinic:
@@ -1165,52 +1189,6 @@ paths:
       summary: Calculate outwork result
       tags:
       - calculation
-  /clinic:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/clinic.RsClinic'
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Get all clinics for practitioner
-      tags:
-      - clinic
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Clinic Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/clinic.RqCreateClinic'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/clinic.RsClinic'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Create a new clinic
-      tags:
-      - clinic
   /clinic/{id}:
     delete:
       parameters:
@@ -1307,6 +1285,53 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Update clinic details
+      tags:
+      - clinic
+  /clinic/all:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clinic.RsClinic'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get all clinics for practitioner
+      tags:
+      - clinic
+  /clinic/create:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Clinic Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqCreateClinic'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/clinic.RsClinic'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new clinic
       tags:
       - clinic
   /coa/account-taxes:

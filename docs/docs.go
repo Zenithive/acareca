@@ -536,7 +536,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/clinic": {
+        "/clinic/all": {
             "get": {
                 "produces": [
                     "application/json"
@@ -562,7 +562,9 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/clinic/create": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -2626,6 +2628,9 @@ const docTemplate = `{
                 "city": {
                     "type": "string"
                 },
+                "id": {
+                    "type": "string"
+                },
                 "is_primary": {
                     "type": "boolean"
                 },
@@ -2643,19 +2648,25 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "address_data": {
-                    "$ref": "#/definitions/clinic.RqUpdateAddress"
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clinic.RqUpdateAddress"
+                    }
                 },
-                "contact_data": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clinic.RqUpdateContact"
                     }
                 },
                 "description": {
                     "type": "string"
                 },
-                "financial_year": {
+                "financial_year_id": {
+                    "type": "string"
+                },
+                "id": {
                     "type": "string"
                 },
                 "is_active": {
@@ -2668,6 +2679,32 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "profile_picture": {
+                    "type": "string"
+                }
+            }
+        },
+        "clinic.RqUpdateContact": {
+            "type": "object",
+            "properties": {
+                "contact_type": {
+                    "type": "string",
+                    "enum": [
+                        "PHONE",
+                        "EMAIL",
+                        "WEBSITE",
+                        "FAX"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
                     "type": "string"
                 }
             }
