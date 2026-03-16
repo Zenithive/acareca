@@ -116,7 +116,7 @@ func (h *handler) GetClinicByID(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, clinic, "Clinic updated successfully")
+	response.JSON(c, http.StatusOK, clinic, "Clinic fetched successfully")
 }
 
 // @Summary Update clinic details
@@ -160,7 +160,7 @@ func (h *handler) UpdateClinic(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, clinic, "Clinic deleted successfully")
+	response.JSON(c, http.StatusOK, clinic, "Clinic updated successfully")
 }
 
 // @Summary Delete a clinic
