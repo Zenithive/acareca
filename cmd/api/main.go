@@ -2,13 +2,14 @@ package main
 
 import (
 	"log"
-	"net/http"
+	_ "net/http"
 	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"github.com/iamarpitzala/acareca/docs"
 	_ "github.com/iamarpitzala/acareca/docs"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -21,9 +22,14 @@ import (
 // @version 1.0.0
 // @description Backend API for acareca
 // @contact.name API Support
-// @host localhost:8080
+
+// @securityDefinitions.apikey BearerToken
+// @in header
+// @name Authorization
+// @description Type "Bearer <your_token>" to authenticate
+
 // @BasePath /api/v1
-// @schemes http
+// @schemes http https
 // @consumes application/json
 // @produces application/json
 func main() {
@@ -32,6 +38,19 @@ func main() {
 	}
 
 	cfg := config.NewConfig()
+
+	// --- DYNAMIC SWAGGER CONFIGURATION ---
+	// This overrides the static comments based on the environment
+	docs.SwaggerInfo.BasePath = "/api/v1"
+	if os.Getenv("GIN_MODE") == "release" {
+		docs.SwaggerInfo.Host = "acareca.onrender.com"
+		docs.SwaggerInfo.Schemes = []string{"https"}
+	} else {
+		// Use server port from config or default 8080
+		docs.SwaggerInfo.Host = "localhost:" + cfg.ServerPort
+		docs.SwaggerInfo.Schemes = []string{"http"}
+	}
+	// -------------------------------------
 
 	dbConn, err := db.DBConn(cfg)
 	if err != nil {

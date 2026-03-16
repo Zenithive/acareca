@@ -149,6 +149,25 @@ definitions:
     x-enum-varnames:
     - PaidByClinic
     - PaidByOwner
+  clinic.RqBulkDeleteClinic:
+    properties:
+      clinic_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - clinic_ids
+    type: object
+  clinic.RqBulkUpdateClinic:
+    properties:
+      clinics:
+        items:
+          $ref: '#/definitions/clinic.RqUpdateClinic'
+        type: array
+    required:
+    - clinics
+    type: object
   clinic.RqClinicAddress:
     properties:
       address:
@@ -210,6 +229,8 @@ definitions:
         type: string
       city:
         type: string
+      id:
+        type: string
       is_primary:
         type: boolean
       postcode:
@@ -221,15 +242,19 @@ definitions:
     properties:
       abn:
         type: string
-      address_data:
-        $ref: '#/definitions/clinic.RqUpdateAddress'
-      contact_data:
-        additionalProperties:
-          type: string
-        type: object
+      addresses:
+        items:
+          $ref: '#/definitions/clinic.RqUpdateAddress'
+        type: array
+      contacts:
+        items:
+          $ref: '#/definitions/clinic.RqUpdateContact'
+        type: array
       description:
         type: string
-      financial_year:
+      financial_year_id:
+        type: string
+      id:
         type: string
       is_active:
         type: boolean
@@ -238,6 +263,24 @@ definitions:
       name:
         type: string
       profile_picture:
+        type: string
+    type: object
+  clinic.RqUpdateContact:
+    properties:
+      contact_type:
+        enum:
+        - PHONE
+        - EMAIL
+        - WEBSITE
+        - FAX
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
         type: string
     type: object
   clinic.RsClinic:
@@ -766,6 +809,18 @@ definitions:
       message:
         type: string
     type: object
+  setting.RqCreatePractitioner:
+    properties:
+      abn:
+        maxLength: 20
+        type: string
+      user_id:
+        type: string
+      verified:
+        type: boolean
+    required:
+    - user_id
+    type: object
   setting.RsPractitioner:
     properties:
       abn:
@@ -817,7 +872,6 @@ definitions:
       updated_at:
         type: string
     type: object
-host: localhost:8080
 info:
   contact:
     name: API Support
@@ -841,6 +895,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List subscriptions
       tags:
       - subscription
@@ -863,6 +919,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create a new subscription
       tags:
       - subscription
@@ -894,6 +952,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete a subscription
       tags:
       - subscription
@@ -922,6 +982,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get a subscription
       tags:
       - subscription
@@ -950,6 +1012,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update a subscription
       tags:
       - subscription
@@ -1075,6 +1139,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Calculate gross result
       tags:
       - calculation
@@ -1104,6 +1170,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Calculate net amount
       tags:
       - calculation
@@ -1133,6 +1201,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Calculate net result
       tags:
       - calculation
@@ -1162,6 +1232,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Calculate outwork result
       tags:
       - calculation
@@ -1180,6 +1252,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get all clinics for practitioner
       tags:
       - clinic
@@ -1208,6 +1282,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create a new clinic
       tags:
       - clinic
@@ -1240,6 +1316,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete a clinic
       tags:
       - clinic
@@ -1269,6 +1347,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get clinic by ID
       tags:
       - clinic
@@ -1306,7 +1386,61 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update clinic details
+      tags:
+      - clinic
+  /clinic/bulk-delete:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: IDs to delete
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqBulkDeleteClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Bulk delete clinics
+      tags:
+      - clinic
+  /clinic/bulk-update:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Bulk Update Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqBulkUpdateClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/clinic.RsClinic'
+              type: array
+            type: object
+      security:
+      - BearerToken: []
+      summary: Bulk update clinics
       tags:
       - clinic
   /coa/account-taxes:
@@ -1324,6 +1458,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List all account tax types
       tags:
       - coa
@@ -1354,6 +1490,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get account tax by ID
       tags:
       - coa
@@ -1372,6 +1510,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List all account types
       tags:
       - coa
@@ -1402,10 +1542,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get account type by ID
       tags:
       - coa
-  /coa/chart:
+  /coa/chart-of-account:
     get:
       produces:
       - application/json
@@ -1420,6 +1562,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List chart of accounts for practitioner
       tags:
       - coa
@@ -1452,10 +1596,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create a new chart of account
       tags:
       - coa
-  /coa/chart/{id}:
+  /coa/chart-of-account/{id}:
     delete:
       parameters:
       - description: Chart of Account UUID
@@ -1488,6 +1634,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete chart of account
       tags:
       - coa
@@ -1517,6 +1665,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get chart of account by ID
       tags:
       - coa
@@ -1562,6 +1712,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update an existing chart of account
       tags:
       - coa
@@ -1589,6 +1741,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete a form entry
       tags:
       - entry
@@ -1617,6 +1771,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get a form entry by ID
       tags:
       - entry
@@ -1655,6 +1811,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update a form entry
       tags:
       - entry
@@ -1682,6 +1840,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List form entries
       tags:
       - entry
@@ -1716,6 +1876,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create a new form entry
       tags:
       - entry
@@ -1746,6 +1908,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List forms
       tags:
       - form
@@ -1775,6 +1939,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create form with fields
       tags:
       - form
@@ -1804,6 +1970,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update form with fields
       tags:
       - form
@@ -1831,6 +1999,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete form
       tags:
       - form
@@ -1859,6 +2029,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get form by ID
       tags:
       - form
@@ -1889,6 +2061,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Bulk sync fields
       tags:
       - form
@@ -1907,6 +2081,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get all financial years
       tags:
       - fy
@@ -1939,6 +2115,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create a new financial year
       tags:
       - fy
@@ -1977,6 +2155,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update the label of a financial year
       tags:
       - fy
@@ -2009,6 +2189,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get all quarters for a specific financial year
       tags:
       - fy
@@ -2028,9 +2210,42 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List practitioners
       tags:
-      - practitioner
+      - setting
+    post:
+      consumes:
+      - application/json
+      description: Register a new practitioner in the system
+      parameters:
+      - description: Practitioner Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/setting.RqCreatePractitioner'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new practitioner
+      tags:
+      - setting
   /practitioner/{id}:
     delete:
       consumes:
@@ -2059,9 +2274,11 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete a practitioner
       tags:
-      - practitioner
+      - setting
     get:
       consumes:
       - application/json
@@ -2087,9 +2304,11 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get a practitioner by ID
       tags:
-      - practitioner
+      - setting
     put:
       consumes:
       - application/json
@@ -2115,9 +2334,11 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update a practitioner
       tags:
-      - practitioner
+      - setting
   /practitioner/setting/{id}:
     get:
       consumes:
@@ -2144,6 +2365,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get a setting by practitioner ID
       tags:
       - setting
@@ -2172,6 +2395,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Upsert a setting by practitioner ID
       tags:
       - setting
@@ -2201,6 +2426,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List subscriptions by practitioner ID
       tags:
       - subscription
@@ -2237,6 +2464,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Delete a subscription
       tags:
       - subscription
@@ -2265,6 +2494,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get a subscription by ID
       tags:
       - subscription
@@ -2298,6 +2529,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Update a subscription
       tags:
       - subscription
@@ -2327,9 +2560,18 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get a practitioner by user ID
       tags:
-      - practitioner
+      - setting
 schemes:
 - http
+- https
+securityDefinitions:
+  BearerToken:
+    description: Type "Bearer <your_token>" to authenticate
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

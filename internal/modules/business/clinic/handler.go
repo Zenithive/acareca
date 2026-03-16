@@ -37,6 +37,7 @@ func NewHandler(svc Service) IHandler {
 // @Success 201 {object} RsClinic
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic [post]
 func (h *handler) CreateClinic(c *gin.Context) {
 	PractID, ok := util.GetPractitionerID(c)
@@ -65,6 +66,7 @@ func (h *handler) CreateClinic(c *gin.Context) {
 // @Produce json
 // @Success 200 {array} RsClinic
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic [get]
 func (h *handler) GetClinics(c *gin.Context) {
 	// Get user ID from JWT token context
@@ -91,6 +93,7 @@ func (h *handler) GetClinics(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic/{id} [get]
 func (h *handler) GetClinicByID(c *gin.Context) {
 	// Get user ID from JWT token context
@@ -129,6 +132,7 @@ func (h *handler) GetClinicByID(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic/{id} [put]
 func (h *handler) UpdateClinic(c *gin.Context) {
 	// Get user ID from JWT token context
@@ -171,6 +175,7 @@ func (h *handler) UpdateClinic(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic/{id} [delete]
 func (h *handler) DeleteClinic(c *gin.Context) {
 	// Get user ID from JWT token context
@@ -197,6 +202,15 @@ func (h *handler) DeleteClinic(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, gin.H{"message": "clinic deleted successfully"})
 }
+
+// @Summary Bulk update clinics
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param request body RqBulkUpdateClinic true "Bulk Update Data"
+// @Success 200 {object} map[string][]RsClinic
+// @Security BearerToken
+// @Router /clinic/bulk-update [put]
 func (h *handler) BulkUpdateClinics(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)
@@ -223,6 +237,14 @@ func (h *handler) BulkUpdateClinics(c *gin.Context) {
 	response.JSON(c, http.StatusOK, gin.H{"clinics": clinics})
 }
 
+// @Summary Bulk delete clinics
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param request body RqBulkDeleteClinic true "IDs to delete"
+// @Success 200 {object} map[string]string
+// @Security BearerToken
+// @Router /clinic/bulk-delete [delete]
 func (h *handler) BulkDeleteClinics(c *gin.Context) {
 	// Get user ID from JWT token context
 	PractID, ok := util.GetPractitionerID(c)

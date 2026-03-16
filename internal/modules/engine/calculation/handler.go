@@ -31,6 +31,7 @@ func NewHandler(svc Service) IHandler {
 // @Success 200 {object} NetAmountResult
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /calculation/net-amount [post]
 func (h *handler) NetAmount(c *gin.Context) {
 	var entry Entry
@@ -54,6 +55,7 @@ func (h *handler) NetAmount(c *gin.Context) {
 // @Success 200 {object} NetResult
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /calculation/net-result [post]
 func (h *handler) NetResult(c *gin.Context) {
 	var entry Entry
@@ -77,6 +79,7 @@ func (h *handler) NetResult(c *gin.Context) {
 // @Success 200 {object} GrossResult
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /calculation/gross-result [post]
 func (h *handler) GrossResult(c *gin.Context) {
 	var entry Entry
@@ -100,6 +103,7 @@ func (h *handler) GrossResult(c *gin.Context) {
 // @Success 200 {object} OutWorkResult
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /calculation/outwork-result [post]
 func (h *handler) OutWorkResult(c *gin.Context) {
 	var entry Entry

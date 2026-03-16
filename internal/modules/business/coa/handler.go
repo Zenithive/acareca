@@ -37,6 +37,7 @@ func NewHandler(svc Service) IHandler {
 // @Produce json
 // @Success 200 {array} AccountType
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-types [get]
 func (h *handler) ListAccountTypes(c *gin.Context) {
 	list, err := h.svc.ListAccountTypes(c.Request.Context())
@@ -55,6 +56,7 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-types/{id} [get]
 func (h *handler) GetAccountType(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 16)
@@ -79,6 +81,7 @@ func (h *handler) GetAccountType(c *gin.Context) {
 // @Produce json
 // @Success 200 {array} AccountTax
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-taxes [get]
 func (h *handler) ListAccountTaxes(c *gin.Context) {
 	list, err := h.svc.ListAccountTaxes(c.Request.Context())
@@ -97,6 +100,7 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-taxes/{id} [get]
 func (h *handler) GetAccountTax(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 16)
@@ -121,7 +125,8 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Produce json
 // @Success 200 {array} RsChartOfAccount
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart [get]
+// @Security BearerToken
+// @Router /coa/chart-of-account [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -163,7 +168,8 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart/{id} [get]
+// @Security BearerToken
+// @Router /coa/chart-of-account/{id} [get]
 func (h *handler) GetChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -195,7 +201,8 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart [post]
+// @Security BearerToken
+// @Router /coa/chart-of-account [post]
 func (h *handler) CreateChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -234,7 +241,8 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Failure 404 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart/{id} [put]
+// @Security BearerToken
+// @Router /coa/chart-of-account/{id} [put]
 func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -279,7 +287,8 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart/{id} [delete]
+// @Security BearerToken
+// @Router /coa/chart-of-account/{id} [delete]
 func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {

@@ -34,6 +34,7 @@ func NewHandler(svc Service) IHandler {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /admin/subscription [post]
 func (h *handler) CreateSubscription(c *gin.Context) {
 	var req RqCreateSubscription
@@ -57,6 +58,7 @@ func (h *handler) CreateSubscription(c *gin.Context) {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /admin/subscription/{id} [get]
 // @Param id path int true "Subscription ID"
 func (h *handler) GetSubscription(c *gin.Context) {
@@ -84,6 +86,7 @@ func (h *handler) GetSubscription(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} RsSubscription
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /admin/subscription [get]
 func (h *handler) ListSubscriptions(c *gin.Context) {
 	list, err := h.svc.ListSubscriptions(c.Request.Context())
@@ -102,6 +105,7 @@ func (h *handler) ListSubscriptions(c *gin.Context) {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /admin/subscription/{id} [put]
 // @Param id path int true "Subscription ID"
 func (h *handler) UpdateSubscription(c *gin.Context) {
@@ -135,6 +139,7 @@ func (h *handler) UpdateSubscription(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /admin/subscription/{id} [delete]
 // @Param id path int true "Subscription ID"
 func (h *handler) DeleteSubscription(c *gin.Context) {

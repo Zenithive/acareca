@@ -13,7 +13,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	rg.GET("/account-taxes/:id", h.GetAccountTax)
 
 	// Chart of Accounts CRUD — scoped by practitioner_id
-	accounts := rg.Group("/chat-of-account")
+	accounts := rg.Group("/chart-of-account")
 	accounts.Use(middleware.Auth(cfg))
 	accounts.GET("", h.ListChartOfAccount)
 	accounts.GET("/:id", h.GetChartOfAccount)

@@ -36,6 +36,7 @@ func NewHandler(svc IService) IHandler {
 // @Success 201 {object} RsFormEntry
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /entry/version/{version_id} [post]
 func (h *handler) Create(c *gin.Context) {
 	versionID, ok := util.ParseUuidID(c, "version_id")
@@ -65,6 +66,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Success 200 {object} RsFormEntry
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /entry/{id} [get]
 func (h *handler) Get(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
@@ -94,6 +96,7 @@ func (h *handler) Get(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /entry/{id} [put]
 func (h *handler) Update(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
@@ -128,6 +131,7 @@ func (h *handler) Update(c *gin.Context) {
 // @Success 204 "No Content"
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /entry/{id} [delete]
 func (h *handler) Delete(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
@@ -153,6 +157,7 @@ func (h *handler) Delete(c *gin.Context) {
 // @Param version_id path string true "Version ID"
 // @Success 200 {array} RsFormEntry
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /entry/version/{version_id} [get]
 func (h *handler) List(c *gin.Context) {
 	versionID, ok := util.ParseUuidID(c, "version_id")

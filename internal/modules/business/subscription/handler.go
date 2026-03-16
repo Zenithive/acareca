@@ -33,6 +33,7 @@ func NewHandler(svc Service) IHandler {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /practitioner/subscription/{id} [get]
 // @Param id path int true "Subscription ID"
 func (h *handler) Create(c *gin.Context) {
@@ -61,6 +62,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /practitioner/subscription [get]
 // @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) GetByID(c *gin.Context) {
@@ -88,6 +90,7 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /practitioner/subscription [get]
 // @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) ListByPractitionerID(c *gin.Context) {
@@ -111,6 +114,7 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /practitioner/subscription/{id} [put]
 // @Param id path int true "Subscription ID"
 // @Param practitioner_id path string true "Practitioner ID"
@@ -144,6 +148,7 @@ func (h *handler) Update(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /practitioner/subscription/{id} [delete]
 // @Param id path int true "Subscription ID"
 // @Param practitioner_id path string true "Practitioner ID"
