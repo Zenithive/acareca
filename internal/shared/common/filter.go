@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -118,4 +119,70 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 	}
 
 	return query, args
+}
+
+func NewFilter(search *string, filters map[string]interface{}, operators map[string]Operator, limit, offset *int) Filter {
+
+	var where []Condition
+
+	for field, value := range filters {
+
+		if value == nil {
+			continue
+		}
+
+		switch v := value.(type) {
+		case []string:
+			if len(v) == 0 {
+				continue
+			}
+		case []int:
+			if len(v) == 0 {
+				continue
+			}
+		case []uuid.UUID:
+			if len(v) == 0 {
+				continue
+			}
+		}
+
+		op := OpEq
+
+		if operators != nil {
+			if customOp, ok := operators[field]; ok {
+				op = customOp
+			}
+		}
+
+		if op == OpEq {
+			switch value.(type) {
+			case []string, []int, []int64, []uuid.UUID:
+				op = OpIn
+			}
+		}
+
+		where = append(where, Condition{
+			Field:    field,
+			Operator: op,
+			Value:    value,
+		})
+	}
+
+	// 🔥 safe defaults
+	l, o := 10, 0
+	if limit != nil && *limit > 0 && *limit <= 100 {
+		l = *limit
+	}
+	if offset != nil && *offset >= 0 {
+		o = *offset
+	}
+
+	return Filter{
+		Search:  search,
+		Where:   where,
+		Limit:   l,
+		Offset:  o,
+		SortBy:  "",
+		OrderBy: "",
+	}
 }

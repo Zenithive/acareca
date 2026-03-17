@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -108,7 +107,7 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 	}
 
 	if req.Status == "" {
-		req.Status = detail.StatusDraft
+		req.Status = StatusDraft
 	}
 	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, practitionerID)
 
@@ -177,10 +176,6 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 
 	out, err := h.svc.GetFormWithFields(c.Request.Context(), formID)
 	if err != nil {
-		if errors.Is(err, detail.ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -188,17 +183,16 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 }
 
 // @Summary List forms
-// @Description List forms filtered by clinic, clinic name, method type, and sorted by clinic/owner share. If clinic_id not provided, lists all forms for practitioner's clinics.
+// @Description List all forms belonging to the practitioner's clinics. Optionally filter by clinic, method, or status. If clinic_id is omitted, all clinics are included.
 // @Tags form
-// @Accept json
 // @Produce json
-// @Param clinic_id query string false "Clinic ID (optional - if not provided, lists all practitioner's clinics)"
+// @Param clinic_id  query string false "Filter by clinic ID"
 // @Param clinic_name query string false "Filter by clinic name (partial match)"
-// @Param method query string false "Filter by method type (INDEPENDENT_CONTRACTOR or SERVICE_FEE)"
-// @Param status query string false "Filter by status (DRAFT, PUBLISHED, or ARCHIVED)"
-// @Param sort_by query string false "Sort by field (clinic_share or owner_share) - required if sort_order is provided"
-// @Param sort_order query string false "Sort order (asc or desc) - required if sort_by is provided"
-// @Success 200 {array} detail.RsFormDetail
+// @Param method     query string false "Filter by method"     Enums(INDEPENDENT_CONTRACTOR, SERVICE_FEE)
+// @Param status     query string false "Filter by status"     Enums(DRAFT, PUBLISHED, ARCHIVED)
+// @Param sort_by    query string false "Field to sort by"     Enums(status, method, clinic_id, created_at)
+// @Param sort_order query string false "Sort direction"       Enums(asc, desc)
+// @Success 200 {object} response.RsSuccess{data=[]detail.RsFormDetail}
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /form [get]
@@ -208,46 +202,7 @@ func (h *handler) List(c *gin.Context) {
 		return
 	}
 
-	clinicIdStr := c.Query("clinic_id")
-	clinicName := c.Query("clinic_name")
-	method := c.Query("method")
-	status := c.Query("status")
-	sortBy := c.Query("sort_by")
-	sortOrder := c.Query("sort_order")
-
-	// Validate that both sort_by and sort_order are provided together
-	if (sortBy != "" && sortOrder == "") || (sortBy == "" && sortOrder != "") {
-		response.Error(c, http.StatusBadRequest, errors.New("both sort_by and sort_order must be provided together"))
-		return
-	}
-
 	var filter Filter
-
-	// Parse clinic_id if provided
-	if clinicIdStr != "" {
-		clinicId, err := util.ParseUUID(clinicIdStr)
-		if err != nil {
-			response.Error(c, http.StatusBadRequest, errors.New("invalid clinic_id format"))
-			return
-		}
-		filter.ClinicID = &clinicId
-	}
-	// If clinic_id not provided, filter.ClinicID remains nil
-
-	if clinicName != "" {
-		filter.ClinicName = &clinicName
-	}
-	if method != "" {
-		filter.Method = &method
-	}
-	if status != "" {
-		filter.Status = &status
-	}
-	if sortBy != "" && sortOrder != "" {
-		filter.SortBy = &sortBy
-		filter.SortOrder = &sortOrder
-	}
-
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		fmt.Println(err.Error())
 		response.Error(c, http.StatusBadRequest, err)
@@ -278,10 +233,6 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.svc.Delete(c.Request.Context(), formID); err != nil {
-		if errors.Is(err, detail.ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

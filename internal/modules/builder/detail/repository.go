@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -17,7 +18,7 @@ type IRepository interface {
 	Update(ctx context.Context, d *FormDetail) (*FormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error)
-	ListForm(ctx context.Context, filter Filter) ([]*FormDetail, error)
+	ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error)
 }
 
 type Repository struct {
@@ -58,57 +59,49 @@ func (r *Repository) Delete(ctx context.Context, formID uuid.UUID) error {
 }
 
 // ListForm implements [IRepository].
-func (r *Repository) ListForm(ctx context.Context, filter Filter) ([]*FormDetail, error) {
-	query := `SELECT f.id, f.clinic_id, f.name, f.description, f.status, f.method, f.owner_share, f.clinic_share, f.created_at, f.updated_at 
-	          FROM tbl_form f 
-	          WHERE f.deleted_at IS NULL`
-	args := []any{}
-	argNum := 1
+func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error) {
 
-	// Filter by practitioner's clinics - required
-	query += fmt.Sprintf(` AND f.clinic_id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = $%d AND deleted_at IS NULL)`, argNum)
-	args = append(args, filter.PractitionerID)
-	argNum++
+	base := `
+	FROM tbl_form f
+	WHERE f.deleted_at IS NULL
+	AND f.clinic_id IN (
+		SELECT id FROM tbl_clinic 
+		WHERE practitioner_id = ? AND deleted_at IS NULL
+	)
+	`
 
-	// Handle clinic_id filter - optional (further narrows down to specific clinic)
-	// IMPORTANT: Validate clinic belongs to practitioner for security
-	if filter.ClinicID != nil {
-		query += fmt.Sprintf(` AND f.clinic_id = $%d`, argNum)
-		args = append(args, *filter.ClinicID)
-		argNum++
-	}
+	args := []any{practitionerID}
 
-	if filter.Status != nil {
-		query += fmt.Sprintf(` AND f.status = $%d`, argNum)
-		args = append(args, *filter.Status)
-		argNum++
-	}
-	if filter.Method != nil {
-		query += fmt.Sprintf(` AND f.method = $%d`, argNum)
-		args = append(args, *filter.Method)
-		argNum++
-	}
-	if filter.ClinicName != nil {
-		query += fmt.Sprintf(` AND f.clinic_id IN (SELECT id FROM tbl_clinic WHERE name ILIKE $%d AND practitioner_id = $%d AND deleted_at IS NULL)`, argNum, argNum+1)
-		args = append(args, "%"+*filter.ClinicName+"%", filter.PractitionerID)
-		argNum += 2
+	allowedColumns := map[string]string{
+		"status":     "f.status",
+		"method":     "f.method",
+		"clinic_id":  "f.clinic_id",
+		"created_at": "f.created_at",
 	}
 
-	// Add sorting - both sort_by and sort_order must be provided together
-	if filter.SortBy != nil && filter.SortOrder != nil {
-		sortColumn := "f." + *filter.SortBy
-		sortDir := *filter.SortOrder
-		// Validate sort direction
-		if sortDir != "asc" && sortDir != "desc" {
-			sortDir = "asc"
-		}
-		query += fmt.Sprintf(` ORDER BY %s %s`, sortColumn, sortDir)
+	searchCols := []string{
+		"f.name",
+		"f.description",
 	}
+
+	query, qArgs := common.BuildQuery(
+		base,
+		filter,
+		allowedColumns,
+		searchCols,
+		false,
+	)
+
+	args = append(args, qArgs...)
+
+	query = `
+	SELECT f.id, f.clinic_id, f.name, f.description, f.status, f.method,
+	       f.owner_share, f.clinic_share, f.created_at, f.updated_at
+	` + query
+
+	query = r.db.Rebind(query)
 
 	var details []*FormDetail
-	fmt.Println(query)
-	fmt.Println(filter.PractitionerID)
-	fmt.Println(filter.ClinicID)
 	if err := r.db.SelectContext(ctx, &details, query, args...); err != nil {
 		return nil, fmt.Errorf("list form details: %w", err)
 	}

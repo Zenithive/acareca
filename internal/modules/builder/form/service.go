@@ -59,7 +59,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 		if err != nil {
 			return nil, err
 		}
-		if formDetail.Status != detail.StatusDraft {
+		if formDetail.Status != StatusDraft {
 			return nil, errors.New("form is not draft for fields")
 		}
 	}
@@ -175,7 +175,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		ClinicShare: d.ClinicShare,
 	}
 	if formReq.Status == "" {
-		formReq.Status = detail.StatusDraft
+		formReq.Status = StatusDraft
 	}
 
 	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, practitionerID)
@@ -250,7 +250,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if err != nil {
 		return nil, nil, err
 	}
-	if existing.Status != detail.StatusDraft && len(req.Fields) > 0 {
+	if existing.Status != StatusDraft && len(req.Fields) > 0 {
 		return nil, nil, errors.New("form is not draft for fields")
 	}
 	if len(req.Fields) == 0 {
@@ -362,16 +362,14 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 }
 
 func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*detail.RsFormDetail, error) {
-	// Pass practitioner ID to detail service for filtering by practitioner's clinics
-	return s.detailSvc.ListForm(ctx, detail.Filter{
-		PractitionerID: practitionerID,
-		ClinicID:       filter.ClinicID,
-		ClinicName:     filter.ClinicName,
-		Status:         filter.Status,
-		Method:         filter.Method,
-		SortBy:         filter.SortBy,
-		SortOrder:      filter.SortOrder,
-	})
+	return s.detailSvc.List(ctx, Filter{
+		ClinicID:   filter.ClinicID,
+		ClinicName: filter.ClinicName,
+		Status:     filter.Status,
+		Method:     filter.Method,
+		SortBy:     filter.SortBy,
+		SortOrder:  filter.SortOrder,
+	}, practitionerID)
 }
 
 func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {

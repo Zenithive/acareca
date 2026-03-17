@@ -4,12 +4,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	StatusDraft     = "DRAFT"
-	StatusPublished = "PUBLISHED"
-	StatusArchived  = "ARCHIVED"
-)
-
 type RqFormDetail struct {
 	Name        string  `json:"name" validate:"required"`
 	Description *string `json:"description" validate:"omitempty"`
@@ -104,14 +98,4 @@ type RsFormDetail struct {
 	ClinicShare int       `json:"clinic_share"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
-}
-
-type Filter struct {
-	Status         *string    `form:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
-	Method         *string    `form:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	ClinicID       *uuid.UUID `form:"clinic_id" validate:"omitempty,uuid"`
-	PractitionerID uuid.UUID  `form:"practitioner_id"` // Required for filtering by practitioner
-	ClinicName     *string    `form:"clinic_name" validate:"omitempty"`
-	SortBy         *string    `form:"sort_by" validate:"omitempty,oneof=clinic_share owner_share"`
-	SortOrder      *string    `form:"sort_order" validate:"omitempty,oneof=asc desc"`
 }
