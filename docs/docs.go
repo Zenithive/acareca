@@ -2164,6 +2164,44 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "create a subscription for a practitioner",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "subscription"
+                ],
+                "summary": "Create a subscription",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/subscription.RsPractitionerSubscription"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
             }
         },
         "/practitioner/subscription/{id}": {
@@ -3500,6 +3538,35 @@ const docTemplate = `{
                 }
             }
         },
+        "subscription.RsPractitionerSubscription": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "end_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "practitioner_id": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/subscription.Status"
+                },
+                "subscription_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "subscription.RsSubscription": {
             "type": "object",
             "properties": {
@@ -3528,6 +3595,23 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "subscription.Status": {
+            "type": "string",
+            "enum": [
+                "ACTIVE",
+                "PAST_DUE",
+                "CANCELLED",
+                "PAUSED",
+                "EXPIRED"
+            ],
+            "x-enum-varnames": [
+                "StatusActive",
+                "StatusPastDue",
+                "StatusCancelled",
+                "StatusPaused",
+                "StatusExpired"
+            ]
         },
         "util.RsList": {
             "type": "object",

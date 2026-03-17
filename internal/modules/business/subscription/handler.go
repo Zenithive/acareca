@@ -28,17 +28,16 @@ func NewHandler(svc Service, db *sqlx.DB) IHandler {
 	return &handler{svc: svc, db: db}
 }
 
-// @Summary Get a subscription by ID
-// @Description get a subscription by ID
+// @Summary Create a subscription
+// @Description create a subscription for a practitioner
 // @Tags subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Success 201 {object} RsPractitionerSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/subscription/{id} [get]
-// @Param id path int true "Subscription ID"
+// @Router /practitioner/subscription [post]
 func (h *handler) Create(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -66,8 +65,8 @@ func (h *handler) Create(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created, "Subscription created successfully")
 }
 
-// @Summary List subscriptions by practitioner ID
-// @Description list subscriptions by practitioner ID
+// @Summary Get a subscription by ID
+// @Description get a subscription by ID
 // @Tags subscription
 // @Accept json
 // @Produce json
@@ -75,8 +74,8 @@ func (h *handler) Create(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/subscription [get]
-// @Param practitioner_id path string true "Practitioner ID"
+// @Router /practitioner/subscription/{id} [get]
+// @Param id path int true "Subscription ID"
 func (h *handler) GetByID(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {

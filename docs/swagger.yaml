@@ -658,6 +658,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  subscription.RsPractitionerSubscription:
+    properties:
+      created_at:
+        type: string
+      end_date:
+        type: string
+      id:
+        type: integer
+      practitioner_id:
+        type: string
+      start_date:
+        type: string
+      status:
+        $ref: '#/definitions/subscription.Status'
+      subscription_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
   subscription.RsSubscription:
     properties:
       created_at:
@@ -677,6 +696,20 @@ definitions:
       updated_at:
         type: string
     type: object
+  subscription.Status:
+    enum:
+    - ACTIVE
+    - PAST_DUE
+    - CANCELLED
+    - PAUSED
+    - EXPIRED
+    type: string
+    x-enum-varnames:
+    - StatusActive
+    - StatusPastDue
+    - StatusCancelled
+    - StatusPaused
+    - StatusExpired
   util.RsList:
     properties:
       items: {}
@@ -2157,6 +2190,30 @@ paths:
       security:
       - BearerToken: []
       summary: List subscriptions by practitioner ID
+      tags:
+      - subscription
+    post:
+      consumes:
+      - application/json
+      description: create a subscription for a practitioner
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/subscription.RsPractitionerSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a subscription
       tags:
       - subscription
   /practitioner/subscription/{id}:
