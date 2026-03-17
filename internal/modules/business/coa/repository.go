@@ -120,16 +120,16 @@ func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid
 			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
 			coa.code, coa.name, coa.is_system, coa.created_at, coa.updated_at
 		FROM tbl_chart_of_accounts coa
-		WHERE coa.practitioner_id = $1
+		WHERE coa.practitioner_id = ?
 		AND coa.deleted_at IS NULL
 	`
 
-	query, args := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, false)
-
-	args = append([]interface{}{practitionerID}, args...)
+	baseArgs := []interface{}{practitionerID}
+	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, false)
+	query = r.db.Rebind(query)
 
 	var list []*ChartOfAccount
-	if err := r.db.SelectContext(ctx, &list, query, args...); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query, append(baseArgs, filterArgs...)...); err != nil {
 		return nil, fmt.Errorf("list chart of accounts: %w", err)
 	}
 
@@ -143,18 +143,12 @@ func (r *repository) CountChartOfAccount(ctx context.Context, practitionerID uui
 		AND coa.deleted_at IS NULL
 	`
 
-	query, args := common.BuildQuery(
-		base,
-		f,
-		chartOfAccountColumns,
-		coaSearchColumns,
-		true,
-	)
-
-	args = append([]interface{}{practitionerID}, args...)
+	baseArgs := []interface{}{practitionerID}
+	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, true)
+	query = r.db.Rebind(query)
 
 	var count int
-	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+	if err := r.db.GetContext(ctx, &count, query, append(baseArgs, filterArgs...)...); err != nil {
 		return 0, fmt.Errorf("count chart of accounts: %w", err)
 	}
 
