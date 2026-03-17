@@ -378,213 +378,8 @@
                 }
             }
         },
-        "/calculation/gross-result": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "calculation"
-                ],
-                "summary": "Calculate gross result",
-                "parameters": [
-                    {
-                        "description": "Calculation Entry Data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/calculation.Entry"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/calculation.GrossResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/calculation/net-amount": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "calculation"
-                ],
-                "summary": "Calculate net amount",
-                "parameters": [
-                    {
-                        "description": "Calculation Entry Data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/calculation.Entry"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/calculation.NetAmountResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/calculation/net-result": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "calculation"
-                ],
-                "summary": "Calculate net result",
-                "parameters": [
-                    {
-                        "description": "Calculation Entry Data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/calculation.Entry"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/calculation.NetResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/calculation/outwork-result": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "calculation"
-                ],
-                "summary": "Calculate outwork result",
-                "parameters": [
-                    {
-                        "description": "Calculation Entry Data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/calculation.Entry"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/calculation.OutWorkResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/clinic/all": {
+        "/clinic": {
             "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -592,6 +387,56 @@
                     "clinic"
                 ],
                 "summary": "Get all clinics for practitioner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic name",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic ID",
+                        "name": "id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by active status",
+                        "name": "is_active",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across name, abn, description",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (name, is_active, created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort direction (ASC, DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 10, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -602,6 +447,12 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -609,15 +460,8 @@
                         }
                     }
                 }
-            }
-        },
-        "/clinic/create": {
+            },
             "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -656,91 +500,6 @@
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/clinic/bulk-delete": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "clinic"
-                ],
-                "summary": "Bulk delete clinics",
-                "parameters": [
-                    {
-                        "description": "IDs to delete",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/clinic.RqBulkDeleteClinic"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/clinic/bulk-update": {
-            "put": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "clinic"
-                ],
-                "summary": "Bulk update clinics",
-                "parameters": [
-                    {
-                        "description": "Bulk Update Data",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/clinic.RqBulkUpdateClinic"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "array",
-                                "items": {
-                                    "$ref": "#/definitions/clinic.RsClinic"
-                                }
-                            }
                         }
                     }
                 }
@@ -1092,14 +851,61 @@
                     "coa"
                 ],
                 "summary": "List chart of accounts for practitioner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by name",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by code",
+                        "name": "code",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search keyword",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Order direction (ASC/DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 20, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/coa.RsChartOfAccount"
-                            }
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
@@ -1611,10 +1417,7 @@
                         "BearerToken": []
                     }
                 ],
-                "description": "List forms filtered by clinic and query parameters",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "List all forms belonging to the practitioner's clinics. Optionally filter by clinic, method, or status. If clinic_id is omitted, all clinics are included.",
                 "produces": [
                     "application/json"
                 ],
@@ -1625,8 +1428,57 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Clinic ID",
+                        "description": "Filter by clinic ID",
                         "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic name (partial match)",
+                        "name": "clinic_name",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "INDEPENDENT_CONTRACTOR",
+                            "SERVICE_FEE"
+                        ],
+                        "type": "string",
+                        "description": "Filter by method",
+                        "name": "method",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "DRAFT",
+                            "PUBLISHED",
+                            "ARCHIVED"
+                        ],
+                        "type": "string",
+                        "description": "Filter by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "status",
+                            "method",
+                            "clinic_id",
+                            "created_at"
+                        ],
+                        "type": "string",
+                        "description": "Field to sort by",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "Sort direction",
+                        "name": "sort_order",
                         "in": "query"
                     }
                 ],
@@ -1753,57 +1605,6 @@
                 }
             }
         },
-        "/form/sync": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Synchronize multiple fields for a practitioner",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "form"
-                ],
-                "summary": "Bulk sync fields",
-                "parameters": [
-                    {
-                        "description": "Sync request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/form.RqBulkSyncFields"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/form.RsBulkSyncFields"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/form/{id}": {
             "get": {
                 "security": [
@@ -1840,6 +1641,39 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "fetch form detail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form"
+                ],
+                "summary": "fetch form details",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/form.RsFormWithFields"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -2737,211 +2571,6 @@
                 }
             }
         },
-        "calculation.Entry": {
-            "type": "object",
-            "properties": {
-                "clinic_share": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "expense": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/calculation.Input"
-                    }
-                },
-                "income": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/calculation.Input"
-                    }
-                },
-                "other_costs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/calculation.Input"
-                    }
-                },
-                "out_work_percentage": {
-                    "type": "number",
-                    "maximum": 100,
-                    "minimum": 0
-                },
-                "owner_share": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "super_component": {
-                    "type": "number"
-                }
-            }
-        },
-        "calculation.GrossResult": {
-            "type": "object",
-            "properties": {
-                "gst_service_fee": {
-                    "type": "number"
-                },
-                "net_amount": {
-                    "type": "number"
-                },
-                "remitted_amount": {
-                    "type": "number"
-                },
-                "service_fee": {
-                    "type": "number"
-                },
-                "total_service_fee": {
-                    "type": "number"
-                }
-            }
-        },
-        "calculation.Input": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "paid_by": {
-                    "enum": [
-                        "clinic",
-                        "owner"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/calculation.PaidBy"
-                        }
-                    ]
-                },
-                "tax": {
-                    "enum": [
-                        "inclusive",
-                        "exclusive",
-                        "manual",
-                        "zero"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/method.TaxTreatment"
-                        }
-                    ]
-                },
-                "tax_value": {
-                    "type": "number"
-                },
-                "value": {
-                    "type": "number",
-                    "minimum": 0
-                }
-            }
-        },
-        "calculation.NetAmountResult": {
-            "type": "object",
-            "properties": {
-                "expense": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    }
-                },
-                "income": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    }
-                },
-                "result": {
-                    "type": "number"
-                }
-            }
-        },
-        "calculation.NetResult": {
-            "type": "object",
-            "properties": {
-                "commission": {
-                    "type": "number"
-                },
-                "gst_commission": {
-                    "type": "number"
-                },
-                "net_amount": {
-                    "type": "number"
-                },
-                "super_component": {
-                    "type": "number"
-                },
-                "super_component_commission": {
-                    "type": "number"
-                },
-                "total_commission": {
-                    "type": "number"
-                },
-                "total_remuneration": {
-                    "type": "number"
-                }
-            }
-        },
-        "calculation.OutWorkResult": {
-            "type": "object",
-            "properties": {
-                "gst_service_fee": {
-                    "type": "number"
-                },
-                "net_amount": {
-                    "type": "number"
-                },
-                "net_payable": {
-                    "type": "number"
-                },
-                "service_fee": {
-                    "type": "number"
-                },
-                "total_service_fee": {
-                    "type": "number"
-                }
-            }
-        },
-        "calculation.PaidBy": {
-            "type": "string",
-            "enum": [
-                "clinic",
-                "owner"
-            ],
-            "x-enum-varnames": [
-                "PaidByClinic",
-                "PaidByOwner"
-            ]
-        },
-        "clinic.RqBulkDeleteClinic": {
-            "type": "object",
-            "required": [
-                "clinic_ids"
-            ],
-            "properties": {
-                "clinic_ids": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "clinic.RqBulkUpdateClinic": {
-            "type": "object",
-            "required": [
-                "clinics"
-            ],
-            "properties": {
-                "clinics": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqUpdateClinic"
-                    }
-                }
-            }
-        },
         "clinic.RqClinicAddress": {
             "type": "object",
             "properties": {
@@ -3381,19 +3010,18 @@
         "entry.RqEntryValue": {
             "type": "object",
             "required": [
+                "amount",
                 "form_field_id"
             ],
             "properties": {
+                "amount": {
+                    "type": "number",
+                    "minimum": 0
+                },
                 "form_field_id": {
                     "type": "string"
                 },
-                "gross_amount": {
-                    "type": "number"
-                },
                 "gst_amount": {
-                    "type": "number"
-                },
-                "net_amount": {
                     "type": "number"
                 }
             }
@@ -3497,9 +3125,7 @@
             "required": [
                 "coa_id",
                 "label",
-                "payment_responsibility",
-                "section_type",
-                "tax_type"
+                "section_type"
             ],
             "properties": {
                 "coa_id": {
@@ -3523,10 +3149,6 @@
                         "COST",
                         "OTHER_COST"
                     ]
-                },
-                "sort_order": {
-                    "type": "integer",
-                    "minimum": 0
                 },
                 "tax_type": {
                     "type": "string",
@@ -3569,10 +3191,6 @@
                         "OTHER_COST"
                     ]
                 },
-                "sort_order": {
-                    "type": "integer",
-                    "minimum": 0
-                },
                 "tax_type": {
                     "type": "string",
                     "enum": [
@@ -3607,46 +3225,11 @@
                 "section_type": {
                     "type": "string"
                 },
-                "sort_order": {
-                    "type": "integer"
-                },
                 "tax_type": {
                     "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
-                }
-            }
-        },
-        "form.RqBulkSyncFields": {
-            "type": "object",
-            "required": [
-                "clinic_id"
-            ],
-            "properties": {
-                "clinic_id": {
-                    "type": "string"
-                },
-                "create": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RqFormField"
-                    }
-                },
-                "delete": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "form_id": {
-                    "type": "string"
-                },
-                "update": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RqUpdateFormField"
-                    }
                 }
             }
         },
@@ -3753,32 +3336,6 @@
                 }
             }
         },
-        "form.RsBulkSyncFields": {
-            "type": "object",
-            "properties": {
-                "clinic_id": {
-                    "type": "string"
-                },
-                "created": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RsFormField"
-                    }
-                },
-                "deleted": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "updated": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RsFormField"
-                    }
-                }
-            }
-        },
         "form.RsFormWithFields": {
             "type": "object",
             "properties": {
@@ -3858,21 +3415,6 @@
                     "type": "string"
                 }
             }
-        },
-        "method.TaxTreatment": {
-            "type": "string",
-            "enum": [
-                "inclusive",
-                "exclusive",
-                "manual",
-                "zero"
-            ],
-            "x-enum-varnames": [
-                "TaxTreatmentInclusive",
-                "TaxTreatmentExclusive",
-                "TaxTreatmentManual",
-                "TaxTreatmentZero"
-            ]
         },
         "response.RsError": {
             "type": "object",
@@ -3981,6 +3523,21 @@
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "util.RsList": {
+            "type": "object",
+            "properties": {
+                "items": {},
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         }

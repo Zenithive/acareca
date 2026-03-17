@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/jmoiron/sqlx"
 )
 
 type IService interface {
@@ -14,7 +15,7 @@ type IService interface {
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
-	ListForm(ctx context.Context, filter Filter) ([]*RsFormDetail, error)
+	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*RsFormDetail, error)
 }
 
 type Service struct {
@@ -22,7 +23,7 @@ type Service struct {
 	versionSvc version.IService
 }
 
-func NewService(repo IRepository, versionSvc version.IService) IService {
+func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService) IService {
 	return &Service{repo: repo, versionSvc: versionSvc}
 }
 
@@ -48,11 +49,12 @@ func (s *Service) Delete(ctx context.Context, formID uuid.UUID) error {
 }
 
 // ListForm implements [IService].
-func (s *Service) ListForm(ctx context.Context, filter Filter) ([]*RsFormDetail, error) {
-	formDetails, err := s.repo.ListForm(ctx, filter)
+func (s *Service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*RsFormDetail, error) {
+	formDetails, err := s.repo.ListForm(ctx, filter.MapToFilter(), practitionerID)
 	if err != nil {
 		return nil, err
 	}
+
 	rs := make([]*RsFormDetail, 0, len(formDetails))
 	for _, d := range formDetails {
 		rs = append(rs, d.ToRs())
@@ -92,6 +94,7 @@ func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {
 	return nil
 }
 
+// Update updates form metadata and creates a new active version, deactivating the previous one.
 func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error) {
 	existing, err := s.repo.GetByID(ctx, d.ID)
 	if err != nil {
@@ -104,24 +107,12 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 	if err != nil {
 		return nil, err
 	}
-	activeVersions, err := s.versionSvc.List(ctx, updated.ID, updated.ClinicID)
+	allVersions, err := s.versionSvc.List(ctx, updated.ID, updated.ClinicID)
 	if err != nil {
 		return nil, err
 	}
-	for _, v := range activeVersions {
-		if v.IsActive {
-			isActive := false
-			_, err := s.versionSvc.Update(ctx, v.Id, updated.ClinicID, &version.RqUpdateFormVersion{
-				Version:  &v.Version,
-				IsActive: &isActive,
-			})
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
 	versionNum := 1
-	for _, v := range activeVersions {
+	for _, v := range allVersions {
 		if v.Version >= versionNum {
 			versionNum = v.Version + 1
 		}

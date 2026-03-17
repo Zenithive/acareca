@@ -19,6 +19,8 @@ type IRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID) ([]*FormEntry, error)
 	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
+
+	GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 }
 
 type Repository struct {
@@ -171,4 +173,26 @@ func (r *Repository) HasSubmittedEntryValuesForField(ctx context.Context, formFi
 		return false, fmt.Errorf("has submitted entry values for field: %w", err)
 	}
 	return exists, nil
+}
+
+func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
+	query := `SELECT id, form_version_id, clinic_id, submitted_by, submitted_at, status, created_at, updated_at
+		FROM tbl_form_entry WHERE form_version_id = $1 AND deleted_at IS NULL`
+	var e FormEntry
+	if err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&e.ID, &e.FormVersionID, &e.ClinicID, &e.SubmittedBy, &e.SubmittedAt, &e.Status, &e.CreatedAt, &e.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, ErrNotFound
+		}
+		return nil, nil, fmt.Errorf("get form entry: %w", err)
+	}
+
+	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
+		FROM tbl_form_entry_value WHERE entry_id = $1`
+	var values []*FormEntryValue
+	if err := r.db.SelectContext(ctx, &values, valQuery, e.ID); err != nil {
+		return nil, nil, fmt.Errorf("get entry values: %w", err)
+	}
+	return &e, values, nil
 }

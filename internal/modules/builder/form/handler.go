@@ -7,13 +7,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type IHandler interface {
-	Sync(c *gin.Context)
+	GetById(c *gin.Context)
 	CreateFormWithFields(c *gin.Context)
 	UpdateFormWithFields(c *gin.Context)
 	GetFormWithFields(c *gin.Context)
@@ -29,34 +28,58 @@ func NewHandler(svc IService) IHandler {
 	return &handler{svc: svc}
 }
 
-// @Summary Bulk sync fields
-// @Description Synchronize multiple fields for a practitioner
+// // @Summary Bulk sync fields
+// // @Description Synchronize multiple fields for a practitioner
+// // @Tags form
+// // @Accept json
+// // @Produce json
+// // @Param request body RqBulkSyncFields true "Sync request"
+// // @Success 200 {object} RsBulkSyncFields
+// // @Failure 400 {object} response.RsError
+// // @Failure 500 {object} response.RsError
+// // @Router /form/sync [post]
+// func (h *handler) Sync(c *gin.Context) {
+// 	practitionerID, ok := util.GetPractitionerID(c)
+// 	if !ok {
+// 		return
+// 	}
+
+// 	var req RqBulkSyncFields
+// 	if err := util.BindAndValidate(c, &req); err != nil {
+// 		response.Error(c, http.StatusBadRequest, err)
+// 		return
+// 	}
+// 	result, err := h.svc.BulkSyncFields(c.Request.Context(), practitionerID, &req)
+// 	if err != nil {
+// 		response.Error(c, http.StatusInternalServerError, err)
+// 		return
+// 	}
+// 	response.JSON(c, http.StatusOK, result, "Fields synchronized successfully")
+// }
+
+// @Summary fetch form details
+// @Description fetch form detail
 // @Tags form
 // @Accept json
 // @Produce json
-// @Param request body RqBulkSyncFields true "Sync request"
-// @Success 200 {object} RsBulkSyncFields
+// @Success 201 {object} RsFormWithFields
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
-// @Router /form/sync [post]
-func (h *handler) Sync(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
+// @Router /form/{id} [post]
+func (h *handler) GetById(c *gin.Context) {
+	formId, ok := util.ParseUuidID(c, "id")
 	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("invaild form id"))
 		return
 	}
 
-	var req RqBulkSyncFields
-	if err := util.BindAndValidate(c, &req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-	result, err := h.svc.BulkSyncFields(c.Request.Context(), practitionerID, &req)
+	form, err := h.svc.GetFormByID(c.Request.Context(), formId)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result, "Fields synchronized successfully")
+
+	response.JSON(c, http.StatusCreated, gin.H{"form": form}, "Form fetch successfully")
 }
 
 // @Summary Create form with fields
@@ -72,21 +95,22 @@ func (h *handler) Sync(c *gin.Context) {
 // @Router /form [post]
 func (h *handler) CreateFormWithFields(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
-
 	if !ok {
 		return
 	}
 
 	var req RqCreateFormWithFields
 	if err := util.BindAndValidate(c, &req); err != nil {
+
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
 	if req.Status == "" {
-		req.Status = detail.StatusDraft
+		req.Status = StatusDraft
 	}
 	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, practitionerID)
+
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -154,10 +178,6 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 
 	out, err := h.svc.GetFormWithFields(c.Request.Context(), formID)
 	if err != nil {
-		if errors.Is(err, detail.ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -165,33 +185,34 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 }
 
 // @Summary List forms
-// @Description List forms filtered by clinic and query parameters
+// @Description List all forms belonging to the practitioner's clinics. Optionally filter by clinic, method, or status. If clinic_id is omitted, all clinics are included.
 // @Tags form
-// @Accept json
 // @Produce json
-// @Param clinic_id query string false "Clinic ID"
-// @Success 200 {array} detail.RsFormDetail
+// @Param clinic_id  query string false "Filter by clinic ID"
+// @Param clinic_name query string false "Filter by clinic name (partial match)"
+// @Param method     query string false "Filter by method"     Enums(INDEPENDENT_CONTRACTOR, SERVICE_FEE)
+// @Param status     query string false "Filter by status"     Enums(DRAFT, PUBLISHED, ARCHIVED)
+// @Param sort_by    query string false "Field to sort by"     Enums(status, method, clinic_id, created_at)
+// @Param sort_order query string false "Sort direction"       Enums(asc, desc)
+// @Success 200 {object} []detail.RsFormDetail
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /form [get]
 func (h *handler) List(c *gin.Context) {
-	clinicId, err := util.ParseUUID(c.Query("clinic_id"))
-	if err != nil {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
 		return
 	}
 
 	var filter Filter
-	if clinicId != uuid.Nil {
-		filter.ClinicID = &clinicId
-	}
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		fmt.Println(err.Error())
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	list, err := h.svc.List(c.Request.Context(), filter)
+	list, err := h.svc.List(c.Request.Context(), filter, practitionerID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -216,10 +237,6 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.svc.Delete(c.Request.Context(), formID); err != nil {
-		if errors.Is(err, detail.ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -20,6 +19,8 @@ type IRepository interface {
 	Update(ctx context.Context, v *FormVersion) (*FormVersion, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormID(ctx context.Context, formID uuid.UUID) ([]*FormVersion, error)
+	ListVersionByFormID(ctx context.Context, formID uuid.UUID) (*FormVersion, error)
+	DeactivateByFormID(ctx context.Context, formID uuid.UUID) error
 }
 
 type repository struct {
@@ -32,18 +33,35 @@ func NewRepository(db *sqlx.DB) IRepository {
 
 // Create implements [IRepository].
 func (r *repository) Create(ctx context.Context, v *FormVersion) error {
+	if v.IsActive {
+		if _, err := r.db.ExecContext(ctx,
+			`UPDATE tbl_custom_form_version SET is_active = false WHERE form_id = $1 AND is_active = true AND deleted_at IS NULL`,
+			v.FormId,
+		); err != nil {
+			return fmt.Errorf("deactivate existing versions: %w", err)
+		}
+	}
 	query := `
 		INSERT INTO tbl_custom_form_version (id, form_id, version, is_active, practitioner_id)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING created_at, updated_at
 	`
-	err := util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		return tx.QueryRowxContext(ctx, query,
-			v.ID, v.FormId, v.Version, v.IsActive, v.PractitionerID,
-		).StructScan(v)
-	})
-	if err != nil {
+	if err := r.db.QueryRowxContext(ctx, query,
+		v.ID, v.FormId, v.Version, v.IsActive, v.PractitionerID,
+	).StructScan(v); err != nil {
 		return fmt.Errorf("create form version: %w", err)
+	}
+	return nil
+}
+
+// DeactivateByFormID implements [IRepository].
+func (r *repository) DeactivateByFormID(ctx context.Context, formID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tbl_custom_form_version SET is_active = false WHERE form_id = $1 AND is_active = true AND deleted_at IS NULL`,
+		formID,
+	)
+	if err != nil {
+		return fmt.Errorf("deactivate form versions: %w", err)
 	}
 	return nil
 }
@@ -108,4 +126,21 @@ func (r *repository) ListByFormID(ctx context.Context, formID uuid.UUID) ([]*For
 		return nil, fmt.Errorf("list form versions: %w", err)
 	}
 	return list, nil
+}
+
+// ListVersionByFormID implements [IRepository].
+func (r *repository) ListVersionByFormID(ctx context.Context, formID uuid.UUID) (*FormVersion, error) {
+	query := `SELECT id, form_id, version, is_active, practitioner_id, created_at, updated_at
+		FROM tbl_custom_form_version WHERE form_id = $1 AND deleted_at IS NULL
+		ORDER BY version ASC LIMIT 1`
+	var v FormVersion
+	if err := r.db.QueryRowContext(ctx, query, formID).Scan(
+		&v.ID, &v.FormId, &v.Version, &v.IsActive, &v.PractitionerID, &v.CreatedAt, &v.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get form version by form id: %w", err)
+	}
+	return &v, nil
 }

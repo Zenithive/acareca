@@ -37,19 +37,17 @@ func CompareHash(password, hash string) error {
 }
 
 func BindAndValidate(c *gin.Context, v any) error {
-	validate := validator.New()
-	if err := c.ShouldBindJSON(v); err != nil {
-		return err
-	}
-	if err := validate.Struct(v); err != nil {
-		return err
+	if c.Request.Body != nil && c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(v); err != nil {
+			return err
+		}
 	}
 
 	if err := c.ShouldBindQuery(v); err != nil {
 		return err
 	}
 
-	return nil
+	return validator.New().Struct(v)
 }
 
 type CustomClaims struct {
@@ -146,4 +144,18 @@ func RunInTransaction(ctx context.Context, db *sqlx.DB, fn func(ctx context.Cont
 		return err
 	}
 	return tx.Commit()
+}
+
+type RsList struct {
+	Items interface{} `json:"items"`
+	Total int         `json:"total"`
+	Page  int         `json:"page"`
+	Limit int         `json:"limit"`
+}
+
+func (rs *RsList) MapToList(data interface{}, total, page, limit int) {
+	rs.Items = data
+	rs.Total = total
+	rs.Page = page
+	rs.Limit = limit
 }

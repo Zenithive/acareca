@@ -7,36 +7,26 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
 var ErrNotFound = errors.New("clinic not found")
 
 type Repository interface {
-	// Read operations (kept for non-transactional reads)
-	GetClinics(ctx context.Context) ([]Clinic, error)
-	GetClinicsByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error)
+	ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]Clinic, error)
+	CountClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) (int, error)
 	GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error)
 	GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error)
 	GetClinicAddresses(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error)
 	GetClinicContacts(ctx context.Context, clinicID uuid.UUID) ([]ClinicContact, error)
-	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
 	GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error)
 
-	// Update operations (kept for non-transactional updates)
-	UpdateClinic(ctx context.Context, clinic *Clinic) (*Clinic, error)
-	UpdateClinicAddress(ctx context.Context, address *ClinicAddress) error
-	UpdateClinicContact(ctx context.Context, contact *ClinicContact) error
-	UpdateFinancialSettings(ctx context.Context, settings *FinancialSettings) error
-	UnsetPrimaryAddress(ctx context.Context, clinicID uuid.UUID, excludeID uuid.UUID) error
-	UnsetPrimaryContact(ctx context.Context, clinicID uuid.UUID, excludeID uuid.UUID) error
-
-	// Delete operations
 	DeleteClinic(ctx context.Context, id uuid.UUID) error
 	BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) error
 
-	// Transaction-based methods (for atomic operations)
-	GetDB() *sqlx.DB
+	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
+
 	CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error)
 	CreateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, address *ClinicAddress) (*ClinicAddress, error)
 	CreateClinicContactTx(ctx context.Context, tx *sqlx.Tx, contact *ClinicContact) (*ClinicContact, error)
@@ -63,20 +53,6 @@ type repository struct {
 
 func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
-}
-
-func (r *repository) GetClinics(ctx context.Context) ([]Clinic, error) {
-	query := `
-		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
-		FROM tbl_clinic
-		WHERE deleted_at IS NULL
-		ORDER BY created_at DESC
-	`
-	var clinics []Clinic
-	if err := r.db.SelectContext(ctx, &clinics, query); err != nil {
-		return nil, fmt.Errorf("get clinics: %w", err)
-	}
-	return clinics, nil
 }
 
 func (r *repository) GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error) {
@@ -156,72 +132,7 @@ func (r *repository) DeleteClinic(ctx context.Context, id uuid.UUID) error {
 
 	return nil
 }
-func (r *repository) UpdateClinic(ctx context.Context, clinic *Clinic) (*Clinic, error) {
-	query := `
-		UPDATE tbl_clinic 
-		SET practitioner_id = $1, profile_picture = $2, name = $3, abn = $4, 
-		    description = $5, is_active = $6, updated_at = now()
-		WHERE id = $7 AND deleted_at IS NULL
-		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
-	`
-	var c Clinic
-	err := r.db.QueryRowxContext(ctx, query,
-		clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
-		clinic.ABN, clinic.Description, clinic.IsActive, clinic.ID,
-	).StructScan(&c)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("update clinic: %w", err)
-	}
-	return &c, nil
-}
-func (r *repository) UpdateClinicAddress(ctx context.Context, address *ClinicAddress) error {
-	query := `
-		UPDATE tbl_clinic_address 
-		SET address = $1, city = $2, state = $3, postcode = $4, is_primary = $5, updated_at = now()
-		WHERE id = $6
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		address.Address, address.City, address.State,
-		address.Postcode, address.IsPrimary, address.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("update clinic address: %w", err)
-	}
-	return nil
-}
 
-func (r *repository) UpdateClinicContact(ctx context.Context, contact *ClinicContact) error {
-	query := `
-		UPDATE tbl_clinic_contact 
-		SET value = $1, label = $2, is_primary = $3, updated_at = now()
-		WHERE id = $4
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		contact.Value, contact.Label, contact.IsPrimary, contact.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("update clinic contact: %w", err)
-	}
-	return nil
-}
-
-func (r *repository) UpdateFinancialSettings(ctx context.Context, settings *FinancialSettings) error {
-	query := `
-		UPDATE tbl_financial_settings 
-		SET financial_year_id = $1, lock_date = $2, updated_at = now()
-		WHERE id = $3
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		settings.FinancialYearID, settings.LockDate, settings.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("update financial settings: %w", err)
-	}
-	return nil
-}
 func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error) {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
@@ -238,18 +149,49 @@ func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID strin
 	}
 	return &id, nil
 }
-func (r *repository) GetClinicsByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error) {
-	query := `
+
+var clinicAllowedColumns = map[string]string{
+	"id":         "id",
+	"name":       "name",
+	"is_active":  "is_active",
+	"created_at": "created_at",
+}
+
+var clinicSearchColumns = []string{"name", "abn", "description"}
+
+func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]Clinic, error) {
+	base := `
 		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
-		WHERE practitioner_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC
-	`
+		WHERE practitioner_id = ? AND deleted_at IS NULL`
+
+	query, filterArgs := common.BuildQuery(base, filter, clinicAllowedColumns, clinicSearchColumns, false)
+	query = sqlx.Rebind(sqlx.DOLLAR, query)
+
+	args := append([]interface{}{practitionerID}, filterArgs...)
+
 	var clinics []Clinic
-	if err := r.db.SelectContext(ctx, &clinics, query, practitionerID); err != nil {
+	if err := r.db.SelectContext(ctx, &clinics, query, args...); err != nil {
 		return nil, fmt.Errorf("get clinics by practitioner: %w", err)
 	}
 	return clinics, nil
+}
+
+func (r *repository) CountClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) (int, error) {
+	base := `
+		FROM tbl_clinic
+		WHERE practitioner_id = ? AND deleted_at IS NULL`
+
+	query, filterArgs := common.BuildQuery(base, filter, clinicAllowedColumns, clinicSearchColumns, true)
+	query = sqlx.Rebind(sqlx.DOLLAR, query)
+
+	args := append([]interface{}{practitionerID}, filterArgs...)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("count clinics by practitioner: %w", err)
+	}
+	return count, nil
 }
 
 func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
@@ -258,7 +200,6 @@ func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.U
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
-
 	var c Clinic
 	if err := r.db.QueryRowxContext(ctx, query, id, practitionerID).StructScan(&c); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -267,23 +208,6 @@ func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.U
 		return nil, fmt.Errorf("get clinic by id and practitioner: %w", err)
 	}
 	return &c, nil
-}
-func (r *repository) UnsetPrimaryAddress(ctx context.Context, clinicID uuid.UUID, excludeID uuid.UUID) error {
-	query := `UPDATE tbl_clinic_address SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2`
-	_, err := r.db.ExecContext(ctx, query, clinicID, excludeID)
-	if err != nil {
-		return fmt.Errorf("unset primary address: %w", err)
-	}
-	return nil
-}
-
-func (r *repository) UnsetPrimaryContact(ctx context.Context, clinicID uuid.UUID, excludeID uuid.UUID) error {
-	query := `UPDATE tbl_clinic_contact SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2`
-	_, err := r.db.ExecContext(ctx, query, clinicID, excludeID)
-	if err != nil {
-		return fmt.Errorf("unset primary contact: %w", err)
-	}
-	return nil
 }
 
 func (r *repository) BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) error {

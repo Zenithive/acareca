@@ -1,7 +1,10 @@
 package detail
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 const (
@@ -9,6 +12,46 @@ const (
 	StatusPublished = "PUBLISHED"
 	StatusArchived  = "ARCHIVED"
 )
+
+type Filter struct {
+	ClinicID   *uuid.UUID `form:"clinic_id"`
+	ClinicName *string    `form:"clinic_name"`
+	Method     *string    `form:"method"`
+	Status     *string    `form:"status"`
+	SortBy     *string    `form:"sort_by"`
+	SortOrder  *string    `form:"sort_order"`
+}
+
+func (f Filter) Validate() error {
+	if (f.SortBy != nil) != (f.SortOrder != nil) {
+		return errors.New("both sort_by and sort_order must be provided together")
+	}
+	return nil
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if filter.ClinicID != nil {
+		filters["clinic_id"] = *filter.ClinicID
+	}
+	if filter.Status != nil {
+		filters["status"] = *filter.Status
+	}
+	if filter.Method != nil {
+		filters["method"] = *filter.Method
+	}
+	if filter.ClinicName != nil {
+		filters["clinic_name"] = *filter.ClinicName
+	}
+	f := common.NewFilter(nil, filters, nil, nil, nil)
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	}
+	if filter.SortOrder != nil {
+		f.OrderBy = *filter.SortOrder
+	}
+	return f
+}
 
 type RqFormDetail struct {
 	Name        string  `json:"name" validate:"required"`
@@ -104,10 +147,4 @@ type RsFormDetail struct {
 	ClinicShare int       `json:"clinic_share"`
 	CreatedAt   string    `json:"created_at"`
 	UpdatedAt   string    `json:"updated_at"`
-}
-
-type Filter struct {
-	Status   *string   `form:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
-	Method   *string   `form:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	ClinicID uuid.UUID `form:"clinic_id" validate:"required"`
 }

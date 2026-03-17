@@ -33,141 +33,6 @@ definitions:
       updated_at:
         type: string
     type: object
-  calculation.Entry:
-    properties:
-      clinic_share:
-        minimum: 0
-        type: number
-      expense:
-        items:
-          $ref: '#/definitions/calculation.Input'
-        type: array
-      income:
-        items:
-          $ref: '#/definitions/calculation.Input'
-        type: array
-      other_costs:
-        items:
-          $ref: '#/definitions/calculation.Input'
-        type: array
-      out_work_percentage:
-        maximum: 100
-        minimum: 0
-        type: number
-      owner_share:
-        minimum: 0
-        type: number
-      super_component:
-        type: number
-    type: object
-  calculation.GrossResult:
-    properties:
-      gst_service_fee:
-        type: number
-      net_amount:
-        type: number
-      remitted_amount:
-        type: number
-      service_fee:
-        type: number
-      total_service_fee:
-        type: number
-    type: object
-  calculation.Input:
-    properties:
-      name:
-        maxLength: 255
-        type: string
-      paid_by:
-        allOf:
-        - $ref: '#/definitions/calculation.PaidBy'
-        enum:
-        - clinic
-        - owner
-      tax:
-        allOf:
-        - $ref: '#/definitions/method.TaxTreatment'
-        enum:
-        - inclusive
-        - exclusive
-        - manual
-        - zero
-      tax_value:
-        type: number
-      value:
-        minimum: 0
-        type: number
-    type: object
-  calculation.NetAmountResult:
-    properties:
-      expense:
-        items:
-          type: number
-        type: array
-      income:
-        items:
-          type: number
-        type: array
-      result:
-        type: number
-    type: object
-  calculation.NetResult:
-    properties:
-      commission:
-        type: number
-      gst_commission:
-        type: number
-      net_amount:
-        type: number
-      super_component:
-        type: number
-      super_component_commission:
-        type: number
-      total_commission:
-        type: number
-      total_remuneration:
-        type: number
-    type: object
-  calculation.OutWorkResult:
-    properties:
-      gst_service_fee:
-        type: number
-      net_amount:
-        type: number
-      net_payable:
-        type: number
-      service_fee:
-        type: number
-      total_service_fee:
-        type: number
-    type: object
-  calculation.PaidBy:
-    enum:
-    - clinic
-    - owner
-    type: string
-    x-enum-varnames:
-    - PaidByClinic
-    - PaidByOwner
-  clinic.RqBulkDeleteClinic:
-    properties:
-      clinic_ids:
-        items:
-          type: string
-        minItems: 1
-        type: array
-    required:
-    - clinic_ids
-    type: object
-  clinic.RqBulkUpdateClinic:
-    properties:
-      clinics:
-        items:
-          $ref: '#/definitions/clinic.RqUpdateClinic'
-        type: array
-    required:
-    - clinics
-    type: object
   clinic.RqClinicAddress:
     properties:
       address:
@@ -462,15 +327,15 @@ definitions:
     type: object
   entry.RqEntryValue:
     properties:
+      amount:
+        minimum: 0
+        type: number
       form_field_id:
         type: string
-      gross_amount:
-        type: number
       gst_amount:
         type: number
-      net_amount:
-        type: number
     required:
+    - amount
     - form_field_id
     type: object
   entry.RqFormEntry:
@@ -553,9 +418,6 @@ definitions:
         - COST
         - OTHER_COST
         type: string
-      sort_order:
-        minimum: 0
-        type: integer
       tax_type:
         enum:
         - INCLUSIVE
@@ -565,9 +427,7 @@ definitions:
     required:
     - coa_id
     - label
-    - payment_responsibility
     - section_type
-    - tax_type
     type: object
   field.RqUpdateFormField:
     properties:
@@ -589,9 +449,6 @@ definitions:
         - COST
         - OTHER_COST
         type: string
-      sort_order:
-        minimum: 0
-        type: integer
       tax_type:
         enum:
         - INCLUSIVE
@@ -617,33 +474,10 @@ definitions:
         type: string
       section_type:
         type: string
-      sort_order:
-        type: integer
       tax_type:
         type: string
       updated_at:
         type: string
-    type: object
-  form.RqBulkSyncFields:
-    properties:
-      clinic_id:
-        type: string
-      create:
-        items:
-          $ref: '#/definitions/field.RqFormField'
-        type: array
-      delete:
-        items:
-          type: string
-        type: array
-      form_id:
-        type: string
-      update:
-        items:
-          $ref: '#/definitions/field.RqUpdateFormField'
-        type: array
-    required:
-    - clinic_id
     type: object
   form.RqCreateFormWithFields:
     properties:
@@ -719,23 +553,6 @@ definitions:
     required:
     - clinic_id
     type: object
-  form.RsBulkSyncFields:
-    properties:
-      clinic_id:
-        type: string
-      created:
-        items:
-          $ref: '#/definitions/field.RsFormField'
-        type: array
-      deleted:
-        items:
-          type: string
-        type: array
-      updated:
-        items:
-          $ref: '#/definitions/field.RsFormField'
-        type: array
-    type: object
   form.RsFormWithFields:
     properties:
       active_version_id:
@@ -788,18 +605,6 @@ definitions:
       start_date:
         type: string
     type: object
-  method.TaxTreatment:
-    enum:
-    - inclusive
-    - exclusive
-    - manual
-    - zero
-    type: string
-    x-enum-varnames:
-    - TaxTreatmentInclusive
-    - TaxTreatmentExclusive
-    - TaxTreatmentManual
-    - TaxTreatmentZero
   response.RsError:
     properties:
       code:
@@ -871,6 +676,16 @@ definitions:
         type: number
       updated_at:
         type: string
+    type: object
+  util.RsList:
+    properties:
+      items: {}
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
     type: object
 info:
   contact:
@@ -1113,132 +928,41 @@ paths:
       summary: Register a new user
       tags:
       - auth
-  /calculation/gross-result:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Calculation Entry Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/calculation.Entry'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/calculation.GrossResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Calculate gross result
-      tags:
-      - calculation
-  /calculation/net-amount:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Calculation Entry Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/calculation.Entry'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/calculation.NetAmountResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Calculate net amount
-      tags:
-      - calculation
-  /calculation/net-result:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Calculation Entry Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/calculation.Entry'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/calculation.NetResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Calculate net result
-      tags:
-      - calculation
-  /calculation/outwork-result:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Calculation Entry Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/calculation.Entry'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/calculation.OutWorkResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Calculate outwork result
-      tags:
-      - calculation
   /clinic:
     get:
+      parameters:
+      - description: Filter by clinic name
+        in: query
+        name: name
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: id
+        type: string
+      - description: Filter by active status
+        in: query
+        name: is_active
+        type: boolean
+      - description: Search across name, abn, description
+        in: query
+        name: search
+        type: string
+      - description: Sort field (name, is_active, created_at)
+        in: query
+        name: sort_by
+        type: string
+      - description: Sort direction (ASC, DESC)
+        in: query
+        name: order_by
+        type: string
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -1248,12 +972,14 @@ paths:
             items:
               $ref: '#/definitions/clinic.RsClinic'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
       summary: Get all clinics for practitioner
       tags:
       - clinic
@@ -1282,8 +1008,6 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
       summary: Create a new clinic
       tags:
       - clinic
@@ -1389,58 +1113,6 @@ paths:
       security:
       - BearerToken: []
       summary: Update clinic details
-      tags:
-      - clinic
-  /clinic/bulk-delete:
-    delete:
-      consumes:
-      - application/json
-      parameters:
-      - description: IDs to delete
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/clinic.RqBulkDeleteClinic'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerToken: []
-      summary: Bulk delete clinics
-      tags:
-      - clinic
-  /clinic/bulk-update:
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Bulk Update Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/clinic.RqBulkUpdateClinic'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              items:
-                $ref: '#/definitions/clinic.RsClinic'
-              type: array
-            type: object
-      security:
-      - BearerToken: []
-      summary: Bulk update clinics
       tags:
       - clinic
   /coa/account-taxes:
@@ -1549,15 +1221,46 @@ paths:
       - coa
   /coa/chart-of-account:
     get:
+      parameters:
+      - description: Filter by name
+        in: query
+        name: name
+        type: string
+      - description: Filter by code
+        in: query
+        name: code
+        type: integer
+      - description: Search keyword
+        in: query
+        name: search
+        type: string
+      - description: Sort field
+        in: query
+        name: sort_by
+        type: string
+      - description: Order direction (ASC/DESC)
+        in: query
+        name: order_by
+        type: string
+      - description: Page size (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/coa.RsChartOfAccount'
-            type: array
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -1883,13 +1586,48 @@ paths:
       - entry
   /form:
     get:
-      consumes:
-      - application/json
-      description: List forms filtered by clinic and query parameters
+      description: List all forms belonging to the practitioner's clinics. Optionally
+        filter by clinic, method, or status. If clinic_id is omitted, all clinics
+        are included.
       parameters:
-      - description: Clinic ID
+      - description: Filter by clinic ID
         in: query
         name: clinic_id
+        type: string
+      - description: Filter by clinic name (partial match)
+        in: query
+        name: clinic_name
+        type: string
+      - description: Filter by method
+        enum:
+        - INDEPENDENT_CONTRACTOR
+        - SERVICE_FEE
+        in: query
+        name: method
+        type: string
+      - description: Filter by status
+        enum:
+        - DRAFT
+        - PUBLISHED
+        - ARCHIVED
+        in: query
+        name: status
+        type: string
+      - description: Field to sort by
+        enum:
+        - status
+        - method
+        - clinic_id
+        - created_at
+        in: query
+        name: sort_by
+        type: string
+      - description: Sort direction
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort_order
         type: string
       produces:
       - application/json
@@ -2034,25 +1772,17 @@ paths:
       summary: Get form by ID
       tags:
       - form
-  /form/sync:
     post:
       consumes:
       - application/json
-      description: Synchronize multiple fields for a practitioner
-      parameters:
-      - description: Sync request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/form.RqBulkSyncFields'
+      description: fetch form detail
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Created
           schema:
-            $ref: '#/definitions/form.RsBulkSyncFields'
+            $ref: '#/definitions/form.RsFormWithFields'
         "400":
           description: Bad Request
           schema:
@@ -2061,9 +1791,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Bulk sync fields
+      summary: fetch form details
       tags:
       - form
   /fy:

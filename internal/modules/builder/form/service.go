@@ -13,11 +13,12 @@ import (
 )
 
 type IService interface {
+	GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error)
 	BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error)
 	CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	UpdateWithFields(ctx context.Context, d *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsFormWithFields, error)
-	List(ctx context.Context, filter Filter) ([]*detail.RsFormDetail, error)
+	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*detail.RsFormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 }
 
@@ -27,6 +28,7 @@ type service struct {
 	fieldSvc   field.IService
 	entryRepo  entry.IRepository
 	coaSvc     coa.Service
+	clinicSvc  interface{} // Will be clinic.Service but avoiding circular import
 }
 
 func NewService(detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service) IService {
@@ -57,7 +59,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 		if err != nil {
 			return nil, err
 		}
-		if formDetail.Status != detail.StatusDraft {
+		if formDetail.Status != StatusDraft {
 			return nil, errors.New("form is not draft for fields")
 		}
 	}
@@ -119,13 +121,10 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			existing.SectionType = *item.SectionType
 		}
 		if item.PaymentResponsibility != nil {
-			existing.PaymentResponsibility = *item.PaymentResponsibility
+			existing.PaymentResponsibility = item.PaymentResponsibility
 		}
 		if item.TaxType != nil {
-			existing.TaxType = *item.TaxType
-		}
-		if item.SortOrder != nil {
-			existing.SortOrder = *item.SortOrder
+			existing.TaxType = item.TaxType
 		}
 		updated, err := s.fieldSvc.Update(ctx, existing.ID, req.ClinicID, practitionerID, &field.RqUpdateFormField{
 			CoaID:                 item.CoaID,
@@ -133,7 +132,6 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			SectionType:           item.SectionType,
 			PaymentResponsibility: item.PaymentResponsibility,
 			TaxType:               item.TaxType,
-			SortOrder:             item.SortOrder,
 		})
 		if err != nil {
 			return nil, err
@@ -158,7 +156,6 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			SectionType:           item.SectionType,
 			PaymentResponsibility: item.PaymentResponsibility,
 			TaxType:               item.TaxType,
-			SortOrder:             item.SortOrder,
 		})
 		if err != nil {
 			return nil, err
@@ -178,7 +175,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		ClinicShare: d.ClinicShare,
 	}
 	if formReq.Status == "" {
-		formReq.Status = detail.StatusDraft
+		formReq.Status = StatusDraft
 	}
 
 	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, practitionerID)
@@ -212,9 +209,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			PaymentResponsibility: f.PaymentResponsibility,
 			TaxType:               f.TaxType,
 			CoaID:                 f.CoaID,
-		}
-		if f.SortOrder != nil {
-			r.SortOrder = f.SortOrder
 		}
 		createList = append(createList, r)
 	}
@@ -256,7 +250,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if err != nil {
 		return nil, nil, err
 	}
-	if existing.Status != detail.StatusDraft && len(req.Fields) > 0 {
+	if existing.Status != StatusDraft && len(req.Fields) > 0 {
 		return nil, nil, errors.New("form is not draft for fields")
 	}
 	if len(req.Fields) == 0 {
@@ -299,20 +293,14 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 				TaxType:               f.TaxType,
 				CoaID:                 f.CoaID,
 			}
-			if f.SortOrder != nil {
-				item.SortOrder = f.SortOrder
-			}
 			updateList = append(updateList, item)
 		} else {
 			r := field.RqFormField{
 				Label:                 *f.Label,
 				SectionType:           *f.SectionType,
-				PaymentResponsibility: *f.PaymentResponsibility,
-				TaxType:               *f.TaxType,
+				PaymentResponsibility: f.PaymentResponsibility,
+				TaxType:               f.TaxType,
 				CoaID:                 *f.CoaID,
-			}
-			if f.SortOrder != nil {
-				r.SortOrder = f.SortOrder
 			}
 			createList = append(createList, r)
 		}
@@ -373,13 +361,15 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 	return out, nil
 }
 
-func (s *service) List(ctx context.Context, filter Filter) ([]*detail.RsFormDetail, error) {
-	clinicID := filter.ClinicID
-	if clinicID == nil {
-		clinicID = &uuid.Nil
-	}
-
-	return s.detailSvc.ListForm(ctx, detail.Filter{ClinicID: *clinicID})
+func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*detail.RsFormDetail, error) {
+	return s.detailSvc.List(ctx, detail.Filter{
+		ClinicID:   filter.ClinicID,
+		ClinicName: filter.ClinicName,
+		Status:     filter.Status,
+		Method:     filter.Method,
+		SortBy:     filter.SortBy,
+		SortOrder:  filter.SortOrder,
+	}, practitionerID)
 }
 
 func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
@@ -388,4 +378,15 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return err
 	}
 	return s.detailSvc.Delete(ctx, formDetail.ID)
+}
+
+// GetByID implements [IService].
+func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error) {
+
+	detail, err := s.detailSvc.GetByID(ctx, formId)
+	if err != nil {
+		return detail, err
+	}
+
+	return detail, err
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/jmoiron/sqlx"
 )
 
 type IService interface {
@@ -14,6 +15,7 @@ type IService interface {
 	Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpdateFormVersion) (*RsFormVersion, error)
 	Delete(ctx context.Context, id, clinicID uuid.UUID) error
 	List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error)
+	GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsFormVersion, error)
 }
 
 type service struct {
@@ -21,7 +23,7 @@ type service struct {
 	formClinic clinic.Service
 }
 
-func NewService(repo IRepository, clinicSvc clinic.Service) IService {
+func NewService(db *sqlx.DB, repo IRepository, clinicSvc clinic.Service) IService {
 	return &service{repo: repo, formClinic: clinicSvc}
 }
 
@@ -31,7 +33,6 @@ func (s *service) Create(ctx context.Context, formID, clinicID uuid.UUID, req *R
 	if err != nil {
 		return nil, err
 	}
-
 	if clinic.ID != clinicID {
 		return nil, ErrForbidden
 	}
@@ -58,7 +59,7 @@ func (s *service) Get(ctx context.Context, id, clinicID uuid.UUID) (*RsFormVersi
 	return v.ToRs(), nil
 }
 
-// GetByID returns the version by ID without clinic check. Used when resolving form from version (e.g. form status check).
+// GetByID returns the version by ID without clinic check.
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormVersion, error) {
 	v, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -80,7 +81,6 @@ func (s *service) Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpd
 	if clinic.ID != clinicID {
 		return nil, ErrForbidden
 	}
-
 	if req.Version != nil {
 		existing.Version = *req.Version
 	}
@@ -91,7 +91,6 @@ func (s *service) Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpd
 	if err != nil {
 		return nil, err
 	}
-
 	return updated.ToRs(), nil
 }
 
@@ -104,7 +103,6 @@ func (s *service) Delete(ctx context.Context, id, clinicID uuid.UUID) error {
 	if clinic.ID != clinicID {
 		return ErrForbidden
 	}
-
 	return s.repo.Delete(ctx, id)
 }
 
@@ -126,4 +124,13 @@ func (s *service) List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFo
 		rs = append(rs, v.ToRs())
 	}
 	return rs, nil
+}
+
+// GetVersionByFormID implements [IService].
+func (s *service) GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsFormVersion, error) {
+	v, err := s.repo.ListVersionByFormID(ctx, formID)
+	if err != nil {
+		return RsFormVersion{}, err
+	}
+	return *v.ToRs(), nil
 }

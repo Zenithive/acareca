@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
@@ -28,17 +27,15 @@ type Service struct {
 	clinicSvc       clinic.Service
 	practitionerSvc practitioner.IService
 	versionSvc      version.IService
-	entryRepo       entry.IRepository
 }
 
-func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, practitionerSvc practitioner.IService, versionSvc version.IService, entryRepo entry.IRepository) IService {
+func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, practitionerSvc practitioner.IService, versionSvc version.IService) IService {
 	return &Service{
 		repo:            repo,
 		coaSvc:          coaSvc,
 		clinicSvc:       clinicSvc,
 		practitionerSvc: practitionerSvc,
 		versionSvc:      versionSvc,
-		entryRepo:       entryRepo,
 	}
 }
 
@@ -64,6 +61,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, clinicID 
 		return nil, err
 	}
 	f := req.ToDB(formVersionID)
+
 	if err := s.repo.Create(ctx, f); err != nil {
 		return nil, err
 	}
@@ -106,13 +104,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 		existing.SectionType = *req.SectionType
 	}
 	if req.PaymentResponsibility != nil {
-		existing.PaymentResponsibility = *req.PaymentResponsibility
+		existing.PaymentResponsibility = req.PaymentResponsibility
 	}
 	if req.TaxType != nil {
-		existing.TaxType = *req.TaxType
-	}
-	if req.SortOrder != nil {
-		existing.SortOrder = *req.SortOrder
+		existing.TaxType = req.TaxType
 	}
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
@@ -122,15 +117,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	if s.entryRepo != nil {
-		has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
-		if err != nil {
-			return err
-		}
-		if has {
-			return errors.New("field has submitted entries")
-		}
-	}
+	// if s.entryRepo != nil {
+	// 	has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if has {
+	// 		return errors.New("field has submitted entries")
+	// 	}
+	// }
 	return s.repo.Delete(ctx, id)
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -17,7 +18,7 @@ type IRepository interface {
 	Update(ctx context.Context, d *FormDetail) (*FormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error)
-	ListForm(ctx context.Context, filter Filter) ([]*FormDetail, error)
+	ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error)
 }
 
 type Repository struct {
@@ -58,23 +59,53 @@ func (r *Repository) Delete(ctx context.Context, formID uuid.UUID) error {
 }
 
 // ListForm implements [IRepository].
-func (r *Repository) ListForm(ctx context.Context, filter Filter) ([]*FormDetail, error) {
-	query := `SELECT id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at FROM tbl_form WHERE deleted_at IS NULL AND clinic_id = $1`
-	args := []any{filter.ClinicID}
-	argNum := 2
-	if filter.Status != nil {
-		query += fmt.Sprintf(` AND status = $%d`, argNum)
-		args = append(args, *filter.Status)
-		argNum++
+func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error) {
+
+	base := `
+	FROM tbl_form f
+	WHERE f.deleted_at IS NULL
+	AND f.clinic_id IN (
+		SELECT id FROM tbl_clinic 
+		WHERE practitioner_id = ? AND deleted_at IS NULL
+	)
+	`
+
+	args := []any{practitionerID}
+
+	allowedColumns := map[string]string{
+		"status":     "f.status",
+		"method":     "f.method",
+		"clinic_id":  "f.clinic_id",
+		"created_at": "f.created_at",
 	}
-	if filter.Method != nil {
-		query += fmt.Sprintf(` AND method = $%d`, argNum)
-		args = append(args, *filter.Method)
+
+	searchCols := []string{
+		"f.name",
+		"f.description",
 	}
+
+	query, qArgs := common.BuildQuery(
+		base,
+		filter,
+		allowedColumns,
+		searchCols,
+		false,
+	)
+
+	args = append(args, qArgs...)
+
+	query = `
+	SELECT f.id, f.clinic_id, f.name, f.description, f.status, f.method,
+	       f.owner_share, f.clinic_share, f.created_at, f.updated_at
+	` + query
+
+	query = r.db.Rebind(query)
+
 	var details []*FormDetail
 	if err := r.db.SelectContext(ctx, &details, query, args...); err != nil {
 		return nil, fmt.Errorf("list form details: %w", err)
 	}
+
 	return details, nil
 }
 
