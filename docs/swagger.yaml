@@ -1,5 +1,30 @@
 basePath: /api/v1
 definitions:
+  audit.RsAuditLog:
+    properties:
+      action:
+        type: string
+      after_state: {}
+      before_state: {}
+      created_at:
+        type: string
+      entity_id:
+        type: string
+      entity_type:
+        type: string
+      id:
+        type: string
+      ip_address:
+        type: string
+      module:
+        type: string
+      practice_id:
+        type: string
+      user_agent:
+        type: string
+      user_id:
+        type: string
+    type: object
   auth.RsGoogleAuthURL:
     properties:
       url:
@@ -694,6 +719,107 @@ info:
   title: Backend API
   version: 1.0.0
 paths:
+  /admin/audit:
+    get:
+      consumes:
+      - application/json
+      description: Query audit logs with filters
+      parameters:
+      - description: Practice ID
+        in: query
+        name: practice_id
+        type: string
+      - description: User ID
+        in: query
+        name: user_id
+        type: string
+      - description: Module name
+        in: query
+        name: module
+        type: string
+      - description: Action name
+        in: query
+        name: action
+        type: string
+      - description: Entity type
+        in: query
+        name: entity_type
+        type: string
+      - description: Entity ID
+        in: query
+        name: entity_id
+        type: string
+      - description: Start date (RFC3339)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (RFC3339)
+        in: query
+        name: end_date
+        type: string
+      - default: 100
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/audit.RsAuditLog'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: List audit logs
+      tags:
+      - audit
+  /admin/audit/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get a specific audit log entry
+      parameters:
+      - description: Audit Log ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/audit.RsAuditLog'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get audit log by ID
+      tags:
+      - audit
   /admin/subscription:
     get:
       consumes:
@@ -899,6 +1025,31 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Login a user
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: revoke the current session using the refresh token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Logout a user
       tags:
       - auth
   /auth/register:

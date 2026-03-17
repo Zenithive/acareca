@@ -37,7 +37,7 @@ func NewHandler(svc Service) Handler {
 // @Param end_date query string false "End date (RFC3339)"
 // @Param limit query int false "Limit" default(100)
 // @Param offset query int false "Offset" default(0)
-// @Success 200 {array} AuditLog
+// @Success 200 {array} RsAuditLog
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /admin/audit [get]
