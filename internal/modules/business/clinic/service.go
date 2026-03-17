@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -23,11 +25,12 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo     Repository
+	auditSvc audit.Service
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, auditSvc audit.Service) Service {
+	return &service{repo: repo, auditSvc: auditSvc}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
@@ -154,6 +157,21 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 	if err != nil {
 		return nil, fmt.Errorf("create clinic transaction failed: %w", err)
 	}
+
+	// Audit log: clinic created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := result.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionClinicCreated,
+		Module:     auditctx.ModuleClinic,
+		EntityType: strPtr(auditctx.EntityClinic),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
 
 	return result, nil
 }
@@ -309,12 +327,31 @@ func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, i
 }
 
 func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) error {
-	_, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
+	existing, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
 	if err != nil {
 		return err
 	}
 
-	return s.repo.DeleteClinic(ctx, id)
+	if err := s.repo.DeleteClinic(ctx, id); err != nil {
+		return err
+	}
+
+	// Audit log: clinic deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionClinicDeleted,
+		Module:      auditctx.ModuleClinic,
+		EntityType:  strPtr(auditctx.EntityClinic),
+		EntityID:    &idStr,
+		BeforeState: existing,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
 func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
 	var result *RsClinic
@@ -464,6 +501,21 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 	if err != nil {
 		return nil, fmt.Errorf("update clinic transaction failed: %w", err)
 	}
+
+	// Audit log: clinic updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionClinicUpdated,
+		Module:     auditctx.ModuleClinic,
+		EntityType: strPtr(auditctx.EntityClinic),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
 
 	return result, nil
 }
@@ -784,3 +836,5 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, practitione
 	// Get the updated clinic with all related data
 	return s.getClinicByIDInternalTx(ctx, tx, id)
 }
+
+func strPtr(s string) *string { return &s }

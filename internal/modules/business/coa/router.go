@@ -14,7 +14,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 
 	// Chart of Accounts CRUD — scoped by practitioner_id
 	accounts := rg.Group("/chart-of-account")
-	accounts.Use(middleware.Auth(cfg))
+	accounts.Use(middleware.Auth(cfg), middleware.AuditContext())
 	accounts.GET("", h.ListChartOfAccount)
 	accounts.GET("/:id", h.GetChartOfAccount)
 	accounts.POST("", h.CreateChartOfAccount)

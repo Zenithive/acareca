@@ -8,7 +8,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	clinic := rg.Group("/clinic")
-	clinic.Use(middleware.Auth(cfg)) // Add authentication middleware
+	clinic.Use(middleware.Auth(cfg), middleware.AuditContext())
 
 	clinic.POST("/create", h.CreateClinic)
 	clinic.GET("/all", h.GetClinics)

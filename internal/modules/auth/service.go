@@ -33,6 +33,7 @@ type OnUserCreated func(ctx context.Context, userID string) error
 type Service interface {
 	Register(ctx context.Context, req *RqUser) (*RsUser, error)
 	Login(ctx context.Context, req *RqLogin) (*RsToken, error)
+	Logout(ctx context.Context, refreshToken string) error
 	GoogleAuthURL(state string) *RsGoogleAuthURL
 	GoogleCallback(ctx context.Context, code string) (*RsToken, error)
 }
@@ -156,6 +157,34 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	})
 
 	return s.issueTokens(ctx, user, practitionerID.ID.String())
+}
+
+func (s *service) Logout(ctx context.Context, refreshToken string) error {
+	sess, err := s.repo.FindSessionByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.DeleteSession(ctx, sess.ID); err != nil {
+		return err
+	}
+
+	// Audit log: user logged out
+	meta := auditctx.GetMetadata(ctx)
+	sessIDStr := sess.ID.String()
+	userIDStr := sess.UserID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionUserLoggedOut,
+		Module:     auditctx.ModuleAuth,
+		EntityType: strPtr(auditctx.EntitySession),
+		EntityID:   &sessIDStr,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
+	return nil
 }
 
 func (s *service) GoogleAuthURL(state string) *RsGoogleAuthURL {

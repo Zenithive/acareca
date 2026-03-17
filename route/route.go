@@ -101,15 +101,15 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	// clinic
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(clinicRepo)
+	clinicSvc := clinic.NewService(clinicRepo, auditSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
-	coaSvc := coa.NewService(coaRepo, dbConn)
+	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
 	fyRepo := fy.NewRepository(dbConn)
-	fySvc := fy.NewService(fyRepo, dbConn)
+	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
 	fyHandler := fy.NewHandler(fySvc)
 	fy.RegisterRoutes(v1, fyHandler)
 
