@@ -78,7 +78,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	// clinic
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(clinicRepo)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 

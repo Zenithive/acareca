@@ -365,6 +365,56 @@ const docTemplate = `{
                     "clinic"
                 ],
                 "summary": "Get all clinics for practitioner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic name",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic ID",
+                        "name": "id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by active status",
+                        "name": "is_active",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across name, abn, description",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (name, is_active, created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort direction (ASC, DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 10, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -373,6 +423,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/clinic.RsClinic"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {

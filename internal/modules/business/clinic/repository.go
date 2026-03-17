@@ -7,13 +7,14 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
 var ErrNotFound = errors.New("clinic not found")
 
 type Repository interface {
-	ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error)
+	ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]Clinic, error)
 	GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error)
 	GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error)
 	GetClinicAddresses(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error)
@@ -148,15 +149,28 @@ func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID strin
 	return &id, nil
 }
 
-func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error) {
-	query := `
+var clinicAllowedColumns = map[string]string{
+	"id":         "id",
+	"name":       "name",
+	"is_active":  "is_active",
+	"created_at": "created_at",
+}
+
+var clinicSearchColumns = []string{"name", "abn", "description"}
+
+func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]Clinic, error) {
+	base := `
 		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
-		WHERE practitioner_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC
-	`
+		WHERE practitioner_id = ? AND deleted_at IS NULL`
+
+	query, filterArgs := common.BuildQuery(base, filter, clinicAllowedColumns, clinicSearchColumns, false)
+	query = sqlx.Rebind(sqlx.DOLLAR, query)
+
+	args := append([]interface{}{practitionerID}, filterArgs...)
+
 	var clinics []Clinic
-	if err := r.db.SelectContext(ctx, &clinics, query, practitionerID); err != nil {
+	if err := r.db.SelectContext(ctx, &clinics, query, args...); err != nil {
 		return nil, fmt.Errorf("get clinics by practitioner: %w", err)
 	}
 	return clinics, nil

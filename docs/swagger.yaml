@@ -899,6 +899,39 @@ paths:
       - auth
   /clinic:
     get:
+      parameters:
+      - description: Filter by clinic name
+        in: query
+        name: name
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: id
+        type: string
+      - description: Filter by active status
+        in: query
+        name: is_active
+        type: boolean
+      - description: Search across name, abn, description
+        in: query
+        name: search
+        type: string
+      - description: Sort field (name, is_active, created_at)
+        in: query
+        name: sort_by
+        type: string
+      - description: Sort direction (ASC, DESC)
+        in: query
+        name: order_by
+        type: string
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -908,6 +941,10 @@ paths:
             items:
               $ref: '#/definitions/clinic.RsClinic'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:

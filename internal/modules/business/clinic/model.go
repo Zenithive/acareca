@@ -1,6 +1,7 @@
 package clinic
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -164,6 +165,7 @@ type RsFinancialSettings struct {
 type Filter struct {
 	ClinicName *string `form:"name"`
 	ClinicId   *string `form:"id"`
+	IsActive   *bool   `form:"is_active"`
 	Search     *string `form:"search"`
 	SortBy     *string `form:"sort_by"`
 	OrderBy    *string `form:"order_by"`
@@ -174,30 +176,31 @@ type Filter struct {
 func (filter *Filter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	if filter.ClinicId != nil {
-		filters["clinic_id"] = *filter.ClinicId
+		id, err := uuid.Parse(*filter.ClinicId)
+		if err != nil {
+			fmt.Println("invalid clinic_id: %w", err)
+		}
+		filters["id"] = uuid.UUID(id)
 	}
 	if filter.ClinicName != nil {
 		filters["name"] = *filter.ClinicName
 	}
+	if filter.IsActive != nil {
+		filters["is_active"] = *filter.IsActive
+	}
 
-	f := common.NewFilter(nil, filters, nil, nil, nil)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
 	if filter.SortBy != nil {
 		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
 	}
+
 	if filter.OrderBy != nil {
 		f.OrderBy = *filter.OrderBy
-	}
-
-	if filter.Limit != nil {
-		f.Limit = *filter.Limit
-	}
-
-	if filter.Offset != nil {
-		f.Offset = *filter.Offset
-	}
-
-	if filter.Search != nil {
-		f.Search = filter.Search
+	} else {
+		f.OrderBy = "DESC"
 	}
 
 	return f

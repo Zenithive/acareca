@@ -63,7 +63,16 @@ func (h *handler) Create(c *gin.Context) {
 // @Summary Get all clinics for practitioner
 // @Tags clinic
 // @Produce json
+// @Param name query string false "Filter by clinic name"
+// @Param id query string false "Filter by clinic ID"
+// @Param is_active query boolean false "Filter by active status"
+// @Param search query string false "Search across name, abn, description"
+// @Param sort_by query string false "Sort field (name, is_active, created_at)"
+// @Param order_by query string false "Sort direction (ASC, DESC)"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param offset query int false "Page offset"
 // @Success 200 {array} RsClinic
+// @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /clinic [get]
 func (h *handler) List(c *gin.Context) {

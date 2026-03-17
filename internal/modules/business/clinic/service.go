@@ -160,9 +160,9 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 }
 
 func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) ([]RsClinic, error) {
-	filter.MapToFilter()
+	f := filter.MapToFilter()
 
-	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID)
+	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
 	if err != nil {
 		return nil, err
 	}
