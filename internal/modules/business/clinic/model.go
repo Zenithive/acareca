@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // Database models
@@ -161,4 +162,43 @@ type RsFinancialSettings struct {
 }
 
 type Filter struct {
+	ClinicName *string `form:"name"`
+	ClinicId   *string `form:"id"`
+	Search     *string `form:"search"`
+	SortBy     *string `form:"sort_by"`
+	OrderBy    *string `form:"order_by"`
+	Limit      *int    `form:"limit"`
+	Offset     *int    `form:"offset"`
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if filter.ClinicId != nil {
+		filters["clinic_id"] = *filter.ClinicId
+	}
+	if filter.ClinicName != nil {
+		filters["name"] = *filter.ClinicName
+	}
+
+	f := common.NewFilter(nil, filters, nil, nil, nil)
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	}
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	}
+
+	if filter.Limit != nil {
+		f.Limit = *filter.Limit
+	}
+
+	if filter.Offset != nil {
+		f.Offset = *filter.Offset
+	}
+
+	if filter.Search != nil {
+		f.Search = filter.Search
+	}
+
+	return f
 }

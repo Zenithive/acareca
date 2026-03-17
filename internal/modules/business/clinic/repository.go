@@ -13,15 +13,13 @@ import (
 var ErrNotFound = errors.New("clinic not found")
 
 type Repository interface {
-	// Read operations (kept for non-transactional reads)
-	ListCliniesByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error)
+	ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error)
 	GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error)
 	GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error)
 	GetClinicAddresses(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error)
 	GetClinicContacts(ctx context.Context, clinicID uuid.UUID) ([]ClinicContact, error)
 	GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error)
 
-	// Delete operations
 	DeleteClinic(ctx context.Context, id uuid.UUID) error
 	BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) error
 
@@ -150,7 +148,7 @@ func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID strin
 	return &id, nil
 }
 
-func (r *repository) ListCliniesByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error) {
+func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]Clinic, error) {
 	query := `
 		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
