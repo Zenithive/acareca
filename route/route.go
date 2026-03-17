@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -49,11 +50,16 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	practitionerRepo := practitioner.NewRepository(dbConn)
 	userSubscriptionRepo := userSubscription.NewRepository(dbConn)
 	coaRepo := coa.NewRepository(dbConn)
-	subscriptionSvc := subscription.NewService(subscriptionRepo)
+
+	// Initialize audit service
+	auditRepo := audit.NewRepository(dbConn)
+	auditSvc := audit.NewService(auditRepo)
+
+	subscriptionSvc := subscription.NewService(subscriptionRepo, auditSvc)
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler)
 
@@ -77,9 +83,21 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 			return false, err
 		}
 		return superadminCheck(ctx, id)
-	}))
+	}), middleware.AuditContext())
 	subscriptionHandler := subscription.NewHandler(subscriptionSvc)
 	subscription.RegisterRoutes(subscriptionGroup, subscriptionHandler)
+
+	// Audit routes
+	auditGroup := adminGroup.Group("/audit")
+	auditGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
+		id, err := util.ParseUUID(userID)
+		if err != nil {
+			return false, err
+		}
+		return superadminCheck(ctx, id)
+	}))
+	auditHandler := audit.NewHandler(auditSvc)
+	audit.RegisterRoutes(auditGroup, auditHandler)
 
 	// clinic
 	clinicRepo := clinic.NewRepository(dbConn)

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -41,9 +43,10 @@ type service struct {
 	db              *sqlx.DB
 	oauthConfig     *oauth2.Config
 	practitionerSvc practitioner.IService
+	auditSvc        audit.Service
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -54,7 +57,14 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		},
 		Endpoint: google.Endpoint,
 	}
-	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, db: db, practitionerSvc: practitionerSvc}
+	return &service{
+		repo:            repo,
+		cfg:             cfg,
+		oauthConfig:     oauthCfg,
+		db:              db,
+		practitionerSvc: practitionerSvc,
+		auditSvc:        auditSvc,
+	}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -87,6 +97,21 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		return nil, err
 	}
 
+	// Audit log: user registration
+	meta := auditctx.GetMetadata(ctx)
+	userIDStr := created.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionUserRegistered,
+		Module:     auditctx.ModuleAuth,
+		EntityType: strPtr(auditctx.EntityUser),
+		EntityID:   &userIDStr,
+		AfterState: sanitizeUser(created),
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return created.ToRsUser(), nil
 }
 
@@ -114,6 +139,21 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Audit log: user login
+	meta := auditctx.GetMetadata(ctx)
+	userIDStr := user.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionUserLoggedIn,
+		Module:     auditctx.ModuleAuth,
+		EntityType: strPtr(auditctx.EntitySession),
+		EntityID:   nil,
+		AfterState: map[string]interface{}{"email": user.Email},
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
 
 	return s.issueTokens(ctx, user, practitionerID.ID.String())
 }
@@ -180,6 +220,25 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		return nil
 	})
 
+	// Audit log: OAuth login/registration
+	meta := auditctx.GetMetadata(ctx)
+	userIDStr := user.ID.String()
+	action := auditctx.ActionUserLoggedIn
+	if isNewUser {
+		action = auditctx.ActionUserRegistered
+	}
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     &userIDStr,
+		Action:     action,
+		Module:     auditctx.ModuleAuth,
+		EntityType: strPtr(auditctx.EntityUser),
+		EntityID:   &userIDStr,
+		AfterState: map[string]interface{}{"email": user.Email, "provider": "google"},
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
 	if err != nil {
 		return nil, err
@@ -244,4 +303,19 @@ func (s *service) issueTokens(ctx context.Context, user *User, practitionerID st
 		RefreshToken: refreshToken,
 		IsSuperadmin: user.IsSuperadmin,
 	}, nil
+}
+
+// Helper functions for audit logging
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func sanitizeUser(u *User) map[string]interface{} {
+	return map[string]interface{}{
+		"id":         u.ID.String(),
+		"email":      u.Email,
+		"first_name": u.FirstName,
+		"last_name":  u.LastName,
+	}
 }
