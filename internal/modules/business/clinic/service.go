@@ -24,16 +24,17 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	db   *sqlx.DB
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(db *sqlx.DB, repo Repository) Service {
+	return &service{db: db, repo: repo}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
 	var result *RsClinic
 
-	err := util.RunInTransaction(ctx, s.repo.GetDB(), func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Get active financial year
 		activeFinancialYearID, err := s.repo.GetActiveFinancialYearTx(ctx, tx)
 		if err != nil {
@@ -319,7 +320,7 @@ func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id
 func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
 	var result *RsClinic
 
-	err := util.RunInTransaction(ctx, s.repo.GetDB(), func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, practitionerID)
 		if err != nil {
 			return fmt.Errorf("get clinic: %w", err)
@@ -541,7 +542,7 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkUpdateClinic) ([]RsClinic, error) {
 	var results []RsClinic
 
-	err := util.RunInTransaction(ctx, s.repo.GetDB(), func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		for _, clinicReq := range req.Clinics {
 			if clinicReq.ID == nil {
 				return fmt.Errorf("clinic ID is required for bulk update")
@@ -566,7 +567,6 @@ func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUI
 }
 
 func (s *service) BulkDeleteClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkDeleteClinic) error {
-	// Verify all clinics belong to the practitioner before deleting
 	for _, clinicID := range req.ClinicIDs {
 		_, err := s.repo.GetClinicByIDAndPractitioner(ctx, clinicID, practitionerID)
 		if err != nil {
@@ -574,7 +574,6 @@ func (s *service) BulkDeleteClinics(ctx context.Context, practitionerID uuid.UUI
 		}
 	}
 
-	// Perform bulk delete
 	return s.repo.BulkDeleteClinics(ctx, req.ClinicIDs)
 }
 
