@@ -30,7 +30,7 @@ type Repository interface {
 	CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f ListChartOfAccountFilter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
-	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
+	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 }
@@ -194,14 +194,14 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 	return &c, nil
 }
 
-func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
+func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error) {
 	query := `
 		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, practitioner_id, account_type_id, account_tax_id, code, name, is_system, created_at, updated_at, deleted_at
 	`
 	var out ChartOfAccount
-	err := r.db.QueryRowxContext(ctx, query,
+	err := tx.QueryRowxContext(ctx, query,
 		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem,
 	).StructScan(&out)
 	if err != nil {

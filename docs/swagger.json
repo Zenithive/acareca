@@ -578,7 +578,7 @@
                 }
             }
         },
-        "/clinic": {
+        "/clinic/all": {
             "get": {
                 "security": [
                     {
@@ -609,7 +609,9 @@
                         }
                     }
                 }
-            },
+            }
+        },
+        "/clinic/create": {
             "post": {
                 "security": [
                     {

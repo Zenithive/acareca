@@ -45,7 +45,7 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list)
+	response.JSON(c, http.StatusOK, list, "Account types fetched successfully")
 }
 
 // @Summary Get account type by ID
@@ -73,7 +73,7 @@ func (h *handler) GetAccountType(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, one)
+	response.JSON(c, http.StatusOK, one, "Account tax fetched successfully")
 }
 
 // @Summary List all account tax types
@@ -89,7 +89,7 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list)
+	response.JSON(c, http.StatusOK, list, "Account taxes fetched successfully")
 }
 
 // @Summary Get account tax by ID
@@ -117,7 +117,7 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, one)
+	response.JSON(c, http.StatusOK, one, "Account tax fetched successfully")
 }
 
 // @Summary List chart of accounts for practitioner
@@ -157,7 +157,7 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Chart of accounts fetched successfully")
 }
 
 // @Summary Get chart of account by ID
@@ -189,7 +189,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, chart)
+	response.JSON(c, http.StatusOK, chart, "Chart of account fetched successfully")
 }
 
 // @Summary Create a new chart of account
@@ -226,7 +226,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusCreated, created)
+	response.JSON(c, http.StatusCreated, created, "Chart of account created successfully")
 }
 
 // @Summary Update an existing chart of account
@@ -275,7 +275,7 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, updated)
+	response.JSON(c, http.StatusOK, updated, "Chart of account updated successfully")
 }
 
 // @Summary Delete chart of account
@@ -311,5 +311,5 @@ func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"})
+	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"}, "Chart of account deleted successfully")
 }

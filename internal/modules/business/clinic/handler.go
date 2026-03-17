@@ -58,7 +58,7 @@ func (h *handler) CreateClinic(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusCreated, clinic)
+	response.JSON(c, http.StatusCreated, clinic, "Clinic created successfully")
 }
 
 // @Summary Get all clinics for practitioner
@@ -81,7 +81,7 @@ func (h *handler) GetClinics(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, clinics)
+	response.JSON(c, http.StatusOK, clinics, "Clinics fetched successfully")
 }
 
 // GetClinicByID
@@ -119,7 +119,7 @@ func (h *handler) GetClinicByID(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, clinic)
+	response.JSON(c, http.StatusOK, clinic, "Clinic fetched successfully")
 }
 
 // @Summary Update clinic details
@@ -164,7 +164,7 @@ func (h *handler) UpdateClinic(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, clinic)
+	response.JSON(c, http.StatusOK, clinic, "Clinic updated successfully")
 }
 
 // @Summary Delete a clinic
@@ -200,7 +200,7 @@ func (h *handler) DeleteClinic(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"message": "clinic deleted successfully"})
+	response.JSON(c, http.StatusOK, gin.H{"message": "clinic deleted successfully"}, "Clinic deleted successfully")
 }
 
 // @Summary Bulk update clinics
@@ -234,7 +234,7 @@ func (h *handler) BulkUpdateClinics(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"clinics": clinics})
+	response.JSON(c, http.StatusOK, gin.H{"clinics": clinics}, "Clinics updated successfully")
 }
 
 // @Summary Bulk delete clinics
@@ -267,5 +267,5 @@ func (h *handler) BulkDeleteClinics(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"message": "clinics deleted successfully"})
+	response.JSON(c, http.StatusOK, gin.H{"message": "clinics deleted successfully"}, "Clinics deleted successfully")
 }

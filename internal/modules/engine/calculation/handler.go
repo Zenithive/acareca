@@ -44,7 +44,7 @@ func (h *handler) NetAmount(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Net amount calculated successfully")
 }
 
 // @Summary Calculate net result
@@ -68,7 +68,7 @@ func (h *handler) NetResult(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Net result calculated successfully")
 }
 
 // @Summary Calculate gross result
@@ -92,7 +92,7 @@ func (h *handler) GrossResult(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Gross result calculated successfully")
 }
 
 // @Summary Calculate outwork result
@@ -116,5 +116,5 @@ func (h *handler) OutWorkResult(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Outwork result calculated successfully")
 }

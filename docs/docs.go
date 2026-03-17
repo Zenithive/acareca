@@ -581,7 +581,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/clinic": {
+        "/clinic/all": {
             "get": {
                 "security": [
                     {
@@ -612,7 +612,9 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/clinic/create": {
             "post": {
                 "security": [
                     {

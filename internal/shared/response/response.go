@@ -20,10 +20,11 @@ type envelope struct {
 	Error   *RsError `json:"error,omitempty"`
 }
 
-func JSON(c *gin.Context, status int, data any) {
+func JSON(c *gin.Context, status int, data any, message string) {
 	c.JSON(status, envelope{
-		Status: status,
-		Data:   data,
+		Status:  status,
+		Data:    data,
+		Message: message,
 	})
 }
 

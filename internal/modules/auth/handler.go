@@ -52,7 +52,7 @@ func (h *handler) Register(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusCreated, user)
+	response.JSON(c, http.StatusCreated, user, "User registered successfully")
 }
 
 // Login godoc
@@ -83,7 +83,7 @@ func (h *handler) Login(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, token)
+	response.JSON(c, http.StatusOK, token, "User logged in successfully")
 }
 
 // GoogleAuthURL godoc
@@ -98,7 +98,7 @@ func (h *handler) Login(c *gin.Context) {
 func (h *handler) GoogleLogin(c *gin.Context) {
 	state := util.NewUUID()
 	result := h.svc.GoogleAuthURL(state)
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
 
 // GoogleCallback handles the redirect from Google after the user consents.
@@ -115,7 +115,7 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, token)
+	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
 }
 
 // GoogleCallback godoc
@@ -130,5 +130,5 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
 	result := h.svc.GoogleAuthURL(state)
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }

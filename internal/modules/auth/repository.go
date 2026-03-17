@@ -15,12 +15,12 @@ var ErrNotFound = errors.New("user not found")
 
 type Repository interface {
 	// User
-	CreateUser(ctx context.Context, user *User) (*User, error)
+	CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error)
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 
 	// Auth provider
-	UpsertAuthProvider(ctx context.Context, p *AuthProvider) (*AuthProvider, error)
+	UpsertAuthProvider(ctx context.Context, p *AuthProvider, tx *sqlx.Tx) (*AuthProvider, error)
 	FindAuthProvider(ctx context.Context, provider string) (*AuthProvider, error)
 
 	// Session
@@ -37,7 +37,7 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) CreateUser(ctx context.Context, user *User) (*User, error) {
+func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
 	const returning = `RETURNING id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at`
 	var u User
 	var err error
@@ -46,7 +46,7 @@ func (r *repository) CreateUser(ctx context.Context, user *User) (*User, error) 
 			INSERT INTO tbl_user (email, password, first_name, last_name, phone, is_superadmin)
 			VALUES ($1, NULLIF($2, ''), $3, $4, $5, COALESCE($6, FALSE))
 			` + returning
-		err = r.db.QueryRowxContext(ctx, query,
+		err = tx.QueryRowxContext(ctx, query,
 			user.Email, user.Password,
 			user.FirstName, user.LastName,
 			user.Phone, user.IsSuperadmin,
@@ -56,7 +56,7 @@ func (r *repository) CreateUser(ctx context.Context, user *User) (*User, error) 
 			INSERT INTO tbl_user (id, email, password, first_name, last_name, phone, is_superadmin)
 			VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, COALESCE($7, FALSE))
 			` + returning
-		err = r.db.QueryRowxContext(ctx, query,
+		err = tx.QueryRowxContext(ctx, query,
 			user.ID, user.Email, user.Password,
 			user.FirstName, user.LastName,
 			user.Phone, user.IsSuperadmin,
@@ -100,7 +100,7 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) 
 	return &u, nil
 }
 
-func (r *repository) UpsertAuthProvider(ctx context.Context, p *AuthProvider) (*AuthProvider, error) {
+func (r *repository) UpsertAuthProvider(ctx context.Context, p *AuthProvider, tx *sqlx.Tx) (*AuthProvider, error) {
 	const returning = `RETURNING id, user_id, provider, access_token, refresh_token, token_expires_at, created_at, updated_at`
 	var ap AuthProvider
 	var err error
@@ -114,7 +114,7 @@ func (r *repository) UpsertAuthProvider(ctx context.Context, p *AuthProvider) (*
 				refresh_token    = EXCLUDED.refresh_token,
 				token_expires_at = EXCLUDED.token_expires_at
 			` + returning
-		err = r.db.QueryRowxContext(ctx, query,
+		err = tx.QueryRowxContext(ctx, query,
 			p.UserID, p.Provider,
 			p.AccessToken, p.RefreshToken, p.TokenExpiresAt,
 		).StructScan(&ap)
@@ -128,7 +128,7 @@ func (r *repository) UpsertAuthProvider(ctx context.Context, p *AuthProvider) (*
 				refresh_token    = EXCLUDED.refresh_token,
 				token_expires_at = EXCLUDED.token_expires_at
 			` + returning
-		err = r.db.QueryRowxContext(ctx, query,
+		err = tx.QueryRowxContext(ctx, query,
 			p.ID, p.UserID, p.Provider,
 			p.AccessToken, p.RefreshToken, p.TokenExpiresAt,
 		).StructScan(&ap)

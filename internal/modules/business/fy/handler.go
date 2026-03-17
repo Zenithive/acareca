@@ -57,7 +57,7 @@ func (h *handler) CreateFY(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusCreated, fy)
+	response.JSON(c, http.StatusCreated, fy, "Financial year created successfully")
 }
 
 // @Summary Update the label of a financial year
@@ -96,7 +96,7 @@ func (h *handler) UpdateFYLabel(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, fy)
+	response.JSON(c, http.StatusOK, fy, "Financial year updated successfully")
 }
 
 // @Summary Get all financial years
@@ -113,7 +113,7 @@ func (h *handler) GetFinancialYears(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, years)
+	response.JSON(c, http.StatusOK, years, "Financial years fetched successfully")
 }
 
 // @Summary Get all quarters for a specific financial year
@@ -144,5 +144,5 @@ func (h *handler) GetFinancialQuarters(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, quarters)
+	response.JSON(c, http.StatusOK, quarters, "Financial quarters fetched successfully")
 }

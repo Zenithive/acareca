@@ -1,14 +1,19 @@
 package setting
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/iamarpitzala/acareca/internal/shared/middleware"
+	"github.com/iamarpitzala/acareca/pkg/config"
+)
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
+	rg.Use(middleware.Auth(cfg))
 	rg.POST("", h.CreatePractitioner)
-	rg.GET("", h.ListPractitioners)
+	rg.GET("list", h.ListPractitioners)
 	rg.GET("/by-user/:user_id", h.GetPractitionerByUserID)
-	rg.GET("/:id/setting", h.GetSetting)
-	rg.PUT("/:id/setting", h.UpsertSetting)
-	rg.GET("/:id", h.GetPractitioner)
-	rg.PATCH("/:id", h.UpdatePractitioner)
-	rg.DELETE("/:id", h.DeletePractitioner)
+	rg.GET("setting", h.GetSetting)
+	rg.PUT("/setting", h.UpsertSetting)
+	rg.GET("", h.GetPractitioner)
+	rg.PATCH("", h.UpdatePractitioner)
+	rg.DELETE("", h.DeletePractitioner)
 }

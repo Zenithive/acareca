@@ -1,12 +1,14 @@
 package subscription
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type IHandler interface {
@@ -19,10 +21,11 @@ type IHandler interface {
 
 type handler struct {
 	svc Service
+	db  *sqlx.DB
 }
 
-func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc Service, db *sqlx.DB) IHandler {
+	return &handler{svc: svc, db: db}
 }
 
 // @Summary Get a subscription by ID
@@ -46,12 +49,21 @@ func (h *handler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	created, err := h.svc.Create(c.Request.Context(), practitionerID, &req)
+	var created *RsPractitionerSubscription
+	err := util.RunInTransaction(c, h.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		Created, err := h.svc.Create(c.Request.Context(), practitionerID, &req, tx)
+		if err != nil {
+			return err
+		}
+		created = Created
+		return nil
+	})
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusCreated, created)
+
+	response.JSON(c, http.StatusCreated, created, "Subscription created successfully")
 }
 
 // @Summary List subscriptions by practitioner ID
@@ -79,7 +91,7 @@ func (h *handler) GetByID(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, sub)
+	response.JSON(c, http.StatusOK, sub, "Subscription fetched successfully")
 }
 
 // @Summary List subscriptions by practitioner ID
@@ -103,7 +115,7 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list)
+	response.JSON(c, http.StatusOK, list, "Subscriptions fetched successfully")
 }
 
 // @Summary Update a subscription
@@ -137,7 +149,7 @@ func (h *handler) Update(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, updated)
+	response.JSON(c, http.StatusOK, updated, "Subscription updated successfully")
 }
 
 // @Summary Delete a subscription
@@ -165,5 +177,5 @@ func (h *handler) Delete(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"})
+	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"}, "Subscription deleted successfully")
 }

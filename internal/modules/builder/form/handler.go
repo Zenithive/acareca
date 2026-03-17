@@ -2,6 +2,7 @@ package form
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -55,7 +56,7 @@ func (h *handler) Sync(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Fields synchronized successfully")
 }
 
 // @Summary Create form with fields
@@ -91,7 +92,7 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusCreated, gin.H{"form": form, "fields_sync": syncResult})
+	response.JSON(c, http.StatusCreated, gin.H{"form": form, "fields_sync": syncResult}, "Form created successfully")
 }
 
 // @Summary Update form with fields
@@ -131,7 +132,7 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"form": form, "fields_sync": syncResult})
+	response.JSON(c, http.StatusOK, gin.H{"form": form, "fields_sync": syncResult}, "Form updated successfully")
 }
 
 // @Summary Get form by ID
@@ -160,7 +161,7 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, out)
+	response.JSON(c, http.StatusOK, out, "Form fetched successfully")
 }
 
 // @Summary List forms
@@ -175,18 +176,27 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [get]
 func (h *handler) List(c *gin.Context) {
+	clinicId, err := util.ParseUUID(c.Query("clinic_id"))
+	if err != nil {
+		return
+	}
 
 	var filter Filter
+	if clinicId != uuid.Nil {
+		filter.ClinicID = &clinicId
+	}
 	if err := util.BindAndValidate(c, &filter); err != nil {
+		fmt.Println(err.Error())
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	list, err := h.svc.List(c.Request.Context(), filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list)
+	response.JSON(c, http.StatusOK, list, "Forms fetched successfully")
 }
 
 // @Summary Delete form
@@ -213,5 +223,5 @@ func (h *handler) Delete(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusNoContent, nil)
+	response.JSON(c, http.StatusNoContent, nil, "Form deleted successfully")
 }

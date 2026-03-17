@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 )
 
 // DefaultChartRow defines one default chart-of-account row.
@@ -86,17 +87,17 @@ func DefaultChartOfAccounts() []DefaultChartRow {
 
 // SeedDefaultsForPractitioner creates default chart-of-account rows for a practitioner.
 // practitioner_id = practitionerID; is_system is taken from each DefaultChartRow (true only for owner fund side).
-func SeedDefaultsForPractitioner(ctx context.Context, repo Repository, practitionerID uuid.UUID) error {
+func SeedDefaultsForPractitioner(ctx context.Context, repo Repository, practitionerID uuid.UUID, tx *sqlx.Tx) error {
 	for _, row := range DefaultChartOfAccounts() {
 		chart := &ChartOfAccount{
 			PractitionerID: practitionerID,
-			AccountTypeID: row.AccountTypeID,
-			AccountTaxID:  row.AccountTaxID,
-			Code:          row.Code,
-			Name:          row.Name,
-			IsSystem:      row.IsSystem,
+			AccountTypeID:  row.AccountTypeID,
+			AccountTaxID:   row.AccountTaxID,
+			Code:           row.Code,
+			Name:           row.Name,
+			IsSystem:       row.IsSystem,
 		}
-		_, err := repo.CreateChartOfAccount(ctx, chart)
+		_, err := repo.CreateChartOfAccount(ctx, chart, tx)
 		if err != nil {
 			log.Printf("coa: seed default %d for practitioner %s: %v", row.Code, practitionerID, err)
 			return err

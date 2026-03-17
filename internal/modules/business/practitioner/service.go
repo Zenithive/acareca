@@ -9,10 +9,11 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/jmoiron/sqlx"
 )
 
 type IService interface {
-	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error)
+	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error)
 	GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error)
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
 	ListPractitioners(ctx context.Context) ([]*RsPractitioner, error)
@@ -30,13 +31,13 @@ func NewService(repo Repository, subscription subscription.Service, userSubscrip
 	return &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo}
 }
 
-func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error) {
+func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error) {
 
 	existing, err := s.repo.GetPractitionerByUserID(ctx, req.UserID)
 	if err == nil && existing != nil {
 		return existing, nil
 	}
-	t, err := s.repo.CreatePractitioner(ctx, &RqCreatePractitioner{UserID: req.UserID})
+	t, err := s.repo.CreatePractitioner(ctx, &RqCreatePractitioner{UserID: req.UserID}, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -51,13 +52,13 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 		StartDate:      start.Format(time.RFC3339),
 		EndDate:        end.Format(time.RFC3339),
 		Status:         userSubscription.StatusActive,
-	})
+	}, tx)
 	if err != nil {
 		log.Printf("onboarding: create trial subscription for practitioner %s: %v", t.ID, err)
 		return nil, err
 	}
 
-	if err := coa.SeedDefaultsForPractitioner(ctx, s.coaRepo, t.ID); err != nil {
+	if err := coa.SeedDefaultsForPractitioner(ctx, s.coaRepo, t.ID, tx); err != nil {
 		log.Printf("onboarding: seed default chart of accounts for practitioner %s: %v", t.ID, err)
 		return nil, err
 	}

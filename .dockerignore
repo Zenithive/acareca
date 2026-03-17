@@ -1,6 +1,32 @@
-.env
+# Git
 .git
 .gitignore
-*.md
+
+# Env
+.env
+.env.*
+
+# Docker
 Dockerfile
 docker-compose.yml
+
+# Docs
+*.md
+docs
+
+# Logs
+*.log
+
+# Temp / build
+tmp
+bin
+dist
+
+
+# Tests
+tests
+coverage
+
+# OS
+.DS_Store
+Thumbs.db

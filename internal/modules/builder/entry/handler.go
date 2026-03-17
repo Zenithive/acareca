@@ -54,7 +54,7 @@ func (h *handler) Create(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusCreated, created)
+	response.JSON(c, http.StatusCreated, created, "Form entry created successfully")
 }
 
 // @Summary Get a form entry by ID
@@ -82,7 +82,7 @@ func (h *handler) Get(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, e)
+	response.JSON(c, http.StatusOK, e, "Form entry fetched successfully")
 }
 
 // @Summary Update a form entry
@@ -119,7 +119,7 @@ func (h *handler) Update(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, updated)
+	response.JSON(c, http.StatusOK, updated, "Form entry updated successfully")
 }
 
 // @Summary Delete a form entry
@@ -146,7 +146,7 @@ func (h *handler) Delete(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusNoContent, nil)
+	response.JSON(c, http.StatusNoContent, nil, "Form entry deleted successfully")
 }
 
 // @Summary List form entries
@@ -176,5 +176,5 @@ func (h *handler) List(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list)
+	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
 }

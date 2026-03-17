@@ -13,7 +13,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	clinic.POST("/create", h.CreateClinic)
 	clinic.GET("/all", h.GetClinics)
 	clinic.GET("/:id", h.GetClinicByID)
-	clinic.PUT("/update/:id", h.UpdateClinic)
+	clinic.PUT("/:id", h.UpdateClinic)
 	clinic.PUT("/bulk-update", h.BulkUpdateClinics)
 	clinic.DELETE("/:id", h.DeleteClinic)
 	clinic.DELETE("/bulk-delete", h.BulkDeleteClinics)

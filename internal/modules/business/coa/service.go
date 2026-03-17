@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -21,10 +23,11 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	db   *sqlx.DB
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, db *sqlx.DB) Service {
+	return &service{repo: repo, db: db}
 }
 
 func (s *service) ListAccountTypes(ctx context.Context) ([]AccountType, error) {
@@ -127,17 +130,22 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		isSystem = *req.IsSystem
 	}
 	chart := &ChartOfAccount{
-		PractitionerID:   practitionerID,
-		AccountTypeID: req.AccountTypeID,
-		AccountTaxID:  req.AccountTaxID,
-		Code:          req.Code,
-		Name:          req.Name,
-		IsSystem:      isSystem,
+		PractitionerID: practitionerID,
+		AccountTypeID:  req.AccountTypeID,
+		AccountTaxID:   req.AccountTaxID,
+		Code:           req.Code,
+		Name:           req.Name,
+		IsSystem:       isSystem,
 	}
-	created, err := s.repo.CreateChartOfAccount(ctx, chart)
-	if err != nil {
-		return nil, err
-	}
+	var err error
+	var created *ChartOfAccount
+	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		created, err = s.repo.CreateChartOfAccount(ctx, chart, tx)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	rs := created.ToRs()
 	return &rs, nil
 }
