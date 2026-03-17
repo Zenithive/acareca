@@ -9,9 +9,9 @@ definitions:
     properties:
       access_token:
         type: string
-      is_superadmin:
-        type: boolean
       refresh_token:
+        type: string
+      role:
         type: string
     type: object
   auth.RsUser:
@@ -24,11 +24,11 @@ definitions:
         type: string
       id:
         type: string
-      is_superadmin:
-        type: boolean
       last_name:
         type: string
       phone:
+        type: string
+      role:
         type: string
       updated_at:
         type: string
@@ -849,6 +849,89 @@ info:
   title: Backend API
   version: 1.0.0
 paths:
+  /admin/create-fy:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Financial Year Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/fy.RqCreateFY'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create a new financial year
+      tags:
+      - fy
+  /admin/get-fys:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/fy.RsFinancialYear'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get all financial years
+      tags:
+      - fy
+  /admin/get-quarters/{financial_year_id}:
+    get:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/fy.RsFinancialQuarter'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get all quarters for a specific financial year
+      tags:
+      - fy
   /admin/subscription:
     get:
       consumes:
@@ -977,6 +1060,44 @@ paths:
       summary: Update a subscription
       tags:
       - subscription
+  /admin/update-fy/{financial_year_id}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      - description: Updated Label Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/fy.RqUpdateFYLabel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Update the label of a financial year
+      tags:
+      - fy
   /auth/google:
     get:
       description: get Google OAuth consent-screen URL
@@ -1917,126 +2038,6 @@ paths:
       summary: Bulk sync fields
       tags:
       - form
-  /fy:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/fy.RsFinancialYear'
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Get all financial years
-      tags:
-      - fy
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Financial Year Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/fy.RqCreateFY'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/fy.RsFinancialYear'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Create a new financial year
-      tags:
-      - fy
-  /fy/{financial_year_id}/label:
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Financial Year UUID
-        in: path
-        name: financial_year_id
-        required: true
-        type: string
-      - description: Updated Label Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/fy.RqUpdateFYLabel'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/fy.RsFinancialYear'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Update the label of a financial year
-      tags:
-      - fy
-  /fy/{financial_year_id}/quarters:
-    get:
-      parameters:
-      - description: Financial Year UUID
-        in: path
-        name: financial_year_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/fy.RsFinancialQuarter'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Get all quarters for a specific financial year
-      tags:
-      - fy
   /practitioner:
     get:
       consumes:

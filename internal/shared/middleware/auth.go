@@ -95,7 +95,31 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 
 		c.Set(util.UserIDKey, claims.Subject)
 		c.Set(util.PractitionerIDKey, practitionerUUID)
+		c.Set("role", claims.Role)
 
 		c.Next()
+	}
+}
+
+func RequireRole(allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get role from context
+		role, exists := c.Get("role")
+		if !exists {
+			response.Error(c, http.StatusUnauthorized, nil)
+			c.Abort()
+			return
+		}
+
+		userRole := role.(string)
+		for _, r := range allowedRoles {
+			if r == userRole {
+				c.Next()
+				return
+			}
+		}
+
+		response.Error(c, http.StatusForbidden, nil)
+		c.Abort()
 	}
 }

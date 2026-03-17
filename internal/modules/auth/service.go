@@ -129,7 +129,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		if err != nil {
 			return nil, err
 		}
-	case util.RoleAdmin:
+	case util.RoleAdmin, util.RoleAccountant:
 		id = user.ID.String()
 	}
 	return s.issueTokens(ctx, user, id)
@@ -226,12 +226,12 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 }
 
 func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), user.Role, practitionerID, 15*time.Hour, s.cfg.JWTSecret)
+	accessToken, err := util.SignToken(user.ID.String(), practitionerID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), user.Role, practitionerID, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
