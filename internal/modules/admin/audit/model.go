@@ -20,6 +20,23 @@ type AuditLog struct {
 	CreatedAt   time.Time        `db:"created_at" json:"created_at"`
 }
 
+// RsAuditLog is the swagger response type for AuditLog.
+// Uses interface{} for JSON fields since swag cannot resolve json.RawMessage.
+type RsAuditLog struct {
+	ID          string      `json:"id"`
+	PracticeID  *string     `json:"practice_id,omitempty"`
+	UserID      *string     `json:"user_id,omitempty"`
+	Action      string      `json:"action"`
+	Module      string      `json:"module"`
+	EntityType  *string     `json:"entity_type,omitempty"`
+	EntityID    *string     `json:"entity_id,omitempty"`
+	BeforeState interface{} `json:"before_state,omitempty"`
+	AfterState  interface{} `json:"after_state,omitempty"`
+	IPAddress   *string     `json:"ip_address,omitempty"`
+	UserAgent   *string     `json:"user_agent,omitempty"`
+	CreatedAt   time.Time   `json:"created_at"`
+}
+
 // LogEntry is used to create new audit log entries
 type LogEntry struct {
 	PracticeID  *string
