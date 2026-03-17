@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -22,12 +24,13 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
-	db   *sqlx.DB
+	repo     Repository
+	db       *sqlx.DB
+	auditSvc audit.Service
 }
 
-func NewService(repo Repository, db *sqlx.DB) Service {
-	return &service{repo: repo, db: db}
+func NewService(repo Repository, db *sqlx.DB, auditSvc audit.Service) Service {
+	return &service{repo: repo, db: db, auditSvc: auditSvc}
 }
 
 func (s *service) ListAccountTypes(ctx context.Context) ([]AccountType, error) {
@@ -137,6 +140,22 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		return nil
 	})
 	rs := created.ToRs()
+
+	// Audit log: COA created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := created.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionCOACreated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityCOA),
+		EntityID:   &idStr,
+		AfterState: rs,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return &rs, nil
 }
 
@@ -177,6 +196,22 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 		return nil, err
 	}
 	rs := updated.ToRs()
+
+	// Audit log: COA updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionCOAUpdated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityCOA),
+		EntityID:   &idStr,
+		AfterState: rs,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return &rs, nil
 }
 
@@ -188,5 +223,27 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 	if existing.IsSystem {
 		return ErrSystemAccountProtected
 	}
-	return s.repo.DeleteChartOfAccount(ctx, id, practitionerID)
+	if err := s.repo.DeleteChartOfAccount(ctx, id, practitionerID); err != nil {
+		return err
+	}
+
+	// Audit log: COA deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	rs := existing.ToRs()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionCOADeleted,
+		Module:      auditctx.ModuleBusiness,
+		EntityType:  strPtr(auditctx.EntityCOA),
+		EntityID:    &idStr,
+		BeforeState: rs,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
+
+func strPtr(s string) *string { return &s }

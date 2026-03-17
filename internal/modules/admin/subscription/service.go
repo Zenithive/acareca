@@ -2,7 +2,11 @@ package subscription
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 )
 
 type Service interface {
@@ -15,11 +19,12 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo     Repository
+	auditSvc audit.Service
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, auditSvc audit.Service) Service {
+	return &service{repo: repo, auditSvc: auditSvc}
 }
 
 func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscription) (*RsSubscription, error) {
@@ -28,6 +33,22 @@ func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscript
 	if err != nil {
 		return nil, err
 	}
+
+	// Audit log: subscription created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := intToStr(created.ID)
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionSubscriptionCreated,
+		Module:     auditctx.ModuleAdmin,
+		EntityType: strPtr(auditctx.EntitySubscription),
+		EntityID:   &idStr,
+		AfterState: created,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return created.ToRs(), nil
 }
 
@@ -56,11 +77,32 @@ func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateS
 	if err != nil {
 		return nil, err
 	}
+
+	// Capture before state for audit
+	beforeState := *existing
+
 	applyUpdate(existing, req)
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
 	}
+
+	// Audit log: subscription updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := intToStr(updated.ID)
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionSubscriptionUpdated,
+		Module:      auditctx.ModuleAdmin,
+		EntityType:  strPtr(auditctx.EntitySubscription),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		AfterState:  updated,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
 	return updated.ToRs(), nil
 }
 
@@ -84,7 +126,33 @@ func applyUpdate(s *Subscription, req *RqUpdateSubscription) {
 }
 
 func (s *service) DeleteSubscription(ctx context.Context, id int) error {
-	return s.repo.Delete(ctx, id)
+	// Get existing for audit log
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	err = s.repo.Delete(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Audit log: subscription deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := intToStr(id)
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionSubscriptionDeleted,
+		Module:      auditctx.ModuleAdmin,
+		EntityType:  strPtr(auditctx.EntitySubscription),
+		EntityID:    &idStr,
+		BeforeState: existing,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
 
 func (s *service) FindByName(ctx context.Context, name string) (*RsSubscription, error) {
@@ -93,4 +161,14 @@ func (s *service) FindByName(ctx context.Context, name string) (*RsSubscription,
 		return nil, err
 	}
 	return sub.ToRs(), nil
+}
+
+// Helper functions for audit logging
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func intToStr(i int) string {
+	return fmt.Sprintf("%d", i)
 }

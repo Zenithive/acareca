@@ -12,6 +12,7 @@ import (
 type IHandler interface {
 	Register(c *gin.Context)
 	Login(c *gin.Context)
+	Logout(c *gin.Context)
 	GoogleAuthURL(c *gin.Context)
 	GoogleCallback(c *gin.Context)
 }
@@ -118,7 +119,32 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
 }
 
-// GoogleCallback godoc
+// Logout godoc
+// @Summary Logout a user
+// @Description revoke the current session using the refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Router /auth/logout [post]
+func (h *handler) Logout(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" validate:"required"`
+	}
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.svc.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		response.Error(c, http.StatusUnauthorized, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, nil, "Logged out successfully")
+}
+
+// GoogleAuthURL godoc
 // @Summary Handle Google OAuth callback
 // @Description handle Google OAuth callback
 // @Tags auth

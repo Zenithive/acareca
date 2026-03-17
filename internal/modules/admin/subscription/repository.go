@@ -30,13 +30,13 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) Create(ctx context.Context, s *Subscription) (*Subscription, error) {
 	query := `
-		INSERT INTO tbl_subscription (id, name, description, price, duration_days, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO tbl_subscription (name, description, price, duration_days, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
 	`
 	var out Subscription
 	if err := r.db.QueryRowxContext(ctx, query,
-		s.ID, s.Name, s.Description, s.Price, s.DurationDays, s.IsActive, s.CreatedAt, s.UpdatedAt,
+		s.Name, s.Description, s.Price, s.DurationDays, s.IsActive, s.CreatedAt, s.UpdatedAt,
 	).StructScan(&out); err != nil {
 		return nil, fmt.Errorf("create subscription: %w", err)
 	}
