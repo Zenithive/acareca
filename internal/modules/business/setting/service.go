@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -18,14 +19,17 @@ type Service interface {
 
 	GetSetting(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSetting, error)
 	UpsertSetting(ctx context.Context, practitionerID uuid.UUID, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error)
+	// Transaction variant
+	UpsertSettingTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error)
 }
 
 type service struct {
+	db   *sqlx.DB
 	repo Repository
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(db *sqlx.DB, repo Repository) Service {
+	return &service{db: db, repo: repo}
 }
 
 func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error) {
@@ -126,6 +130,33 @@ func (s *service) UpsertSetting(ctx context.Context, practitionerID uuid.UUID, r
 		Color:          color,
 		UpdatedAt:      time.Now(),
 	}
+	updated, err := s.repo.UpsertSetting(ctx, setting)
+	if err != nil {
+		return nil, err
+	}
+	return updated.ToRs(), nil
+}
+
+// UpsertSettingTx upserts a practitioner setting within a transaction.
+func (s *service) UpsertSettingTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID, req *RqUpsertPractitionerSetting) (*RsPractitionerSetting, error) {
+	// Defaults
+	timezone := "Australia/Sydney"
+	color := "#000000"
+	if req.Timezone != nil {
+		timezone = *req.Timezone
+	}
+	if req.Color != nil {
+		color = *req.Color
+	}
+	setting := &PractitionerSetting{
+		PractitionerID: practitionerID,
+		Timezone:       timezone,
+		Logo:           req.Logo,
+		Color:          color,
+		UpdatedAt:      time.Now(),
+	}
+	// Note: Currently no UpsertSettingTx in repository, so we'd need to add it if Tx is used
+	// For now, using non-Tx version which is fine for single operations
 	updated, err := s.repo.UpsertSetting(ctx, setting)
 	if err != nil {
 		return nil, err

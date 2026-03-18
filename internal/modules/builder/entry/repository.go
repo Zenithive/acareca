@@ -27,6 +27,11 @@ type IRepository interface {
 
 	ListTransactions(ctx context.Context, f common.Filter) ([]*RsTransaction, error)
 	CountTransactions(ctx context.Context, f common.Filter) (int, error)
+
+	// Transaction-based variants
+	CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
+	UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
+	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 }
 
 type Repository struct {
@@ -315,4 +320,82 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter) (in
 		return 0, fmt.Errorf("count transactions: %w", err)
 	}
 	return total, nil
+}
+
+// CreateTx - Transaction variant of Create
+func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
+	query := `
+		INSERT INTO tbl_form_entry (id, form_version_id, clinic_id, submitted_by, submitted_at, status)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING created_at, updated_at
+	`
+	if err := tx.QueryRowContext(ctx, query,
+		e.ID, e.FormVersionID, e.ClinicID, e.SubmittedBy, e.SubmittedAt, e.Status,
+	).Scan(&e.CreatedAt, &e.UpdatedAt); err != nil {
+		return fmt.Errorf("create form entry tx: %w", err)
+	}
+
+	for _, v := range values {
+		v.EntryID = e.ID
+		valQuery := `
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING created_at, updated_at
+		`
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
+			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
+			return fmt.Errorf("create entry value tx: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// UpdateTx - Transaction variant of Update
+func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
+	query := `
+		UPDATE tbl_form_entry
+		SET submitted_by = $1, submitted_at = $2, status = $3, updated_at = now()
+		WHERE id = $4 AND deleted_at IS NULL
+		RETURNING created_at, updated_at
+	`
+	if err := tx.QueryRowContext(ctx, query, e.SubmittedBy, e.SubmittedAt, e.Status, e.ID).
+		Scan(&e.CreatedAt, &e.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("update form entry tx: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tbl_form_entry_value WHERE entry_id = $1`, e.ID); err != nil {
+		return fmt.Errorf("delete entry values tx: %w", err)
+	}
+	for _, v := range values {
+		v.EntryID = e.ID
+		valQuery := `
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING created_at, updated_at
+		`
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
+			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
+			return fmt.Errorf("insert entry value tx: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// DeleteTx - Transaction variant of Delete
+func (r *Repository) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+	query := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+	res, err := tx.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("delete form entry tx: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

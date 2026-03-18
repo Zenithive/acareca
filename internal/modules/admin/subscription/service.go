@@ -8,6 +8,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -24,12 +25,13 @@ type Service interface {
 }
 
 type service struct {
+	db       *sqlx.DB
 	repo     Repository
 	auditSvc audit.Service
 }
 
-func NewService(repo Repository, auditSvc audit.Service) Service {
-	return &service{repo: repo, auditSvc: auditSvc}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc}
 }
 
 func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscription) (*RsSubscription, error) {

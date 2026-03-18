@@ -20,6 +20,9 @@ type IRepository interface {
 	GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error)
 	ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error)
 	CountForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) (int, error)
+	CreateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) error
+	UpdateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (*FormDetail, error)
+	DeleteTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error
 }
 
 type Repository struct {
@@ -176,4 +179,53 @@ func (r *Repository) GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail
 		return nil, fmt.Errorf("get form detail by id: %w", err)
 	}
 	return &d, nil
+}
+
+// CreateTx creates a form detail within a transaction.
+func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) error {
+	query := `
+		INSERT INTO tbl_form (id, clinic_id, name, description, status, method, owner_share, clinic_share)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING created_at, updated_at
+	`
+	if err := tx.QueryRowContext(ctx, query,
+		d.ID, d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare,
+	).Scan(&d.CreatedAt, &d.UpdatedAt); err != nil {
+		return fmt.Errorf("create form detail in transaction: %w", err)
+	}
+	return nil
+}
+
+// UpdateTx updates a form detail within a transaction.
+func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (*FormDetail, error) {
+	query := `
+		UPDATE tbl_form
+		SET name = $1, description = $2, status = $3, method = $4, owner_share = $5, clinic_share = $6, updated_at = now()
+		WHERE id = $7 AND deleted_at IS NULL
+		RETURNING id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at
+	`
+	var out FormDetail
+	if err := tx.QueryRowContext(ctx, query,
+		d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.ID,
+	).Scan(&out.ID, &out.ClinicID, &out.Name, &out.Description, &out.Status, &out.Method, &out.OwnerShare, &out.ClinicShare, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update form detail in transaction: %w", err)
+	}
+	return &out, nil
+}
+
+// DeleteTx deletes a form detail within a transaction.
+func (r *Repository) DeleteTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error {
+	query := `UPDATE tbl_form SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+	res, err := tx.ExecContext(ctx, query, formID)
+	if err != nil {
+		return fmt.Errorf("delete form in transaction: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

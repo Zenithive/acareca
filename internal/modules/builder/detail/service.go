@@ -21,13 +21,14 @@ type IService interface {
 }
 
 type Service struct {
+	db         *sqlx.DB
 	repo       IRepository
 	versionSvc version.IService
 	limitsSvc  limits.Service
 }
 
 func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService) IService {
-	return &Service{repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db)}
+	return &Service{db: db, repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db)}
 }
 
 // Create implements [IService].
@@ -37,17 +38,25 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 	}
 
 	formDetail := d.ToDB(clinicID)
-	if err := s.repo.Create(ctx, formDetail); err != nil {
-		return nil, err
-	}
-	_, err := s.versionSvc.Create(ctx, formDetail.ID, clinicID, &version.RqFormVersion{
-		Version:  1,
-		IsActive: true,
-	}, practitionerID)
+	var result *RsFormDetail
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
+			return err
+		}
+		_, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
+			Version:  1,
+			IsActive: true,
+		}, practitionerID)
+		if err != nil {
+			return err
+		}
+		result = formDetail.ToRs()
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return formDetail.ToRs(), nil
+	return result, nil
 }
 
 // Delete implements [IService].
@@ -120,11 +129,7 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 	if err := applyFormUpdatePatch(existing, d); err != nil {
 		return nil, err
 	}
-	updated, err := s.repo.Update(ctx, existing)
-	if err != nil {
-		return nil, err
-	}
-	allVersions, err := s.versionSvc.List(ctx, updated.ID, updated.ClinicID)
+	allVersions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,14 +139,26 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 			versionNum = v.Version + 1
 		}
 	}
-	_, err = s.versionSvc.Create(ctx, updated.ID, updated.ClinicID, &version.RqFormVersion{
-		Version:  versionNum,
-		IsActive: true,
-	}, practitionerID)
+	var updated *RsFormDetail
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		upd, err := s.repo.UpdateTx(ctx, tx, existing)
+		if err != nil {
+			return err
+		}
+		_, err = s.versionSvc.CreateTx(ctx, tx, existing.ID, existing.ClinicID, &version.RqFormVersion{
+			Version:  versionNum,
+			IsActive: true,
+		}, practitionerID)
+		if err != nil {
+			return err
+		}
+		updated = upd.ToRs()
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return updated.ToRs(), nil
+	return updated, nil
 }
 
 // UpdateMetadata updates only the form row; no version creation. Used by update-with-fields flow.

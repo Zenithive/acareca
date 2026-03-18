@@ -55,7 +55,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo)
 
-	subscriptionSvc := subscription.NewService(subscriptionRepo, auditSvc)
+	subscriptionSvc := subscription.NewService(dbConn, subscriptionRepo, auditSvc)
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
 
@@ -119,7 +119,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
 
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
-	formSvc := form.NewService(detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc)
 	formHandler := form.NewHandler(formSvc)
 	form.RegisterRoutes(formGroup, formHandler)
 
@@ -137,7 +137,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	settingGroup := v1.Group("/setting")
 	settingRepo := setting.NewRepository(dbConn)
-	settingSvc := setting.NewService(settingRepo)
+	settingSvc := setting.NewService(dbConn, settingRepo)
 	settingHandler := setting.NewHandler(settingSvc)
 
 	setting.RegisterRoutes(settingGroup, settingHandler, cfg)
