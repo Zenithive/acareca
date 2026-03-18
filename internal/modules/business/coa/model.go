@@ -106,14 +106,16 @@ type RsChartOfAccountList struct {
 }
 
 type Filter struct {
-	Name    *string `form:"name"`
-	Id      *string `form:"id"`
-	Code    *int    `form:"code"`
-	Search  *string `form:"search"`
-	SortBy  *string `form:"sort_by"`
-	OrderBy *string `form:"order_by"`
-	Limit   *int    `form:"limit"`
-	Offset  *int    `form:"offset"`
+	Name          *string `form:"name"`
+	Id            *string `form:"id"`
+	Code          *int    `form:"code"`
+	Search        *string `form:"search"`
+	AccountType   *string `form:"account_type"`
+	AccountTypeID *int16  `form:"-"`
+	SortBy        *string `form:"sort_by"`
+	OrderBy       *string `form:"order_by"`
+	Limit         *int    `form:"limit"`
+	Offset        *int    `form:"offset"`
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
@@ -130,6 +132,10 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 	if filter.Code != nil {
 		filters["code"] = *filter.Code
+	}
+
+	if filter.AccountTypeID != nil {
+		filters["account_type_id"] = *filter.AccountTypeID
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
