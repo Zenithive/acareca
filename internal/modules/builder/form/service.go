@@ -55,15 +55,15 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 	if activeVersionID == uuid.Nil {
 		return nil, errors.New("no active version found")
 	}
-	if s.detailSvc != nil {
-		formDetail, err := s.detailSvc.GetByID(ctx, formID)
-		if err != nil {
-			return nil, err
-		}
-		if formDetail.Status != StatusDraft {
-			return nil, errors.New("form is not draft for fields")
-		}
-	}
+	// if s.detailSvc != nil {
+	// 	formDetail, err := s.detailSvc.GetByID(ctx, formID)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	if formDetail.Status != StatusDraft {
+	// 		return nil, errors.New("form is not draft for fields")
+	// 	}
+	// }
 
 	out := &RsBulkSyncFields{
 		Created: make([]field.RsFormField, 0, len(req.Create)),
@@ -251,10 +251,11 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if err != nil {
 		return nil, nil, err
 	}
-	if existing.Status != StatusDraft && len(req.Fields) > 0 {
-		return nil, nil, errors.New("form is not draft for fields")
-	}
-	if len(req.Fields) == 0 {
+	hasChanges := len(req.Update) > 0 || len(req.Create) > 0 || len(req.Delete) > 0
+	// if existing.Status != StatusDraft && hasChanges {
+	// 	return nil, nil, errors.New("form is not draft for fields")
+	// }
+	if !hasChanges {
 		return updated, syncResult, nil
 	}
 	versions, err := s.versionSvc.List(ctx, existing.ID, req.ClinicID)
@@ -271,52 +272,19 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if activeVersionID == uuid.Nil {
 		return updated, syncResult, nil
 	}
-	currentFields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
-	if err != nil {
-		return nil, nil, err
-	}
-	currentIDs := make(map[uuid.UUID]struct{})
-	for _, f := range currentFields {
-		currentIDs[f.ID] = struct{}{}
-	}
-	keepIDs := make(map[uuid.UUID]struct{})
-	var createList []field.RqFormField
-	var updateList []field.RqUpdateFormField
-	for i := range req.Fields {
-		f := &req.Fields[i]
-		if f.ID != uuid.Nil {
-			keepIDs[f.ID] = struct{}{}
-			item := field.RqUpdateFormField{
-				ID:                    f.ID,
-				Label:                 f.Label,
-				SectionType:           f.SectionType,
-				PaymentResponsibility: f.PaymentResponsibility,
-				TaxType:               f.TaxType,
-				CoaID:                 f.CoaID,
-			}
-			updateList = append(updateList, item)
-		} else {
-			r := field.RqFormField{
-				Label:                 *f.Label,
-				SectionType:           *f.SectionType,
-				PaymentResponsibility: f.PaymentResponsibility,
-				TaxType:               f.TaxType,
-				CoaID:                 *f.CoaID,
-			}
-			createList = append(createList, r)
-		}
-	}
 	var deleteList []uuid.UUID
-	for id := range currentIDs {
-		if _, keep := keepIDs[id]; !keep {
-			deleteList = append(deleteList, id)
+	for _, idStr := range req.Delete {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, nil, err
 		}
+		deleteList = append(deleteList, id)
 	}
 	bulk, err := s.BulkSyncFields(ctx, practitionerID, &RqBulkSyncFields{
 		FormID:   existing.ID,
 		ClinicID: req.ClinicID,
-		Create:   createList,
-		Update:   updateList,
+		Create:   req.Create,
+		Update:   req.Update,
 		Delete:   deleteList,
 	})
 	if err != nil {

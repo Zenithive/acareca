@@ -76,6 +76,14 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 }
 
 func (s *service) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
+	if f.AccountType != nil {
+		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
+		if err != nil {
+			return nil, err
+		}
+		typeID := int16(id)
+		f.AccountTypeID = &typeID
+	}
 	ft := f.MapToFilter()
 	list, err := s.repo.ListChartOfAccount(ctx, practitionerID, ft)
 	if err != nil {

@@ -57,7 +57,9 @@ type RqUpdateFormWithFields struct {
 	OwnerShare  *int                      `json:"owner_share" validate:"omitempty,min=0,max=100"`
 	ClinicShare *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
 	ClinicID    uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
-	Fields      []field.RqUpdateFormField `json:"fields" validate:"omitempty,dive"`
+	Update      []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
+	Create      []field.RqFormField       `json:"create" validate:"omitempty,dive"`
+	Delete      []string                  `json:"delete" validate:"omitempty,dive"`
 }
 
 type RsFormWithFields struct {

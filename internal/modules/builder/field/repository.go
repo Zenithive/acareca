@@ -30,7 +30,7 @@ func NewRepository(db *sqlx.DB) IRepository {
 func (r *Repository) Create(ctx context.Context, f *FormField) error {
 	query := `
 		INSERT INTO tbl_form_field (id, form_version_id, label, section_type, payment_responsibility, tax_type, coa_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		VALUES ($1, $2, $3, $4::section_type, $5::payment_responsibility, $6::tax_type, $7)
 		RETURNING created_at, updated_at
 	`
 	if err := r.db.QueryRowContext(ctx, query,
@@ -61,8 +61,8 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormField, err
 func (r *Repository) Update(ctx context.Context, f *FormField) (*FormField, error) {
 	query := `
 		UPDATE tbl_form_field
-		SET label = $1, section_type = $2, payment_responsibility = $3, tax_type = $4, coa_id = $5, updated_at = now()
-		WHERE id = $7 AND deleted_at IS NULL
+		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, updated_at = now()
+		WHERE id = $6 AND deleted_at IS NULL
 		RETURNING id, form_version_id, label, section_type, payment_responsibility, tax_type, coa_id, created_at, updated_at
 	`
 	var out FormField

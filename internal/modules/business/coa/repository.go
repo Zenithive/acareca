@@ -25,6 +25,7 @@ type Repository interface {
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
 	ListAccountTaxes(ctx context.Context) ([]*AccountTax, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
+	GetAccountTypeByName(ctx context.Context, name string) (int, error)
 
 	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error)
 	CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
@@ -114,7 +115,6 @@ var chartOfAccountColumns = map[string]string{
 var coaSearchColumns = []string{"name"}
 
 func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error) {
-
 	base := `
 		SELECT 
 			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
@@ -242,4 +242,18 @@ func (r *repository) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, pra
 		return ErrNotFound
 	}
 	return nil
+}
+
+// GetAccountTypeByName implements [Repository].
+func (r *repository) GetAccountTypeByName(ctx context.Context, name string) (int, error) {
+	query := `
+		SELECT id, name, created_at, updated_at
+		FROM tbl_account_type
+		WHERE name = $1
+	`
+	var a AccountType
+	if err := r.db.QueryRowxContext(ctx, query, name).StructScan(&a); err != nil {
+		return 0, fmt.Errorf("get account type: %w", err)
+	}
+	return int(a.ID), nil
 }

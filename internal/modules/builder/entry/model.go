@@ -1,7 +1,10 @@
 package entry
 
 import (
+	"log"
+
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 const (
@@ -93,5 +96,35 @@ type RsEntryValue struct {
 }
 
 type Filter struct {
-	ClinicID *uuid.UUID `json:"clinic_id,omitempty"`
+	ClinicID *string `form:"clinic_id"`
+	Search   *string `form:"search"`
+	SortBy   *string `form:"sort_by"`
+	OrderBy  *string `form:"order_by"`
+	Limit    *int    `form:"limit"`
+	Offset   *int    `form:"offset"`
+}
+
+func (f *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if f.ClinicID != nil {
+		id, err := uuid.Parse(*f.ClinicID)
+		if err != nil {
+			log.Printf("failed to parse clinic id: %v", err)
+		}
+		filters["clinic_id"] = id
+	}
+
+	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset)
+
+	if f.SortBy != nil {
+		cf.SortBy = *f.SortBy
+	} else {
+		cf.SortBy = "created_at"
+	}
+	if f.OrderBy != nil {
+		cf.OrderBy = *f.OrderBy
+	} else {
+		cf.OrderBy = "DESC"
+	}
+	return cf
 }
