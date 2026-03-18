@@ -10,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type IService interface {
@@ -18,7 +19,7 @@ type IService interface {
 	CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	UpdateWithFields(ctx context.Context, d *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
 	GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsFormWithFields, error)
-	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*detail.RsFormDetail, error)
+	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 }
 
@@ -361,14 +362,17 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 	return out, nil
 }
 
-func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*detail.RsFormDetail, error) {
+func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error) {
+	// Pass the request to the detail service and return the consolidated result
 	return s.detailSvc.List(ctx, detail.Filter{
-		ClinicID:   filter.ClinicID,
-		ClinicName: filter.ClinicName,
-		Status:     filter.Status,
-		Method:     filter.Method,
-		SortBy:     filter.SortBy,
-		SortOrder:  filter.SortOrder,
+		ClinicID:  filter.ClinicID,
+		FormName:  filter.FormName,
+		Status:    filter.Status,
+		Method:    filter.Method,
+		SortBy:    filter.SortBy,
+		SortOrder: filter.SortOrder,
+		Limit:     filter.Limit,
+		Offset:    filter.Offset,
 	}, practitionerID)
 }
 

@@ -14,7 +14,7 @@ import (
 var ErrNotFound = errors.New("clinic not found")
 
 type Repository interface {
-	ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]Clinic, error)
+	ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]*Clinic, error)
 	CountClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) (int, error)
 	GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error)
 	GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error)
@@ -159,22 +159,21 @@ var clinicAllowedColumns = map[string]string{
 
 var clinicSearchColumns = []string{"name", "abn", "description"}
 
-func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]Clinic, error) {
+func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]*Clinic, error) {
 	base := `
 		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE practitioner_id = ? AND deleted_at IS NULL`
 
+	baseArgs := []interface{}{practitionerID}
 	query, filterArgs := common.BuildQuery(base, filter, clinicAllowedColumns, clinicSearchColumns, false)
-	query = sqlx.Rebind(sqlx.DOLLAR, query)
+	query = r.db.Rebind(query)
 
-	args := append([]interface{}{practitionerID}, filterArgs...)
-
-	var clinics []Clinic
-	if err := r.db.SelectContext(ctx, &clinics, query, args...); err != nil {
-		return nil, fmt.Errorf("get clinics by practitioner: %w", err)
+	var list []*Clinic
+	if err := r.db.SelectContext(ctx, &list, query, append(baseArgs, filterArgs...)...); err != nil {
+		return nil, fmt.Errorf("list clinics: %w", err)
 	}
-	return clinics, nil
+	return list, nil
 }
 
 func (r *repository) CountClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) (int, error) {

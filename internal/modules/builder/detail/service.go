@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -15,7 +16,7 @@ type IService interface {
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
-	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*RsFormDetail, error)
+	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error)
 }
 
 type Service struct {
@@ -49,17 +50,27 @@ func (s *Service) Delete(ctx context.Context, formID uuid.UUID) error {
 }
 
 // ListForm implements [IService].
-func (s *Service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) ([]*RsFormDetail, error) {
-	formDetails, err := s.repo.ListForm(ctx, filter.MapToFilter(), practitionerID)
+func (s *Service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error) {
+	ft := filter.MapToFilter()
+	formDetails, err := s.repo.ListForm(ctx, ft, practitionerID)
 	if err != nil {
 		return nil, err
 	}
 
-	rs := make([]*RsFormDetail, 0, len(formDetails))
-	for _, d := range formDetails {
-		rs = append(rs, d.ToRs())
+	total, err := s.repo.CountForm(ctx, ft, practitionerID)
+	if err != nil {
+		return nil, err
 	}
-	return rs, nil
+
+	items := make([]*RsFormDetail, 0, len(formDetails))
+	for _, item := range formDetails {
+		items = append(items, item.ToRs())
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(items, total, ft.Offset, ft.Limit)
+
+	return &rsList, nil
 }
 
 func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {

@@ -19,6 +19,7 @@ type IRepository interface {
 	Delete(ctx context.Context, formID uuid.UUID) error
 	GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error)
 	ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error)
+	CountForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) (int, error)
 }
 
 type Repository struct {
@@ -73,10 +74,11 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 	args := []any{practitionerID}
 
 	allowedColumns := map[string]string{
-		"status":     "f.status",
-		"method":     "f.method",
-		"clinic_id":  "f.clinic_id",
-		"created_at": "f.created_at",
+		"status":      "f.status",
+		"method":      "f.method",
+		"clinic_id":   "f.clinic_id",
+		"created_at":  "f.created_at",
+		"clinic_name": "f.name",
 	}
 
 	searchCols := []string{
@@ -107,6 +109,37 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 	}
 
 	return details, nil
+}
+
+func (r *Repository) CountForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) (int, error) {
+	base := `
+    FROM tbl_form f
+    WHERE f.deleted_at IS NULL
+    AND f.clinic_id IN (
+        SELECT id FROM tbl_clinic 
+        WHERE practitioner_id = ? AND deleted_at IS NULL
+    )
+    `
+	args := []any{practitionerID}
+
+	// Use the same column mappings as ListForm
+	allowedColumns := map[string]string{
+		"status": "f.status", "method": "f.method", "clinic_id": "f.clinic_id",
+	}
+	searchCols := []string{"f.name", "f.description"}
+
+	// Pass 'true' to BuildQuery for count mode
+	query, qArgs := common.BuildQuery(base, filter, allowedColumns, searchCols, true)
+
+	args = append(args, qArgs...)
+	query = r.db.Rebind(query)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("count forms: %w", err)
+	}
+
+	return count, nil
 }
 
 // Update implements [IRepository].

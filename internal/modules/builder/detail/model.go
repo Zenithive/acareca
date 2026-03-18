@@ -14,12 +14,15 @@ const (
 )
 
 type Filter struct {
-	ClinicID   *uuid.UUID `form:"clinic_id"`
-	ClinicName *string    `form:"clinic_name"`
-	Method     *string    `form:"method"`
-	Status     *string    `form:"status"`
-	SortBy     *string    `form:"sort_by"`
-	SortOrder  *string    `form:"sort_order"`
+	ClinicID  *string `form:"clinic_id"`
+	FormName  *string `form:"form_name"`
+	Method    *string `form:"method"`
+	Status    *string `form:"status"`
+	Search    *string `form:"search"`
+	SortBy    *string `form:"sort_by"`
+	SortOrder *string `form:"sort_order"`
+	Limit     *int    `form:"limit"`
+	Offset    *int    `form:"offset"`
 }
 
 func (f Filter) Validate() error {
@@ -32,7 +35,10 @@ func (f Filter) Validate() error {
 func (filter *Filter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	if filter.ClinicID != nil {
-		filters["clinic_id"] = *filter.ClinicID
+		id, err := uuid.Parse(*filter.ClinicID)
+		if err == nil {
+			filters["clinic_id"] = id // Pass as uuid.UUID type to common.Filter
+		}
 	}
 	if filter.Status != nil {
 		filters["status"] = *filter.Status
@@ -40,10 +46,10 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.Method != nil {
 		filters["method"] = *filter.Method
 	}
-	if filter.ClinicName != nil {
-		filters["clinic_name"] = *filter.ClinicName
+	if filter.FormName != nil {
+		filters["form_name"] = *filter.FormName
 	}
-	f := common.NewFilter(nil, filters, nil, nil, nil)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
 	if filter.SortBy != nil {
 		f.SortBy = *filter.SortBy
 	}

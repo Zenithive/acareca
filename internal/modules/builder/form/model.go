@@ -67,12 +67,15 @@ type RsFormWithFields struct {
 }
 
 type Filter struct {
-	ClinicID   *uuid.UUID `form:"clinic_id"`
-	ClinicName *string    `form:"clinic_name"`
-	Method     *string    `form:"method"`
-	Status     *string    `form:"status"`
-	SortBy     *string    `form:"sort_by"`
-	SortOrder  *string    `form:"sort_order"`
+	ClinicID  *string `form:"clinic_id"`
+	FormName  *string `form:"form_name"`
+	Method    *string `form:"method"`
+	Status    *string `form:"status"`
+	Search    *string `form:"search"`
+	SortBy    *string `form:"sort_by"`
+	SortOrder *string `form:"sort_order"`
+	Limit     *int    `form:"limit"`
+	Offset    *int    `form:"offset"`
 }
 
 // Custom validation for sort pair
