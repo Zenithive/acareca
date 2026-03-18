@@ -118,7 +118,7 @@ func (h *handler) ListAuditLogs(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Audit Log ID"
-// @Success 200 {object} AuditLog
+// @Success 200 {object} RsAuditLog
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError

@@ -8,8 +8,8 @@ import (
 type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
 	LogAsync(entry *LogEntry)
-	Query(ctx context.Context, params QueryParams) ([]*AuditLog, error)
-	GetByID(ctx context.Context, id string) (*AuditLog, error)
+	Query(ctx context.Context, params QueryParams) ([]*RsAuditLog, error)
+	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
 }
 
 type service struct {
@@ -58,11 +58,23 @@ func (s *service) asyncWorker() {
 }
 
 // Query retrieves audit logs based on filter parameters
-func (s *service) Query(ctx context.Context, params QueryParams) ([]*AuditLog, error) {
-	return s.repo.List(ctx, params)
+func (s *service) Query(ctx context.Context, params QueryParams) ([]*RsAuditLog, error) {
+	logs, err := s.repo.List(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*RsAuditLog, len(logs))
+	for i, l := range logs {
+		result[i] = toRsAuditLog(l)
+	}
+	return result, nil
 }
 
 // GetByID retrieves a specific audit log entry
-func (s *service) GetByID(ctx context.Context, id string) (*AuditLog, error) {
-	return s.repo.GetByID(ctx, id)
+func (s *service) GetByID(ctx context.Context, id string) (*RsAuditLog, error) {
+	l, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return toRsAuditLog(l), nil
 }
