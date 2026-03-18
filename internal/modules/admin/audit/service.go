@@ -3,12 +3,14 @@ package audit
 import (
 	"context"
 	"log"
+
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
 	LogAsync(entry *LogEntry)
-	Query(ctx context.Context, params QueryParams) ([]*AuditLog, error)
+	Query(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetByID(ctx context.Context, id string) (*AuditLog, error)
 }
 
@@ -58,8 +60,30 @@ func (s *service) asyncWorker() {
 }
 
 // Query retrieves audit logs based on filter parameters
-func (s *service) Query(ctx context.Context, params QueryParams) ([]*AuditLog, error) {
-	return s.repo.List(ctx, params)
+func (s *service) Query(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+
+	// Fetch data
+	list, err := s.repo.List(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch total count for pagination
+	total, err := s.repo.Count(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]*RsAuditLog, 0, len(list))
+	for _, item := range list {
+		data = append(data, item.ToRs())
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+
+	return &rsList, nil
 }
 
 // GetByID retrieves a specific audit log entry

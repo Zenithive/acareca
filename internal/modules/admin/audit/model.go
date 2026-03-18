@@ -3,6 +3,8 @@ package audit
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 type AuditLog struct {
@@ -51,16 +53,79 @@ type LogEntry struct {
 	UserAgent   *string
 }
 
-// QueryParams for filtering audit logs
-type QueryParams struct {
-	PracticeID *string
-	UserID     *string
-	Module     *string
-	Action     *string
-	EntityType *string
-	EntityID   *string
-	StartDate  *time.Time
-	EndDate    *time.Time
-	Limit      int
-	Offset     int
+type Filter struct {
+	PracticeID *string    `form:"practice_id"`
+	UserID     *string    `form:"user_id"`
+	Module     *string    `form:"module"`
+	Action     *string    `form:"action"`
+	EntityType *string    `form:"entity_type"`
+	EntityID   *string    `form:"entity_id"`
+	StartDate  *time.Time `form:"start_date" time_format:"2006-01-02T15:04:05Z07:00"`
+	EndDate    *time.Time `form:"end_date" time_format:"2006-01-02T15:04:05Z07:00"`
+	Search     *string    `form:"search"`
+	SortBy     *string    `form:"sort_by"`
+	OrderBy    *string    `form:"order_by"`
+	Limit      *int       `form:"limit"`
+	Offset     *int       `form:"offset"`
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if filter.PracticeID != nil {
+		filters["practice_id"] = *filter.PracticeID
+	}
+	if filter.UserID != nil {
+		filters["user_id"] = *filter.UserID
+	}
+	if filter.Module != nil {
+		filters["module"] = *filter.Module
+	}
+	if filter.Action != nil {
+		filters["action"] = *filter.Action
+	}
+	if filter.EntityType != nil {
+		filters["entity_type"] = *filter.EntityType
+	}
+	if filter.EntityID != nil {
+		filters["entity_id"] = *filter.EntityID
+	}
+	if filter.StartDate != nil {
+		filters["created_at_gte"] = *filter.StartDate
+	}
+	if filter.EndDate != nil {
+		filters["created_at_lte"] = *filter.EndDate
+	}
+
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+
+	return f
+}
+
+func (a *AuditLog) ToRs() *RsAuditLog {
+	return &RsAuditLog{
+		ID:          a.ID,
+		PracticeID:  a.PracticeID,
+		UserID:      a.UserID,
+		Action:      a.Action,
+		Module:      a.Module,
+		EntityType:  a.EntityType,
+		EntityID:    a.EntityID,
+		BeforeState: a.BeforeState,
+		AfterState:  a.AfterState,
+		IPAddress:   a.IPAddress,
+		UserAgent:   a.UserAgent,
+		CreatedAt:   a.CreatedAt,
+	}
 }
