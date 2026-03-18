@@ -25,6 +25,27 @@ definitions:
       user_id:
         type: string
     type: object
+  auth.RqUser:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      is_superadmin:
+        type: boolean
+      last_name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
   auth.RsGoogleAuthURL:
     properties:
       url:
@@ -39,24 +60,24 @@ definitions:
       refresh_token:
         type: string
     type: object
-  auth.RsUser:
+  clinic.RqBulkDeleteClinic:
     properties:
-      created_at:
-        type: string
-      email:
-        type: string
-      first_name:
-        type: string
-      id:
-        type: string
-      is_superadmin:
-        type: boolean
-      last_name:
-        type: string
-      phone:
-        type: string
-      updated_at:
-        type: string
+      clinic_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - clinic_ids
+    type: object
+  clinic.RqBulkUpdateClinic:
+    properties:
+      clinics:
+        items:
+          $ref: '#/definitions/clinic.RqUpdateClinic'
+        type: array
+    required:
+    - clinics
     type: object
   clinic.RqClinicAddress:
     properties:
@@ -608,17 +629,6 @@ definitions:
       label:
         type: string
     type: object
-  fy.RsFinancialQuarter:
-    properties:
-      end_date:
-        type: string
-      id:
-        type: string
-      label:
-        type: string
-      start_date:
-        type: string
-    type: object
   fy.RsFinancialYear:
     properties:
       end_date:
@@ -629,6 +639,40 @@ definitions:
         type: string
       start_date:
         type: string
+    type: object
+  practitioner.RsPractitioner:
+    properties:
+      abn:
+        type: string
+      id:
+        type: string
+      user:
+        $ref: '#/definitions/practitioner.RsUserInfo'
+      verified:
+        type: boolean
+    type: object
+  practitioner.RsUserInfo:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+      phone:
+        type: string
+    type: object
+  response.RsBase:
+    properties:
+      data: {}
+      error:
+        $ref: '#/definitions/response.RsError'
+      message:
+        type: string
+      status:
+        type: integer
     type: object
   response.RsError:
     properties:
@@ -650,6 +694,25 @@ definitions:
         type: boolean
     required:
     - user_id
+    type: object
+  setting.RqUpdatePractitioner:
+    properties:
+      abn:
+        maxLength: 20
+        type: string
+      verified:
+        type: boolean
+    type: object
+  setting.RqUpsertPractitionerSetting:
+    properties:
+      color:
+        type: string
+      logo:
+        maxLength: 255
+        type: string
+      timezone:
+        maxLength: 255
+        type: string
     type: object
   setting.RsPractitioner:
     properties:
@@ -682,6 +745,53 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  subscription.RqCreateSubscription:
+    properties:
+      description:
+        type: string
+      duration_days:
+        minimum: 1
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        maxLength: 255
+        type: string
+      price:
+        minimum: 0
+        type: number
+    required:
+    - duration_days
+    - name
+    type: object
+  subscription.RqUpdatePractitionerSubscription:
+    properties:
+      status:
+        allOf:
+        - $ref: '#/definitions/subscription.Status'
+        enum:
+        - ACTIVE
+        - PAST_DUE
+        - CANCELLED
+        - PAUSED
+        - EXPIRED
+    type: object
+  subscription.RqUpdateSubscription:
+    properties:
+      description:
+        type: string
+      duration_days:
+        minimum: 1
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        maxLength: 255
+        type: string
+      price:
+        minimum: 0
+        type: number
     type: object
   subscription.RsPractitionerSubscription:
     properties:
@@ -818,14 +928,7 @@ paths:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/util.RsList'
-            - properties:
-                items:
-                  items:
-                    $ref: '#/definitions/audit.RsAuditLog'
-                  type: array
-              type: object
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
           schema:
@@ -870,6 +973,91 @@ paths:
       summary: Get audit log by ID
       tags:
       - audit
+  /admin/create-fy:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Financial Year Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/fy.RqCreateFY'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new financial year
+      tags:
+      - fy
+  /admin/get-fys:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get all financial years
+      tags:
+      - fy
+  /admin/get-quarters/{financial_year_id}:
+    get:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get all quarters for a specific financial year
+      tags:
+      - fy
   /admin/subscription:
     get:
       consumes:
@@ -881,7 +1069,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/util.RsList'
         "500":
           description: Internal Server Error
           schema:
@@ -890,16 +1078,23 @@ paths:
       - BearerToken: []
       summary: List subscriptions
       tags:
-      - subscription
+      - admin-subscription
     post:
       consumes:
       - application/json
       description: create a new subscription
+      parameters:
+      - description: Subscription Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/subscription.RqCreateSubscription'
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Created
           schema:
             $ref: '#/definitions/subscription.RsSubscription'
         "400":
@@ -914,7 +1109,7 @@ paths:
       - BearerToken: []
       summary: Create a new subscription
       tags:
-      - subscription
+      - admin-subscription
   /admin/subscription/{id}:
     delete:
       consumes:
@@ -947,7 +1142,7 @@ paths:
       - BearerToken: []
       summary: Delete a subscription
       tags:
-      - subscription
+      - admin-subscription
     get:
       consumes:
       - application/json
@@ -977,8 +1172,8 @@ paths:
       - BearerToken: []
       summary: Get a subscription
       tags:
-      - subscription
-    put:
+      - admin-subscription
+    patch:
       consumes:
       - application/json
       description: update a subscription
@@ -988,6 +1183,12 @@ paths:
         name: id
         required: true
         type: integer
+      - description: Updated Subscription Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/subscription.RqUpdateSubscription'
       produces:
       - application/json
       responses:
@@ -1007,7 +1208,47 @@ paths:
       - BearerToken: []
       summary: Update a subscription
       tags:
-      - subscription
+      - admin-subscription
+  /admin/update-fy/{financial_year_id}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      - description: Updated Label Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/fy.RqUpdateFYLabel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update the label of a financial year
+      tags:
+      - fy
   /auth/google:
     get:
       description: get Google OAuth consent-screen URL
@@ -1031,7 +1272,13 @@ paths:
       - auth
   /auth/google/callback:
     get:
-      description: handle Google OAuth callback
+      description: handle Google OAuth callback and return tokens
+      parameters:
+      - description: OAuth authorization code
+        in: query
+        name: code
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -1107,13 +1354,20 @@ paths:
       consumes:
       - application/json
       description: register a new user
+      parameters:
+      - description: Registration Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqUser'
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Created
           schema:
-            $ref: '#/definitions/auth.RsUser'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1129,6 +1383,44 @@ paths:
       summary: Register a new user
       tags:
       - auth
+  /calculate/{id}:
+    get:
+      description: Calculate results for a specific form by ID
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Super component value override
+        in: query
+        name: super_component
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Run calculation for a form
+      tags:
+      - calculation
   /clinic:
     get:
       parameters:
@@ -1181,6 +1473,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get all clinics for practitioner
       tags:
       - clinic
@@ -1209,6 +1503,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Create a new clinic
       tags:
       - clinic
@@ -1316,6 +1612,78 @@ paths:
       summary: Update clinic details
       tags:
       - clinic
+  /clinic/bulk-delete:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Bulk Delete Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqBulkDeleteClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Bulk delete clinics
+      tags:
+      - clinic
+  /clinic/bulk-update:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Bulk Update Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/clinic.RqBulkUpdateClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Bulk update clinics
+      tags:
+      - clinic
   /coa/account-taxes:
     get:
       produces:
@@ -1324,9 +1692,7 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/coa.AccountTax'
-            type: array
+            $ref: '#/definitions/util.RsList'
         "500":
           description: Internal Server Error
           schema:
@@ -1376,9 +1742,7 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/coa.AccountType'
-            type: array
+            $ref: '#/definitions/util.RsList'
         "500":
           description: Internal Server Error
           schema:
@@ -1621,6 +1985,29 @@ paths:
       summary: Update an existing chart of account
       tags:
       - coa
+  /entry:
+    get:
+      consumes:
+      - application/json
+      description: List all entries for a specific version
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entry.RsFormEntry'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List form entries
+      tags:
+      - entry
   /entry/{id}:
     delete:
       consumes:
@@ -1680,7 +2067,7 @@ paths:
       summary: Get a form entry by ID
       tags:
       - entry
-    put:
+    patch:
       consumes:
       - application/json
       description: Update data for an existing entry
@@ -1721,34 +2108,6 @@ paths:
       tags:
       - entry
   /entry/version/{version_id}:
-    get:
-      consumes:
-      - application/json
-      description: List all entries for a specific version and clinic
-      parameters:
-      - description: Version ID
-        in: path
-        name: version_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/entry.RsFormEntry'
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: List form entries
-      tags:
-      - entry
     post:
       consumes:
       - application/json
@@ -1836,9 +2195,7 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/detail.RsFormDetail'
-            type: array
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
           schema:
@@ -1881,37 +2238,6 @@ paths:
       security:
       - BearerToken: []
       summary: Create form with fields
-      tags:
-      - form
-    put:
-      consumes:
-      - application/json
-      description: Update an existing form and sync its fields
-      parameters:
-      - description: Form update request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/form.RqUpdateFormWithFields'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/form.RsFormWithFields'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Update form with fields
       tags:
       - form
   /form/{id}:
@@ -1973,15 +2299,28 @@ paths:
       summary: Get form by ID
       tags:
       - form
-    post:
+  /form/{id}/update:
+    patch:
       consumes:
       - application/json
-      description: fetch form detail
+      description: Update an existing form and sync its fields
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Form update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateFormWithFields'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
             $ref: '#/definitions/form.RsFormWithFields'
         "400":
@@ -1992,109 +2331,20 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
-      summary: fetch form details
+      security:
+      - BearerToken: []
+      summary: Update form with fields
       tags:
       - form
-  /fy:
+  /form/form/{id}:
     get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/fy.RsFinancialYear'
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get all financial years
-      tags:
-      - fy
-    post:
       consumes:
       - application/json
+      description: fetch form detail
       parameters:
-      - description: Financial Year Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/fy.RqCreateFY'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/fy.RsFinancialYear'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Create a new financial year
-      tags:
-      - fy
-  /fy/{financial_year_id}/label:
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Financial Year UUID
+      - description: Form ID
         in: path
-        name: financial_year_id
-        required: true
-        type: string
-      - description: Updated Label Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/fy.RqUpdateFYLabel'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/fy.RsFinancialYear'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Update the label of a financial year
-      tags:
-      - fy
-  /fy/{financial_year_id}/quarters:
-    get:
-      parameters:
-      - description: Financial Year UUID
-        in: path
-        name: financial_year_id
+        name: id
         required: true
         type: string
       produces:
@@ -2103,15 +2353,9 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/fy.RsFinancialQuarter'
-            type: array
+            $ref: '#/definitions/form.RsFormWithFields'
         "400":
           description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -2120,98 +2364,25 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Get all quarters for a specific financial year
+      summary: Get form by ID (basic)
       tags:
-      - fy
+      - form
   /practitioner:
     get:
-      consumes:
-      - application/json
-      description: list practitioners
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitioner'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
+            $ref: '#/definitions/util.RsList'
       security:
       - BearerToken: []
-      summary: List practitioners
+      summary: List all practitioners
       tags:
-      - setting
-    post:
-      consumes:
-      - application/json
-      description: Register a new practitioner in the system
-      parameters:
-      - description: Practitioner Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/setting.RqCreatePractitioner'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/setting.RsPractitioner'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Create a new practitioner
-      tags:
-      - setting
+      - practitioner
   /practitioner/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: delete a practitioner
-      parameters:
-      - description: Practitioner ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Delete a practitioner
-      tags:
-      - setting
     get:
-      consumes:
-      - application/json
-      description: get a practitioner by ID
       parameters:
       - description: Practitioner ID
         in: path
@@ -2224,129 +2395,24 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitioner'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
+            $ref: '#/definitions/practitioner.RsPractitioner'
       security:
       - BearerToken: []
-      summary: Get a practitioner by ID
+      summary: Get practitioner by ID
       tags:
-      - setting
-    put:
-      consumes:
-      - application/json
-      description: update a practitioner
-      parameters:
-      - description: Practitioner ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/setting.RsPractitioner'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Update a practitioner
-      tags:
-      - setting
-  /practitioner/setting/{id}:
-    get:
-      consumes:
-      - application/json
-      description: get a setting by practitioner ID
-      parameters:
-      - description: Practitioner ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/setting.RsPractitionerSetting'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get a setting by practitioner ID
-      tags:
-      - setting
-    put:
-      consumes:
-      - application/json
-      description: upsert a setting by practitioner ID
-      parameters:
-      - description: Practitioner ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/setting.RsPractitionerSetting'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Upsert a setting by practitioner ID
-      tags:
-      - setting
+      - practitioner
   /practitioner/subscription:
     get:
       consumes:
       - application/json
       description: list subscriptions by practitioner ID
-      parameters:
-      - description: Practitioner ID
-        in: path
-        name: practitioner_id
-        required: true
-        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
           schema:
@@ -2384,7 +2450,7 @@ paths:
       summary: Create a subscription
       tags:
       - subscription
-  /practitioner/subscription/{id}:
+  /practitioner/subscription/{sub_id}:
     delete:
       consumes:
       - application/json
@@ -2392,14 +2458,9 @@ paths:
       parameters:
       - description: Subscription ID
         in: path
-        name: id
+        name: sub_id
         required: true
         type: integer
-      - description: Practitioner ID
-        in: path
-        name: practitioner_id
-        required: true
-        type: string
       produces:
       - application/json
       responses:
@@ -2429,7 +2490,7 @@ paths:
       parameters:
       - description: Subscription ID
         in: path
-        name: id
+        name: sub_id
         required: true
         type: integer
       produces:
@@ -2452,21 +2513,22 @@ paths:
       summary: Get a subscription by ID
       tags:
       - subscription
-    put:
+    patch:
       consumes:
       - application/json
       description: update a subscription
       parameters:
       - description: Subscription ID
         in: path
-        name: id
+        name: sub_id
         required: true
         type: integer
-      - description: Practitioner ID
-        in: path
-        name: practitioner_id
+      - description: Updated Subscription Data
+        in: body
+        name: request
         required: true
-        type: string
+        schema:
+          $ref: '#/definitions/subscription.RqUpdatePractitionerSubscription'
       produces:
       - application/json
       responses:
@@ -2487,7 +2549,120 @@ paths:
       summary: Update a subscription
       tags:
       - subscription
-  /practitioner/user/{user_id}:
+  /setting:
+    delete:
+      consumes:
+      - application/json
+      description: delete a practitioner
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a practitioner
+      tags:
+      - setting
+    get:
+      consumes:
+      - application/json
+      description: get a practitioner by ID
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get a practitioner by ID
+      tags:
+      - setting
+    patch:
+      consumes:
+      - application/json
+      description: update a practitioner
+      parameters:
+      - description: Updated Practitioner Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/setting.RqUpdatePractitioner'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update a practitioner
+      tags:
+      - setting
+    post:
+      consumes:
+      - application/json
+      description: Register a new practitioner in the system
+      parameters:
+      - description: Practitioner Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/setting.RqCreatePractitioner'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/setting.RsPractitioner'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new practitioner
+      tags:
+      - setting
+  /setting/by-user/{user_id}:
     get:
       consumes:
       - application/json
@@ -2516,6 +2691,83 @@ paths:
       security:
       - BearerToken: []
       summary: Get a practitioner by user ID
+      tags:
+      - setting
+  /setting/list:
+    get:
+      consumes:
+      - application/json
+      description: list practitioners
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List practitioners
+      tags:
+      - setting
+  /setting/setting:
+    get:
+      consumes:
+      - application/json
+      description: get a setting by practitioner ID
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitionerSetting'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get a setting by practitioner ID
+      tags:
+      - setting
+    put:
+      consumes:
+      - application/json
+      description: upsert a setting by practitioner ID
+      parameters:
+      - description: Setting Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/setting.RqUpsertPractitionerSetting'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/setting.RsPractitionerSetting'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Upsert a setting by practitioner ID
       tags:
       - setting
 schemes:

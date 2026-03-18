@@ -97,7 +97,7 @@ func (h *handler) Get(c *gin.Context) {
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /entry/{id} [put]
+// @Router /entry/{id} [patch]
 func (h *handler) Update(c *gin.Context) {
 	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -150,15 +150,14 @@ func (h *handler) Delete(c *gin.Context) {
 }
 
 // @Summary List form entries
-// @Description List all entries for a specific version and clinic
+// @Description List all entries for a specific version
 // @Tags entry
 // @Accept json
 // @Produce json
-// @Param version_id path string true "Version ID"
 // @Success 200 {array} RsFormEntry
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /entry/version/{version_id} [get]
+// @Router /entry [get]
 func (h *handler) List(c *gin.Context) {
 	versionID, ok := util.ParseUuidID(c, "version_id")
 	if !ok {
@@ -176,5 +175,5 @@ func (h *handler) List(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
+	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Form entries fetched successfully")
 }

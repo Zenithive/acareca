@@ -141,4 +141,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	setting.RegisterRoutes(settingGroup, settingHandler, cfg)
 
+	practitionerHandler := practitioner.NewHandler(practitionerSvc)
+	practitioner.RegisterRoutes(v1, practitionerHandler, cfg)
+
 }

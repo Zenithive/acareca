@@ -27,6 +27,19 @@ func NewHandler(svc Service) IHandler {
 	}
 }
 
+// Calculation godoc
+// @Summary Run calculation for a form
+// @Description Calculate results for a specific form by ID
+// @Tags calculation
+// @Produce json
+// @Param id path string true "Form ID"
+// @Param super_component query number false "Super component value override"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate/{id} [get]
 // Calculation implements [IHandler].
 func (h *handler) Calculation(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -57,5 +70,5 @@ func (h *handler) Calculation(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	response.JSON(c, http.StatusOK, result, "Calculation completed successfully")
 }

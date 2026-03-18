@@ -22,6 +22,23 @@ type AuditLog struct {
 	CreatedAt   time.Time        `db:"created_at" json:"created_at"`
 }
 
+func toRsAuditLog(a *AuditLog) *RsAuditLog {
+	return &RsAuditLog{
+		ID:          a.ID,
+		PracticeID:  a.PracticeID,
+		UserID:      a.UserID,
+		Action:      a.Action,
+		Module:      a.Module,
+		EntityType:  a.EntityType,
+		EntityID:    a.EntityID,
+		BeforeState: a.BeforeState,
+		AfterState:  a.AfterState,
+		IPAddress:   a.IPAddress,
+		UserAgent:   a.UserAgent,
+		CreatedAt:   a.CreatedAt,
+	}
+}
+
 // RsAuditLog is the swagger response type for AuditLog.
 // Uses interface{} for JSON fields since swag cannot resolve json.RawMessage.
 type RsAuditLog struct {

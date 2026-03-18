@@ -28,10 +28,11 @@ func NewHandler(svc Service) IHandler {
 
 // @Summary Create a new subscription
 // @Description create a new subscription
-// @Tags subscription
+// @Tags admin-subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Param request body RqCreateSubscription true "Subscription Data"
+// @Success 201 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -52,15 +53,15 @@ func (h *handler) CreateSubscription(c *gin.Context) {
 
 // @Summary Get a subscription
 // @Description get a subscription
-// @Tags subscription
+// @Tags admin-subscription
 // @Accept json
 // @Produce json
+// @Param id path int true "Subscription ID"
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /admin/subscription/{id} [get]
-// @Param id path int true "Subscription ID"
 func (h *handler) GetSubscription(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -81,10 +82,10 @@ func (h *handler) GetSubscription(c *gin.Context) {
 
 // @Summary List subscriptions
 // @Description list subscriptions
-// @Tags subscription
+// @Tags admin-subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /admin/subscription [get]
@@ -94,20 +95,21 @@ func (h *handler) ListSubscriptions(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list, "Subscriptions fetched successfully")
+	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Subscriptions fetched successfully")
 }
 
 // @Summary Update a subscription
 // @Description update a subscription
-// @Tags subscription
+// @Tags admin-subscription
 // @Accept json
 // @Produce json
+// @Param id path int true "Subscription ID"
+// @Param request body RqUpdateSubscription true "Updated Subscription Data"
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/subscription/{id} [put]
-// @Param id path int true "Subscription ID"
+// @Router /admin/subscription/{id} [patch]
 func (h *handler) UpdateSubscription(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -133,15 +135,15 @@ func (h *handler) UpdateSubscription(c *gin.Context) {
 
 // @Summary Delete a subscription
 // @Description delete a subscription
-// @Tags subscription
+// @Tags admin-subscription
 // @Accept json
 // @Produce json
+// @Param id path int true "Subscription ID"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /admin/subscription/{id} [delete]
-// @Param id path int true "Subscription ID"
 func (h *handler) DeleteSubscription(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {

@@ -13,7 +13,7 @@ type RsError struct {
 	Detail  string `json:"detail,omitempty"`
 }
 
-type envelope struct {
+type RsBase struct {
 	Status  int      `json:"status,omitempty"`
 	Data    any      `json:"data,omitempty"`
 	Message string   `json:"message,omitempty"`
@@ -21,7 +21,7 @@ type envelope struct {
 }
 
 func JSON(c *gin.Context, status int, data any, message string) {
-	c.JSON(status, envelope{
+	c.JSON(status, RsBase{
 		Status:  status,
 		Data:    data,
 		Message: message,
@@ -29,7 +29,7 @@ func JSON(c *gin.Context, status int, data any, message string) {
 }
 
 func Message(c *gin.Context, status int, message string) {
-	c.JSON(status, envelope{
+	c.JSON(status, RsBase{
 		Status:  status,
 		Message: message,
 	})
@@ -48,7 +48,7 @@ func Error(c *gin.Context, status int, err error) {
 		details = err.Error()
 	}
 
-	c.AbortWithStatusJSON(status, envelope{
+	c.AbortWithStatusJSON(status, RsBase{
 		Error: &RsError{
 			Code:    status,
 			Message: msg,

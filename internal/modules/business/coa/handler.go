@@ -35,7 +35,7 @@ func NewHandler(svc Service) IHandler {
 // @Summary List all account types
 // @Tags coa
 // @Produce json
-// @Success 200 {array} AccountType
+// @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/account-types [get]
@@ -45,7 +45,7 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list, "Account types fetched successfully")
+	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Account types fetched successfully")
 }
 
 // @Summary Get account type by ID
@@ -79,7 +79,7 @@ func (h *handler) GetAccountType(c *gin.Context) {
 // @Summary List all account tax types
 // @Tags coa
 // @Produce json
-// @Success 200 {array} AccountTax
+// @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/account-taxes [get]
@@ -89,7 +89,7 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list, "Account taxes fetched successfully")
+	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Account taxes fetched successfully")
 }
 
 // @Summary Get account tax by ID

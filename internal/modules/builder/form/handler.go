@@ -57,15 +57,17 @@ func NewHandler(svc IService) IHandler {
 // 	response.JSON(c, http.StatusOK, result, "Fields synchronized successfully")
 // }
 
-// @Summary fetch form details
+// @Summary Get form by ID (basic)
 // @Description fetch form detail
 // @Tags form
 // @Accept json
 // @Produce json
-// @Success 201 {object} RsFormWithFields
+// @Param id path string true "Form ID"
+// @Success 200 {object} RsFormWithFields
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /form/{id} [post]
+// @Security BearerToken
+// @Router /form/form/{id} [get]
 func (h *handler) GetById(c *gin.Context) {
 	formId, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -124,12 +126,13 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 // @Tags form
 // @Accept json
 // @Produce json
+// @Param id path string true "Form ID"
 // @Param request body RqUpdateFormWithFields true "Form update request"
 // @Success 200 {object} RsFormWithFields
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /form [put]
+// @Router /form/{id}/update [patch]
 func (h *handler) UpdateFormWithFields(c *gin.Context) {
 	formID, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -194,7 +197,7 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Param status     query string false "Filter by status"     Enums(DRAFT, PUBLISHED, ARCHIVED)
 // @Param sort_by    query string false "Field to sort by"     Enums(status, method, clinic_id, created_at)
 // @Param sort_order query string false "Sort direction"       Enums(asc, desc)
-// @Success 200 {object} []detail.RsFormDetail
+// @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken

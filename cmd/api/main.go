@@ -4,6 +4,7 @@ import (
 	"log"
 	_ "net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -43,7 +44,7 @@ func main() {
 	// This overrides the static comments based on the environment
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	if os.Getenv("GIN_MODE") == "release" {
-		docs.SwaggerInfo.Host = "acareca.onrender.com"
+		docs.SwaggerInfo.Host = "acareca-bam8.onrender.com"
 		docs.SwaggerInfo.Schemes = []string{"https"}
 	} else {
 		// Use server port from config or default 8080
@@ -79,15 +80,18 @@ func main() {
 		log.Print(" - using env:   export GIN_MODE=release\n")
 		log.Print(" - using code:  gin.SetMode(gin.ReleaseMode)\n\n")
 	}
+
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS") // e.g. "http://localhost:5173,https://your-frontend.com"
+	origins := strings.Split(allowedOrigins, ",")
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Authorization", "token"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-
 	r.Use(middleware.ClientInfo())
 	route.RegisterRoutes(r, cfg)
 

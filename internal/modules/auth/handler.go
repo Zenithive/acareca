@@ -25,13 +25,14 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
-// GetUsers godoc
+// Register godoc
 // @Summary Register a new user
 // @Description register a new user
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsUser
+// @Param request body RqUser true "Registration Data"
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -87,7 +88,7 @@ func (h *handler) Login(c *gin.Context) {
 	response.JSON(c, http.StatusOK, token, "User logged in successfully")
 }
 
-// GoogleAuthURL godoc
+// GoogleLogin godoc
 // @Summary Get Google OAuth consent-screen URL
 // @Description get Google OAuth consent-screen URL
 // @Tags auth
@@ -102,7 +103,16 @@ func (h *handler) GoogleLogin(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
 
-// GoogleCallback handles the redirect from Google after the user consents.
+// GoogleCallback godoc
+// @Summary Handle Google OAuth callback
+// @Description handle Google OAuth callback and return tokens
+// @Tags auth
+// @Produce json
+// @Param code query string true "OAuth authorization code"
+// @Success 200 {object} RsToken
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google/callback [get]
 func (h *handler) GoogleCallback(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {
@@ -145,14 +155,14 @@ func (h *handler) Logout(c *gin.Context) {
 }
 
 // GoogleAuthURL godoc
-// @Summary Handle Google OAuth callback
-// @Description handle Google OAuth callback
+// @Summary Get Google OAuth consent-screen URL
+// @Description get Google OAuth consent-screen URL
 // @Tags auth
 // @Produce json
-// @Success 200 {object} RsToken
+// @Success 200 {object} RsGoogleAuthURL
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /auth/google/callback [get]
+// @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
 	result := h.svc.GoogleAuthURL(state)

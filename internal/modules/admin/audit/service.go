@@ -11,7 +11,7 @@ type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
 	LogAsync(entry *LogEntry)
 	Query(ctx context.Context, f *Filter) (*util.RsList, error)
-	GetByID(ctx context.Context, id string) (*AuditLog, error)
+	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
 }
 
 type service struct {
@@ -87,6 +87,10 @@ func (s *service) Query(ctx context.Context, f *Filter) (*util.RsList, error) {
 }
 
 // GetByID retrieves a specific audit log entry
-func (s *service) GetByID(ctx context.Context, id string) (*AuditLog, error) {
-	return s.repo.GetByID(ctx, id)
+func (s *service) GetByID(ctx context.Context, id string) (*RsAuditLog, error) {
+	l, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return toRsAuditLog(l), nil
 }

@@ -37,6 +37,7 @@ func NewHandler(svc Service) IHandler {
 // @Success 201 {object} RsClinic
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic [post]
 func (h *handler) Create(c *gin.Context) {
 	PractID, ok := util.GetPractitionerID(c)
@@ -74,6 +75,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Success 200 {array} RsClinic
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /clinic [get]
 func (h *handler) List(c *gin.Context) {
 	// Get user ID from JWT token context
@@ -214,6 +216,17 @@ func (h *handler) Delete(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, gin.H{"message": "clinic deleted successfully"}, "Clinic deleted successfully")
 }
+// @Summary Bulk update clinics
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param request body RqBulkUpdateClinic true "Bulk Update Data"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/bulk-update [put]
 func (h *handler) BulkUpdate(c *gin.Context) {
 	PractID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -236,9 +249,20 @@ func (h *handler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"clinics": clinics}, "Clinics updated successfully")
+	response.JSON(c, http.StatusOK, util.RsList{Items: clinics, Total: len(clinics)}, "Clinics updated successfully")
 }
 
+// @Summary Bulk delete clinics
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param request body RqBulkDeleteClinic true "Bulk Delete Data"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/bulk-delete [delete]
 func (h *handler) BulkDelete(c *gin.Context) {
 	PractID, ok := util.GetPractitionerID(c)
 	if !ok {

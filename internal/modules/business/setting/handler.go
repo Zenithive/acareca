@@ -39,7 +39,7 @@ func NewHandler(svc Service) IHandler {
 // @Failure      400 {object} response.RsError
 // @Failure      500 {object} response.RsError
 // @Security     BearerToken
-// @Router       /practitioner [post]
+// @Router       /setting [post]
 func (h *handler) CreatePractitioner(c *gin.Context) {
 	var req RqCreatePractitioner
 	if err := util.BindAndValidate(c, &req); err != nil {
@@ -63,8 +63,7 @@ func (h *handler) CreatePractitioner(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/{id} [get]
-// @Param id path string true "Practitioner ID"
+// @Router /setting [get]
 func (h *handler) GetPractitioner(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	fmt.Println("err", id)
@@ -88,12 +87,12 @@ func (h *handler) GetPractitioner(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
+// @Param user_id path string true "User ID"
 // @Success 200 {object} RsPractitioner
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/user/{user_id} [get]
-// @Param user_id path string true "User ID"
+// @Router /setting/by-user/{user_id} [get]
 func (h *handler) GetPractitionerByUserID(c *gin.Context) {
 	userID := c.Param("user_id")
 	if userID == "" {
@@ -117,17 +116,17 @@ func (h *handler) GetPractitionerByUserID(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsPractitioner
+// @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner [get]
+// @Router /setting/list [get]
 func (h *handler) ListPractitioners(c *gin.Context) {
 	list, err := h.svc.ListPractitioners(c.Request.Context())
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list, "Practitioners fetched successfully")
+	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Practitioners fetched successfully")
 }
 
 // @Summary Update a practitioner
@@ -135,12 +134,12 @@ func (h *handler) ListPractitioners(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
+// @Param request body RqUpdatePractitioner true "Updated Practitioner Data"
 // @Success 200 {object} RsPractitioner
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/{id} [put]
-// @Param id path string true "Practitioner ID"
+// @Router /setting [patch]
 func (h *handler) UpdatePractitioner(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -172,8 +171,7 @@ func (h *handler) UpdatePractitioner(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/{id} [delete]
-// @Param id path string true "Practitioner ID"
+// @Router /setting [delete]
 func (h *handler) DeletePractitioner(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -199,8 +197,7 @@ func (h *handler) DeletePractitioner(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/setting/{id} [get]
-// @Param id path string true "Practitioner ID"
+// @Router /setting/setting [get]
 func (h *handler) GetSetting(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -223,12 +220,12 @@ func (h *handler) GetSetting(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
+// @Param request body RqUpsertPractitionerSetting true "Setting Data"
 // @Success 200 {object} RsPractitionerSetting
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /practitioner/setting/{id} [put]
-// @Param id path string true "Practitioner ID"
+// @Router /setting/setting [put]
 func (h *handler) UpsertSetting(c *gin.Context) {
 	id, ok := util.GetPractitionerID(c)
 	if !ok {
