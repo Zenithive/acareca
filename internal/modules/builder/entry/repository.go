@@ -153,8 +153,9 @@ func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid
 		"created_at": "created_at",
 		"status":     "status",
 	}
-	base := `FROM tbl_form_entry WHERE form_version_id = $1 AND deleted_at IS NULL`
-	q, args := common.BuildQuery("SELECT id, form_version_id, clinic_id, submitted_by, submitted_at, status, created_at, updated_at "+base, f, allowedColumns, []string{"status"}, false)
+	base := `SELECT id, form_version_id, clinic_id, submitted_by, submitted_at, status, created_at, updated_at
+		FROM tbl_form_entry WHERE form_version_id = ? AND deleted_at IS NULL`
+	q, args := common.BuildQuery(base, f, allowedColumns, []string{"status"}, false)
 	q = sqlx.Rebind(sqlx.DOLLAR, q)
 	args = append([]interface{}{formVersionID}, args...)
 	var list []*FormEntry
@@ -171,7 +172,7 @@ func (r *Repository) CountByFormVersionID(ctx context.Context, formVersionID uui
 		"created_at": "created_at",
 		"status":     "status",
 	}
-	base := `FROM tbl_form_entry WHERE form_version_id = $1 AND deleted_at IS NULL`
+	base := `FROM tbl_form_entry WHERE form_version_id = ? AND deleted_at IS NULL`
 	q, args := common.BuildQuery(base, f, allowedColumns, []string{"status"}, true)
 	q = sqlx.Rebind(sqlx.DOLLAR, q)
 	args = append([]interface{}{formVersionID}, args...)
