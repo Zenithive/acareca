@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -22,14 +23,19 @@ type IService interface {
 type Service struct {
 	repo       IRepository
 	versionSvc version.IService
+	limitsSvc  limits.Service
 }
 
 func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService) IService {
-	return &Service{repo: repo, versionSvc: versionSvc}
+	return &Service{repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db)}
 }
 
 // Create implements [IService].
 func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
+	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
+		return nil, err
+	}
+
 	formDetail := d.ToDB(clinicID)
 	if err := s.repo.Create(ctx, formDetail); err != nil {
 		return nil, err

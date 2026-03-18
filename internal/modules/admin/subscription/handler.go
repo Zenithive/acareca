@@ -16,6 +16,10 @@ type IHandler interface {
 	ListSubscriptions(c *gin.Context)
 	UpdateSubscription(c *gin.Context)
 	DeleteSubscription(c *gin.Context)
+
+	// Permission management
+	ListPermissions(c *gin.Context)
+	UpdatePermission(c *gin.Context)
 }
 
 type handler struct {
@@ -159,4 +163,70 @@ func (h *handler) DeleteSubscription(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"}, "Subscription deleted successfully")
+}
+
+// @Summary List permissions for a subscription plan
+// @Description Returns all permission keys and their limits for a given plan
+// @Tags subscription
+// @Produce json
+// @Param id path int true "Subscription ID"
+// @Success 200 {array} RsSubscriptionPermission
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /admin/subscription/{id}/permissions [get]
+func (h *handler) ListPermissions(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
+		return
+	}
+	list, err := h.svc.ListPermissions(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, list, "Permissions fetched successfully")
+}
+
+// @Summary Update a permission limit for a subscription plan
+// @Description Update usage_limit or is_enabled for a specific permission key on a plan
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Param id path int true "Subscription ID"
+// @Param key path string true "Permission key (e.g. clinic.create)"
+// @Param request body RqUpdatePermission true "Permission update"
+// @Success 200 {object} RsSubscriptionPermission
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /admin/subscription/{id}/permissions/{key} [put]
+func (h *handler) UpdatePermission(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
+		return
+	}
+	key := c.Param("key")
+	if key == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("permission key is required"))
+		return
+	}
+	var req RqUpdatePermission
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	updated, err := h.svc.UpdatePermission(c.Request.Context(), id, key, &req)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, updated, "Permission updated successfully")
 }

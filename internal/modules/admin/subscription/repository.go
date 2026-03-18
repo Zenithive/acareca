@@ -18,6 +18,10 @@ type Repository interface {
 	List(ctx context.Context) ([]*Subscription, error)
 	Update(ctx context.Context, s *Subscription) (*Subscription, error)
 	Delete(ctx context.Context, id int) error
+
+	// Permission management
+	ListPermissions(ctx context.Context, subscriptionID int) ([]*SubscriptionPermission, error)
+	UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*SubscriptionPermission, error)
 }
 
 type repository struct {
@@ -119,4 +123,45 @@ func (r *repository) Delete(ctx context.Context, id int) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *repository) ListPermissions(ctx context.Context, subscriptionID int) ([]*SubscriptionPermission, error) {
+	const q = `
+		SELECT sp.id, sp.subscription_id, sp.permission_id, pp.key, sp.is_enabled, sp.usage_limit
+		FROM tbl_subscription_permission sp
+		JOIN tbl_plan_permission pp ON pp.id = sp.permission_id
+		WHERE sp.subscription_id = $1
+		  AND sp.deleted_at IS NULL
+		  AND pp.deleted_at IS NULL
+		ORDER BY pp.key
+	`
+	var list []*SubscriptionPermission
+	if err := r.db.SelectContext(ctx, &list, q, subscriptionID); err != nil {
+		return nil, fmt.Errorf("list permissions: %w", err)
+	}
+	return list, nil
+}
+
+func (r *repository) UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*SubscriptionPermission, error) {
+	const q = `
+		UPDATE tbl_subscription_permission sp
+		SET
+			usage_limit = COALESCE($3, sp.usage_limit),
+			is_enabled  = COALESCE($4, sp.is_enabled),
+			updated_at  = now()
+		FROM tbl_plan_permission pp
+		WHERE sp.permission_id = pp.id
+		  AND sp.subscription_id = $1
+		  AND pp.key = $2
+		  AND sp.deleted_at IS NULL
+		RETURNING sp.id, sp.subscription_id, sp.permission_id, pp.key, sp.is_enabled, sp.usage_limit
+	`
+	var out SubscriptionPermission
+	if err := r.db.QueryRowxContext(ctx, q, subscriptionID, key, req.UsageLimit, req.IsEnabled).StructScan(&out); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update permission: %w", err)
+	}
+	return &out, nil
 }

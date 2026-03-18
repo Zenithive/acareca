@@ -16,6 +16,10 @@ type Service interface {
 	UpdateSubscription(ctx context.Context, id int, req *RqUpdateSubscription) (*RsSubscription, error)
 	DeleteSubscription(ctx context.Context, id int) error
 	FindByName(ctx context.Context, name string) (*RsSubscription, error)
+
+	// Permission management
+	ListPermissions(ctx context.Context, subscriptionID int) ([]*RsSubscriptionPermission, error)
+	UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*RsSubscriptionPermission, error)
 }
 
 type service struct {
@@ -171,4 +175,24 @@ func strPtr(s string) *string {
 
 func intToStr(i int) string {
 	return fmt.Sprintf("%d", i)
+}
+
+func (s *service) ListPermissions(ctx context.Context, subscriptionID int) ([]*RsSubscriptionPermission, error) {
+	list, err := s.repo.ListPermissions(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*RsSubscriptionPermission, len(list))
+	for i, p := range list {
+		out[i] = p.ToRs()
+	}
+	return out, nil
+}
+
+func (s *service) UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*RsSubscriptionPermission, error) {
+	updated, err := s.repo.UpdatePermission(ctx, subscriptionID, key, req)
+	if err != nil {
+		return nil, err
+	}
+	return updated.ToRs(), nil
 }

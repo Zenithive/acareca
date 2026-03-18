@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -43,14 +44,22 @@ func (h *handler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
 	var req RqFormEntry
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 	var submittedBy *uuid.UUID
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, submittedBy)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, submittedBy, practitionerID)
 	if err != nil {
+		if errors.Is(err, limits.ErrLimitReached) {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

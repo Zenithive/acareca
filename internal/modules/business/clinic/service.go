@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -26,16 +27,21 @@ type Service interface {
 }
 
 type service struct {
-  db   *sqlx.DB
-	repo     Repository
-	auditSvc audit.Service
+	db        *sqlx.DB
+	repo      Repository
+	auditSvc  audit.Service
+	limitsSvc limits.Service
 }
 
-func NewService(db *sqlx.DB,repo Repository, auditSvc audit.Service) Service {
-  return &service{db:db,repo: repo, auditSvc: auditSvc}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc, limitsSvc: limits.NewService(db)}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
+	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyClinicCreate); err != nil {
+		return nil, err
+	}
+
 	var result *RsClinic
 
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {

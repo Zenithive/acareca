@@ -125,7 +125,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	entryGroup := v1.Group("/entry")
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(entriesRepo, fieldRepo, method.NewService())
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService())
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entry.RegisterRoutes(entryGroup, entriesHandler)

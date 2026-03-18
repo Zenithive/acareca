@@ -2,11 +2,11 @@ package form
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -114,6 +114,10 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, practitionerID)
 
 	if err != nil {
+		if errors.Is(err, limits.ErrLimitReached) {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -210,7 +214,6 @@ func (h *handler) List(c *gin.Context) {
 
 	var filter Filter
 	if err := util.BindAndValidate(c, &filter); err != nil {
-		fmt.Println(err.Error())
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}

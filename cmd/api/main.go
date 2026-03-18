@@ -82,7 +82,12 @@ func main() {
 	}
 
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS") // e.g. "http://localhost:5173,https://your-frontend.com"
-	origins := strings.Split(allowedOrigins, ",")
+	var origins []string
+	if allowedOrigins == "" {
+		origins = []string{"*"}
+	} else {
+		origins = strings.Split(allowedOrigins, ",")
+	}
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,

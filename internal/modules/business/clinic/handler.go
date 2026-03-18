@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -52,7 +53,10 @@ func (h *handler) Create(c *gin.Context) {
 
 	clinic, err := h.svc.CreateClinic(c.Request.Context(), PractID, &req)
 	if err != nil {
-		// Log the detailed error for debugging
+		if errors.Is(err, limits.ErrLimitReached) {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
 		fmt.Printf("CreateClinic error: %v\n", err)
 		response.Error(c, http.StatusInternalServerError, err)
 		return

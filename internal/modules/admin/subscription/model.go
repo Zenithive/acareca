@@ -69,3 +69,42 @@ func (s *Subscription) ToRs() *RsSubscription {
 		UpdatedAt:    s.UpdatedAt,
 	}
 }
+
+// --- Plan Permission models ---
+
+// PlanPermission represents a single permission key (e.g. "clinic.create").
+type PlanPermission struct {
+	ID  int    `db:"id"`
+	Key string `db:"key"`
+}
+
+// SubscriptionPermission is the join between a plan and a permission key with its limit.
+type SubscriptionPermission struct {
+	ID             int    `db:"id"`
+	SubscriptionID int    `db:"subscription_id"`
+	PermissionID   int    `db:"permission_id"`
+	Key            string `db:"key"`
+	IsEnabled      bool   `db:"is_enabled"`
+	UsageLimit     int    `db:"usage_limit"`
+}
+
+// RqUpdatePermission is the request body for updating a single permission limit on a plan.
+type RqUpdatePermission struct {
+	UsageLimit *int  `json:"usage_limit"` // -1 = unlimited, 0 = blocked, >0 = capped
+	IsEnabled  *bool `json:"is_enabled"`
+}
+
+// RsSubscriptionPermission is the response for a single permission entry.
+type RsSubscriptionPermission struct {
+	Key        string `json:"key"`
+	IsEnabled  bool   `json:"is_enabled"`
+	UsageLimit int    `json:"usage_limit"`
+}
+
+func (p *SubscriptionPermission) ToRs() *RsSubscriptionPermission {
+	return &RsSubscriptionPermission{
+		Key:        p.Key,
+		IsEnabled:  p.IsEnabled,
+		UsageLimit: p.UsageLimit,
+	}
+}
