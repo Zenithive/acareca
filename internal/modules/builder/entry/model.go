@@ -1,6 +1,7 @@
 package entry
 
 import (
+	"encoding/json"
 	"log"
 
 	"github.com/google/uuid"
@@ -104,6 +105,52 @@ type Filter struct {
 	Offset   *int    `form:"offset"`
 }
 
+type RsTransactionDetail struct {
+	FieldName string   `json:"field_name"`
+	GstType   *string  `json:"gst_type"`
+	Amount    *float64 `json:"amount"`
+	GstAmount *float64 `json:"gst_amount"`
+	NetAmount *float64 `json:"net_amount"`
+}
+
+type RsTransaction struct {
+	ID            uuid.UUID             `json:"id"`
+	FormVersionID uuid.UUID             `json:"form_version_id"`
+	ClinicID      uuid.UUID             `json:"clinic_id"`
+	ClinicName    string                `json:"clinic_name"`
+	FormID        uuid.UUID             `json:"form_id"`
+	FormName      string                `json:"form_name"`
+	Method        string                `json:"method"`
+	FormStatus    string                `json:"form_status"`
+	EntryDetail   []RsTransactionDetail `json:"entry_detail"`
+}
+
+type TransactionFilter struct {
+	ClinicID  *string `form:"clinic_id"`
+	FormID    *string `form:"form_id"`
+	VersionID *string `form:"version_id"`
+	Status    *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Limit     *int    `form:"limit"`
+	Offset    *int    `form:"offset"`
+}
+
+func (f *TransactionFilter) ToCommonFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if f.ClinicID != nil && *f.ClinicID != "" {
+		filters["clinic_id"] = *f.ClinicID
+	}
+	if f.FormID != nil && *f.FormID != "" {
+		filters["form_id"] = *f.FormID
+	}
+	if f.VersionID != nil && *f.VersionID != "" {
+		filters["version_id"] = *f.VersionID
+	}
+	if f.Status != nil && *f.Status != "" {
+		filters["status"] = *f.Status
+	}
+	return common.NewFilter(nil, filters, nil, f.Limit, f.Offset)
+}
+
 func (f *Filter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	if f.ClinicID != nil {
@@ -127,4 +174,16 @@ func (f *Filter) MapToFilter() common.Filter {
 		cf.OrderBy = "DESC"
 	}
 	return cf
+}
+
+type transactionRow struct {
+	ID             uuid.UUID       `db:"id"`
+	FormVersionID  uuid.UUID       `db:"form_version_id"`
+	ClinicID       uuid.UUID       `db:"clinic_id"`
+	ClinicName     string          `db:"clinic_name"`
+	FormID         uuid.UUID       `db:"form_id"`
+	FormName       string          `db:"form_name"`
+	Method         string          `db:"method"`
+	FormStatus     string          `db:"form_status"`
+	EntryDetailRaw json.RawMessage `db:"entry_detail"`
 }

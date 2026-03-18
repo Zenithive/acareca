@@ -3,6 +3,7 @@ package entry
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -23,6 +24,9 @@ type IRepository interface {
 	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
 
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
+
+	ListTransactions(ctx context.Context, f TransactionFilter) ([]*RsTransaction, error)
+	CountTransactions(ctx context.Context, f TransactionFilter) (int, error)
 }
 
 type Repository struct {
@@ -217,4 +221,103 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 		return nil, nil, fmt.Errorf("get entry values: %w", err)
 	}
 	return &e, values, nil
+}
+
+var transactionAllowedColumns = map[string]string{
+	"clinic_id":  "e.clinic_id",
+	"form_id":    "fm.id",
+	"version_id": "e.form_version_id",
+	"status":     "e.status",
+	"created_at": "e.created_at",
+}
+
+func (r *Repository) CountTransactions(ctx context.Context, f TransactionFilter) (int, error) {
+	base := `FROM tbl_form_entry e
+		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
+		WHERE e.deleted_at IS NULL`
+
+	q, args := common.BuildQuery(base, f.ToCommonFilter(), transactionAllowedColumns, nil, true)
+	q = sqlx.Rebind(sqlx.DOLLAR, q)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count transactions: %w", err)
+	}
+	return total, nil
+}
+
+func (r *Repository) ListTransactions(ctx context.Context, f TransactionFilter) ([]*RsTransaction, error) {
+	base := `SELECT
+			e.id,
+			e.form_version_id,
+			e.clinic_id,
+			c.name AS clinic_name,
+			fm.id   AS form_id,
+			fm.name AS form_name,
+			fm.method,
+			e.status AS form_status,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'field_name', ff.label,
+						'gst_type',   ff.tax_type,
+						'amount',     ev.gross_amount,
+						'gst_amount', ev.gst_amount,
+						'net_amount', ev.net_amount
+					) ORDER BY ff.sort_order
+				) FILTER (WHERE ev.id IS NOT NULL),
+				'[]'
+			) AS entry_detail
+		FROM tbl_form_entry e
+		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
+		LEFT JOIN tbl_form_entry_value ev ON ev.entry_id = e.id
+		LEFT JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL
+		WHERE e.deleted_at IS NULL`
+
+	cf := f.ToCommonFilter()
+	cf.Limit = 0
+	cf.Offset = 0
+	q, args := common.BuildQuery(base, cf, transactionAllowedColumns, nil, false)
+
+	cf2 := f.ToCommonFilter()
+	q += " GROUP BY e.id, c.name, fm.id, fm.name, fm.method, e.status, e.created_at ORDER BY e.created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, cf2.Limit, cf2.Offset)
+
+	q = sqlx.Rebind(sqlx.DOLLAR, q)
+
+	rows, err := r.db.QueryxContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list transactions: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*RsTransaction
+	for rows.Next() {
+		var row transactionRow
+		if err := rows.StructScan(&row); err != nil {
+			return nil, fmt.Errorf("scan transaction row: %w", err)
+		}
+		tx := &RsTransaction{
+			ID:            row.ID,
+			FormVersionID: row.FormVersionID,
+			ClinicID:      row.ClinicID,
+			ClinicName:    row.ClinicName,
+			FormID:        row.FormID,
+			FormName:      row.FormName,
+			Method:        row.Method,
+			FormStatus:    row.FormStatus,
+			EntryDetail:   []RsTransactionDetail{},
+		}
+		if len(row.EntryDetailRaw) > 0 {
+			if err := json.Unmarshal(row.EntryDetailRaw, &tx.EntryDetail); err != nil {
+				return nil, fmt.Errorf("unmarshal entry_detail: %w", err)
+			}
+		}
+		result = append(result, tx)
+	}
+	return result, rows.Err()
 }

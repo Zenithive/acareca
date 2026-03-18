@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
-	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -20,6 +20,8 @@ type IService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
+
+	ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error)
 }
 
 type Service struct {
@@ -145,6 +147,23 @@ func (s *Service) GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntr
 		return nil, err
 	}
 	return e.ToRs(values), nil
+}
+
+// ListTransactions implements [IService].
+func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error) {
+	items, err := s.repo.ListTransactions(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.repo.CountTransactions(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	var rs util.RsList
+	cf := filter.ToCommonFilter()
+	rs.MapToList(items, total, cf.Offset, cf.Limit)
+	return &rs, nil
 }
 
 func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {

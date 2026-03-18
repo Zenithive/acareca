@@ -17,6 +17,7 @@ type IHandler interface {
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
 	List(c *gin.Context)
+	ListTransactions(c *gin.Context)
 }
 
 type handler struct {
@@ -188,6 +189,33 @@ func (h *handler) List(c *gin.Context) {
 	}
 
 	list, err := h.svc.List(c.Request.Context(), versionID, filter)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
+}
+
+// @Summary List all transactions
+// @Description Returns all form entries enriched with clinic, form, and field data
+// @Tags entry
+// @Produce json
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param status query string false "Filter by status (DRAFT, SUBMITTED)"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param offset query int false "Offset"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/transactions [get]
+func (h *handler) ListTransactions(c *gin.Context) {
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListTransactions(c.Request.Context(), filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
