@@ -130,13 +130,5 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error) {
-	list, err := s.repo.ListByFormVersionID(ctx, formVersionID)
-	if err != nil {
-		return nil, err
-	}
-	rs := make([]*RsFormField, 0, len(list))
-	for _, f := range list {
-		rs = append(rs, f.ToRs())
-	}
-	return rs, nil
+	return s.repo.ListRsByFormVersionID(ctx, formVersionID)
 }

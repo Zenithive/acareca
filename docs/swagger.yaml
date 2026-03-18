@@ -350,6 +350,8 @@ definitions:
     type: object
   detail.RsFormDetail:
     properties:
+      active_version_id:
+        type: string
       clinic_id:
         type: string
       clinic_share:

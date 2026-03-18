@@ -51,6 +51,7 @@ type ChartOfAccount struct {
 	Code           int16      `db:"code"`
 	Name           string     `db:"name"`
 	IsSystem       bool       `db:"is_system"`
+	IsTaxable      bool       `db:"is_taxable"`
 	CreatedAt      time.Time  `db:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at"`
 	DeletedAt      *time.Time `db:"deleted_at"`
@@ -64,6 +65,7 @@ type RsChartOfAccount struct {
 	Code           int16     `json:"code"`
 	Name           string    `json:"name"`
 	IsSystem       bool      `json:"is_system"`
+	IsTaxable      bool      `json:"is_taxable"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -77,6 +79,7 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 		Code:           c.Code,
 		Name:           c.Name,
 		IsSystem:       c.IsSystem,
+		IsTaxable:      c.IsTaxable,
 		CreatedAt:      c.CreatedAt,
 		UpdatedAt:      c.UpdatedAt,
 	}

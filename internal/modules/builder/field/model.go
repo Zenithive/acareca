@@ -77,14 +77,23 @@ func (d *FormField) ToRs() *RsFormField {
 	}
 }
 
+type RsCoaDetail struct {
+	ID            uuid.UUID `json:"id"`
+	Code          int16     `json:"code"`
+	Name          string    `json:"name"`
+	AccountTypeID int16     `json:"account_type_id"`
+	AccountTaxID  int16     `json:"account_tax_id"`
+}
+
 type RsFormField struct {
-	ID                    uuid.UUID `json:"id"`
-	FormVersionID         uuid.UUID `json:"form_version_id"`
-	Label                 string    `json:"label"`
-	SectionType           string    `json:"section_type"`
-	PaymentResponsibility *string   `json:"payment_responsibility"`
-	TaxType               *string   `json:"tax_type"`
-	CoaID                 uuid.UUID `json:"coa_id"`
-	CreatedAt             string    `json:"created_at"`
-	UpdatedAt             string    `json:"updated_at"`
+	ID                    uuid.UUID     `json:"id"`
+	FormVersionID         uuid.UUID     `json:"form_version_id"`
+	Label                 string        `json:"label"`
+	SectionType           string        `json:"section_type"`
+	PaymentResponsibility *string       `json:"payment_responsibility"`
+	TaxType               *string       `json:"tax_type"`
+	CoaID                 uuid.UUID     `json:"coa_id"`
+	Coa                   *RsCoaDetail  `json:"coa,omitempty"`
+	CreatedAt             string        `json:"created_at"`
+	UpdatedAt             string        `json:"updated_at"`
 }

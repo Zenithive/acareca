@@ -3711,6 +3711,9 @@ const docTemplate = `{
         "detail.RsFormDetail": {
             "type": "object",
             "properties": {
+                "active_version_id": {
+                    "type": "string"
+                },
                 "clinic_id": {
                     "type": "string"
                 },

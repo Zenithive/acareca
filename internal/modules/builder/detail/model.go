@@ -79,16 +79,17 @@ type RqUpdateFormDetail struct {
 }
 
 type FormDetail struct {
-	ID          uuid.UUID `db:"id" json:"id"`
-	ClinicID    uuid.UUID `db:"clinic_id" json:"clinic_id"`
-	Name        string    `db:"name" json:"name"`
-	Description *string   `db:"description" json:"description,omitempty"`
-	Status      string    `db:"status" json:"status"`
-	Method      string    `db:"method" json:"method"`
-	OwnerShare  int       `db:"owner_share" json:"owner_share"`
-	ClinicShare int       `db:"clinic_share" json:"clinic_share"`
-	CreatedAt   string    `db:"created_at" json:"created_at"`
-	UpdatedAt   string    `db:"updated_at" json:"updated_at"`
+	ID              uuid.UUID  `db:"id" json:"id"`
+	ClinicID        uuid.UUID  `db:"clinic_id" json:"clinic_id"`
+	Name            string     `db:"name" json:"name"`
+	Description     *string    `db:"description" json:"description,omitempty"`
+	Status          string     `db:"status" json:"status"`
+	Method          string     `db:"method" json:"method"`
+	OwnerShare      int        `db:"owner_share" json:"owner_share"`
+	ClinicShare     int        `db:"clinic_share" json:"clinic_share"`
+	ActiveVersionID *uuid.UUID `db:"active_version_id" json:"active_version_id,omitempty"`
+	CreatedAt       string     `db:"created_at" json:"created_at"`
+	UpdatedAt       string     `db:"updated_at" json:"updated_at"`
 }
 
 func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
@@ -129,28 +130,30 @@ func (r *RqUpdateFormDetail) Update() *FormDetail {
 
 func (d *FormDetail) ToRs() *RsFormDetail {
 	return &RsFormDetail{
-		ID:          d.ID,
-		ClinicID:    d.ClinicID,
-		Name:        d.Name,
-		Description: d.Description,
-		Status:      d.Status,
-		Method:      d.Method,
-		OwnerShare:  d.OwnerShare,
-		ClinicShare: d.ClinicShare,
-		CreatedAt:   d.CreatedAt,
-		UpdatedAt:   d.UpdatedAt,
+		ID:              d.ID,
+		ClinicID:        d.ClinicID,
+		Name:            d.Name,
+		Description:     d.Description,
+		Status:          d.Status,
+		Method:          d.Method,
+		OwnerShare:      d.OwnerShare,
+		ClinicShare:     d.ClinicShare,
+		ActiveVersionID: d.ActiveVersionID,
+		CreatedAt:       d.CreatedAt,
+		UpdatedAt:       d.UpdatedAt,
 	}
 }
 
 type RsFormDetail struct {
-	ID          uuid.UUID `json:"id"`
-	ClinicID    uuid.UUID `json:"clinic_id"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description,omitempty"`
-	Status      string    `json:"status"`
-	Method      string    `json:"method"`
-	OwnerShare  int       `json:"owner_share"`
-	ClinicShare int       `json:"clinic_share"`
-	CreatedAt   string    `json:"created_at"`
-	UpdatedAt   string    `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	ClinicID        uuid.UUID  `json:"clinic_id"`
+	Name            string     `json:"name"`
+	Description     *string    `json:"description,omitempty"`
+	Status          string     `json:"status"`
+	Method          string     `json:"method"`
+	OwnerShare      int        `json:"owner_share"`
+	ClinicShare     int        `json:"clinic_share"`
+	ActiveVersionID *uuid.UUID `json:"active_version_id,omitempty"`
+	CreatedAt       string     `json:"created_at"`
+	UpdatedAt       string     `json:"updated_at"`
 }

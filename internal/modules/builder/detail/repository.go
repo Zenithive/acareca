@@ -64,6 +64,7 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 
 	base := `
 	FROM tbl_form f
+	LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
 	WHERE f.deleted_at IS NULL
 	AND f.clinic_id IN (
 		SELECT id FROM tbl_clinic 
@@ -98,7 +99,7 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 
 	query = `
 	SELECT f.id, f.clinic_id, f.name, f.description, f.status, f.method,
-	       f.owner_share, f.clinic_share, f.created_at, f.updated_at
+	       f.owner_share, f.clinic_share, v.id AS active_version_id, f.created_at, f.updated_at
 	` + query
 
 	query = r.db.Rebind(query)
