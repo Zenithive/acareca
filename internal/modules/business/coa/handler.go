@@ -125,6 +125,7 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Produce json
 // @Param name query string false "Filter by name"
 // @Param code query int false "Filter by code"
+// @Param account_type query string false "Filter by account type name"
 // @Param search query string false "Search keyword"
 // @Param sort_by query string false "Sort field"
 // @Param order_by query string false "Order direction (ASC/DESC)"

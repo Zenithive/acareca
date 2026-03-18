@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -17,7 +18,8 @@ type IRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 	Update(ctx context.Context, e *FormEntry, values []*FormEntryValue) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID) ([]*FormEntry, error)
+	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter) ([]*FormEntry, error)
+	CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter) (int, error)
 	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
 
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
@@ -145,20 +147,40 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // ListByFormVersionID implements [IRepository].
-func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID) ([]*FormEntry, error) {
-	query := `SELECT id, form_version_id, clinic_id, submitted_by, submitted_at, status, created_at, updated_at
-		FROM tbl_form_entry WHERE form_version_id = $1 AND deleted_at IS NULL`
-	args := []interface{}{formVersionID}
-	if clinicID != nil {
-		query += ` AND clinic_id = $2`
-		args = append(args, *clinicID)
+func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter) ([]*FormEntry, error) {
+	allowedColumns := map[string]string{
+		"clinic_id":  "clinic_id",
+		"created_at": "created_at",
+		"status":     "status",
 	}
-	query += ` ORDER BY created_at DESC`
+	base := `SELECT id, form_version_id, clinic_id, submitted_by, submitted_at, status, created_at, updated_at
+		FROM tbl_form_entry WHERE form_version_id = ? AND deleted_at IS NULL`
+	q, args := common.BuildQuery(base, f, allowedColumns, []string{"status"}, false)
+	q = sqlx.Rebind(sqlx.DOLLAR, q)
+	args = append([]interface{}{formVersionID}, args...)
 	var list []*FormEntry
-	if err := r.db.SelectContext(ctx, &list, query, args...); err != nil {
+	if err := r.db.SelectContext(ctx, &list, q, args...); err != nil {
 		return nil, fmt.Errorf("list form entries: %w", err)
 	}
 	return list, nil
+}
+
+// CountByFormVersionID implements [IRepository].
+func (r *Repository) CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter) (int, error) {
+	allowedColumns := map[string]string{
+		"clinic_id":  "clinic_id",
+		"created_at": "created_at",
+		"status":     "status",
+	}
+	base := `FROM tbl_form_entry WHERE form_version_id = ? AND deleted_at IS NULL`
+	q, args := common.BuildQuery(base, f, allowedColumns, []string{"status"}, true)
+	q = sqlx.Rebind(sqlx.DOLLAR, q)
+	args = append([]interface{}{formVersionID}, args...)
+	var total int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count form entries: %w", err)
+	}
+	return total, nil
 }
 
 // HasSubmittedEntryValuesForField implements [IRepository]. Returns true if the field has any entry values in SUBMITTED entries.

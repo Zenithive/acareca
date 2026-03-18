@@ -154,10 +154,18 @@ func (h *handler) Delete(c *gin.Context) {
 // @Tags entry
 // @Accept json
 // @Produce json
-// @Success 200 {array} RsFormEntry
+// @Param version_id path string true "Version ID"
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param search query string false "Search keyword"
+// @Param sort_by query string false "Sort field"
+// @Param order_by query string false "Order direction (ASC/DESC)"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param offset query int false "Offset"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /entry [get]
+// @Router /entry/version/{version_id} [get]
 func (h *handler) List(c *gin.Context) {
 	versionID, ok := util.ParseUuidID(c, "version_id")
 	if !ok {
@@ -175,5 +183,5 @@ func (h *handler) List(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Form entries fetched successfully")
+	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
 }

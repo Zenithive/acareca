@@ -55,15 +55,15 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 	if activeVersionID == uuid.Nil {
 		return nil, errors.New("no active version found")
 	}
-	if s.detailSvc != nil {
-		formDetail, err := s.detailSvc.GetByID(ctx, formID)
-		if err != nil {
-			return nil, err
-		}
-		if formDetail.Status != StatusDraft {
-			return nil, errors.New("form is not draft for fields")
-		}
-	}
+	// if s.detailSvc != nil {
+	// 	formDetail, err := s.detailSvc.GetByID(ctx, formID)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	if formDetail.Status != StatusDraft {
+	// 		return nil, errors.New("form is not draft for fields")
+	// 	}
+	// }
 
 	out := &RsBulkSyncFields{
 		Created: make([]field.RsFormField, 0, len(req.Create)),

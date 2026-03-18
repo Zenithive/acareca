@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type IService interface {
@@ -15,7 +16,7 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) ([]*RsFormEntry, error)
+	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 }
 
@@ -108,22 +109,26 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter) ([]*RsFormEntry, error) {
+func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error) {
+	f := filter.MapToFilter()
 
-	clinicID := filter.ClinicID
-	if clinicID == nil {
-		clinicID = &uuid.Nil
-	}
-
-	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, clinicID)
+	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f)
 	if err != nil {
 		return nil, err
 	}
-	rs := make([]*RsFormEntry, 0, len(list))
-	for _, e := range list {
-		rs = append(rs, e.ToRs(nil))
+	total, err := s.repo.CountByFormVersionID(ctx, formVersionID, f)
+	if err != nil {
+		return nil, err
 	}
-	return rs, nil
+
+	data := make([]*RsFormEntry, 0, len(list))
+	for _, e := range list {
+		data = append(data, e.ToRs(nil))
+	}
+
+	var rs util.RsList
+	rs.MapToList(data, total, f.Offset, f.Limit)
+	return &rs, nil
 }
 
 // GetByVersionID implements [IService].
