@@ -17,9 +17,6 @@ var (
 	ErrSystemAccountProtected = errors.New("system account cannot be updated or deleted")
 )
 
-const defaultListLimit = 20
-const maxListLimit = 100
-
 type Repository interface {
 	ListAccountTypes(ctx context.Context) ([]*AccountType, error)
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
@@ -233,6 +230,7 @@ func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount)
 	}
 	return r.getChartByID(ctx, r.db, id)
 }
+
 // getChartByID fetches a ChartOfAccount by id, joining tbl_account_tax for is_taxable.
 // querier accepts either *sqlx.DB or *sqlx.Tx.
 func (r *repository) getChartByID(ctx context.Context, querier interface {
