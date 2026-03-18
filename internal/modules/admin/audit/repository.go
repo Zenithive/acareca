@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
 type Repository interface {
 	Insert(ctx context.Context, entry *LogEntry) error
-	List(ctx context.Context, params QueryParams) ([]*AuditLog, error)
+	List(ctx context.Context, f common.Filter) ([]*AuditLog, error)
 	GetByID(ctx context.Context, id string) (*AuditLog, error)
+	Count(ctx context.Context, f common.Filter) (int, error)
 }
 
 type repository struct {
@@ -61,75 +62,21 @@ func (r *repository) Insert(ctx context.Context, entry *LogEntry) error {
 	return nil
 }
 
-func (r *repository) List(ctx context.Context, params QueryParams) ([]*AuditLog, error) {
+var allowedCols = map[string]string{
+	"practice_id": "practice_id",
+	"user_id":     "user_id",
+	"module":      "module",
+	"action":      "action",
+	"entity_type": "entity_type",
+	"entity_id":   "entity_id",
+	"created_at":  "created_at",
+}
+
+func (r *repository) List(ctx context.Context, f common.Filter) ([]*AuditLog, error) {
 	query := `SELECT * FROM tbl_audit_log WHERE 1=1`
-	args := []interface{}{}
-	argPos := 1
 
-	if params.PracticeID != nil {
-		query += fmt.Sprintf(" AND practice_id = $%d", argPos)
-		args = append(args, *params.PracticeID)
-		argPos++
-	}
-
-	if params.UserID != nil {
-		query += fmt.Sprintf(" AND user_id = $%d", argPos)
-		args = append(args, *params.UserID)
-		argPos++
-	}
-
-	if params.Module != nil {
-		query += fmt.Sprintf(" AND module = $%d", argPos)
-		args = append(args, *params.Module)
-		argPos++
-	}
-
-	if params.Action != nil {
-		query += fmt.Sprintf(" AND action = $%d", argPos)
-		args = append(args, *params.Action)
-		argPos++
-	}
-
-	if params.EntityType != nil {
-		query += fmt.Sprintf(" AND entity_type = $%d", argPos)
-		args = append(args, *params.EntityType)
-		argPos++
-	}
-
-	if params.EntityID != nil {
-		query += fmt.Sprintf(" AND entity_id = $%d", argPos)
-		args = append(args, *params.EntityID)
-		argPos++
-	}
-
-	if params.StartDate != nil {
-		query += fmt.Sprintf(" AND created_at >= $%d", argPos)
-		args = append(args, *params.StartDate)
-		argPos++
-	}
-
-	if params.EndDate != nil {
-		query += fmt.Sprintf(" AND created_at <= $%d", argPos)
-		args = append(args, *params.EndDate)
-		argPos++
-	}
-
-	query += " ORDER BY created_at DESC"
-
-	if params.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argPos)
-		args = append(args, params.Limit)
-		argPos++
-	} else {
-		query += fmt.Sprintf(" LIMIT $%d", argPos)
-		args = append(args, 100) // Default limit
-		argPos++
-	}
-
-	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argPos)
-		args = append(args, params.Offset)
-	}
+	query, args := common.BuildQuery(query, f, allowedCols, nil, false)
+	query = r.db.Rebind(query)
 
 	var logs []*AuditLog
 	if err := r.db.SelectContext(ctx, &logs, query, args...); err != nil {
@@ -156,23 +103,16 @@ func toJSON(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-// BuildFilterQuery is a helper for complex queries (future use)
-func BuildFilterQuery(baseQuery string, filters map[string]interface{}) (string, []interface{}) {
-	var conditions []string
-	var args []interface{}
-	argPos := 1
+func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
+	base := `FROM tbl_audit_log WHERE 1=1`
 
-	for key, value := range filters {
-		if value != nil {
-			conditions = append(conditions, fmt.Sprintf("%s = $%d", key, argPos))
-			args = append(args, value)
-			argPos++
-		}
+	// Pass 'true' as the last argument to generate a COUNT(*) query
+	query, args := common.BuildQuery(base, f, allowedCols, nil, true)
+	query = r.db.Rebind(query)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("count audit logs: %w", err)
 	}
-
-	if len(conditions) > 0 {
-		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	return baseQuery, args
+	return count, nil
 }

@@ -19,6 +19,11 @@ const docTemplate = `{
     "paths": {
         "/admin/audit": {
             "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Query audit logs with filters",
                 "consumes": [
                     "application/json"
@@ -33,63 +38,81 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Practice ID",
+                        "description": "Filter by Practice ID",
                         "name": "practice_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "Filter by User ID",
                         "name": "user_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Module name",
+                        "description": "Filter by Module name",
                         "name": "module",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Action name",
+                        "description": "Filter by Action name",
                         "name": "action",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Entity type",
+                        "description": "Filter by Entity type",
                         "name": "entity_type",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Entity ID",
+                        "description": "Filter by Entity ID",
                         "name": "entity_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Start date (RFC3339)",
+                        "description": "Start date (e.g. 2026-03-18T00:00:00Z)",
                         "name": "start_date",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "End date (RFC3339)",
+                        "description": "End date (e.g. 2026-03-18T23:59:59Z)",
                         "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across module and action",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (created_at, action)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort direction (ASC, DESC)",
+                        "name": "order_by",
                         "in": "query"
                     },
                     {
                         "type": "integer",
                         "default": 100,
-                        "description": "Limit",
+                        "description": "Page size",
                         "name": "limit",
                         "in": "query"
                     },
                     {
                         "type": "integer",
                         "default": 0,
-                        "description": "Offset",
+                        "description": "Page offset",
                         "name": "offset",
                         "in": "query"
                     }
@@ -118,6 +141,11 @@ const docTemplate = `{
         },
         "/admin/audit/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Get a specific audit log entry",
                 "consumes": [
                     "application/json"
@@ -147,12 +175,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }

@@ -868,45 +868,57 @@ paths:
       - application/json
       description: Query audit logs with filters
       parameters:
-      - description: Practice ID
+      - description: Filter by Practice ID
         in: query
         name: practice_id
         type: string
-      - description: User ID
+      - description: Filter by User ID
         in: query
         name: user_id
         type: string
-      - description: Module name
+      - description: Filter by Module name
         in: query
         name: module
         type: string
-      - description: Action name
+      - description: Filter by Action name
         in: query
         name: action
         type: string
-      - description: Entity type
+      - description: Filter by Entity type
         in: query
         name: entity_type
         type: string
-      - description: Entity ID
+      - description: Filter by Entity ID
         in: query
         name: entity_id
         type: string
-      - description: Start date (RFC3339)
+      - description: Start date (e.g. 2026-03-18T00:00:00Z)
         in: query
         name: start_date
         type: string
-      - description: End date (RFC3339)
+      - description: End date (e.g. 2026-03-18T23:59:59Z)
         in: query
         name: end_date
         type: string
+      - description: Search across module and action
+        in: query
+        name: search
+        type: string
+      - description: Sort field (created_at, action)
+        in: query
+        name: sort_by
+        type: string
+      - description: Sort direction (ASC, DESC)
+        in: query
+        name: order_by
+        type: string
       - default: 100
-        description: Limit
+        description: Page size
         in: query
         name: limit
         type: integer
       - default: 0
-        description: Offset
+        description: Page offset
         in: query
         name: offset
         type: integer
@@ -925,6 +937,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: List audit logs
       tags:
       - audit
@@ -950,14 +964,12 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get audit log by ID
       tags:
       - audit
