@@ -9,6 +9,81 @@ import (
 
 var ErrClinicNotFound = errors.New("clinic not found")
 
+type PLReportFilter struct {
+	ClinicID       *string `form:"clinic_id"`
+	DateFrom       *string `form:"date_from"`
+	DateUntil      *string `form:"date_until"`
+	CoaID          *string `form:"coa_id"`
+	TaxTypeID      *string `form:"tax_type_id"` // matches tbl_account_tax.name
+	FormID         *string `form:"form_id"`
+	PractitionerID string  `form:"-"` // set from JWT, not query param
+}
+
+type PLReportRow struct {
+	ClinicID    string  `db:"clinic_id"`
+	ClinicName  string  `db:"clinic_name"`
+	FormID      string  `db:"form_id"`
+	FormName    string  `db:"form_name"`
+	FormFieldID string  `db:"form_field_id"`
+	FieldLabel  string  `db:"field_label"`
+	SectionType string  `db:"section_type"`
+	CoaID       string  `db:"coa_id"`
+	AccountName string  `db:"account_name"`
+	TaxName     string  `db:"tax_name"`
+	NetAmount   float64 `db:"net_amount"`
+	GstAmount   float64 `db:"gst_amount"`
+	GrossAmount float64 `db:"gross_amount"`
+}
+
+type RsReportLineItem struct {
+	CoaID      string  `json:"coa_id"`
+	CoaName    string  `json:"coa_name"`
+	FieldID    string  `json:"field_id"`
+	FieldName  string  `json:"field_name"`
+	FieldTotal float64 `json:"field_total"`
+	TaxType    string  `json:"tax_type"`
+	TaxTypeID  string  `json:"tax_type_id"`
+	TaxAmount  float64 `json:"tax_amount"`
+}
+
+type RsReportSection struct {
+	SectionType  string             `json:"section_type"`  // income | cost_of_sales | other_expenses
+	SectionLabel string             `json:"section_label"` // Trading Income | Cost of Sales | Operating Expenses
+	SectionTotal float64            `json:"section_total"`
+	Items        []RsReportLineItem `json:"items"`
+}
+
+type RsReportClinic struct {
+	ClinicID           string            `json:"clinic_id"`
+	ClinicName         string            `json:"clinic_name"`
+	TotalIncome        float64           `json:"total_income"`
+	TotalCostOfSales   float64           `json:"total_cost_of_sales"`
+	GrossProfit        float64           `json:"gross_profit"`
+	TotalOtherExpenses float64           `json:"total_other_expenses"`
+	NetProfit          float64           `json:"net_profit"`
+	Sections           []RsReportSection `json:"sections"`
+}
+
+type RsReport struct {
+	ReportMetadata RsReportMetadata `json:"report_metadata"`
+	Clinics        []RsReportClinic `json:"clinics"`
+}
+
+type RsReportMetadata struct {
+	DateRange        string  `json:"date_range"`
+	OverallNetProfit float64 `json:"overall_net_profit"`
+}
+
+var sectionMeta = []struct {
+	sectionType  string
+	sectionLabel string
+	displayType  string
+}{
+	{"COLLECTION", "Trading Income", "income"},
+	{"COST", "Cost of Sales", "cost_of_sales"},
+	{"OTHER_COST", "Operating Expenses", "other_expenses"},
+}
+
 type PLSummaryRow struct {
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	PeriodMonth    time.Time `db:"period_month"`

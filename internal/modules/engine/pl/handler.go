@@ -14,6 +14,7 @@ type IHandler interface {
 	GetByAccount(c *gin.Context)
 	GetByResponsibility(c *gin.Context)
 	GetFYSummary(c *gin.Context)
+	GetReport(c *gin.Context)
 }
 
 type handler struct {
@@ -153,4 +154,42 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "P&L FY summary fetched successfully")
+}
+
+// GetReport godoc
+// @Summary      Structured P&L report
+// @Description  Returns a nested P&L report grouped by clinic → form → section → field, filtered by date range, COA, tax type, and form.
+// @Tags         engine/pl
+// @Produce      json
+// @Param        clinic_id   query  string  false  "Clinic UUID (omit for all clinics)"
+// @Param        date_from   query  string  false  "Start date (YYYY-MM-DD)"
+// @Param        date_until  query  string  false  "End date (YYYY-MM-DD)"
+// @Param        coa_id      query  string  false  "Filter by COA UUID"
+// @Param        tax_type_id query  string  false  "Filter by tax type name (e.g. GST on Income)"
+// @Param        form_id     query  string  false  "Filter by form UUID"
+// @Success      200  {object}  RsReport
+// @Failure      400  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /pl/report [get]
+func (h *handler) GetReport(c *gin.Context) {
+	pracID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var f PLReportFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	f.PractitionerID = pracID.String()
+
+	result, err := h.svc.GetReport(c.Request.Context(), &f)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "P&L report fetched successfully")
 }

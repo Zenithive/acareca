@@ -14,4 +14,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	pl.GET("/by-account", h.GetByAccount)
 	pl.GET("/by-responsibility", h.GetByResponsibility)
 	pl.GET("/fy-summary", h.GetFYSummary)
+	pl.GET("/report", h.GetReport)
 }
