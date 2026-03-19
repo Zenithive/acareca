@@ -35,53 +35,30 @@ type PLReportRow struct {
 	GrossAmount float64 `db:"gross_amount"`
 }
 
-type RsReportLineItem struct {
+type RsReportAccount struct {
 	CoaID      string  `json:"coa_id"`
 	CoaName    string  `json:"coa_name"`
-	FieldID    string  `json:"field_id"`
-	FieldName  string  `json:"field_name"`
-	FieldTotal float64 `json:"field_total"`
-	TaxType    string  `json:"tax_type"`
-	TaxTypeID  string  `json:"tax_type_id"`
-	TaxAmount  float64 `json:"tax_amount"`
+	TotalValue float64 `json:"total_value"`
 }
 
-type RsReportSection struct {
-	SectionType  string             `json:"section_type"`  // income | cost_of_sales | other_expenses
-	SectionLabel string             `json:"section_label"` // Trading Income | Cost of Sales | Operating Expenses
-	SectionTotal float64            `json:"section_total"`
-	Items        []RsReportLineItem `json:"items"`
-}
-
-type RsReportClinic struct {
-	ClinicID           string            `json:"clinic_id"`
-	ClinicName         string            `json:"clinic_name"`
-	TotalIncome        float64           `json:"total_income"`
-	TotalCostOfSales   float64           `json:"total_cost_of_sales"`
-	GrossProfit        float64           `json:"gross_profit"`
-	TotalOtherExpenses float64           `json:"total_other_expenses"`
-	NetProfit          float64           `json:"net_profit"`
-	Sections           []RsReportSection `json:"sections"`
+type RsReportGroup struct {
+	GroupTotal float64            `json:"group_total"`
+	Accounts   []RsReportAccount  `json:"accounts"`
 }
 
 type RsReport struct {
 	ReportMetadata RsReportMetadata `json:"report_metadata"`
-	Clinics        []RsReportClinic `json:"clinics"`
+	Income         RsReportGroup    `json:"income"`
+	CostOfSales    RsReportGroup    `json:"cost_of_sales"`
+	GrossProfit    float64          `json:"gross_profit"`
+	OtherCosts     RsReportGroup    `json:"other_costs"`
+	NetProfit      float64          `json:"net_profit"`
 }
 
 type RsReportMetadata struct {
-	DateRange        string  `json:"date_range"`
+	DateFrom         string  `json:"date_from"`
+	DateUntil        string  `json:"date_until"`
 	OverallNetProfit float64 `json:"overall_net_profit"`
-}
-
-var sectionMeta = []struct {
-	sectionType  string
-	sectionLabel string
-	displayType  string
-}{
-	{"COLLECTION", "Trading Income", "income"},
-	{"COST", "Cost of Sales", "cost_of_sales"},
-	{"OTHER_COST", "Operating Expenses", "other_expenses"},
 }
 
 type PLSummaryRow struct {

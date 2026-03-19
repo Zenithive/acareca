@@ -227,7 +227,7 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			li.clinic_id, c.name, li.form_id, li.form_name,
 			li.form_field_id, li.field_label, li.section_type,
 			li.coa_id, li.account_name, li.tax_name
-		ORDER BY c.name, li.form_name, li.section_type, li.account_name
+		ORDER BY li.section_type, li.account_name
 	`
 
 	var rows []*PLReportRow

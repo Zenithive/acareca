@@ -191,5 +191,5 @@ func (h *handler) GetReport(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, result, "P&L report fetched successfully")
+	response.JSON(c, http.StatusOK, result, "Profit and Loss report fetched successfully")
 }

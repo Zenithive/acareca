@@ -164,111 +164,82 @@ func (s *service) GetReport(ctx context.Context, f *PLReportFilter) (*RsReport, 
 	return buildReport(f, rows), nil
 }
 
-// buildReport assembles the flat P&L report structure from DB rows, grouped by clinic.
+// buildReport assembles a flat P&L report aggregated across all clinics/forms,
+// grouped by COA account within each section.
 func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
-	clinicOrder := []string{}
-	clinicSeen := map[string]bool{}
-	clinicNames := map[string]string{}
-
-	// clinic+section → line items & totals (aggregated across all forms)
-	itemsMap := map[sectionKey][]RsReportLineItem{}
-	totalsMap := map[sectionKey]float64{}
+	// coaKey → accumulated total per section
+	type coaKey struct {
+		sectionType string
+		coaID       string
+	}
+	coaOrder := map[string][]string{} // sectionType → ordered coaIDs
+	coaSeen := map[coaKey]bool{}
+	coaNames := map[coaKey]string{}
+	coaTotals := map[coaKey]float64{}
 
 	for _, r := range rows {
-		if !clinicSeen[r.ClinicID] {
-			clinicOrder = append(clinicOrder, r.ClinicID)
-			clinicSeen[r.ClinicID] = true
-			clinicNames[r.ClinicID] = r.ClinicName
-		}
-
-		sk := sectionKey{r.ClinicID, r.SectionType}
-
-		var fieldTotal float64
+		var val float64
 		if r.SectionType == "COLLECTION" {
-			fieldTotal = round2(r.GrossAmount)
+			val = round2(r.GrossAmount)
 		} else {
-			fieldTotal = round2(r.NetAmount)
+			val = round2(r.NetAmount)
 		}
 
-		itemsMap[sk] = append(itemsMap[sk], RsReportLineItem{
-			CoaID:      r.CoaID,
-			CoaName:    r.AccountName,
-			FieldID:    r.FormFieldID,
-			FieldName:  r.FieldLabel,
-			FieldTotal: fieldTotal,
-			TaxType:    r.TaxName,
-			TaxTypeID:  r.TaxName,
-			TaxAmount:  round2(r.GstAmount),
-		})
-		totalsMap[sk] += fieldTotal
+		ck := coaKey{r.SectionType, r.CoaID}
+		if !coaSeen[ck] {
+			coaSeen[ck] = true
+			coaOrder[r.SectionType] = append(coaOrder[r.SectionType], r.CoaID)
+			coaNames[ck] = r.AccountName
+		}
+		coaTotals[ck] += val
 	}
 
-	var overallNet float64
-	clinics := make([]RsReportClinic, 0, len(clinicOrder))
-
-	for _, cid := range clinicOrder {
-		sections := make([]RsReportSection, 0, 3)
-		totalIncome := 0.0
-		totalCOS := 0.0
-		totalOther := 0.0
-
-		for _, m := range sectionMeta {
-			sk := sectionKey{cid, m.sectionType}
-			items, ok := itemsMap[sk]
-			if !ok {
-				continue
-			}
-			total := round2(totalsMap[sk])
-
-			switch m.sectionType {
-			case "COLLECTION":
-				totalIncome = total
-			case "COST":
-				totalCOS = total
-			case "OTHER_COST":
-				totalOther = total
-			}
-
-			sections = append(sections, RsReportSection{
-				SectionType:  m.displayType,
-				SectionLabel: m.sectionLabel,
-				SectionTotal: total,
-				Items:        items,
+	buildGroup := func(sectionType string) RsReportGroup {
+		accounts := make([]RsReportAccount, 0)
+		var total float64
+		for _, cid := range coaOrder[sectionType] {
+			ck := coaKey{sectionType, cid}
+			v := round2(coaTotals[ck])
+			total += v
+			accounts = append(accounts, RsReportAccount{
+				CoaID:      cid,
+				CoaName:    coaNames[ck],
+				TotalValue: v,
 			})
 		}
-
-		grossProfit := round2(totalIncome - totalCOS)
-		netProfit := round2(grossProfit - totalOther)
-		overallNet += netProfit
-
-		clinics = append(clinics, RsReportClinic{
-			ClinicID:           cid,
-			ClinicName:         clinicNames[cid],
-			TotalIncome:        totalIncome,
-			TotalCostOfSales:   totalCOS,
-			GrossProfit:        grossProfit,
-			TotalOtherExpenses: totalOther,
-			NetProfit:          netProfit,
-			Sections:           sections,
-		})
+		return RsReportGroup{GroupTotal: round2(total), Accounts: accounts}
 	}
 
-	dateRange := ""
-	if f.DateFrom != nil && f.DateUntil != nil {
-		dateRange = *f.DateFrom + " to " + *f.DateUntil
+	income := buildGroup("COLLECTION")
+	cos := buildGroup("COST")
+	other := buildGroup("OTHER_COST")
+
+	grossProfit := round2(income.GroupTotal - cos.GroupTotal)
+	netProfit := round2(grossProfit - other.GroupTotal)
+
+	dateFrom := ""
+	dateUntil := ""
+	if f.DateFrom != nil {
+		dateFrom = *f.DateFrom
+	}
+	if f.DateUntil != nil {
+		dateUntil = *f.DateUntil
 	}
 
 	return &RsReport{
 		ReportMetadata: RsReportMetadata{
-			DateRange:        dateRange,
-			OverallNetProfit: round2(overallNet),
+			DateFrom:         dateFrom,
+			DateUntil:        dateUntil,
+			OverallNetProfit: netProfit,
 		},
-		Clinics: clinics,
+		Income:      income,
+		CostOfSales: cos,
+		GrossProfit: grossProfit,
+		OtherCosts:  other,
+		NetProfit:   netProfit,
 	}
 }
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
-
-type sectionKey struct{ formID, sectionType string }
