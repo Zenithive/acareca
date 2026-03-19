@@ -84,6 +84,29 @@ type BASFilter struct {
 	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
 }
 
+// BASReportFilter is used by the /bas/report endpoint.
+type BASReportFilter struct {
+	ClinicID  string  `form:"clinic_id" validate:"required"`
+	QuarterID *string `form:"quarter_id"` // UUID of tbl_financial_quarter
+	Month     *string `form:"month"`      // e.g. "January"
+}
+
+// RsBASReport is the flat totals response for /bas/report.
+type RsBASReport struct {
+	G1  float64 `json:"G1"`
+	G11 float64 `json:"G11"`
+	A1  float64 `json:"1A"`
+	B1  float64 `json:"1B"`
+}
+
+// BASReportRow is the DB scan target for the report query.
+type BASReportRow struct {
+	G1TotalSalesGross      float64 `db:"g1_total_sales_gross"`
+	Label1AGSTOnSales      float64 `db:"label_1a_gst_on_sales"`
+	G11TotalPurchasesGross float64 `db:"g11_total_purchases_gross"`
+	Label1BGSTOnPurchases  float64 `db:"label_1b_gst_on_purchases"`
+}
+
 type RsBASSummary struct {
 	// Period
 	PeriodQuarter string `json:"period_quarter"` // e.g. "2026-01-01"

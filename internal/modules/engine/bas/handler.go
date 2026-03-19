@@ -15,6 +15,7 @@ type IHandler interface {
 	GetQuarterlySummary(c *gin.Context)
 	GetByAccount(c *gin.Context)
 	GetMonthly(c *gin.Context)
+	GetReport(c *gin.Context)
 }
 
 type handler struct {
@@ -146,4 +147,37 @@ func parseClinicID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// GetReport godoc
+// @Summary      BAS totals report
+// @Description  Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id or month name.
+// @Tags         engine/bas
+// @Produce      json
+// @Param        clinic_id   query  string  true   "Clinic UUID"
+// @Param        quarter_id  query  string  false  "Financial quarter UUID"
+// @Param        month       query  string  false  "Month name e.g. January"
+// @Success      200  {object}  RsBASReport
+// @Failure      400  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /bas/report [get]
+func (h *handler) GetReport(c *gin.Context) {
+	if _, ok := util.GetPractitionerID(c); !ok {
+		return
+	}
+
+	var f BASReportFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.GetReport(c.Request.Context(), &f)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "BAS report fetched successfully")
 }

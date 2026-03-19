@@ -11,10 +11,10 @@ import (
 // Repository defines all DB queries for the BAS module.
 type Repository interface {
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASSummaryRow, error)
-
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASByAccountRow, error)
-
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error)
+	GetReport(ctx context.Context, clinicID uuid.UUID, from, to string) (*BASReportRow, error)
+	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
 }
 
 type repository struct {
@@ -174,4 +174,35 @@ func (r *repository) GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASF
 		return nil, fmt.Errorf("get bas monthly: %w", err)
 	}
 	return rows, nil
+}
+
+func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (string, string, error) {
+	var start, end string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT TO_CHAR(start_date, 'YYYY-MM-DD'), TO_CHAR(end_date, 'YYYY-MM-DD')
+		 FROM tbl_financial_quarter WHERE id = $1`, quarterID,
+	).Scan(&start, &end)
+	if err != nil {
+		return "", "", fmt.Errorf("get quarter dates: %w", err)
+	}
+	return start, end, nil
+}
+
+func (r *repository) GetReport(ctx context.Context, clinicID uuid.UUID, from, to string) (*BASReportRow, error) {
+	query := `
+		SELECT
+			COALESCE(SUM(g1_total_sales_gross), 0)      AS g1_total_sales_gross,
+			COALESCE(SUM(label_1a_gst_on_sales), 0)     AS label_1a_gst_on_sales,
+			COALESCE(SUM(g11_total_purchases_gross), 0)  AS g11_total_purchases_gross,
+			COALESCE(SUM(label_1b_gst_on_purchases), 0)  AS label_1b_gst_on_purchases
+		FROM vw_bas_summary
+		WHERE clinic_id = $1
+		  AND period_quarter >= DATE_TRUNC('month', $2::DATE)
+		  AND period_quarter <= DATE_TRUNC('month', $3::DATE)
+	`
+	var row BASReportRow
+	if err := r.db.QueryRowxContext(ctx, query, clinicID, from, to).StructScan(&row); err != nil {
+		return nil, fmt.Errorf("get bas report: %w", err)
+	}
+	return &row, nil
 }
