@@ -48,7 +48,7 @@ type FormEntryValue struct {
 	GstAmount   *float64  `db:"gst_amount"`
 	GrossAmount *float64  `db:"gross_amount"`
 	CreatedAt   string    `db:"created_at"`
-	UpdatedAt   string    `db:"updated_at"`
+	UpdatedAt   *string   `db:"updated_at"`
 }
 
 func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
@@ -122,7 +122,7 @@ type RsTransactionRow struct {
 	GstAmount     *float64  `json:"gst_amount"`
 	GrossAmount   *float64  `json:"gross_amount"`
 	CreatedAt     string    `json:"created_at"`
-	UpdatedAt     string    `json:"updated_at"`
+	UpdatedAt     *string   `json:"updated_at"`
 }
 
 // RsTransactionDetail kept for backward compat (used by old RsTransaction).
@@ -248,5 +248,16 @@ type transactionFlatRow struct {
 	GstAmount     *float64  `db:"gst_amount"`
 	GrossAmount   *float64  `db:"gross_amount"`
 	CreatedAt     string    `db:"created_at"`
-	UpdatedAt     string    `db:"updated_at"`
+	UpdatedAt     *string   `db:"updated_at"`
+}
+
+type RsFieldSummary struct {
+	FormFieldID    uuid.UUID `json:"form_field_id"`
+	Label          string    `json:"label"`
+	SectionType    string    `json:"section_type"`
+	Responsibility string    `json:"payment_responsibility"`
+	TaxType        string    `json:"tax_type"`
+	TotalNet       float64   `json:"total_net"`
+	TotalGst       float64   `json:"total_gst"`
+	TotalGross     float64   `json:"total_gross"`
 }

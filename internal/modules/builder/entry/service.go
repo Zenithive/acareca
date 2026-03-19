@@ -26,6 +26,8 @@ type IService interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error)
 	UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
 	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
+
+	GetFieldSummary(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
 }
 
 type Service struct {
@@ -293,4 +295,12 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *
 // DeleteTx deletes a form entry within a transaction.
 func (s *Service) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
 	return s.repo.DeleteTx(ctx, tx, id)
+}
+
+func (s *Service) GetFieldSummary(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error) {
+	summary, err := s.repo.GetSummedValuesByFieldID(ctx, fieldID)
+	if err != nil {
+		return nil, fmt.Errorf("service get field summary: %w", err)
+	}
+	return summary, nil
 }
