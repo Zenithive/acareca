@@ -79,6 +79,36 @@ definitions:
       refresh_token:
         type: string
     type: object
+  calculation.GrossResult:
+    properties:
+      gst_service_fee:
+        type: number
+      net_amount:
+        type: number
+      remitted_amount:
+        type: number
+      service_fee:
+        type: number
+      total_service_fee:
+        type: number
+    type: object
+  calculation.NetResult:
+    properties:
+      commission:
+        type: number
+      gst_commission:
+        type: number
+      net_amount:
+        type: number
+      super_component:
+        type: number
+      super_component_commission:
+        type: number
+      total_commission:
+        type: number
+      total_remuneration:
+        type: number
+    type: object
   calculation.RqCalculateFromEntries:
     properties:
       entries:
@@ -1648,10 +1678,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Independent Contractor method response
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/calculation.NetResult'
         "400":
           description: Bad Request
           schema:
@@ -1686,10 +1715,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Independent Contractor method response
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/calculation.NetResult'
         "400":
           description: Bad Request
           schema:
@@ -2404,12 +2432,32 @@ paths:
       - entry
   /entry/transactions:
     get:
-      description: Returns all form entries enriched with clinic, form, and field
-        data
+      description: Returns flat rows (one per entry value) enriched with clinic, form,
+        COA, and tax data
       parameters:
       - description: Filter by clinic ID
         in: query
         name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by COA ID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by account tax ID
+        in: query
+        name: tax_type_id
+        type: integer
+      - description: Filter entries created after this date (RFC3339)
+        in: query
+        name: date_from
+        type: string
+      - description: Filter entries created before this date (RFC3339)
+        in: query
+        name: date_to
         type: string
       - description: Filter by status (DRAFT, SUBMITTED)
         in: query

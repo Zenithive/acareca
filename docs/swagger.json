@@ -1051,10 +1051,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Independent Contractor method response",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/calculation.NetResult"
                         }
                     },
                     "400": {
@@ -1110,10 +1109,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Independent Contractor method response",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/calculation.NetResult"
                         }
                     },
                     "400": {
@@ -2087,7 +2085,7 @@
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns all form entries enriched with clinic, form, and field data",
+                "description": "Returns flat rows (one per entry value) enriched with clinic, form, COA, and tax data",
                 "produces": [
                     "application/json"
                 ],
@@ -2100,6 +2098,36 @@
                         "type": "string",
                         "description": "Filter by clinic ID",
                         "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form ID",
+                        "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by COA ID",
+                        "name": "coa_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by account tax ID",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter entries created after this date (RFC3339)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter entries created before this date (RFC3339)",
+                        "name": "date_to",
                         "in": "query"
                     },
                     {
@@ -3738,6 +3766,52 @@
                 },
                 "refresh_token": {
                     "type": "string"
+                }
+            }
+        },
+        "calculation.GrossResult": {
+            "type": "object",
+            "properties": {
+                "gst_service_fee": {
+                    "type": "number"
+                },
+                "net_amount": {
+                    "type": "number"
+                },
+                "remitted_amount": {
+                    "type": "number"
+                },
+                "service_fee": {
+                    "type": "number"
+                },
+                "total_service_fee": {
+                    "type": "number"
+                }
+            }
+        },
+        "calculation.NetResult": {
+            "type": "object",
+            "properties": {
+                "commission": {
+                    "type": "number"
+                },
+                "gst_commission": {
+                    "type": "number"
+                },
+                "net_amount": {
+                    "type": "number"
+                },
+                "super_component": {
+                    "type": "number"
+                },
+                "super_component_commission": {
+                    "type": "number"
+                },
+                "total_commission": {
+                    "type": "number"
+                },
+                "total_remuneration": {
+                    "type": "number"
                 }
             }
         },

@@ -18,6 +18,7 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
+	GetFieldSummary(c *gin.Context)
 }
 
 type handler struct {
@@ -197,10 +198,15 @@ func (h *handler) List(c *gin.Context) {
 }
 
 // @Summary List all transactions
-// @Description Returns all form entries enriched with clinic, form, and field data
+// @Description Returns flat rows (one per entry value) enriched with clinic, form, COA, and tax data
 // @Tags entry
 // @Produce json
 // @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param coa_id query string false "Filter by COA ID"
+// @Param tax_type_id query int false "Filter by account tax ID"
+// @Param date_from query string false "Filter entries created after this date (RFC3339)"
+// @Param date_to query string false "Filter entries created before this date (RFC3339)"
 // @Param status query string false "Filter by status (DRAFT, SUBMITTED)"
 // @Param limit query int false "Page size (default 10, max 100)"
 // @Param offset query int false "Offset"
@@ -230,4 +236,34 @@ func (h *handler) ListTransactions(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
+}
+
+// @Summary Get summed values for a specific field
+// @Description Returns the total net, gst, and gross amounts for all active entries of a field
+// @Tags entry
+// @Produce json
+// @Param field_id path string true "Form Field ID"
+// @Success 200 {object} RsFieldSummary
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/{field_id}/summary [get]
+func (h *handler) GetFieldSummary(c *gin.Context) {
+	fieldID, ok := util.ParseUuidID(c, "field_id")
+	if !ok {
+		return
+	}
+
+	summary, err := h.svc.GetFieldSummary(c.Request.Context(), fieldID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
 }

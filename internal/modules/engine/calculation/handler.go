@@ -35,7 +35,8 @@ func NewHandler(svc Service) IHandler {
 // @Produce json
 // @Param id path string true "Form ID"
 // @Param super_component query number false "Super component value override"
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} GrossResult "Service Fee method response"
+// @Success 200 {object} NetResult "Independent Contractor method response"
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -83,7 +84,8 @@ func (h *handler) Calculation(c *gin.Context) {
 // @Accept  json
 // @Produce json
 // @Param request body RqCalculateFromEntries true "Form ID, entries, and optional super component"
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} GrossResult "Service Fee method response"
+// @Success 200 {object} NetResult "Independent Contractor method response"
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
