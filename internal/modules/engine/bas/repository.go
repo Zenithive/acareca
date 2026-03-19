@@ -197,8 +197,8 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 			COALESCE(SUM(label_1b_gst_on_purchases), 0)  AS label_1b_gst_on_purchases
 		FROM vw_bas_summary
 		WHERE practitioner_id = $1
-		  AND period_quarter >= DATE_TRUNC('month', $2::DATE)
-		  AND period_quarter <= DATE_TRUNC('month', $3::DATE)
+		  AND period_quarter >= DATE_TRUNC('quarter', $2::DATE)
+		  AND period_quarter <= DATE_TRUNC('quarter', $3::DATE)
 	`
 	var row BASReportRow
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
