@@ -100,9 +100,9 @@ func parseUUID(s string) ([16]byte, error) {
 }
 
 func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error) {
-	clinicID, err := uuid.Parse(f.ClinicID)
+	pracID, err := uuid.Parse(f.PractitionerID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid clinic_id: must be a valid UUID")
+		return nil, fmt.Errorf("invalid practitioner_id")
 	}
 
 	var from, to string
@@ -130,7 +130,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 		return nil, fmt.Errorf("provide either quarter_id or month filter")
 	}
 
-	row, err := s.repo.GetReport(ctx, clinicID, from, to)
+	row, err := s.repo.GetReport(ctx, pracID, from, to)
 	if err != nil {
 		return nil, err
 	}

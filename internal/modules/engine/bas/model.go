@@ -86,9 +86,9 @@ type BASFilter struct {
 
 // BASReportFilter is used by the /bas/report endpoint.
 type BASReportFilter struct {
-	ClinicID  string  `form:"clinic_id" validate:"required"`
-	QuarterID *string `form:"quarter_id"` // UUID of tbl_financial_quarter
-	Month     *string `form:"month"`      // e.g. "January"
+	PractitionerID string  `form:"-"` // set from JWT
+	QuarterID      *string `form:"quarter_id"` // UUID of tbl_financial_quarter
+	Month          *string `form:"month"`      // e.g. "January"
 }
 
 // RsBASReport is the flat totals response for /bas/report.

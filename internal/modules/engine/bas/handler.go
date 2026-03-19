@@ -151,10 +151,9 @@ func parseClinicID(c *gin.Context) (uuid.UUID, bool) {
 
 // GetReport godoc
 // @Summary      BAS totals report
-// @Description  Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id or month name.
+// @Description  Returns G1, 1A, G11, 1B totals scoped to the authenticated practitioner, filtered by quarter_id or month name.
 // @Tags         engine/bas
 // @Produce      json
-// @Param        clinic_id   query  string  true   "Clinic UUID"
 // @Param        quarter_id  query  string  false  "Financial quarter UUID"
 // @Param        month       query  string  false  "Month name e.g. January"
 // @Success      200  {object}  RsBASReport
@@ -163,7 +162,8 @@ func parseClinicID(c *gin.Context) (uuid.UUID, bool) {
 // @Security     BearerToken
 // @Router       /bas/report [get]
 func (h *handler) GetReport(c *gin.Context) {
-	if _, ok := util.GetPractitionerID(c); !ok {
+	pracID, ok := util.GetPractitionerID(c)
+	if !ok {
 		return
 	}
 
@@ -172,6 +172,7 @@ func (h *handler) GetReport(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+	f.PractitionerID = pracID.String()
 
 	result, err := h.svc.GetReport(c.Request.Context(), &f)
 	if err != nil {

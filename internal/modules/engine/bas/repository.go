@@ -13,7 +13,7 @@ type Repository interface {
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASSummaryRow, error)
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASByAccountRow, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error)
-	GetReport(ctx context.Context, clinicID uuid.UUID, from, to string) (*BASReportRow, error)
+	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
 }
 
@@ -188,7 +188,7 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 	return start, end, nil
 }
 
-func (r *repository) GetReport(ctx context.Context, clinicID uuid.UUID, from, to string) (*BASReportRow, error) {
+func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
 		SELECT
 			COALESCE(SUM(g1_total_sales_gross), 0)      AS g1_total_sales_gross,
@@ -196,12 +196,12 @@ func (r *repository) GetReport(ctx context.Context, clinicID uuid.UUID, from, to
 			COALESCE(SUM(g11_total_purchases_gross), 0)  AS g11_total_purchases_gross,
 			COALESCE(SUM(label_1b_gst_on_purchases), 0)  AS label_1b_gst_on_purchases
 		FROM vw_bas_summary
-		WHERE clinic_id = $1
+		WHERE practitioner_id = $1
 		  AND period_quarter >= DATE_TRUNC('month', $2::DATE)
 		  AND period_quarter <= DATE_TRUNC('month', $3::DATE)
 	`
 	var row BASReportRow
-	if err := r.db.QueryRowxContext(ctx, query, clinicID, from, to).StructScan(&row); err != nil {
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
 		return nil, fmt.Errorf("get bas report: %w", err)
 	}
 	return &row, nil
