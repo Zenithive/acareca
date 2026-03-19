@@ -6,10 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type Service interface {
@@ -75,14 +79,22 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 func (s *service) sendEmailViaResend(to string, link string, senderName string) error {
 	url := "https://api.resend.com/emails"
 
+	// Extract name from email (e.g., "john.doe@gmail.com" -> "John Doe")
+	namePart := strings.Split(to, "@")[0]
+	// Replace dots or underscores with spaces for a cleaner look
+	namePart = strings.ReplaceAll(namePart, ".", " ")
+	namePart = strings.ReplaceAll(namePart, "_", " ")
+	// Capitalize the first letter of each word
+	recipientName := cases.Title(language.English).String(namePart)
+
 	// Resend API payload structure
 	payload := map[string]interface{}{
-		"from":    "Acareca <onboarding@resend.dev>", // Note: for testing
+		"from":    "Acareca <hardik@zenithive.digital>",
 		"to":      []string{to},
 		"subject": fmt.Sprintf("Invitation: Manage %s's files on Acareca", senderName),
 		"html": fmt.Sprintf(`
 			<div style="font-family: sans-serif; color: #333; line-height: 1.6;">
-				<h2>Hello,</h2>
+				<p style="font-size: 14px;">Hello <strong>%s</strong>,</p>
 				<p><strong>%s</strong> has invited you to collaborate on <strong>Acareca</strong> as their Accountant/Bookkeeper.</p>
 				<p>Acareca is a secure platform designed to streamline financial management and document sharing between practitioners and financial professionals.</p>
 				<div style="margin: 30px 0;">
@@ -94,7 +106,7 @@ func (s *service) sendEmailViaResend(to string, link string, senderName string) 
 				<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
 				<small style="color: #888;">This invitation was intended for %s and will expire in 7 days.</small>
 			</div>
-		`, senderName, link, senderName, to),
+		`, recipientName, senderName, link, senderName, to),
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -117,8 +129,15 @@ func (s *service) sendEmailViaResend(to string, link string, senderName string) 
 	}
 	defer resp.Body.Close()
 
+	// if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+	// 	return fmt.Errorf("resend api returned status: %d", resp.StatusCode)
+	// }
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("resend api returned status: %d", resp.StatusCode)
+		// Read the actual error message from the body
+		bodyBytes, _ := io.ReadAll(resp.Body)
+
+		return fmt.Errorf("resend api returned status: %d, detail: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
