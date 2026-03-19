@@ -9,13 +9,8 @@ import (
 
 // Service defines the business-logic layer for the BAS module.
 type Service interface {
-	// GetQuarterlySummary returns ATO BAS labels per quarter for a clinic.
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error)
-
-	// GetByAccount returns BAS totals broken down per COA account per quarter.
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
-
-	// GetMonthly returns BAS figures per calendar month (for dashboards / accrual tracking).
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 }
 
@@ -26,8 +21,6 @@ type service struct {
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
-
-// ─── GetQuarterlySummary ─────────────────────────────────────────────────────
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
 	if err := validateDateFilter(f); err != nil {
@@ -49,8 +42,6 @@ func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f
 	return out, nil
 }
 
-// ─── GetByAccount ─────────────────────────────────────────────────────────────
-
 func (s *service) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error) {
 	if err := validateDateFilter(f); err != nil {
 		return nil, err
@@ -71,8 +62,6 @@ func (s *service) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFi
 	return out, nil
 }
 
-// ─── GetMonthly ───────────────────────────────────────────────────────────────
-
 func (s *service) GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error) {
 	if err := validateDateFilter(f); err != nil {
 		return nil, err
@@ -89,8 +78,6 @@ func (s *service) GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilt
 	}
 	return out, nil
 }
-
-// ─── shared validators ────────────────────────────────────────────────────────
 
 func validateFYID(f *BASFilter) error {
 	if f.FinancialYearID != nil {

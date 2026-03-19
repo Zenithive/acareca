@@ -10,7 +10,6 @@ import (
 
 var ErrClinicNotFound = errors.New("clinic not found")
 
-// BASCategory mirrors the view's computed bas_category column.
 type BASCategory string
 
 const (
@@ -18,8 +17,6 @@ const (
 	BASCategoryGSTFree     BASCategory = "GST_FREE"
 	BASCategoryBASExcluded BASCategory = "BAS_EXCLUDED"
 )
-
-// ─── DB scan structs ─────────────────────────────────────────────────────────
 
 // BASSummaryRow maps one row of vw_bas_summary (quarterly).
 type BASSummaryRow struct {
@@ -81,18 +78,12 @@ type BASMonthlyRow struct {
 	TotalPurchasesNet      float64 `db:"total_purchases_net"`
 }
 
-// ─── Request filter ───────────────────────────────────────────────────────────
-
-// BASFilter is bound from query params on every BAS endpoint.
 type BASFilter struct {
 	FromDate        *string `form:"from_date"`         // YYYY-MM-DD
 	ToDate          *string `form:"to_date"`           // YYYY-MM-DD
 	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
 }
 
-// ─── Response structs ─────────────────────────────────────────────────────────
-
-// RsBASSummary is the API response for one BAS quarter.
 type RsBASSummary struct {
 	// Period
 	PeriodQuarter string `json:"period_quarter"` // e.g. "2026-01-01"
@@ -134,7 +125,6 @@ func (r *BASSummaryRow) ToRs() RsBASSummary {
 	}
 }
 
-// RsBASByAccount is the API response for one account line in the BAS breakdown.
 type RsBASByAccount struct {
 	PeriodQuarter string  `json:"period_quarter"`
 	PeriodYear    string  `json:"period_year"`
@@ -167,9 +157,8 @@ func (r *BASByAccountRow) ToRs() RsBASByAccount {
 	}
 }
 
-// RsBASMonthly is the API response for one month's BAS data.
 type RsBASMonthly struct {
-	PeriodMonth            string  `json:"period_month"` // "2026-01"
+	PeriodMonth            string  `json:"period_month"`
 	G1TotalSalesGross      float64 `json:"g1_total_sales_gross"`
 	G3GSTFreeSales         float64 `json:"g3_gst_free_sales"`
 	Label1AGSTOnSales      float64 `json:"label_1a_gst_on_sales"`

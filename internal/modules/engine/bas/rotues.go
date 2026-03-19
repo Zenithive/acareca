@@ -6,13 +6,6 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-// RegisterRoutes mounts all BAS endpoints under the given router group.
-//
-// Resulting routes (relative to the group prefix, e.g. /api/v1):
-//
-//	GET /bas/clinic/:clinic_id/summary     → quarterly BAS (ATO labels)
-//	GET /bas/clinic/:clinic_id/by-account  → per COA account breakdown
-//	GET /bas/clinic/:clinic_id/monthly     → monthly GST accrual
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	bas := rg.Group("/bas")
 	bas.Use(middleware.Auth(cfg))

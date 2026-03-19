@@ -12,11 +12,8 @@ import (
 
 // IHandler declares all HTTP entry points for the BAS module.
 type IHandler interface {
-	// GET /bas/clinic/:clinic_id/summary
 	GetQuarterlySummary(c *gin.Context)
-	// GET /bas/clinic/:clinic_id/by-account
 	GetByAccount(c *gin.Context)
-	// GET /bas/clinic/:clinic_id/monthly
 	GetMonthly(c *gin.Context)
 }
 
@@ -27,8 +24,6 @@ type handler struct {
 func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
-
-// ─── GetQuarterlySummary ─────────────────────────────────────────────────────
 
 // GetQuarterlySummary godoc
 // @Summary      Quarterly BAS summary (ATO labels)
@@ -69,8 +64,6 @@ func (h *handler) GetQuarterlySummary(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result, "BAS quarterly summary fetched successfully")
 }
 
-// ─── GetByAccount ─────────────────────────────────────────────────────────────
-
 // GetByAccount godoc
 // @Summary      BAS breakdown by COA account
 // @Description  Returns quarterly GST totals broken down per Chart of Accounts entry and BAS category (TAXABLE / GST_FREE). Useful for reconciliation and identifying which accounts drive your 1A / 1B figures.
@@ -105,8 +98,6 @@ func (h *handler) GetByAccount(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, result, "BAS by account fetched successfully")
 }
-
-// ─── GetMonthly ───────────────────────────────────────────────────────────────
 
 // GetMonthly godoc
 // @Summary      Monthly BAS data

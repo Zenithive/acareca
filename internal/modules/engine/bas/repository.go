@@ -10,13 +10,10 @@ import (
 
 // Repository defines all DB queries for the BAS module.
 type Repository interface {
-	// GetQuarterlySummary returns ATO BAS figures per quarter from vw_bas_summary.
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASSummaryRow, error)
 
-	// GetByAccount returns BAS figures broken down per COA account per quarter.
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASByAccountRow, error)
 
-	// GetMonthly returns BAS figures grouped by calendar month from vw_bas_monthly.
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error)
 }
 
@@ -27,8 +24,6 @@ type repository struct {
 func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
-
-// ─── GetQuarterlySummary ─────────────────────────────────────────────────────
 
 func (r *repository) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASSummaryRow, error) {
 	query := `
@@ -86,8 +81,6 @@ func (r *repository) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID
 	return rows, nil
 }
 
-// ─── GetByAccount ─────────────────────────────────────────────────────────────
-
 func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASByAccountRow, error) {
 	query := `
 		SELECT
@@ -141,8 +134,6 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BA
 	}
 	return rows, nil
 }
-
-// ─── GetMonthly ───────────────────────────────────────────────────────────────
 
 func (r *repository) GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error) {
 	query := `
