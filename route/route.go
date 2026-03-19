@@ -22,6 +22,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
@@ -125,7 +126,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	form.RegisterRoutes(formGroup, formHandler)
 
 	entryGroup := v1.Group("/entry")
-	entryGroup.Use(middleware.Auth(cfg))
 	entriesRepo := entry.NewRepository(dbConn)
 	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService())
 	entriesHandler := entry.NewHandler(entriesSvc)
@@ -136,10 +136,17 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	calculationHandler := calculation.NewHandler(calculationSvc)
 	calculation.RegisterRoutes(v1, calculationHandler)
 
+	// P&L reporting — engine/pl module
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo)
 	plHandler := pl.NewHandler(plSvc)
 	pl.RegisterRoutes(v1, plHandler, cfg)
+
+	// BAS reporting — engine/bas module
+	basRepo := bas.NewRepository(dbConn)
+	basSvc := bas.NewService(basRepo)
+	basHandler := bas.NewHandler(basSvc)
+	bas.RegisterRoutes(v1, basHandler, cfg)
 
 	settingGroup := v1.Group("/setting")
 	settingRepo := setting.NewRepository(dbConn)
