@@ -18,9 +18,9 @@ var (
 )
 
 type Repository interface {
-	ListAccountTypes(ctx context.Context) ([]*AccountType, error)
+	ListAccountTypes(ctx context.Context, f common.Filter) ([]*AccountType, error)
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
-	ListAccountTaxes(ctx context.Context) ([]*AccountTax, error)
+	ListAccountTaxes(ctx context.Context, f common.Filter) ([]*AccountTax, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 	GetAccountTypeByName(ctx context.Context, name string) (int, error)
 
@@ -29,6 +29,7 @@ type Repository interface {
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
 	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error)
+	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 }
@@ -41,27 +42,40 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) ListAccountTypes(ctx context.Context) ([]*AccountType, error) {
-	query := `
+func (r *repository) ListAccountTypes(ctx context.Context, f common.Filter) ([]*AccountType, error) {
+	base := `
 		SELECT id, name, created_at, updated_at
 		FROM tbl_account_type
-		ORDER BY id
-	`
+		WHERE 1=1
+		`
+
+	searchCols := []string{"name"}
+	colMap := map[string]string{"id": "id", "name": "name"}
+
+	query, filterArgs := common.BuildQuery(base, f, colMap, searchCols, false)
+	query = r.db.Rebind(query)
+
 	var list []*AccountType
-	if err := r.db.SelectContext(ctx, &list, query); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query, filterArgs...); err != nil {
 		return nil, fmt.Errorf("list account types: %w", err)
 	}
 	return list, nil
 }
 
-func (r *repository) ListAccountTaxes(ctx context.Context) ([]*AccountTax, error) {
-	query := `
+func (r *repository) ListAccountTaxes(ctx context.Context, f common.Filter) ([]*AccountTax, error) {
+	base := `
 		SELECT id, name, rate, is_taxable, created_at, updated_at
 		FROM tbl_account_tax
-		ORDER BY id
+		WHERE 1=1
 	`
+	searchCols := []string{"name", "is_taxable"}
+	colMap := map[string]string{"id": "id", "name": "name", "rate": "rate"}
+
+	query, filterArgs := common.BuildQuery(base, f, colMap, searchCols, false)
+	query = r.db.Rebind(query)
+
 	var list []*AccountTax
-	if err := r.db.SelectContext(ctx, &list, query); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query, filterArgs...); err != nil {
 		return nil, fmt.Errorf("list account taxes: %w", err)
 	}
 	return list, nil
@@ -209,6 +223,29 @@ func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount
 		return nil, fmt.Errorf("create chart of account: %w", err)
 	}
 	return r.getChartByID(ctx, tx, id)
+}
+
+// BulkCreateChartOfAccounts inserts all rows in a single query — used during practitioner onboarding.
+func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system) VALUES `
+	args := make([]interface{}, 0, len(rows)*6)
+	for i, row := range rows {
+		if i > 0 {
+			query += ", "
+		}
+		base := i * 6
+		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6)
+		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.IsSystem)
+	}
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("bulk create chart of accounts: %w", err)
+	}
+	return nil
 }
 
 func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {

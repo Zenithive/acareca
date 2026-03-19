@@ -82,6 +82,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		practitionerUUID, err := uuid.Parse(claims.PractitionerID)
 		if err != nil {
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
+			c.Abort()
 			return
 		}
 

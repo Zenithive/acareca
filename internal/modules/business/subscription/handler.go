@@ -71,7 +71,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param sub_id path int true "Subscription ID"
-// @Success 200 {object} RsSubscription
+// @Success 200 {object} RsPractitionerSubscription
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -98,6 +98,11 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Tags subscription
 // @Accept json
 // @Produce json
+// @Param status query string false "Filter by Status (ACTIVE, CANCELLED, etc.)"
+// @Param subscription_id query int false "Filter by specific Subscription ID"
+// @Param search query string false "Search within subscriptions"
+// @Param limit query int false "Pagination limit"
+// @Param offset query int false "Pagination offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -108,12 +113,17 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 	if !ok {
 		return
 	}
-	list, err := h.svc.ListByPractitionerID(c.Request.Context(), practitionerID)
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListByPractitionerID(c.Request.Context(), practitionerID, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Subscriptions fetched successfully")
+	response.JSON(c, http.StatusOK, list, "Subscriptions fetched successfully")
 }
 
 // @Summary Update a subscription
@@ -123,8 +133,9 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 // @Produce json
 // @Param sub_id path int true "Subscription ID"
 // @Param request body RqUpdatePractitionerSubscription true "Updated Subscription Data"
-// @Success 200 {object} RsSubscription
+// @Success 200 {object} RsPractitionerSubscription
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription/{sub_id} [patch]

@@ -99,22 +99,6 @@ func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
 	return id, true
 }
 
-// const ClinicIDKey = "clinicID"
-
-// func GetClinicID(c *gin.Context) (uuid.UUID, bool) {
-// 	idVal, exists := c.Get(ClinicIDKey)
-// 	if !exists {
-// 		response.Error(c, http.StatusBadRequest, errors.New("clinic id not in context"))
-// 		return uuid.Nil, false
-// 	}
-// 	id, ok := idVal.(uuid.UUID)
-// 	if !ok {
-// 		response.Error(c, http.StatusInternalServerError, errors.New("invalid clinic id type"))
-// 		return uuid.Nil, false
-// 	}
-// 	return id, true
-// }
-
 func ParseIntID(c *gin.Context, param string) (int, bool) {
 	id, err := strconv.Atoi(c.Param(param))
 	if err != nil {

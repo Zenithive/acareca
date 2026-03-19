@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
 	Create(ctx context.Context, practitionerID uuid.UUID, req *RqCreatePractitionerSubscription, tx *sqlx.Tx) (*RsPractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*RsPractitionerSubscription, error)
-	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*RsPractitionerSubscription, error)
+	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 	Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
 }
@@ -55,16 +56,25 @@ func (s *service) GetByID(ctx context.Context, id int) (*RsPractitionerSubscript
 	return sub.ToRs(), nil
 }
 
-func (s *service) ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*RsPractitionerSubscription, error) {
-	list, err := s.repo.ListByPractitionerID(ctx, practitionerID)
+func (s *service) ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListByPractitionerID(ctx, practitionerID, ft)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*RsPractitionerSubscription, len(list))
-	for i := range list {
-		out[i] = list[i].ToRs()
+	total, err := s.repo.CountByPractitionerID(ctx, practitionerID, ft)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+
+	data := make([]*RsPractitionerSubscription, len(list))
+	for i := range list {
+		data[i] = list[i].ToRs()
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	return &rsList, nil
 }
 
 func (s *service) Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error) {

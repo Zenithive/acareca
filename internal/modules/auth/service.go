@@ -206,7 +206,7 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	user, err := s.repo.FindByEmail(ctx, googleUser.Email)
 	isNewUser := false
 
-	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	if err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if err != nil {
 			if !errors.Is(err, ErrNotFound) {
 				return err
@@ -247,9 +247,11 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("google oauth transaction: %w", err)
+	}
 
-	// Audit log: OAuth login/registration
+	// Audit log: OAuth login/registration — only reached after a successful commit
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
 	action := auditctx.ActionUserLoggedIn

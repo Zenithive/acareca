@@ -1,5 +1,7 @@
 package calculation
 
+import "github.com/iamarpitzala/acareca/internal/modules/builder/entry"
+
 type Method string
 
 const (
@@ -28,4 +30,10 @@ type NetResult struct {
 
 type NetFilter struct {
 	SuperComponent *float64 `json:"super_component"`
+}
+
+type RqCalculateFromEntries struct {
+	FormID         string               `json:"form_id"         validate:"required,uuid"`
+	Entries        []entry.RsEntryValue `json:"entries"         validate:"required,min=1,dive"`
+	SuperComponent *float64             `json:"super_component" validate:"omitempty,min=0"`
 }

@@ -7,12 +7,14 @@ import (
 
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
 	CreateSubscription(ctx context.Context, req *RqCreateSubscription) (*RsSubscription, error)
 	GetSubscription(ctx context.Context, id int) (*RsSubscription, error)
-	ListSubscriptions(ctx context.Context) ([]*RsSubscription, error)
+	ListSubscriptions(ctx context.Context, f *Filter) (*util.RsList, error)
 	UpdateSubscription(ctx context.Context, id int, req *RqUpdateSubscription) (*RsSubscription, error)
 	DeleteSubscription(ctx context.Context, id int) error
 	FindByName(ctx context.Context, name string) (*RsSubscription, error)
@@ -23,12 +25,13 @@ type Service interface {
 }
 
 type service struct {
+	db       *sqlx.DB
 	repo     Repository
 	auditSvc audit.Service
 }
 
-func NewService(repo Repository, auditSvc audit.Service) Service {
-	return &service{repo: repo, auditSvc: auditSvc}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc}
 }
 
 func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscription) (*RsSubscription, error) {
@@ -64,16 +67,26 @@ func (s *service) GetSubscription(ctx context.Context, id int) (*RsSubscription,
 	return sub.ToRs(), nil
 }
 
-func (s *service) ListSubscriptions(ctx context.Context) ([]*RsSubscription, error) {
-	list, err := s.repo.List(ctx)
+func (s *service) ListSubscriptions(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.List(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*RsSubscription, len(list))
-	for i := range list {
-		out[i] = list[i].ToRs()
+
+	total, err := s.repo.Count(ctx, ft)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+
+	data := make([]*RsSubscription, 0, len(list))
+	for _, item := range list {
+		data = append(data, item.ToRs())
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	return &rsList, nil
 }
 
 func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateSubscription) (*RsSubscription, error) {

@@ -9,6 +9,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -16,7 +17,7 @@ type IService interface {
 	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error)
 	GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error)
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
-	ListPractitioners(ctx context.Context) ([]*RsPractitioner, error)
+	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 }
 
@@ -81,6 +82,24 @@ func (s *service) GetPractitionerByUserID(ctx context.Context, userID string) (*
 }
 
 // ListPractitioners implements [IService].
-func (s *service) ListPractitioners(ctx context.Context) ([]*RsPractitioner, error) {
-	return s.repo.ListPractitioners(ctx)
+func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListPractitioners(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	total, err := s.repo.CountPractitioners(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]*RsPractitioner, 0, len(list))
+	for _, p := range list {
+		data = append(data, p.ToRs())
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	return &rsList, nil
 }

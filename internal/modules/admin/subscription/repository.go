@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -15,7 +16,8 @@ type Repository interface {
 	Create(ctx context.Context, s *Subscription) (*Subscription, error)
 	GetByID(ctx context.Context, id int) (*Subscription, error)
 	FindByName(ctx context.Context, name string) (*Subscription, error)
-	List(ctx context.Context) ([]*Subscription, error)
+	List(ctx context.Context, f common.Filter) ([]*Subscription, error)
+	Count(ctx context.Context, f common.Filter) (int, error)
 	Update(ctx context.Context, s *Subscription) (*Subscription, error)
 	Delete(ctx context.Context, id int) error
 
@@ -79,15 +81,27 @@ func (r *repository) FindByName(ctx context.Context, name string) (*Subscription
 	return &s, nil
 }
 
-func (r *repository) List(ctx context.Context) ([]*Subscription, error) {
-	query := `
+var subscriptionColumns = map[string]string{
+	"id":         "id",
+	"name":       "name",
+	"price":      "price",
+	"created_at": "created_at",
+}
+
+var subscriptionSearchColumns = []string{"name", "description"}
+
+func (r *repository) List(ctx context.Context, f common.Filter) ([]*Subscription, error) {
+	base := `
 		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE deleted_at IS NULL
-		ORDER BY created_at DESC
 	`
+
+	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchColumns, false)
+	query = r.db.Rebind(query)
+
 	var list []*Subscription
-	if err := r.db.SelectContext(ctx, &list, query); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query, filterArgs...); err != nil {
 		return nil, fmt.Errorf("list subscriptions: %w", err)
 	}
 	return list, nil
@@ -164,4 +178,16 @@ func (r *repository) UpdatePermission(ctx context.Context, subscriptionID int, k
 		return nil, fmt.Errorf("update permission: %w", err)
 	}
 	return &out, nil
+}
+
+func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
+	base := `FROM tbl_subscription WHERE deleted_at IS NULL `
+	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchColumns, true)
+	query = r.db.Rebind(query)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, filterArgs...); err != nil {
+		return 0, fmt.Errorf("count subscriptions: %w", err)
+	}
+	return count, nil
 }

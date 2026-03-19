@@ -3,8 +3,10 @@ package practitioner
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -14,8 +16,9 @@ type Repository interface {
 	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error)
 	GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error)
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
-	ListPractitioners(ctx context.Context) ([]*RsPractitioner, error)
+	ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
+	CountPractitioners(ctx context.Context, f common.Filter) (int, error)
 }
 
 type repository struct {
@@ -73,7 +76,7 @@ func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPrac
 // GetPractitionerByUserID implements [Repository].
 func (r *repository) GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error) {
 	query := `
-		SELECT id, user_id, abn, verified, created_at, updated_at, deleted_at FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL
+	SELECT id, user_id, abn, verified, created_at, updated_at, deleted_at FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL
 	`
 	var p Practitioner
 	if err := r.db.QueryRowxContext(ctx, query, userID).StructScan(&p); err != nil {
@@ -82,22 +85,46 @@ func (r *repository) GetPractitionerByUserID(ctx context.Context, userID string)
 	return p.ToRs(), nil
 }
 
+var practitionerColumns = map[string]string{
+	"id":         "p.id",
+	"first_name": "u.first_name",
+	"last_name":  "u.last_name",
+	"email":      "u.email",
+	"phone":      "u.phone",
+	"abn":        "p.abn",
+}
+
+var practitionerSearchCols = []string{"u.first_name", "u.last_name", "u.email", "u.phone"}
+
 // ListPractitioners implements [Repository].
-func (r *repository) ListPractitioners(ctx context.Context) ([]*RsPractitioner, error) {
-	query := `
+func (r *repository) ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error) {
+	base := `
 		SELECT p.id, p.user_id, p.abn, p.verified, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
 		WHERE p.deleted_at IS NULL
 	`
+	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, false)
+
 	var list []*PractitionerWithUser
-	if err := r.db.SelectContext(ctx, &list, query); err != nil {
-		return nil, err
+	if err := r.db.SelectContext(ctx, &list, r.db.Rebind(query), filterArgs...); err != nil {
+		return nil, fmt.Errorf("list practitioners repo: %w", err)
 	}
-	out := make([]*RsPractitioner, 0, len(list))
-	for _, p := range list {
-		out = append(out, p.ToRs())
+	return list, nil
+}
+
+func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (int, error) {
+	base := `
+        FROM tbl_practitioner p
+        JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
+        WHERE p.deleted_at IS NULL
+    `
+	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, true)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), filterArgs...); err != nil {
+		return 0, err
 	}
-	return out, nil
+	return count, nil
 }

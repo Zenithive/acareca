@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
-	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -20,6 +20,12 @@ type IService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
+
+	ListTransactions(ctx context.Context, practitionerID uuid.UUID, filter TransactionFilter) (*util.RsList, error)
+	// Transaction variants
+	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error)
+	UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
+	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 }
 
 type Service struct {
@@ -147,6 +153,26 @@ func (s *Service) GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntr
 	return e.ToRs(values), nil
 }
 
+// ListTransactions implements [IService].
+func (s *Service) ListTransactions(ctx context.Context, practitionerID uuid.UUID, filter TransactionFilter) (*util.RsList, error) {
+	pid := practitionerID.String()
+	filter.PractitionerID = &pid
+	f := filter.ToCommonFilter()
+	items, err := s.repo.ListTransactions(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.repo.CountTransactions(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+
+	var rs util.RsList
+	cf := filter.ToCommonFilter()
+	rs.MapToList(items, total, cf.Offset, cf.Limit)
+	return &rs, nil
+}
+
 func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {
 	out := make([]*FormEntryValue, 0, len(rq))
 
@@ -202,4 +228,69 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	}
 
 	return out, nil
+}
+
+// CreateTx creates a form entry within a transaction.
+func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error) {
+	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyTransactionCreate); err != nil {
+		return nil, err
+	}
+
+	status := EntryStatusDraft
+	if req.Status != "" {
+		status = req.Status
+	}
+	var submittedAt *string
+	if status == EntryStatusSubmitted {
+		now := time.Now().UTC().Format(time.RFC3339)
+		submittedAt = &now
+	}
+	e := &FormEntry{
+		ID:            uuid.New(),
+		FormVersionID: formVersionID,
+		ClinicID:      req.ClinicID,
+		SubmittedBy:   submittedBy,
+		SubmittedAt:   submittedAt,
+		Status:        status,
+	}
+	values, err := s.CalculateValues(ctx, e.ID, req.Values)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateTx(ctx, tx, e, values); err != nil {
+		return nil, err
+	}
+	return e.ToRs(values), nil
+}
+
+// UpdateTx updates a form entry within a transaction.
+func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+	existing, values, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if req.Status != nil {
+		existing.Status = *req.Status
+		if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {
+			now := time.Now().UTC().Format(time.RFC3339)
+			existing.SubmittedAt = &now
+		}
+		existing.SubmittedBy = submittedBy
+	}
+	newValues := values
+	if len(req.Values) > 0 {
+		newValues, err = s.CalculateValues(ctx, existing.ID, req.Values)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := s.repo.UpdateTx(ctx, tx, existing, newValues); err != nil {
+		return nil, err
+	}
+	return existing.ToRs(newValues), nil
+}
+
+// DeleteTx deletes a form entry within a transaction.
+func (s *Service) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+	return s.repo.DeleteTx(ctx, tx, id)
 }

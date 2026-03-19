@@ -16,6 +16,7 @@ type IService interface {
 	Delete(ctx context.Context, id, clinicID uuid.UUID) error
 	List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error)
 	GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsFormVersion, error)
+	CreateTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID, req *RqFormVersion, practitionerID uuid.UUID) (*RsFormVersion, error)
 }
 
 type service struct {
@@ -133,4 +134,20 @@ func (s *service) GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsF
 		return RsFormVersion{}, err
 	}
 	return *v.ToRs(), nil
+}
+
+// CreateTx creates a form version within a transaction.
+func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error) {
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
+	if err != nil {
+		return nil, err
+	}
+	if clinic.ID != clinicID {
+		return nil, ErrForbidden
+	}
+	v := req.ToDB(formID, userID)
+	if err := s.repo.CreateTx(ctx, tx, v); err != nil {
+		return nil, err
+	}
+	return v.ToRs(), nil
 }

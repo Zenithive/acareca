@@ -15,6 +15,7 @@ import (
 
 type IHandler interface {
 	Calculation(c *gin.Context)
+	CalculateFromEntries(c *gin.Context)
 }
 
 type handler struct {
@@ -34,7 +35,8 @@ func NewHandler(svc Service) IHandler {
 // @Produce json
 // @Param id path string true "Form ID"
 // @Param super_component query number false "Super component value override"
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} GrossResult "Service Fee method response"
+// @Success 200 {object} NetResult "Independent Contractor method response"
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -63,6 +65,42 @@ func (h *handler) Calculation(c *gin.Context) {
 	result, err := h.svc.Calculate(ctx, formID, &filter)
 	if err != nil {
 		if errors.Is(err, entry.ErrNotFound) || errors.Is(err, version.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "Calculation completed successfully")
+}
+
+// CalculateFromEntries godoc
+// @Summary Calculate from supplied entries
+// @Description Run GrossMethod or NetMethod using entries provided in the request body.
+// @Description No database lookup of entries is performed — suitable for previewing
+// @Description calculations before an entry is submitted.
+// @Tags calculation
+// @Accept  json
+// @Produce json
+// @Param request body RqCalculateFromEntries true "Form ID, entries, and optional super component"
+// @Success 200 {object} GrossResult "Service Fee method response"
+// @Success 200 {object} NetResult "Independent Contractor method response"
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate [post]
+func (h *handler) CalculateFromEntries(c *gin.Context) {
+	var req RqCalculateFromEntries
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.CalculateFromEntries(c.Request.Context(), &req)
+	if err != nil {
+		if errors.Is(err, entry.ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return
 		}

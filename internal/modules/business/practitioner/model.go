@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 type Practitioner struct {
@@ -27,10 +28,10 @@ type PractitionerWithUser struct {
 	DeletedAt *time.Time `db:"deleted_at"`
 
 	// user fields
-	Email     string    `db:"email"`
-	FirstName string    `db:"first_name"`
-	LastName  string    `db:"last_name"`
-	Phone     *string   `db:"phone"`
+	Email     string  `db:"email"`
+	FirstName string  `db:"first_name"`
+	LastName  string  `db:"last_name"`
+	Phone     *string `db:"phone"`
 }
 
 type RqCreatePractitioner struct {
@@ -73,4 +74,57 @@ func (p *PractitionerWithUser) ToRs() *RsPractitioner {
 			Phone:     p.Phone,
 		},
 	}
+}
+
+type Filter struct {
+	ID        *uuid.UUID `form:"id"`
+	Email     *string    `form:"email"`
+	FirstName *string    `form:"first_name"`
+	LastName  *string    `form:"last_name"`
+	Phone     *string    `form:"phone"`
+	ABN       *string    `form:"abn"`
+	Search    *string    `form:"search"`
+	Limit     *int       `form:"limit"`
+	Offset    *int       `form:"offset"`
+	SortBy    *string    `form:"sort_by"`
+	OrderBy   *string    `form:"order_by"`
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+
+	if filter.ID != nil {
+		filters["p.id"] = *filter.ID
+	}
+	if filter.Email != nil {
+		filters["u.email"] = *filter.Email
+	}
+	if filter.FirstName != nil {
+		filters["u.first_name"] = *filter.FirstName
+	}
+	if filter.LastName != nil {
+		filters["u.last_name"] = *filter.LastName
+	}
+	if filter.Phone != nil {
+		filters["u.phone"] = *filter.Phone
+	}
+	if filter.ABN != nil {
+		filters["p.abn"] = *filter.ABN
+	}
+
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+
+	return f
 }

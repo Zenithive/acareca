@@ -11,9 +11,9 @@ import (
 )
 
 type Service interface {
-	ListAccountTypes(ctx context.Context) ([]AccountType, error)
+	ListAccountTypes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
-	ListAccountTaxes(ctx context.Context) ([]AccountTax, error)
+	ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 
 	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
@@ -33,16 +33,20 @@ func NewService(repo Repository, db *sqlx.DB, auditSvc audit.Service) Service {
 	return &service{repo: repo, db: db, auditSvc: auditSvc}
 }
 
-func (s *service) ListAccountTypes(ctx context.Context) ([]AccountType, error) {
-	list, err := s.repo.ListAccountTypes(ctx)
+func (s *service) ListAccountTypes(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListAccountTypes(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AccountType, len(list))
+	data := make([]AccountType, len(list))
 	for i := range list {
-		out[i] = list[i].ToRs()
+		data[i] = list[i].ToRs()
 	}
-	return out, nil
+
+	var rsList util.RsList
+	rsList.MapToList(data, len(data), ft.Offset, ft.Limit)
+	return &rsList, nil
 }
 
 func (s *service) GetAccountType(ctx context.Context, id int16) (*AccountType, error) {
@@ -54,16 +58,20 @@ func (s *service) GetAccountType(ctx context.Context, id int16) (*AccountType, e
 	return &rs, nil
 }
 
-func (s *service) ListAccountTaxes(ctx context.Context) ([]AccountTax, error) {
-	list, err := s.repo.ListAccountTaxes(ctx)
+func (s *service) ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListAccountTaxes(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AccountTax, len(list))
+	data := make([]AccountTax, len(list))
 	for i := range list {
-		out[i] = list[i].ToRs()
+		data[i] = list[i].ToRs()
 	}
-	return out, nil
+
+	var rsList util.RsList
+	rsList.MapToList(data, len(data), ft.Offset, ft.Limit)
+	return &rsList, nil
 }
 
 func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, error) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -16,9 +17,10 @@ var ErrNotFound = errors.New("practitioner subscription not found")
 type Repository interface {
 	Create(ctx context.Context, s *PractitionerSubscription, tx *sqlx.Tx) (*PractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*PractitionerSubscription, error)
-	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*PractitionerSubscription, error)
+	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*PractitionerSubscription, error)
 	Update(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
+	CountByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
 }
 
 type repository struct {
@@ -62,15 +64,28 @@ func (r *repository) GetByID(ctx context.Context, id int) (*PractitionerSubscrip
 	return &s, nil
 }
 
-func (r *repository) ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID) ([]*PractitionerSubscription, error) {
-	query := `
+var subscriptionColumns = map[string]string{
+	"id":              "id",
+	"practitioner_id": "practitioner_id",
+	"subscription_id": "subscription_id",
+	"status":          "status",
+	"start_date":      "start_date",
+	"end_date":        "end_date",
+}
+
+var subscriptionSearchCols = []string{"status"}
+
+func (r *repository) ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*PractitionerSubscription, error) {
+	base := `
 		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, created_at, updated_at, deleted_at
 		FROM tbl_practitioner_subscription
 		WHERE practitioner_id = $1 AND deleted_at IS NULL
-		ORDER BY start_date DESC
 	`
+	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchCols, false)
+	args := append([]interface{}{practitionerID}, filterArgs...)
+
 	var list []*PractitionerSubscription
-	if err := r.db.SelectContext(ctx, &list, query, practitionerID); err != nil {
+	if err := r.db.SelectContext(ctx, &list, r.db.Rebind(query), args...); err != nil {
 		return nil, fmt.Errorf("list practitioner subscriptions: %w", err)
 	}
 	return list, nil
@@ -104,4 +119,17 @@ func (r *repository) Delete(ctx context.Context, id int) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *repository) CountByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error) {
+	base := `FROM tbl_practitioner_subscription WHERE practitioner_id = $1 AND deleted_at IS NULL`
+
+	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchCols, true)
+	args := append([]interface{}{practitionerID}, filterArgs...)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), args...); err != nil {
+		return 0, fmt.Errorf("count practitioner subscriptions: %w", err)
+	}
+	return count, nil
 }

@@ -67,7 +67,7 @@ func NewHandler(svc IService) IHandler {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /form/form/{id} [get]
+// @Router /form/{id} [get]
 func (h *handler) GetById(c *gin.Context) {
 	formId, ok := util.ParseUuidID(c, "id")
 	if !ok {
@@ -81,7 +81,7 @@ func (h *handler) GetById(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusCreated, gin.H{"form": form}, "Form fetch successfully")
+	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Form fetch successfully")
 }
 
 // @Summary Create form with fields
@@ -195,12 +195,15 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Description List all forms belonging to the practitioner's clinics. Optionally filter by clinic, method, or status. If clinic_id is omitted, all clinics are included.
 // @Tags form
 // @Produce json
-// @Param clinic_id  query string false "Filter by clinic ID"
-// @Param clinic_name query string false "Filter by clinic name (partial match)"
-// @Param method     query string false "Filter by method"     Enums(INDEPENDENT_CONTRACTOR, SERVICE_FEE)
-// @Param status     query string false "Filter by status"     Enums(DRAFT, PUBLISHED, ARCHIVED)
-// @Param sort_by    query string false "Field to sort by"     Enums(status, method, clinic_id, created_at)
-// @Param sort_order query string false "Sort direction"       Enums(asc, desc)
+// @Param clinic_id  query string false "Filter by clinic ID (UUID)"
+// @Param form_name  query string false "Filter by form name (partial match)"
+// @Param method     query string false "Filter by method" Enums(INDEPENDENT_CONTRACTOR, SERVICE_FEE)
+// @Param status     query string false "Filter by status" Enums(DRAFT, PUBLISHED, ARCHIVED)
+// @Param search     query string false "General search keyword"
+// @Param sort_by    query string false "Field to sort by" Enums(status, method, clinic_id, created_at)
+// @Param sort_order query string false "Sort direction" Enums(asc, desc)
+// @Param limit      query int    false "Page size"
+// @Param offset     query int    false "Page offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError

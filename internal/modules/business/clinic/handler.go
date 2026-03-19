@@ -76,7 +76,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Param order_by query string false "Sort direction (ASC, DESC)"
 // @Param limit query int false "Page size (default 10, max 100)"
 // @Param offset query int false "Page offset"
-// @Success 200 {array} RsClinic
+// @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -220,6 +220,7 @@ func (h *handler) Delete(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, gin.H{"message": "clinic deleted successfully"}, "Clinic deleted successfully")
 }
+
 // @Summary Bulk update clinics
 // @Tags clinic
 // @Accept json

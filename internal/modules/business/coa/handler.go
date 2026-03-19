@@ -35,17 +35,25 @@ func NewHandler(svc Service) IHandler {
 // @Summary List all account types
 // @Tags coa
 // @Produce json
+// @Param id query int false "Filter by id"
+// @Param name query string false "Filter by name"
+// @Param search query string false "Search name"
 // @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/account-types [get]
 func (h *handler) ListAccountTypes(c *gin.Context) {
-	list, err := h.svc.ListAccountTypes(c.Request.Context())
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListAccountTypes(c.Request.Context(), &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Account types fetched successfully")
+	response.JSON(c, http.StatusOK, list, "Account types fetched successfully")
 }
 
 // @Summary Get account type by ID
@@ -79,17 +87,26 @@ func (h *handler) GetAccountType(c *gin.Context) {
 // @Summary List all account tax types
 // @Tags coa
 // @Produce json
+// @Param id query int false "Filter by id"
+// @Param name query string false "Filter by name"
+// @Param rate query number false "Filter by rate"
+// @Param search query string false "Search name or is_taxable"
 // @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/account-taxes [get]
 func (h *handler) ListAccountTaxes(c *gin.Context) {
-	list, err := h.svc.ListAccountTaxes(c.Request.Context())
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListAccountTaxes(c.Request.Context(), &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Account taxes fetched successfully")
+	response.JSON(c, http.StatusOK, list, "Account taxes fetched successfully")
 }
 
 // @Summary Get account tax by ID

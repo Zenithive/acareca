@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -17,12 +18,14 @@ type Repository interface {
 	Create(ctx context.Context, t *Practitioner) (*Practitioner, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Practitioner, error)
 	GetByUserID(ctx context.Context, userID string) (*Practitioner, error)
-	List(ctx context.Context) ([]*Practitioner, error)
+	List(ctx context.Context, f common.Filter) ([]*Practitioner, error)
 	Update(ctx context.Context, t *Practitioner) (*Practitioner, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	GetSettingByPractitionerID(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSetting, error)
 	UpsertSetting(ctx context.Context, s *PractitionerSetting) (*PractitionerSetting, error)
+
+	Count(ctx context.Context, f common.Filter) (int, error)
 }
 
 type repository struct {
@@ -81,15 +84,27 @@ func (r *repository) GetByUserID(ctx context.Context, userID string) (*Practitio
 	return &t, nil
 }
 
-func (r *repository) List(ctx context.Context) ([]*Practitioner, error) {
-	query := `
+var practitionerColumns = map[string]string{
+	"id":         "id",
+	"user_id":    "user_id",
+	"abn":        "abn",
+	"verified":   "verified",
+	"created_at": "created_at",
+}
+
+var practitionerSearchCols = []string{"user_id", "abn"}
+
+func (r *repository) List(ctx context.Context, f common.Filter) ([]*Practitioner, error) {
+	base := `
 		SELECT id, user_id, abn, verified, created_at, updated_at, deleted_at
 		FROM tbl_practitioner
 		WHERE deleted_at IS NULL
-		ORDER BY created_at
 	`
+
+	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, false)
+
 	var list []*Practitioner
-	if err := r.db.SelectContext(ctx, &list, query); err != nil {
+	if err := r.db.SelectContext(ctx, &list, r.db.Rebind(query), filterArgs...); err != nil {
 		return nil, fmt.Errorf("list practitioners: %w", err)
 	}
 	return list, nil
@@ -169,4 +184,16 @@ func (r *repository) UpsertSetting(ctx context.Context, s *PractitionerSetting) 
 		return nil, fmt.Errorf("create practitioner setting: %w", err)
 	}
 	return &out, nil
+}
+
+func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
+	base := `FROM tbl_practitioner WHERE deleted_at IS NULL`
+
+	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, true)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), filterArgs...); err != nil {
+		return 0, fmt.Errorf("count practitioners: %w", err)
+	}
+	return count, nil
 }

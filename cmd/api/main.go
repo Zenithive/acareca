@@ -81,12 +81,22 @@ func main() {
 		log.Print(" - using code:  gin.SetMode(gin.ReleaseMode)\n\n")
 	}
 
-	allowedOrigins := os.Getenv("ALLOWED_ORIGINS") // e.g. "http://localhost:5173,https://your-frontend.com"
+	// ALLOWED_ORIGINS must be explicitly set in production.
+	// e.g. "http://localhost:5173,https://your-frontend.com"
+	//
+	// AllowCredentials: true requires specific origins — browsers reject the
+	// combination of wildcard ("*") + credentials, so we only enable credentials
+	// when real origins are configured. In development (no env var set) the
+	// wildcard is kept for convenience but credentials are disabled.
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	var origins []string
+	allowCredentials := false
 	if allowedOrigins == "" {
 		origins = []string{"*"}
+		log.Println("[WARN] ALLOWED_ORIGINS not set — CORS running in wildcard mode, credentials disabled")
 	} else {
 		origins = strings.Split(allowedOrigins, ",")
+		allowCredentials = true
 	}
 
 	r.Use(cors.New(cors.Config{
@@ -94,7 +104,7 @@ func main() {
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Authorization", "token"},
-		AllowCredentials: true,
+		AllowCredentials: allowCredentials,
 		MaxAge:           12 * time.Hour,
 	}))
 	r.Use(middleware.ClientInfo())

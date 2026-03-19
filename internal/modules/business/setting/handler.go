@@ -116,17 +116,24 @@ func (h *handler) GetPractitionerByUserID(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
+// @Param abn query string false "Filter by ABN"
+// @Param user_id query string false "Filter by User ID"
+// @Param verified query boolean false "Filter by verification status"
+// @Param search query string false "Search ABN or UserID"
+// @Param limit query int false "Limit"
+// @Param offset query int false "Offset"
 // @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /setting/list [get]
 func (h *handler) ListPractitioners(c *gin.Context) {
-	list, err := h.svc.ListPractitioners(c.Request.Context())
+	var f Filter
+	list, err := h.svc.ListPractitioners(c.Request.Context(), &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Practitioners fetched successfully")
+	response.JSON(c, http.StatusOK, list, "Practitioners fetched successfully")
 }
 
 // @Summary Update a practitioner

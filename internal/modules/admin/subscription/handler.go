@@ -63,6 +63,7 @@ func (h *handler) CreateSubscription(c *gin.Context) {
 // @Param id path int true "Subscription ID"
 // @Success 200 {object} RsSubscription
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /admin/subscription/{id} [get]
@@ -89,17 +90,28 @@ func (h *handler) GetSubscription(c *gin.Context) {
 // @Tags admin-subscription
 // @Accept json
 // @Produce json
+// @Param name query string false "Filter by subscription name"
+// @Param search query string false "Search in name and description"
+// @Param sort_by query string false "Field to sort by (default: created_at)"
+// @Param order_by query string false "Sort order: ASC or DESC (default: DESC)"
+// @Param limit query int false "Number of items per page (default: 20)"
+// @Param offset query int false "Number of items to skip"
 // @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /admin/subscription [get]
 func (h *handler) ListSubscriptions(c *gin.Context) {
-	list, err := h.svc.ListSubscriptions(c.Request.Context())
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListSubscriptions(c.Request.Context(), &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, util.RsList{Items: list, Total: len(list)}, "Subscriptions fetched successfully")
+	response.JSON(c, http.StatusOK, list, "Subscriptions fetched successfully")
 }
 
 // @Summary Update a subscription

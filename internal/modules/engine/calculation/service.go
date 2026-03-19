@@ -17,6 +17,8 @@ type Service interface {
 	GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue) (*GrossResult, error)
 	NetMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, filter *NetFilter) (*NetResult, error)
 	Calculate(ctx context.Context, formId uuid.UUID, filter *NetFilter) (interface{}, error)
+
+	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error)
 }
 
 type service struct {
@@ -198,6 +200,30 @@ func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFi
 		return s.NetMethod(ctx, form, entries.Values, filter)
 	case ServiceFee:
 		return s.GrossMethod(ctx, form, entries.Values)
+	default:
+		return nil, fmt.Errorf("unsupported method: %s", form.Method)
+	}
+}
+
+// CalculateFromEntries implements [Service].
+func (s *service) CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error) {
+	formID, err := uuid.Parse(req.FormID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid form_id: %w", err)
+	}
+
+	form, err := s.formSvc.GetFormByID(ctx, formID)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := &NetFilter{SuperComponent: req.SuperComponent}
+
+	switch Method(form.Method) {
+	case IndependentContractor:
+		return s.NetMethod(ctx, form, req.Entries, filter)
+	case ServiceFee:
+		return s.GrossMethod(ctx, form, req.Entries)
 	default:
 		return nil, fmt.Errorf("unsupported method: %s", form.Method)
 	}

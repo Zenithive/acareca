@@ -60,6 +60,52 @@ definitions:
       refresh_token:
         type: string
     type: object
+  calculation.GrossResult:
+    properties:
+      gst_service_fee:
+        type: number
+      net_amount:
+        type: number
+      remitted_amount:
+        type: number
+      service_fee:
+        type: number
+      total_service_fee:
+        type: number
+    type: object
+  calculation.NetResult:
+    properties:
+      commission:
+        type: number
+      gst_commission:
+        type: number
+      net_amount:
+        type: number
+      super_component:
+        type: number
+      super_component_commission:
+        type: number
+      total_commission:
+        type: number
+      total_remuneration:
+        type: number
+    type: object
+  calculation.RqCalculateFromEntries:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/entry.RsEntryValue'
+        minItems: 1
+        type: array
+      form_id:
+        type: string
+      super_component:
+        minimum: 0
+        type: number
+    required:
+    - entries
+    - form_id
+    type: object
   clinic.RqBulkDeleteClinic:
     properties:
       clinic_ids:
@@ -341,6 +387,8 @@ definitions:
         type: string
       is_system:
         type: boolean
+      is_taxable:
+        type: boolean
       name:
         type: string
       practitioner_id:
@@ -506,8 +554,23 @@ definitions:
     required:
     - id
     type: object
+  field.RsCoaDetail:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   field.RsFormField:
     properties:
+      coa:
+        $ref: '#/definitions/field.RsCoaDetail'
       coa_id:
         type: string
       created_at:
@@ -1090,6 +1153,31 @@ paths:
       consumes:
       - application/json
       description: list subscriptions
+      parameters:
+      - description: Filter by subscription name
+        in: query
+        name: name
+        type: string
+      - description: Search in name and description
+        in: query
+        name: search
+        type: string
+      - description: 'Field to sort by (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      - description: 'Number of items per page (default: 20)'
+        in: query
+        name: limit
+        type: integer
+      - description: Number of items to skip
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -1189,6 +1277,10 @@ paths:
             $ref: '#/definitions/subscription.RsSubscription'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -1488,6 +1580,45 @@ paths:
       summary: Register a new user
       tags:
       - auth
+  /calculate:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Run GrossMethod or NetMethod using entries provided in the request body.
+        No database lookup of entries is performed — suitable for previewing
+        calculations before an entry is submitted.
+      parameters:
+      - description: Form ID, entries, and optional super component
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.RqCalculateFromEntries'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Independent Contractor method response
+          schema:
+            $ref: '#/definitions/calculation.NetResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Calculate from supplied entries
+      tags:
+      - calculation
   /calculate/{id}:
     get:
       description: Calculate results for a specific form by ID
@@ -1505,10 +1636,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Independent Contractor method response
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/calculation.NetResult'
         "400":
           description: Bad Request
           schema:
@@ -1567,9 +1697,7 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/clinic.RsClinic'
-            type: array
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
           schema:
@@ -1791,6 +1919,23 @@ paths:
       - clinic
   /coa/account-taxes:
     get:
+      parameters:
+      - description: Filter by id
+        in: query
+        name: id
+        type: integer
+      - description: Filter by name
+        in: query
+        name: name
+        type: string
+      - description: Filter by rate
+        in: query
+        name: rate
+        type: number
+      - description: Search name or is_taxable
+        in: query
+        name: search
+        type: string
       produces:
       - application/json
       responses:
@@ -1841,6 +1986,19 @@ paths:
       - coa
   /coa/account-types:
     get:
+      parameters:
+      - description: Filter by id
+        in: query
+        name: id
+        type: integer
+      - description: Filter by name
+        in: query
+        name: name
+        type: string
+      - description: Search name
+        in: query
+        name: search
+        type: string
       produces:
       - application/json
       responses:
@@ -2193,6 +2351,67 @@ paths:
       summary: Update a form entry
       tags:
       - entry
+  /entry/transactions:
+    get:
+      description: Returns flat rows (one per entry value) enriched with clinic, form,
+        COA, and tax data
+      parameters:
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by COA ID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by account tax ID
+        in: query
+        name: tax_type_id
+        type: integer
+      - description: Filter entries created after this date (RFC3339)
+        in: query
+        name: date_from
+        type: string
+      - description: Filter entries created before this date (RFC3339)
+        in: query
+        name: date_to
+        type: string
+      - description: Filter by status (DRAFT, SUBMITTED)
+        in: query
+        name: status
+        type: string
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all transactions
+      tags:
+      - entry
   /entry/version/{version_id}:
     get:
       consumes:
@@ -2290,13 +2509,13 @@ paths:
         filter by clinic, method, or status. If clinic_id is omitted, all clinics
         are included.
       parameters:
-      - description: Filter by clinic ID
+      - description: Filter by clinic ID (UUID)
         in: query
         name: clinic_id
         type: string
-      - description: Filter by clinic name (partial match)
+      - description: Filter by form name (partial match)
         in: query
-        name: clinic_name
+        name: form_name
         type: string
       - description: Filter by method
         enum:
@@ -2312,6 +2531,10 @@ paths:
         - ARCHIVED
         in: query
         name: status
+        type: string
+      - description: General search keyword
+        in: query
+        name: search
         type: string
       - description: Field to sort by
         enum:
@@ -2329,6 +2552,14 @@ paths:
         in: query
         name: sort_order
         type: string
+      - description: Page size
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -2475,39 +2706,42 @@ paths:
       summary: Update form with fields
       tags:
       - form
-  /form/form/{id}:
-    get:
-      consumes:
-      - application/json
-      description: fetch form detail
-      parameters:
-      - description: Form ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/form.RsFormWithFields'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get form by ID (basic)
-      tags:
-      - form
   /practitioner:
     get:
+      description: Fetch a list of practitioners.
+      parameters:
+      - description: Filter by Practitioner UUID
+        in: query
+        name: id
+        type: string
+      - description: Filter by exact email
+        in: query
+        name: email
+        type: string
+      - description: Filter by exact first name
+        in: query
+        name: first_name
+        type: string
+      - description: Filter by exact last name
+        in: query
+        name: last_name
+        type: string
+      - description: Filter by exact phone number
+        in: query
+        name: phone
+        type: string
+      - description: Fuzzy search across name and email
+        in: query
+        name: search
+        type: string
+      - description: Limit for pagination (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -2515,6 +2749,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/util.RsList'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
       summary: List all practitioners
@@ -2545,6 +2783,27 @@ paths:
       consumes:
       - application/json
       description: list subscriptions by practitioner ID
+      parameters:
+      - description: Filter by Status (ACTIVE, CANCELLED, etc.)
+        in: query
+        name: status
+        type: string
+      - description: Filter by specific Subscription ID
+        in: query
+        name: subscription_id
+        type: integer
+      - description: Search within subscriptions
+        in: query
+        name: search
+        type: string
+      - description: Pagination limit
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination offset
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -2638,7 +2897,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/subscription.RsPractitionerSubscription'
         "400":
           description: Bad Request
           schema:
@@ -2674,9 +2933,13 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/subscription.RsPractitionerSubscription'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -2837,6 +3100,31 @@ paths:
       consumes:
       - application/json
       description: list practitioners
+      parameters:
+      - description: Filter by ABN
+        in: query
+        name: abn
+        type: string
+      - description: Filter by User ID
+        in: query
+        name: user_id
+        type: string
+      - description: Filter by verification status
+        in: query
+        name: verified
+        type: boolean
+      - description: Search ABN or UserID
+        in: query
+        name: search
+        type: string
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Offset
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
