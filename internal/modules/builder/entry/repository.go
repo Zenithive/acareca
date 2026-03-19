@@ -3,7 +3,6 @@ package entry
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -25,7 +24,7 @@ type IRepository interface {
 
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 
-	ListTransactions(ctx context.Context, f common.Filter) ([]*RsTransaction, error)
+	ListTransactions(ctx context.Context, f common.Filter) ([]*RsTransactionRow, error)
 	CountTransactions(ctx context.Context, f common.Filter) (int, error)
 
 	// Transaction-based variants
@@ -232,84 +231,88 @@ var allowedTransactionColumns = map[string]string{
 	"clinic_id":       "e.clinic_id",
 	"version_id":      "e.form_version_id",
 	"form_id":         "fm.id",
+	"coa_id":          "ff.coa_id",
+	"tax_type_id":     "at2.id",
 	"status":          "e.status",
-	"created_at":      "e.created_at",
+	"created_at":      "ev.created_at",
 	"practitioner_id": "c.practitioner_id",
+	"date_from":       "ev.created_at",
+	"date_to":         "ev.created_at",
 }
 
-func (r *Repository) ListTransactions(ctx context.Context, f common.Filter) ([]*RsTransaction, error) {
+func (r *Repository) ListTransactions(ctx context.Context, f common.Filter) ([]*RsTransactionRow, error) {
 	base := `
 		SELECT
-			e.id,
-			e.form_version_id,
+			ev.id,
+			e.id            AS entry_id,
+			ff.id           AS form_field_id,
+			ff.label        AS form_field_name,
+			coa.id          AS coa_id,
+			coa.name        AS coa_name,
+			at2.id          AS tax_type_id,
+			at2.name        AS tax_type_name,
+			fm.id           AS form_id,
+			fm.name         AS form_name,
 			e.clinic_id,
-			c.name  AS clinic_name,
-			fm.id   AS form_id,
-			fm.name AS form_name,
-			fm.method,
-			e.status AS form_status,
-			COALESCE((
-				SELECT json_agg(
-					json_build_object(
-						'field_name', ff.label,
-						'gst_type',   ff.tax_type,
-						'amount',     ev.gross_amount,
-						'gst_amount', ev.gst_amount,
-						'net_amount', ev.net_amount
-					) ORDER BY ff.sort_order
-				)
-				FROM tbl_form_entry_value ev
-				INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL
-				WHERE ev.entry_id = e.id
-			), '[]') AS entry_detail
-		FROM tbl_form_entry e
-		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                fm ON fm.id = fv.form_id        AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic               c ON  c.id = e.clinic_id       AND  c.deleted_at IS NULL
+			c.name          AS clinic_name,
+			ev.net_amount,
+			ev.gst_amount,
+			ev.gross_amount,
+			ev.created_at,
+			ev.updated_at
+		FROM tbl_form_entry_value ev
+		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
+		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL
+		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
+		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
+		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
 		WHERE e.deleted_at IS NULL`
 
 	q, args := common.BuildQuery(base, f, allowedTransactionColumns, nil, false)
 	q = sqlx.Rebind(sqlx.DOLLAR, q)
 
-	rows, err := r.db.QueryxContext(ctx, q, args...)
-	if err != nil {
+	var rows []*transactionFlatRow
+	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, fmt.Errorf("list transactions: %w", err)
 	}
-	defer rows.Close()
 
-	var result []*RsTransaction
-	for rows.Next() {
-		var row transactionRow
-		if err := rows.StructScan(&row); err != nil {
-			return nil, fmt.Errorf("scan transaction row: %w", err)
-		}
-		tx := &RsTransaction{
+	result := make([]*RsTransactionRow, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, &RsTransactionRow{
 			ID:            row.ID,
-			FormVersionID: row.FormVersionID,
-			ClinicID:      row.ClinicID,
-			ClinicName:    row.ClinicName,
+			EntryID:       row.EntryID,
+			FormFieldID:   row.FormFieldID,
+			FormFieldName: row.FormFieldName,
+			CoaID:         row.CoaID,
+			CoaName:       row.CoaName,
+			TaxTypeID:     row.TaxTypeID,
+			TaxTypeName:   row.TaxTypeName,
 			FormID:        row.FormID,
 			FormName:      row.FormName,
-			Method:        row.Method,
-			FormStatus:    row.FormStatus,
-			EntryDetail:   []RsTransactionDetail{},
-		}
-		if len(row.EntryDetailRaw) > 0 {
-			if err := json.Unmarshal(row.EntryDetailRaw, &tx.EntryDetail); err != nil {
-				return nil, fmt.Errorf("unmarshal entry_detail: %w", err)
-			}
-		}
-		result = append(result, tx)
+			ClinicID:      row.ClinicID,
+			ClinicName:    row.ClinicName,
+			NetAmount:     row.NetAmount,
+			GstAmount:     row.GstAmount,
+			GrossAmount:   row.GrossAmount,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
+		})
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (r *Repository) CountTransactions(ctx context.Context, f common.Filter) (int, error) {
 	base := `
-		FROM tbl_form_entry e
-		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                fm ON fm.id = fv.form_id        AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic               c ON  c.id = e.clinic_id       AND  c.deleted_at IS NULL
+		FROM tbl_form_entry_value ev
+		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
+		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL
+		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
+		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
+		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
 		WHERE e.deleted_at IS NULL`
 
 	q, args := common.BuildQuery(base, f, allowedTransactionColumns, nil, true)
