@@ -29,6 +29,7 @@ type Repository interface {
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
 	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error)
+	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 }
@@ -222,6 +223,29 @@ func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount
 		return nil, fmt.Errorf("create chart of account: %w", err)
 	}
 	return r.getChartByID(ctx, tx, id)
+}
+
+// BulkCreateChartOfAccounts inserts all rows in a single query — used during practitioner onboarding.
+func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system) VALUES `
+	args := make([]interface{}, 0, len(rows)*6)
+	for i, row := range rows {
+		if i > 0 {
+			query += ", "
+		}
+		base := i * 6
+		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6)
+		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.IsSystem)
+	}
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("bulk create chart of accounts: %w", err)
+	}
+	return nil
 }
 
 func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
