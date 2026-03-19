@@ -1,29 +1,16 @@
 basePath: /api/v1
 definitions:
-  audit.RsAuditLog:
+  auth.RqLogin:
     properties:
-      action:
+      email:
         type: string
-      after_state: {}
-      before_state: {}
-      created_at:
+      is_superadmin:
+        type: boolean
+      password:
         type: string
-      entity_id:
-        type: string
-      entity_type:
-        type: string
-      id:
-        type: string
-      ip_address:
-        type: string
-      module:
-        type: string
-      practice_id:
-        type: string
-      user_agent:
-        type: string
-      user_id:
-        type: string
+    required:
+    - email
+    - password
     type: object
   auth.RqUser:
     properties:
@@ -51,43 +38,99 @@ definitions:
       url:
         type: string
     type: object
-  auth.RsToken:
+  bas.RsBASByAccount:
     properties:
-      access_token:
+      account_code:
+        type: integer
+      account_name:
         type: string
-      is_superadmin:
-        type: boolean
-      refresh_token:
+      bas_category:
         type: string
+      entry_count:
+        type: integer
+      period_quarter:
+        type: string
+      period_year:
+        type: string
+      section_type:
+        type: string
+      tax_name:
+        type: string
+      tax_rate:
+        type: number
+      total_gross:
+        type: number
+      total_gst:
+        type: number
+      total_net:
+        type: number
     type: object
-  calculation.GrossResult:
+  bas.RsBASMonthly:
     properties:
-      gst_service_fee:
+      g1_total_sales_gross:
         type: number
-      net_amount:
+      g3_gst_free_sales:
         type: number
-      remitted_amount:
+      g11_total_purchases_gross:
         type: number
-      service_fee:
+      g14_gst_free_purchases:
         type: number
-      total_service_fee:
+      label_1a_gst_on_sales:
+        type: number
+      label_1b_gst_on_purchases:
+        type: number
+      net_gst_payable:
+        type: number
+      period_month:
+        type: string
+      total_purchases_net:
+        type: number
+      total_sales_net:
         type: number
     type: object
-  calculation.NetResult:
+  bas.RsBASReport:
     properties:
-      commission:
+      1A:
         type: number
-      gst_commission:
+      1B:
         type: number
-      net_amount:
+      G1:
         type: number
-      super_component:
+      G11:
         type: number
-      super_component_commission:
+    type: object
+  bas.RsBASSummary:
+    properties:
+      g1_total_sales_gross:
+        description: Sales (ATO labels)
         type: number
-      total_commission:
+      g3_gst_free_sales:
         type: number
-      total_remuneration:
+      g8_taxable_sales:
+        type: number
+      g11_total_purchases_gross:
+        description: Purchases (ATO labels)
+        type: number
+      g14_gst_free_purchases:
+        type: number
+      g15_taxable_purchases:
+        type: number
+      label_1a_gst_on_sales:
+        type: number
+      label_1b_gst_on_purchases:
+        type: number
+      net_gst_payable:
+        description: Net GST
+        type: number
+      period_quarter:
+        description: Period
+        type: string
+      period_year:
+        description: e.g. "2026-01-01"
+        type: string
+      total_purchases_net:
+        type: number
+      total_sales_net:
         type: number
     type: object
   calculation.RqCalculateFromEntries:
@@ -240,100 +283,6 @@ definitions:
       value:
         type: string
     type: object
-  clinic.RsClinic:
-    properties:
-      abn:
-        type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RsClinicAddress'
-        type: array
-      contacts:
-        items:
-          $ref: '#/definitions/clinic.RsClinicContact'
-        type: array
-      created_at:
-        type: string
-      description:
-        type: string
-      financial_settings:
-        $ref: '#/definitions/clinic.RsFinancialSettings'
-      id:
-        type: string
-      is_active:
-        type: boolean
-      name:
-        type: string
-      practitioner_id:
-        type: string
-      profile_picture:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  clinic.RsClinicAddress:
-    properties:
-      address:
-        type: string
-      city:
-        type: string
-      id:
-        type: string
-      is_primary:
-        type: boolean
-      postcode:
-        type: string
-      state:
-        type: string
-    type: object
-  clinic.RsClinicContact:
-    properties:
-      contact_type:
-        type: string
-      id:
-        type: string
-      is_primary:
-        type: boolean
-      label:
-        type: string
-      value:
-        type: string
-    type: object
-  clinic.RsFinancialSettings:
-    properties:
-      financial_year_id:
-        type: string
-      id:
-        type: string
-      lock_date:
-        type: string
-    type: object
-  coa.AccountTax:
-    properties:
-      createdAt:
-        type: string
-      id:
-        type: integer
-      isTaxable:
-        type: boolean
-      name:
-        type: string
-      rate:
-        type: number
-      updatedAt:
-        type: string
-    type: object
-  coa.AccountType:
-    properties:
-      createdAt:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      updatedAt:
-        type: string
-    type: object
   coa.RqCreateChartOfAccountOfAccount:
     properties:
       account_tax_id:
@@ -371,54 +320,6 @@ definitions:
         type: integer
       name:
         maxLength: 255
-        type: string
-    type: object
-  coa.RsChartOfAccount:
-    properties:
-      account_tax_id:
-        type: integer
-      account_type_id:
-        type: integer
-      code:
-        type: integer
-      created_at:
-        type: string
-      id:
-        type: string
-      is_system:
-        type: boolean
-      is_taxable:
-        type: boolean
-      name:
-        type: string
-      practitioner_id:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  detail.RsFormDetail:
-    properties:
-      active_version_id:
-        type: string
-      clinic_id:
-        type: string
-      clinic_share:
-        type: integer
-      created_at:
-        type: string
-      description:
-        type: string
-      id:
-        type: string
-      method:
-        type: string
-      name:
-        type: string
-      owner_share:
-        type: integer
-      status:
-        type: string
-      updated_at:
         type: string
     type: object
   entry.RqEntryValue:
@@ -472,29 +373,6 @@ definitions:
         type: number
       net_amount:
         type: number
-    type: object
-  entry.RsFormEntry:
-    properties:
-      clinic_id:
-        type: string
-      created_at:
-        type: string
-      form_version_id:
-        type: string
-      id:
-        type: string
-      status:
-        type: string
-      submitted_at:
-        type: string
-      submitted_by:
-        type: string
-      updated_at:
-        type: string
-      values:
-        items:
-          $ref: '#/definitions/entry.RsEntryValue'
-        type: array
     type: object
   field.RqFormField:
     properties:
@@ -553,42 +431,6 @@ definitions:
         type: string
     required:
     - id
-    type: object
-  field.RsCoaDetail:
-    properties:
-      account_tax_id:
-        type: integer
-      account_type_id:
-        type: integer
-      code:
-        type: integer
-      id:
-        type: string
-      name:
-        type: string
-    type: object
-  field.RsFormField:
-    properties:
-      coa:
-        $ref: '#/definitions/field.RsCoaDetail'
-      coa_id:
-        type: string
-      created_at:
-        type: string
-      form_version_id:
-        type: string
-      id:
-        type: string
-      label:
-        type: string
-      payment_responsibility:
-        type: string
-      section_type:
-        type: string
-      tax_type:
-        type: string
-      updated_at:
-        type: string
     type: object
   form.RqCreateFormWithFields:
     properties:
@@ -672,17 +514,6 @@ definitions:
     required:
     - clinic_id
     type: object
-  form.RsFormWithFields:
-    properties:
-      active_version_id:
-        type: string
-      fields:
-        items:
-          $ref: '#/definitions/field.RsFormField'
-        type: array
-      form:
-        $ref: '#/definitions/detail.RsFormDetail'
-    type: object
   fy.RqCreateFY:
     properties:
       fy_year:
@@ -702,39 +533,118 @@ definitions:
       label:
         type: string
     type: object
-  fy.RsFinancialYear:
+  pl.RsPLAccount:
     properties:
-      end_date:
+      account_code:
+        type: integer
+      account_name:
         type: string
-      id:
+      account_type:
         type: string
-      label:
+      entry_count:
+        type: integer
+      period_month:
         type: string
-      start_date:
+      pl_section:
+        type: string
+      section_type:
+        type: string
+      signed_gross:
+        type: number
+      signed_net:
+        type: number
+      tax_name:
+        type: string
+      tax_rate:
+        type: number
+      total_gross:
+        type: number
+      total_gst:
+        type: number
+      total_net:
+        type: number
+    type: object
+  pl.RsPLFYSummary:
+    properties:
+      cogs_gross:
+        type: number
+      cogs_gst:
+        type: number
+      cogs_net:
+        type: number
+      financial_quarter_id:
+        type: string
+      financial_year:
+        type: string
+      financial_year_id:
+        type: string
+      gross_profit_net:
+        type: number
+      income_gross:
+        type: number
+      income_gst:
+        type: number
+      income_net:
+        type: number
+      net_profit_gross:
+        type: number
+      net_profit_net:
+        type: number
+      other_expenses_net:
+        type: number
+      quarter:
         type: string
     type: object
-  practitioner.RsPractitioner:
+  pl.RsPLResponsibility:
     properties:
-      abn:
+      account_code:
+        type: integer
+      account_name:
         type: string
-      id:
+      entry_count:
+        type: integer
+      payment_responsibility:
         type: string
-      user:
-        $ref: '#/definitions/practitioner.RsUserInfo'
-      verified:
-        type: boolean
+      period_month:
+        type: string
+      pl_section:
+        type: string
+      section_type:
+        type: string
+      total_gross:
+        type: number
+      total_gst:
+        type: number
+      total_net:
+        type: number
     type: object
-  practitioner.RsUserInfo:
+  pl.RsPLSummary:
     properties:
-      email:
-        type: string
-      first_name:
-        type: string
-      id:
-        type: string
-      last_name:
-        type: string
-      phone:
+      cogs_gross:
+        type: number
+      cogs_gst:
+        type: number
+      cogs_net:
+        type: number
+      gross_profit_net:
+        type: number
+      income_gross:
+        type: number
+      income_gst:
+        type: number
+      income_net:
+        type: number
+      net_profit_gross:
+        type: number
+      net_profit_net:
+        type: number
+      other_expenses_gross:
+        type: number
+      other_expenses_gst:
+        type: number
+      other_expenses_net:
+        type: number
+      period_month:
         type: string
     type: object
   response.RsBase:
@@ -785,38 +695,6 @@ definitions:
         type: string
       timezone:
         maxLength: 255
-        type: string
-    type: object
-  setting.RsPractitioner:
-    properties:
-      abn:
-        type: string
-      created_at:
-        type: string
-      id:
-        type: string
-      updated_at:
-        type: string
-      user_id:
-        type: string
-      verified:
-        type: boolean
-    type: object
-  setting.RsPractitionerSetting:
-    properties:
-      color:
-        type: string
-      created_at:
-        type: string
-      id:
-        type: integer
-      logo:
-        type: string
-      practitioner_id:
-        type: string
-      timezone:
-        type: string
-      updated_at:
         type: string
     type: object
   subscription.RqCreateSubscription:
@@ -873,44 +751,6 @@ definitions:
       price:
         minimum: 0
         type: number
-    type: object
-  subscription.RsPractitionerSubscription:
-    properties:
-      created_at:
-        type: string
-      end_date:
-        type: string
-      id:
-        type: integer
-      practitioner_id:
-        type: string
-      start_date:
-        type: string
-      status:
-        $ref: '#/definitions/subscription.Status'
-      subscription_id:
-        type: integer
-      updated_at:
-        type: string
-    type: object
-  subscription.RsSubscription:
-    properties:
-      created_at:
-        type: string
-      description:
-        type: string
-      duration_days:
-        type: integer
-      id:
-        type: integer
-      is_active:
-        type: boolean
-      name:
-        type: string
-      price:
-        type: number
-      updated_at:
-        type: string
     type: object
   subscription.RsSubscriptionPermission:
     properties:
@@ -1049,7 +889,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/audit.RsAuditLog'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1080,7 +920,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/fy.RsFinancialYear'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1211,7 +1051,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1274,7 +1114,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1314,7 +1154,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscription'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1388,7 +1228,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsSubscriptionPermission'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1428,7 +1268,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/fy.RsFinancialYear'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1482,7 +1322,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.RsToken'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1499,13 +1339,20 @@ paths:
       consumes:
       - application/json
       description: login a user
+      parameters:
+      - description: Login Credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqLogin'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.RsToken'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1532,9 +1379,7 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1580,6 +1425,175 @@ paths:
       summary: Register a new user
       tags:
       - auth
+  /bas/clinic/{clinic_id}/by-account:
+    get:
+      description: Returns quarterly GST totals broken down per Chart of Accounts
+        entry and BAS category (TAXABLE / GST_FREE). Useful for reconciliation and
+        identifying which accounts drive your 1A / 1B figures.
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: clinic_id
+        required: true
+        type: string
+      - description: Start date filter (YYYY-MM-DD)
+        in: query
+        name: from_date
+        type: string
+      - description: End date filter (YYYY-MM-DD)
+        in: query
+        name: to_date
+        type: string
+      - description: Restrict to a financial year by UUID
+        in: query
+        name: financial_year_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/bas.RsBASByAccount'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: BAS breakdown by COA account
+      tags:
+      - engine/bas
+  /bas/clinic/{clinic_id}/monthly:
+    get:
+      description: Returns BAS figures grouped by calendar month. Useful for dashboards
+        and tracking GST accrual within a quarter. Does not include G8 / G15 subtotals
+        (use the quarterly summary for those).
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: clinic_id
+        required: true
+        type: string
+      - description: Start date filter (YYYY-MM-DD)
+        in: query
+        name: from_date
+        type: string
+      - description: End date filter (YYYY-MM-DD)
+        in: query
+        name: to_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/bas.RsBASMonthly'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Monthly BAS data
+      tags:
+      - engine/bas
+  /bas/clinic/{clinic_id}/summary:
+    get:
+      description: Returns G1, G3, G8, 1A, G11, G14, G15, 1B and Net GST Payable per
+        quarter for a clinic. Mirrors the Australian ATO BAS form labels. Only SUBMITTED
+        entries are included. BAS Excluded accounts are omitted.
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: clinic_id
+        required: true
+        type: string
+      - description: Start date filter (YYYY-MM-DD) — rounded to quarter start
+        in: query
+        name: from_date
+        type: string
+      - description: End date filter (YYYY-MM-DD) — rounded to quarter end
+        in: query
+        name: to_date
+        type: string
+      - description: Restrict to a financial year by UUID
+        in: query
+        name: financial_year_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/bas.RsBASSummary'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Quarterly BAS summary (ATO labels)
+      tags:
+      - engine/bas
+  /bas/report:
+    get:
+      description: Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id
+        or month name.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        required: true
+        type: string
+      - description: Financial quarter UUID
+        in: query
+        name: quarter_id
+        type: string
+      - description: Month name e.g. January
+        in: query
+        name: month
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bas.RsBASReport'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: BAS totals report
+      tags:
+      - engine/bas
   /calculate:
     post:
       consumes:
@@ -1599,9 +1613,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Independent Contractor method response
+          description: OK
           schema:
-            $ref: '#/definitions/calculation.NetResult'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1636,9 +1650,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Independent Contractor method response
+          description: OK
           schema:
-            $ref: '#/definitions/calculation.NetResult'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1727,7 +1741,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/clinic.RsClinic'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1788,7 +1802,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/clinic.RsClinic'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1827,7 +1841,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/clinic.RsClinic'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1899,7 +1913,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/util.RsList'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -1966,7 +1980,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/coa.AccountTax'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2029,7 +2043,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/coa.AccountType'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2118,7 +2132,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/coa.RsChartOfAccount'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2187,7 +2201,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/coa.RsChartOfAccount'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2226,7 +2240,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/coa.RsChartOfAccount'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2297,7 +2311,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/entry.RsFormEntry'
+            $ref: '#/definitions/response.RsBase'
         "404":
           description: Not Found
           schema:
@@ -2333,7 +2347,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/entry.RsFormEntry'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2489,7 +2503,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/entry.RsFormEntry'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2597,7 +2611,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/form.RsFormWithFields'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2656,7 +2670,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/form.RsFormWithFields'
+            $ref: '#/definitions/response.RsBase'
         "404":
           description: Not Found
           schema:
@@ -2692,7 +2706,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/form.RsFormWithFields'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2706,6 +2720,210 @@ paths:
       summary: Update form with fields
       tags:
       - form
+  /pl/by-account:
+    get:
+      description: Returns monthly totals broken down per Chart of Accounts entry,
+        filtered by clinic_id.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        required: true
+        type: string
+      - description: Start date filter (YYYY-MM-DD)
+        in: query
+        name: from_date
+        type: string
+      - description: End date filter (YYYY-MM-DD)
+        in: query
+        name: to_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pl.RsPLAccount'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: P&L by COA account
+      tags:
+      - engine/pl
+  /pl/by-responsibility:
+    get:
+      description: Returns monthly totals split by OWNER vs CLINIC, filtered by clinic_id.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        required: true
+        type: string
+      - description: Start date filter (YYYY-MM-DD)
+        in: query
+        name: from_date
+        type: string
+      - description: End date filter (YYYY-MM-DD)
+        in: query
+        name: to_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pl.RsPLResponsibility'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: P&L split by payment responsibility
+      tags:
+      - engine/pl
+  /pl/fy-summary:
+    get:
+      description: Returns P&L summarised by financial year and quarter (Q1–Q4), filtered
+        by clinic_id.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        required: true
+        type: string
+      - description: Filter to a single financial year (UUID)
+        in: query
+        name: financial_year_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pl.RsPLFYSummary'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Quarterly P&L by financial year
+      tags:
+      - engine/pl
+  /pl/report:
+    get:
+      description: Returns a nested P&L report grouped by clinic → form → section
+        → field, filtered by date range, COA, tax type, and form.
+      parameters:
+      - description: Clinic UUID (omit for all clinics)
+        in: query
+        name: clinic_id
+        type: string
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: date_until
+        type: string
+      - description: Filter by COA UUID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by tax type name (e.g. GST on Income)
+        in: query
+        name: tax_type_id
+        type: string
+      - description: Filter by form UUID
+        in: query
+        name: form_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Structured P&L report
+      tags:
+      - engine/pl
+  /pl/summary:
+    get:
+      description: Returns Income, COGS, Gross Profit, Other Expenses and Net Profit
+        grouped by calendar month, filtered by clinic_id.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        required: true
+        type: string
+      - description: Start date filter (YYYY-MM-DD)
+        in: query
+        name: from_date
+        type: string
+      - description: End date filter (YYYY-MM-DD)
+        in: query
+        name: to_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/pl.RsPLSummary'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Monthly P&L summary
+      tags:
+      - engine/pl
   /practitioner:
     get:
       description: Fetch a list of practitioners.
@@ -2772,7 +2990,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/practitioner.RsPractitioner'
+            $ref: '#/definitions/response.RsBase'
       security:
       - BearerToken: []
       summary: Get practitioner by ID
@@ -2834,7 +3052,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/subscription.RsPractitionerSubscription'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2897,7 +3115,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsPractitionerSubscription'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2933,7 +3151,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/subscription.RsPractitionerSubscription'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -2988,7 +3206,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitioner'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3019,7 +3237,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitioner'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3050,7 +3268,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/setting.RsPractitioner'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3081,7 +3299,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitioner'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3152,7 +3370,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitionerSetting'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3183,7 +3401,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/setting.RsPractitionerSetting'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:

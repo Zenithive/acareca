@@ -33,7 +33,7 @@ func NewHandler(svc Service, db *sqlx.DB) IHandler {
 // @Tags subscription
 // @Accept json
 // @Produce json
-// @Success 201 {object} RsPractitionerSubscription
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -71,7 +71,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param sub_id path int true "Subscription ID"
-// @Success 200 {object} RsPractitionerSubscription
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -133,7 +133,7 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 // @Produce json
 // @Param sub_id path int true "Subscription ID"
 // @Param request body RqUpdatePractitionerSubscription true "Updated Subscription Data"
-// @Success 200 {object} RsPractitionerSubscription
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError

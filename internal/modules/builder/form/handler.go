@@ -63,7 +63,7 @@ func NewHandler(svc IService) IHandler {
 // @Accept json
 // @Produce json
 // @Param id path string true "Form ID"
-// @Success 200 {object} RsFormWithFields
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -90,7 +90,7 @@ func (h *handler) GetById(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateFormWithFields true "Form creation request"
-// @Success 201 {object} RsFormWithFields
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -132,7 +132,7 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Form ID"
 // @Param request body RqUpdateFormWithFields true "Form update request"
-// @Success 200 {object} RsFormWithFields
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -172,7 +172,7 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Form ID"
-// @Success 200 {object} RsFormWithFields
+// @Success 200 {object} response.RsBase
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken

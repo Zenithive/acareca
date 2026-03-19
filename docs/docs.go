@@ -170,7 +170,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/audit.RsAuditLog"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -220,7 +220,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/fy.RsFinancialYear"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -428,7 +428,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsSubscription"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -477,7 +477,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsSubscription"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -589,7 +589,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsSubscription"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -703,7 +703,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsSubscriptionPermission"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -766,7 +766,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/fy.RsFinancialYear"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -845,7 +845,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.RsToken"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -876,11 +876,22 @@ const docTemplate = `{
                     "auth"
                 ],
                 "summary": "Login a user",
+                "parameters": [
+                    {
+                        "description": "Login Credentials",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqLogin"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.RsToken"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -921,10 +932,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -994,6 +1002,259 @@ const docTemplate = `{
                 }
             }
         },
+        "/bas/clinic/{clinic_id}/by-account": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns quarterly GST totals broken down per Chart of Accounts entry and BAS category (TAXABLE / GST_FREE). Useful for reconciliation and identifying which accounts drive your 1A / 1B figures.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "BAS breakdown by COA account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to a financial year by UUID",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bas.RsBASByAccount"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/clinic/{clinic_id}/monthly": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns BAS figures grouped by calendar month. Useful for dashboards and tracking GST accrual within a quarter. Does not include G8 / G15 subtotals (use the quarterly summary for those).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Monthly BAS data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bas.RsBASMonthly"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/clinic/{clinic_id}/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns G1, G3, G8, 1A, G11, G14, G15, 1B and Net GST Payable per quarter for a clinic. Mirrors the Australian ATO BAS form labels. Only SUBMITTED entries are included. BAS Excluded accounts are omitted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Quarterly BAS summary (ATO labels)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD) — rounded to quarter start",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD) — rounded to quarter end",
+                        "name": "to_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to a financial year by UUID",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bas.RsBASSummary"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/report": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id or month name.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "BAS totals report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Financial quarter UUID",
+                        "name": "quarter_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Month name e.g. January",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bas.RsBASReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/calculate": {
             "post": {
                 "security": [
@@ -1025,9 +1286,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Independent Contractor method response",
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/calculation.NetResult"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1083,9 +1344,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Independent Contractor method response",
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/calculation.NetResult"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1225,7 +1486,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/clinic.RsClinic"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1334,7 +1595,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/util.RsList"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1385,7 +1646,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/clinic.RsClinic"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1446,7 +1707,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/clinic.RsClinic"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1605,7 +1866,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/coa.AccountTax"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1706,7 +1967,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/coa.AccountType"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1846,7 +2107,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/coa.RsChartOfAccount"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1897,7 +2158,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/coa.RsChartOfAccount"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1958,7 +2219,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/coa.RsChartOfAccount"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -2268,7 +2529,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/entry.RsFormEntry"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -2317,7 +2578,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/entry.RsFormEntry"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "404": {
@@ -2417,7 +2678,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/entry.RsFormEntry"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -2584,7 +2845,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/form.RsFormWithFields"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -2633,7 +2894,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/form.RsFormWithFields"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "404": {
@@ -2733,7 +2994,320 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/form.RsFormWithFields"
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/by-account": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns monthly totals broken down per Chart of Accounts entry, filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "P\u0026L by COA account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLAccount"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/by-responsibility": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns monthly totals split by OWNER vs CLINIC, filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "P\u0026L split by payment responsibility",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLResponsibility"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/fy-summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns P\u0026L summarised by financial year and quarter (Q1–Q4), filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Quarterly P\u0026L by financial year",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter to a single financial year (UUID)",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLFYSummary"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/report": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a nested P\u0026L report grouped by clinic → form → section → field, filtered by date range, COA, tax type, and form.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Structured P\u0026L report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID (omit for all clinics)",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "date_until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by COA UUID",
+                        "name": "coa_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tax type name (e.g. GST on Income)",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form UUID",
+                        "name": "form_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns Income, COGS, Gross Profit, Other Expenses and Net Profit grouped by calendar month, filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Monthly P\u0026L summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLSummary"
+                            }
                         }
                     },
                     "400": {
@@ -2924,7 +3498,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsPractitionerSubscription"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -2973,7 +3547,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsPractitionerSubscription"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3079,7 +3653,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/subscription.RsPractitionerSubscription"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3130,7 +3704,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/practitioner.RsPractitioner"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     }
                 }
@@ -3158,7 +3732,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/setting.RsPractitioner"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3207,7 +3781,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/setting.RsPractitioner"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3297,7 +3871,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/setting.RsPractitioner"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3346,7 +3920,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/setting.RsPractitioner"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3458,7 +4032,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/setting.RsPractitionerSetting"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3507,7 +4081,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/setting.RsPractitionerSetting"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3527,39 +4101,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "audit.RsAuditLog": {
+        "auth.RqLogin": {
             "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
             "properties": {
-                "action": {
+                "email": {
                     "type": "string"
                 },
-                "after_state": {},
-                "before_state": {},
-                "created_at": {
-                    "type": "string"
+                "is_superadmin": {
+                    "type": "boolean"
                 },
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "ip_address": {
-                    "type": "string"
-                },
-                "module": {
-                    "type": "string"
-                },
-                "practice_id": {
-                    "type": "string"
-                },
-                "user_agent": {
-                    "type": "string"
-                },
-                "user_id": {
+                "password": {
                     "type": "string"
                 }
             }
@@ -3602,62 +4157,144 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RsToken": {
+        "bas.RsBASByAccount": {
             "type": "object",
             "properties": {
-                "access_token": {
+                "account_code": {
+                    "type": "integer"
+                },
+                "account_name": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
-                },
-                "refresh_token": {
+                "bas_category": {
                     "type": "string"
+                },
+                "entry_count": {
+                    "type": "integer"
+                },
+                "period_quarter": {
+                    "type": "string"
+                },
+                "period_year": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "tax_name": {
+                    "type": "string"
+                },
+                "tax_rate": {
+                    "type": "number"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
+                    "type": "number"
                 }
             }
         },
-        "calculation.GrossResult": {
+        "bas.RsBASMonthly": {
             "type": "object",
             "properties": {
-                "gst_service_fee": {
+                "g11_total_purchases_gross": {
                     "type": "number"
                 },
-                "net_amount": {
+                "g14_gst_free_purchases": {
                     "type": "number"
                 },
-                "remitted_amount": {
+                "g1_total_sales_gross": {
                     "type": "number"
                 },
-                "service_fee": {
+                "g3_gst_free_sales": {
                     "type": "number"
                 },
-                "total_service_fee": {
+                "label_1a_gst_on_sales": {
+                    "type": "number"
+                },
+                "label_1b_gst_on_purchases": {
+                    "type": "number"
+                },
+                "net_gst_payable": {
+                    "type": "number"
+                },
+                "period_month": {
+                    "type": "string"
+                },
+                "total_purchases_net": {
+                    "type": "number"
+                },
+                "total_sales_net": {
                     "type": "number"
                 }
             }
         },
-        "calculation.NetResult": {
+        "bas.RsBASReport": {
             "type": "object",
             "properties": {
-                "commission": {
+                "1A": {
                     "type": "number"
                 },
-                "gst_commission": {
+                "1B": {
                     "type": "number"
                 },
-                "net_amount": {
+                "G1": {
                     "type": "number"
                 },
-                "super_component": {
+                "G11": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.RsBASSummary": {
+            "type": "object",
+            "properties": {
+                "g11_total_purchases_gross": {
+                    "description": "Purchases (ATO labels)",
                     "type": "number"
                 },
-                "super_component_commission": {
+                "g14_gst_free_purchases": {
                     "type": "number"
                 },
-                "total_commission": {
+                "g15_taxable_purchases": {
                     "type": "number"
                 },
-                "total_remuneration": {
+                "g1_total_sales_gross": {
+                    "description": "Sales (ATO labels)",
+                    "type": "number"
+                },
+                "g3_gst_free_sales": {
+                    "type": "number"
+                },
+                "g8_taxable_sales": {
+                    "type": "number"
+                },
+                "label_1a_gst_on_sales": {
+                    "type": "number"
+                },
+                "label_1b_gst_on_purchases": {
+                    "type": "number"
+                },
+                "net_gst_payable": {
+                    "description": "Net GST",
+                    "type": "number"
+                },
+                "period_quarter": {
+                    "description": "Period",
+                    "type": "string"
+                },
+                "period_year": {
+                    "description": "e.g. \"2026-01-01\"",
+                    "type": "string"
+                },
+                "total_purchases_net": {
+                    "type": "number"
+                },
+                "total_sales_net": {
                     "type": "number"
                 }
             }
@@ -3886,150 +4523,6 @@ const docTemplate = `{
                 }
             }
         },
-        "clinic.RsClinic": {
-            "type": "object",
-            "properties": {
-                "abn": {
-                    "type": "string"
-                },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RsClinicAddress"
-                    }
-                },
-                "contacts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RsClinicContact"
-                    }
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "financial_settings": {
-                    "$ref": "#/definitions/clinic.RsFinancialSettings"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_active": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "practitioner_id": {
-                    "type": "string"
-                },
-                "profile_picture": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "clinic.RsClinicAddress": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "city": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_primary": {
-                    "type": "boolean"
-                },
-                "postcode": {
-                    "type": "string"
-                },
-                "state": {
-                    "type": "string"
-                }
-            }
-        },
-        "clinic.RsClinicContact": {
-            "type": "object",
-            "properties": {
-                "contact_type": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_primary": {
-                    "type": "boolean"
-                },
-                "label": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "clinic.RsFinancialSettings": {
-            "type": "object",
-            "properties": {
-                "financial_year_id": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "lock_date": {
-                    "type": "string"
-                }
-            }
-        },
-        "coa.AccountTax": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "isTaxable": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "rate": {
-                    "type": "number"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "coa.AccountType": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
         "coa.RqCreateChartOfAccountOfAccount": {
             "type": "object",
             "required": [
@@ -4080,79 +4573,6 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
-                }
-            }
-        },
-        "coa.RsChartOfAccount": {
-            "type": "object",
-            "properties": {
-                "account_tax_id": {
-                    "type": "integer"
-                },
-                "account_type_id": {
-                    "type": "integer"
-                },
-                "code": {
-                    "type": "integer"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_system": {
-                    "type": "boolean"
-                },
-                "is_taxable": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "practitioner_id": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "detail.RsFormDetail": {
-            "type": "object",
-            "properties": {
-                "active_version_id": {
-                    "type": "string"
-                },
-                "clinic_id": {
-                    "type": "string"
-                },
-                "clinic_share": {
-                    "type": "integer"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "method": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "owner_share": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         },
@@ -4234,41 +4654,6 @@ const docTemplate = `{
                 }
             }
         },
-        "entry.RsFormEntry": {
-            "type": "object",
-            "properties": {
-                "clinic_id": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "form_version_id": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "submitted_at": {
-                    "type": "string"
-                },
-                "submitted_by": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "values": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/entry.RsEntryValue"
-                    }
-                }
-            }
-        },
         "field.RqFormField": {
             "type": "object",
             "required": [
@@ -4347,61 +4732,6 @@ const docTemplate = `{
                         "EXCLUSIVE",
                         "MANUAL"
                     ]
-                }
-            }
-        },
-        "field.RsCoaDetail": {
-            "type": "object",
-            "properties": {
-                "account_tax_id": {
-                    "type": "integer"
-                },
-                "account_type_id": {
-                    "type": "integer"
-                },
-                "code": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "field.RsFormField": {
-            "type": "object",
-            "properties": {
-                "coa": {
-                    "$ref": "#/definitions/field.RsCoaDetail"
-                },
-                "coa_id": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "form_version_id": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "label": {
-                    "type": "string"
-                },
-                "payment_responsibility": {
-                    "type": "string"
-                },
-                "section_type": {
-                    "type": "string"
-                },
-                "tax_type": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         },
@@ -4520,23 +4850,6 @@ const docTemplate = `{
                 }
             }
         },
-        "form.RsFormWithFields": {
-            "type": "object",
-            "properties": {
-                "active_version_id": {
-                    "type": "string"
-                },
-                "fields": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RsFormField"
-                    }
-                },
-                "form": {
-                    "$ref": "#/definitions/detail.RsFormDetail"
-                }
-            }
-        },
         "fy.RqCreateFY": {
             "type": "object",
             "required": [
@@ -4566,56 +4879,175 @@ const docTemplate = `{
                 }
             }
         },
-        "fy.RsFinancialYear": {
+        "pl.RsPLAccount": {
             "type": "object",
             "properties": {
-                "end_date": {
+                "account_code": {
+                    "type": "integer"
+                },
+                "account_name": {
                     "type": "string"
                 },
-                "id": {
+                "account_type": {
                     "type": "string"
                 },
-                "label": {
+                "entry_count": {
+                    "type": "integer"
+                },
+                "period_month": {
                     "type": "string"
                 },
-                "start_date": {
+                "pl_section": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "signed_gross": {
+                    "type": "number"
+                },
+                "signed_net": {
+                    "type": "number"
+                },
+                "tax_name": {
+                    "type": "string"
+                },
+                "tax_rate": {
+                    "type": "number"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
+                    "type": "number"
+                }
+            }
+        },
+        "pl.RsPLFYSummary": {
+            "type": "object",
+            "properties": {
+                "cogs_gross": {
+                    "type": "number"
+                },
+                "cogs_gst": {
+                    "type": "number"
+                },
+                "cogs_net": {
+                    "type": "number"
+                },
+                "financial_quarter_id": {
+                    "type": "string"
+                },
+                "financial_year": {
+                    "type": "string"
+                },
+                "financial_year_id": {
+                    "type": "string"
+                },
+                "gross_profit_net": {
+                    "type": "number"
+                },
+                "income_gross": {
+                    "type": "number"
+                },
+                "income_gst": {
+                    "type": "number"
+                },
+                "income_net": {
+                    "type": "number"
+                },
+                "net_profit_gross": {
+                    "type": "number"
+                },
+                "net_profit_net": {
+                    "type": "number"
+                },
+                "other_expenses_net": {
+                    "type": "number"
+                },
+                "quarter": {
                     "type": "string"
                 }
             }
         },
-        "practitioner.RsPractitioner": {
+        "pl.RsPLResponsibility": {
             "type": "object",
             "properties": {
-                "abn": {
+                "account_code": {
+                    "type": "integer"
+                },
+                "account_name": {
                     "type": "string"
                 },
-                "id": {
+                "entry_count": {
+                    "type": "integer"
+                },
+                "payment_responsibility": {
                     "type": "string"
                 },
-                "user": {
-                    "$ref": "#/definitions/practitioner.RsUserInfo"
+                "period_month": {
+                    "type": "string"
                 },
-                "verified": {
-                    "type": "boolean"
+                "pl_section": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
+                    "type": "number"
                 }
             }
         },
-        "practitioner.RsUserInfo": {
+        "pl.RsPLSummary": {
             "type": "object",
             "properties": {
-                "email": {
-                    "type": "string"
+                "cogs_gross": {
+                    "type": "number"
                 },
-                "first_name": {
-                    "type": "string"
+                "cogs_gst": {
+                    "type": "number"
                 },
-                "id": {
-                    "type": "string"
+                "cogs_net": {
+                    "type": "number"
                 },
-                "last_name": {
-                    "type": "string"
+                "gross_profit_net": {
+                    "type": "number"
                 },
-                "phone": {
+                "income_gross": {
+                    "type": "number"
+                },
+                "income_gst": {
+                    "type": "number"
+                },
+                "income_net": {
+                    "type": "number"
+                },
+                "net_profit_gross": {
+                    "type": "number"
+                },
+                "net_profit_net": {
+                    "type": "number"
+                },
+                "other_expenses_gross": {
+                    "type": "number"
+                },
+                "other_expenses_gst": {
+                    "type": "number"
+                },
+                "other_expenses_net": {
+                    "type": "number"
+                },
+                "period_month": {
                     "type": "string"
                 }
             }
@@ -4692,55 +5124,6 @@ const docTemplate = `{
                 "timezone": {
                     "type": "string",
                     "maxLength": 255
-                }
-            }
-        },
-        "setting.RsPractitioner": {
-            "type": "object",
-            "properties": {
-                "abn": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "user_id": {
-                    "type": "string"
-                },
-                "verified": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "setting.RsPractitionerSetting": {
-            "type": "object",
-            "properties": {
-                "color": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "logo": {
-                    "type": "string"
-                },
-                "practitioner_id": {
-                    "type": "string"
-                },
-                "timezone": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         },
@@ -4822,64 +5205,6 @@ const docTemplate = `{
                 "price": {
                     "type": "number",
                     "minimum": 0
-                }
-            }
-        },
-        "subscription.RsPractitionerSubscription": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "end_date": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "practitioner_id": {
-                    "type": "string"
-                },
-                "start_date": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/subscription.Status"
-                },
-                "subscription_id": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "subscription.RsSubscription": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "duration_days": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "is_active": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "price": {
-                    "type": "number"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         },

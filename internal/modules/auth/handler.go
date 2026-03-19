@@ -63,7 +63,8 @@ func (h *handler) Register(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsToken
+// @Param        request  body      RqLogin  true  "Login Credentials"
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -93,7 +94,7 @@ func (h *handler) Login(c *gin.Context) {
 // @Description get Google OAuth consent-screen URL
 // @Tags auth
 // @Produce json
-// @Success 200 {object} RsGoogleAuthURL
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /auth/google [get]
@@ -109,7 +110,7 @@ func (h *handler) GoogleLogin(c *gin.Context) {
 // @Tags auth
 // @Produce json
 // @Param code query string true "OAuth authorization code"
-// @Success 200 {object} RsToken
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /auth/google/callback [get]
@@ -135,7 +136,7 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Success 200 {object} map[string]string
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Router /auth/logout [post]

@@ -37,7 +37,7 @@ type FormEntry struct {
 	SubmittedAt   *string    `db:"submitted_at" json:"submitted_at,omitempty"`
 	Status        string     `db:"status" json:"status"`
 	CreatedAt     string     `db:"created_at" json:"created_at"`
-	UpdatedAt     string     `db:"updated_at" json:"updated_at"`
+	UpdatedAt     *string    `db:"updated_at" json:"updated_at"`
 }
 
 type FormEntryValue struct {
@@ -48,7 +48,7 @@ type FormEntryValue struct {
 	GstAmount   *float64  `db:"gst_amount"`
 	GrossAmount *float64  `db:"gross_amount"`
 	CreatedAt   string    `db:"created_at"`
-	UpdatedAt   string    `db:"updated_at"`
+	UpdatedAt   *string   `db:"updated_at"`
 }
 
 func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
@@ -85,7 +85,7 @@ type RsFormEntry struct {
 	Status        string         `json:"status"`
 	Values        []RsEntryValue `json:"values,omitempty"`
 	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	UpdatedAt     *string        `json:"updated_at"`
 }
 
 type RsEntryValue struct {

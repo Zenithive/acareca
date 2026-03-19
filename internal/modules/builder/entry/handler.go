@@ -35,7 +35,7 @@ func NewHandler(svc IService) IHandler {
 // @Produce json
 // @Param version_id path string true "Version ID"
 // @Param request body RqFormEntry true "Entry details"
-// @Success 201 {object} RsFormEntry
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -73,7 +73,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Entry ID"
-// @Success 200 {object} RsFormEntry
+// @Success 200 {object} response.RsBase
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -102,7 +102,7 @@ func (h *handler) Get(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Entry ID"
 // @Param request body RqUpdateFormEntry true "Updated details"
-// @Success 200 {object} RsFormEntry
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
