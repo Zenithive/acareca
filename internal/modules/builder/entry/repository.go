@@ -31,8 +31,6 @@ type IRepository interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
 	UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
 	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
-
-	GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
 }
 
 type Repository struct {
@@ -93,9 +91,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*
 	}
 
 	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
-		FROM tbl_form_entry_value
-		WHERE entry_id = $1 AND updated_at IS NULL
-		`
+		FROM tbl_form_entry_value WHERE entry_id = $1`
 	var values []*FormEntryValue
 	if err := r.db.SelectContext(ctx, &values, valQuery, id); err != nil {
 		return nil, nil, fmt.Errorf("get entry values: %w", err)
@@ -111,13 +107,12 @@ func (r *Repository) Update(ctx context.Context, e *FormEntry, values []*FormEnt
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Update the parent entry
 	query := `
-        UPDATE tbl_form_entry
-        SET submitted_by = $1, submitted_at = $2, status = $3, updated_at = now()
-        WHERE id = $4 AND deleted_at IS NULL
-        RETURNING created_at, updated_at
-    `
+		UPDATE tbl_form_entry
+		SET submitted_by = $1, submitted_at = $2, status = $3, updated_at = now()
+		WHERE id = $4 AND deleted_at IS NULL
+		RETURNING created_at, updated_at
+	`
 	if err := tx.QueryRowContext(ctx, query, e.SubmittedBy, e.SubmittedAt, e.Status, e.ID).
 		Scan(&e.CreatedAt, &e.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -126,28 +121,20 @@ func (r *Repository) Update(ctx context.Context, e *FormEntry, values []*FormEnt
 		return fmt.Errorf("update form entry: %w", err)
 	}
 
-	// Mark previous values as "updated"
-	markOldQuery := `
-        UPDATE tbl_form_entry_value 
-        SET updated_at = now() 
-        WHERE entry_id = $1 AND updated_at IS NULL
-    `
-	if _, err := tx.ExecContext(ctx, markOldQuery, e.ID); err != nil {
-		return fmt.Errorf("old entry values: %w", err)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tbl_form_entry_value WHERE entry_id = $1`, e.ID); err != nil {
+		return fmt.Errorf("delete entry values: %w", err)
 	}
-
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, NULL)
-			RETURNING created_at
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING created_at, updated_at
 		`
 		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
-			Scan(&v.CreatedAt); err != nil {
+			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("insert entry value: %w", err)
 		}
-		v.UpdatedAt = nil // Set to nil so the API response shows it as null for the new record
 	}
 
 	return tx.Commit()
@@ -232,9 +219,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 	}
 
 	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
-		FROM tbl_form_entry_value
-		WHERE entry_id = $1 AND updated_at IS NULL
-		`
+		FROM tbl_form_entry_value WHERE entry_id = $1`
 	var values []*FormEntryValue
 	if err := r.db.SelectContext(ctx, &values, valQuery, e.ID); err != nil {
 		return nil, nil, fmt.Errorf("get entry values: %w", err)
@@ -283,7 +268,7 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter) ([]*
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
 		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE e.deleted_at IS NULL AND ev.updated_at IS NULL`
+		WHERE e.deleted_at IS NULL`
 
 	q, args := common.BuildQuery(base, f, allowedTransactionColumns, nil, false)
 	q = sqlx.Rebind(sqlx.DOLLAR, q)
@@ -371,13 +356,12 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 
 // UpdateTx - Transaction variant of Update
 func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
-	// Update the parent entry
 	query := `
-        UPDATE tbl_form_entry
-        SET submitted_by = $1, submitted_at = $2, status = $3, updated_at = now()
-        WHERE id = $4 AND deleted_at IS NULL
-        RETURNING created_at, updated_at
-    `
+		UPDATE tbl_form_entry
+		SET submitted_by = $1, submitted_at = $2, status = $3, updated_at = now()
+		WHERE id = $4 AND deleted_at IS NULL
+		RETURNING created_at, updated_at
+	`
 	if err := tx.QueryRowContext(ctx, query, e.SubmittedBy, e.SubmittedAt, e.Status, e.ID).
 		Scan(&e.CreatedAt, &e.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -386,29 +370,20 @@ func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 		return fmt.Errorf("update form entry tx: %w", err)
 	}
 
-	// Mark previous active values as "updated"
-	markOldQuery := `
-        UPDATE tbl_form_entry_value 
-        SET updated_at = now() 
-        WHERE entry_id = $1 AND updated_at IS NULL
-    `
-	if _, err := tx.ExecContext(ctx, markOldQuery, e.ID); err != nil {
-		return fmt.Errorf("mark old entry values tx: %w", err)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tbl_form_entry_value WHERE entry_id = $1`, e.ID); err != nil {
+		return fmt.Errorf("delete entry values tx: %w", err)
 	}
-
-	// Insert new values as the current active records (updated_at stays NULL)
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NULL)
-            RETURNING created_at
-        `
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING created_at, updated_at
+		`
 		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
-			Scan(&v.CreatedAt); err != nil {
+			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("insert entry value tx: %w", err)
 		}
-		v.UpdatedAt = nil
 	}
 
 	return nil
@@ -426,41 +401,4 @@ func (r *Repository) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) er
 		return ErrNotFound
 	}
 	return nil
-}
-
-func (r *Repository) GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error) {
-	query := `
-		SELECT 
-			ff.id,
-			ff.label,
-			ff.section_type,
-			ff.payment_responsibility,
-			ff.tax_type,
-			COALESCE(SUM(ev.net_amount), 0)   AS total_net,
-			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst,
-			COALESCE(SUM(ev.gross_amount), 0) AS total_gross
-		FROM tbl_form_field ff
-		LEFT JOIN tbl_form_entry_value ev ON ev.form_field_id = ff.id AND ev.updated_at IS NULL
-		WHERE ff.id = $1 AND ff.deleted_at IS NULL
-		GROUP BY ff.id, ff.label, ff.section_type, ff.payment_responsibility, ff.tax_type`
-
-	var summary RsFieldSummary
-	err := r.db.QueryRowContext(ctx, query, fieldID).Scan(
-		&summary.FormFieldID,
-		&summary.Label,
-		&summary.SectionType,
-		&summary.Responsibility,
-		&summary.TaxType,
-		&summary.TotalNet,
-		&summary.TotalGst,
-		&summary.TotalGross,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("repository sum field values with metadata: %w", err)
-	}
-
-	return &summary, nil
 }

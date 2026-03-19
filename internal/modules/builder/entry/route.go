@@ -9,5 +9,4 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.GET("/:id", h.Get)
 	rg.PATCH("/:id", h.Update)
 	rg.DELETE("/:id", h.Delete)
-	rg.GET("/summary/:field_id", h.GetFieldSummary)
 }

@@ -18,7 +18,6 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
-	GetFieldSummary(c *gin.Context)
 }
 
 type handler struct {
@@ -236,34 +235,4 @@ func (h *handler) ListTransactions(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
-}
-
-// @Summary Get summed values for a specific field
-// @Description Returns the total net, gst, and gross amounts for all active entries of a field
-// @Tags entry
-// @Produce json
-// @Param field_id path string true "Form Field ID"
-// @Success 200 {object} RsFieldSummary
-// @Failure 400 {object} response.RsError
-// @Failure 404 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Security BearerToken
-// @Router /entry/{field_id}/summary [get]
-func (h *handler) GetFieldSummary(c *gin.Context) {
-	fieldID, ok := util.ParseUuidID(c, "field_id")
-	if !ok {
-		return
-	}
-
-	summary, err := h.svc.GetFieldSummary(c.Request.Context(), fieldID)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
 }
