@@ -125,6 +125,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	form.RegisterRoutes(formGroup, formHandler)
 
 	entryGroup := v1.Group("/entry")
+	entryGroup.Use(middleware.Auth(cfg))
 	entriesRepo := entry.NewRepository(dbConn)
 	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService())
 	entriesHandler := entry.NewHandler(entriesSvc)
