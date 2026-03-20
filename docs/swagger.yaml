@@ -46,18 +46,6 @@ definitions:
         type: string
       bas_category:
         type: string
-<<<<<<< HEAD
-    type: object
-  bas.RsBASByAccount:
-    properties:
-      account_code:
-        type: integer
-      account_name:
-        type: string
-      bas_category:
-        type: string
-=======
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
       entry_count:
         type: integer
       period_quarter:
@@ -69,88 +57,6 @@ definitions:
       tax_name:
         type: string
       tax_rate:
-<<<<<<< HEAD
-        type: number
-      total_gross:
-        type: number
-      total_gst:
-        type: number
-      total_net:
-        type: number
-    type: object
-  bas.RsBASMonthly:
-    properties:
-      g1_total_sales_gross:
-        type: number
-      g3_gst_free_sales:
-        type: number
-      g11_total_purchases_gross:
-        type: number
-      g14_gst_free_purchases:
-        type: number
-      label_1a_gst_on_sales:
-        type: number
-      label_1b_gst_on_purchases:
-        type: number
-      net_gst_payable:
-        type: number
-      period_month:
-        type: string
-      total_purchases_net:
-        type: number
-      total_sales_net:
-        type: number
-    type: object
-  bas.RsBASReport:
-    properties:
-      1A:
-        type: number
-      1B:
-        type: number
-      G1:
-        type: number
-      G11:
-        type: number
-    type: object
-  bas.RsBASSummary:
-    properties:
-      g1_total_sales_gross:
-        description: Sales (ATO labels)
-        type: number
-      g3_gst_free_sales:
-        type: number
-      g8_taxable_sales:
-        type: number
-      g11_total_purchases_gross:
-        description: Purchases (ATO labels)
-        type: number
-      g14_gst_free_purchases:
-        type: number
-      g15_taxable_purchases:
-        type: number
-      label_1a_gst_on_sales:
-        type: number
-      label_1b_gst_on_purchases:
-        type: number
-      net_gst_payable:
-        description: Net GST
-        type: number
-      period_quarter:
-        description: Period
-        type: string
-      period_year:
-        description: e.g. "2026-01-01"
-        type: string
-      total_purchases_net:
-        type: number
-      total_sales_net:
-        type: number
-    type: object
-  calculation.GrossResult:
-    properties:
-      gst_service_fee:
-=======
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
         type: number
       total_gross:
         type: number
@@ -377,101 +283,6 @@ definitions:
       value:
         type: string
     type: object
-<<<<<<< HEAD
-  clinic.RsClinic:
-    properties:
-      abn:
-        type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RsClinicAddress'
-        type: array
-      contacts:
-        items:
-          $ref: '#/definitions/clinic.RsClinicContact'
-        type: array
-      created_at:
-        type: string
-      description:
-        type: string
-      financial_settings:
-        $ref: '#/definitions/clinic.RsFinancialSettings'
-      id:
-        type: string
-      is_active:
-        type: boolean
-      name:
-        type: string
-      practitioner_id:
-        type: string
-      profile_picture:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  clinic.RsClinicAddress:
-    properties:
-      address:
-        type: string
-      city:
-        type: string
-      id:
-        type: string
-      is_primary:
-        type: boolean
-      postcode:
-        type: string
-      state:
-        type: string
-    type: object
-  clinic.RsClinicContact:
-    properties:
-      contact_type:
-        type: string
-      id:
-        type: string
-      is_primary:
-        type: boolean
-      label:
-        type: string
-      value:
-        type: string
-    type: object
-  clinic.RsFinancialSettings:
-    properties:
-      financial_year_id:
-        type: string
-      id:
-        type: string
-      lock_date:
-        type: string
-    type: object
-  coa.AccountTax:
-    properties:
-      createdAt:
-        type: string
-      id:
-        type: integer
-      isTaxable:
-        type: boolean
-      name:
-        type: string
-      rate:
-        type: number
-      updatedAt:
-        type: string
-    type: object
-  coa.AccountType:
-    properties:
-      createdAt:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      updatedAt:
-        type: string
-    type: object
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -483,8 +294,6 @@ definitions:
     required:
     - code
     type: object
-=======
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
   coa.RqCreateChartOfAccountOfAccount:
     properties:
       account_tax_id:
@@ -524,62 +333,11 @@ definitions:
         maxLength: 255
         type: string
     type: object
-<<<<<<< HEAD
-  coa.RsChartOfAccount:
-    properties:
-      account_tax_id:
-        type: integer
-      account_type_id:
-        type: integer
-      code:
-        type: integer
-      created_at:
-        type: string
-      id:
-        type: string
-      is_system:
-        type: boolean
-      is_taxable:
-        type: boolean
-      name:
-        type: string
-      practitioner_id:
-        type: string
-      updated_at:
-        type: string
-    type: object
   coa.RsCodeUnique:
     properties:
       is_unique:
         type: boolean
     type: object
-  detail.RsFormDetail:
-    properties:
-      active_version_id:
-        type: string
-      clinic_id:
-        type: string
-      clinic_share:
-        type: integer
-      created_at:
-        type: string
-      description:
-        type: string
-      id:
-        type: string
-      method:
-        type: string
-      name:
-        type: string
-      owner_share:
-        type: integer
-      status:
-        type: string
-      updated_at:
-        type: string
-    type: object
-=======
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
   entry.RqEntryValue:
     properties:
       amount:
@@ -630,6 +388,25 @@ definitions:
       gst_amount:
         type: number
       net_amount:
+        type: number
+    type: object
+  entry.RsFieldSummary:
+    properties:
+      form_field_id:
+        type: string
+      label:
+        type: string
+      payment_responsibility:
+        type: string
+      section_type:
+        type: string
+      tax_type:
+        type: string
+      total_gross:
+        type: number
+      total_gst:
+        type: number
+      total_net:
         type: number
     type: object
   field.RqFormField:
@@ -853,167 +630,7 @@ definitions:
       quarter:
         type: string
     type: object
-<<<<<<< HEAD
-  pl.RsPLAccount:
-    properties:
-      account_code:
-        type: integer
-      account_name:
-        type: string
-      account_type:
-        type: string
-      entry_count:
-        type: integer
-      period_month:
-        type: string
-      pl_section:
-        type: string
-      section_type:
-        type: string
-      signed_gross:
-        type: number
-      signed_net:
-        type: number
-      tax_name:
-        type: string
-      tax_rate:
-        type: number
-      total_gross:
-        type: number
-      total_gst:
-        type: number
-      total_net:
-        type: number
-    type: object
-  pl.RsPLFYSummary:
-    properties:
-      cogs_gross:
-        type: number
-      cogs_gst:
-        type: number
-      cogs_net:
-        type: number
-      financial_quarter_id:
-        type: string
-      financial_year:
-        type: string
-      financial_year_id:
-        type: string
-      gross_profit_net:
-        type: number
-      income_gross:
-        type: number
-      income_gst:
-        type: number
-      income_net:
-        type: number
-      net_profit_gross:
-        type: number
-      net_profit_net:
-        type: number
-      other_expenses_net:
-        type: number
-      quarter:
-        type: string
-    type: object
   pl.RsPLResponsibility:
-    properties:
-      account_code:
-        type: integer
-      account_name:
-        type: string
-      entry_count:
-        type: integer
-      payment_responsibility:
-        type: string
-      period_month:
-        type: string
-      pl_section:
-        type: string
-      section_type:
-        type: string
-      total_gross:
-        type: number
-      total_gst:
-        type: number
-      total_net:
-        type: number
-    type: object
-  pl.RsPLSummary:
-    properties:
-      cogs_gross:
-        type: number
-      cogs_gst:
-        type: number
-      cogs_net:
-        type: number
-      gross_profit_net:
-        type: number
-      income_gross:
-        type: number
-      income_gst:
-        type: number
-      income_net:
-        type: number
-      net_profit_gross:
-        type: number
-      net_profit_net:
-        type: number
-      other_expenses_gross:
-        type: number
-      other_expenses_gst:
-        type: number
-      other_expenses_net:
-        type: number
-      period_month:
-        type: string
-    type: object
-  pl.RsReport:
-    properties:
-      cost_of_sales:
-        $ref: '#/definitions/pl.RsReportGroup'
-      gross_profit:
-        type: number
-      income:
-        $ref: '#/definitions/pl.RsReportGroup'
-      net_profit:
-        type: number
-      other_costs:
-        $ref: '#/definitions/pl.RsReportGroup'
-      report_metadata:
-        $ref: '#/definitions/pl.RsReportMetadata'
-    type: object
-  pl.RsReportAccount:
-    properties:
-      coa_id:
-        type: string
-      coa_name:
-        type: string
-      total_value:
-        type: number
-    type: object
-  pl.RsReportGroup:
-    properties:
-      accounts:
-        items:
-          $ref: '#/definitions/pl.RsReportAccount'
-        type: array
-      group_total:
-        type: number
-    type: object
-  pl.RsReportMetadata:
-    properties:
-      date_from:
-        type: string
-      date_until:
-        type: string
-      overall_net_profit:
-        type: number
-    type: object
-  practitioner.RsPractitioner:
-=======
-  pl.RsPLResponsibility:
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
     properties:
       account_code:
         type: integer
@@ -1976,20 +1593,9 @@ paths:
       - engine/bas
   /bas/report:
     get:
-<<<<<<< HEAD
       description: Returns G1, 1A, G11, 1B totals scoped to the authenticated practitioner,
         filtered by quarter_id or month name.
       parameters:
-=======
-      description: Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id
-        or month name.
-      parameters:
-      - description: Clinic UUID
-        in: query
-        name: clinic_id
-        required: true
-        type: string
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
       - description: Financial quarter UUID
         in: query
         name: quarter_id
@@ -2690,7 +2296,6 @@ paths:
       summary: Update an existing chart of account
       tags:
       - coa
-<<<<<<< HEAD
   /coa/chart-of-account/check-code:
     post:
       consumes:
@@ -2702,7 +2307,26 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/coa.RqCheckCodeUnique'
-=======
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.RsCodeUnique'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Check if a chart of account code is unique for the practitioner
+      tags:
+      - coa
   /entry/{field_id}/summary:
     get:
       description: Returns the total net, gst, and gross amounts for all active entries
@@ -2713,44 +2337,30 @@ paths:
         name: field_id
         required: true
         type: string
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-<<<<<<< HEAD
-            $ref: '#/definitions/coa.RsCodeUnique'
-=======
             $ref: '#/definitions/entry.RsFieldSummary'
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
         "400":
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
-<<<<<<< HEAD
-=======
         "404":
           description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-<<<<<<< HEAD
-      summary: Check if a chart of account code is unique for the practitioner
-      tags:
-      - coa
-=======
       summary: Get summed values for a specific field
       tags:
       - entry
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
   /entry/{id}:
     delete:
       consumes:
@@ -3355,11 +2965,7 @@ paths:
         "200":
           description: OK
           schema:
-<<<<<<< HEAD
-            $ref: '#/definitions/pl.RsReport'
-=======
             $ref: '#/definitions/response.RsBase'
->>>>>>> 3f23afd5f8198347216528b9aca92e944f26bb2a
         "400":
           description: Bad Request
           schema:
