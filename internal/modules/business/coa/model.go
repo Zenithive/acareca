@@ -93,6 +93,15 @@ type RqCreateChartOfAccountOfAccount struct {
 	IsSystem      *bool  `json:"is_system"`
 }
 
+type RsCodeUnique struct {
+	IsUnique bool `json:"is_unique"`
+}
+
+type RqCheckCodeUnique struct {
+	Code      int16      `json:"code" validate:"required,gte=100,lte=9999"`
+	ExcludeID *uuid.UUID `json:"exclude_id"`
+}
+
 type RqUpdateCharOfAccountOfAccount struct {
 	AccountTypeID *int16  `json:"account_type_id" validate:"omitempty,min=1"`
 	AccountTaxID  *int16  `json:"account_tax_id" validate:"omitempty,min=1"`
