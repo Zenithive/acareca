@@ -29,6 +29,15 @@ type RqFormField struct {
 	CoaID                 string  `json:"coa_id" validate:"required,uuid"`
 }
 
+func (r *RqFormField) Sanitize() {
+	if r.TaxType != nil && *r.TaxType == "" {
+		r.TaxType = nil
+	}
+	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
+		r.PaymentResponsibility = nil
+	}
+}
+
 type RqUpdateFormField struct {
 	ID                    uuid.UUID `json:"id" validate:"required,uuid"`
 	Label                 *string   `json:"label" validate:"omitempty,max=255"`
@@ -36,6 +45,16 @@ type RqUpdateFormField struct {
 	PaymentResponsibility *string   `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
 	TaxType               *string   `json:"tax_type" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE MANUAL"`
 	CoaID                 *string   `json:"coa_id" validate:"omitempty,uuid"`
+}
+
+// Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
+func (r *RqUpdateFormField) Sanitize() {
+	if r.TaxType != nil && *r.TaxType == "" {
+		r.TaxType = nil
+	}
+	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
+		r.PaymentResponsibility = nil
+	}
 }
 
 type FormField struct {

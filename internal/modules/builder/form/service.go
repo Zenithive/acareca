@@ -82,6 +82,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	// Create fields within transaction (atomic operation)
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		for _, f := range d.Fields {
+			f.Sanitize()
 			_, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, practitionerID, &field.RqFormField{
 				Label:                 f.Label,
 				SectionType:           f.SectionType,
@@ -174,6 +175,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 
 		// Update fields
 		for _, item := range req.Update {
+			item.Sanitize()
 			_, err = s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, practitionerID, &field.RqUpdateFormField{
 				ID:                    item.ID,
 				CoaID:                 item.CoaID,
@@ -190,6 +192,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 
 		// Create fields
 		for _, item := range req.Create {
+			item.Sanitize()
 			_, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, &field.RqFormField{
 				CoaID:                 item.CoaID,
 				Label:                 item.Label,
@@ -260,6 +263,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 
 		// Update fields
 		for _, updateItem := range req.Update {
+			updateItem.Sanitize()
 			updated, err := s.fieldSvc.UpdateTx(ctx, tx, updateItem.ID, req.ClinicID, practitionerID, &updateItem)
 			if err != nil {
 				return err
@@ -269,6 +273,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 
 		// Create fields
 		for _, createItem := range req.Create {
+			createItem.Sanitize()
 			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, &createItem)
 			if err != nil {
 				return err
