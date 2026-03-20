@@ -191,7 +191,11 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		var gstAmount *float64
 
-		taxType := method.TaxTreatment(*field.TaxType)
+		var taxType method.TaxTreatment
+		if field.TaxType != nil && *field.TaxType != "" {
+			taxType = method.TaxTreatment(*field.TaxType)
+		}
+
 		switch taxType {
 		case method.TaxTreatmentInclusive, method.TaxTreatmentExclusive:
 			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
@@ -205,11 +209,9 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
 
-		case method.TaxTreatmentZero:
-			gstAmount = nil
-
 		default:
-			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
+			// TaxTreatmentZero or no tax type set — no GST
+			gstAmount = nil
 		}
 
 		totalAmount := v.Amount
