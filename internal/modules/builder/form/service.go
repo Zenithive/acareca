@@ -109,47 +109,48 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		return nil, nil, err
 	}
 
-	updateReq := &detail.RqUpdateFormDetail{
-		ID:          *req.ID,
-		Name:        req.Name,
-		Description: req.Description,
-		Status:      req.Status,
-		Method:      req.Method,
-		OwnerShare:  req.OwnerShare,
-		ClinicShare: req.ClinicShare,
-	}
+	var updated *detail.RsFormDetail
+	var syncResult *RsFormWithFieldsSyncResult
 
-	// Update form metadata via detail service
-	updated, err := s.detailSvc.Update(ctx, updateReq, practitionerID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	syncResult := &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
-
-	hasChanges := len(req.Update) > 0 || len(req.Create) > 0 || len(req.Delete) > 0
-	if !hasChanges {
-		return updated, syncResult, nil
-	}
-
-	// Get active version
-	versions, err := s.versionSvc.List(ctx, existing.ID, req.ClinicID)
-	if err != nil {
-		return nil, nil, err
-	}
-	var activeVersionID uuid.UUID
-	for _, v := range versions {
-		if v.IsActive {
-			activeVersionID = v.Id
-			break
-		}
-	}
-	if activeVersionID == uuid.Nil {
-		return updated, syncResult, nil
-	}
-
-	// Apply all field changes atomically within a transaction
+	// Apply all form and field changes atomically within a transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Form Metadata
+		updateReq := &detail.RqUpdateFormDetail{
+			ID:          *req.ID,
+			Name:        req.Name,
+			Description: req.Description,
+			Status:      req.Status,
+			Method:      req.Method,
+			OwnerShare:  req.OwnerShare,
+			ClinicShare: req.ClinicShare,
+		}
+
+		// Update form metadata via detail service
+		upd, err := s.detailSvc.UpdateMetadata(ctx, updateReq)
+		if err != nil {
+			return err
+		}
+		updated = upd
+		syncResult := &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
+
+		// Get Active Version
+		versions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
+		if err != nil {
+			return err
+		}
+
+		var activeVersionID uuid.UUID
+		for _, v := range versions {
+			if v.IsActive {
+				activeVersionID = v.Id
+				break
+			}
+		}
+
+		if activeVersionID == uuid.Nil {
+			return errors.New("cannot update fields: no active version found")
+		}
+
 		// Delete fields
 		for _, idStr := range req.Delete {
 			id, err := uuid.Parse(idStr)

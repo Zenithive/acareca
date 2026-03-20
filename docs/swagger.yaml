@@ -2266,6 +2266,40 @@ paths:
       summary: Update an existing chart of account
       tags:
       - coa
+  /entry/{field_id}/summary:
+    get:
+      description: Returns the total net, gst, and gross amounts for all active entries
+        of a field
+      parameters:
+      - description: Form Field ID
+        in: path
+        name: field_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entry.RsFieldSummary'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get summed values for a specific field
+      tags:
+      - entry
   /entry/{id}:
     delete:
       consumes:

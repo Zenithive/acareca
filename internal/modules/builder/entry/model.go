@@ -250,3 +250,14 @@ type transactionFlatRow struct {
 	CreatedAt     string    `db:"created_at"`
 	UpdatedAt     *string   `db:"updated_at"`
 }
+
+type RsFieldSummary struct {
+	FormFieldID    uuid.UUID `json:"form_field_id"`
+	Label          string    `json:"label"`
+	SectionType    string    `json:"section_type"`
+	Responsibility string    `json:"payment_responsibility"`
+	TaxType        string    `json:"tax_type"`
+	TotalNet       float64   `json:"total_net"`
+	TotalGst       float64   `json:"total_gst"`
+	TotalGross     float64   `json:"total_gross"`
+}
