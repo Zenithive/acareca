@@ -136,9 +136,9 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 	}
 
 	return &RsBASReport{
-		G1:  row.G1TotalSalesGross,
+		G1:  row.G1TotalSalesNet,
 		A1:  row.Label1AGSTOnSales,
-		G11: row.G11TotalPurchasesGross,
+		G11: row.G11TotalPurchasesNet,
 		B1:  row.Label1BGSTOnPurchases,
 	}, nil
 }
