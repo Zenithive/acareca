@@ -311,9 +311,16 @@ func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFi
 	if err != nil {
 		return nil, err
 	}
+
+	// Use stored super_component from form if not overridden by caller
+	effectiveFilter := filter
+	if (effectiveFilter == nil || effectiveFilter.SuperComponent == nil) && form.SuperComponent != nil {
+		effectiveFilter = &NetFilter{SuperComponent: form.SuperComponent}
+	}
+
 	switch Method(form.Method) {
 	case IndependentContractor:
-		return s.NetMethod(ctx, form, entries.Values, filter)
+		return s.NetMethod(ctx, form, entries.Values, effectiveFilter)
 	case ServiceFee:
 		return s.GrossMethod(ctx, form, entries.Values)
 	default:
@@ -333,7 +340,12 @@ func (s *service) CalculateFromEntries(ctx context.Context, req *RqCalculateFrom
 		return nil, err
 	}
 
-	filter := &NetFilter{SuperComponent: req.SuperComponent}
+	// Caller-supplied super_component takes precedence; fall back to form's stored value
+	superComponent := req.SuperComponent
+	if superComponent == nil {
+		superComponent = form.SuperComponent
+	}
+	filter := &NetFilter{SuperComponent: superComponent}
 
 	switch Method(form.Method) {
 	case IndependentContractor:

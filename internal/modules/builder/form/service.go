@@ -40,12 +40,13 @@ func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IServ
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	formReq := &detail.RqFormDetail{
-		Name:        d.Name,
-		Description: d.Description,
-		Status:      d.Status,
-		Method:      d.Method,
-		OwnerShare:  d.OwnerShare,
-		ClinicShare: d.ClinicShare,
+		Name:           d.Name,
+		Description:    d.Description,
+		Status:         d.Status,
+		Method:         d.Method,
+		OwnerShare:     d.OwnerShare,
+		ClinicShare:    d.ClinicShare,
+		SuperComponent: d.SuperComponent,
 	}
 	if formReq.Status == "" {
 		formReq.Status = StatusDraft
@@ -117,13 +118,14 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Form Metadata
 		updateReq := &detail.RqUpdateFormDetail{
-			ID:          *req.ID,
-			Name:        req.Name,
-			Description: req.Description,
-			Status:      req.Status,
-			Method:      req.Method,
-			OwnerShare:  req.OwnerShare,
-			ClinicShare: req.ClinicShare,
+			ID:             *req.ID,
+			Name:           req.Name,
+			Description:    req.Description,
+			Status:         req.Status,
+			Method:         req.Method,
+			OwnerShare:     req.OwnerShare,
+			ClinicShare:    req.ClinicShare,
+			SuperComponent: req.SuperComponent,
 		}
 
 		// Update form metadata via detail service

@@ -114,6 +114,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 	if req.TaxType != nil {
 		existing.TaxType = req.TaxType
 	}
+	if req.SortOrder != nil {
+		existing.SortOrder = *req.SortOrder
+	}
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
@@ -200,6 +203,9 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clini
 	}
 	if req.TaxType != nil {
 		existing.TaxType = req.TaxType
+	}
+	if req.SortOrder != nil {
+		existing.SortOrder = *req.SortOrder
 	}
 	updated, err := s.repo.UpdateTx(ctx, tx, existing)
 	if err != nil {

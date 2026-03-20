@@ -27,6 +27,7 @@ type RqFormField struct {
 	PaymentResponsibility *string `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
 	TaxType               *string `json:"tax_type" validate:"omitempty"`
 	CoaID                 string  `json:"coa_id" validate:"required,uuid"`
+	SortOrder             int     `json:"sort_order" validate:"min=0"`
 }
 
 func (r *RqFormField) Sanitize() {
@@ -45,6 +46,7 @@ type RqUpdateFormField struct {
 	PaymentResponsibility *string   `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
 	TaxType               *string   `json:"tax_type" validate:"omitempty"`
 	CoaID                 *string   `json:"coa_id" validate:"omitempty,uuid"`
+	SortOrder             *int      `json:"sort_order" validate:"omitempty,min=0"`
 }
 
 // Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
@@ -65,6 +67,7 @@ type FormField struct {
 	PaymentResponsibility *string   `db:"payment_responsibility"`
 	TaxType               *string   `db:"tax_type"`
 	CoaID                 uuid.UUID `db:"coa_id"`
+	SortOrder             int       `db:"sort_order"`
 	CreatedAt             string    `db:"created_at"`
 	UpdatedAt             string    `db:"updated_at"`
 }
@@ -79,6 +82,7 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		PaymentResponsibility: r.PaymentResponsibility,
 		TaxType:               r.TaxType,
 		CoaID:                 coaID,
+		SortOrder:             r.SortOrder,
 	}
 }
 
@@ -91,6 +95,7 @@ func (d *FormField) ToRs() *RsFormField {
 		PaymentResponsibility: d.PaymentResponsibility,
 		TaxType:               d.TaxType,
 		CoaID:                 d.CoaID,
+		SortOrder:             d.SortOrder,
 		CreatedAt:             d.CreatedAt,
 		UpdatedAt:             d.UpdatedAt,
 	}
@@ -113,6 +118,7 @@ type RsFormField struct {
 	TaxType               *string      `json:"tax_type"`
 	CoaID                 uuid.UUID    `json:"coa_id"`
 	Coa                   *RsCoaDetail `json:"coa,omitempty"`
+	SortOrder             int          `json:"sort_order"`
 	CreatedAt             string       `json:"created_at"`
 	UpdatedAt             string       `json:"updated_at"`
 }
