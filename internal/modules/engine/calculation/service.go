@@ -10,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
@@ -26,40 +27,138 @@ type service struct {
 	versionSvc version.IService
 	fieldSvc   field.IService
 	entries    entry.IService
+	methodSvc  method.IService
 }
 
 func NewService(formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService) Service {
-	return &service{formSvc: formSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entries: entries}
+	return &service{formSvc: formSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entries: entries, methodSvc: method.NewService()}
 }
 
-func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue) (*GrossResult, error) {
-	var (
-		incomeSum    float64
-		incomeGST    float64
-		expenseSum   float64
-		expenseGST   float64
-		otherCostSum float64
+// func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue) (*GrossResult, error) {
+// 	var (
+// 		incomeSum    float64
+// 		incomeGST    float64
+// 		expenseSum   float64
+// 		expenseGST   float64
+// 		otherCostSum float64
 
+// 		paidByOwnerSum float64
+// 	)
+
+// 	for _, v := range formValue {
+// 		field, err := s.fieldSvc.GetByID(ctx, v.FormFieldID)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+
+// 		switch field.SectionType {
+
+// 		case "COLLECTION":
+// 			if v.NetAmount != nil {
+// 				incomeSum += *v.NetAmount
+// 			}
+// 			if v.GstAmount != nil {
+// 				incomeGST += *v.GstAmount
+// 			}
+
+// 		case "COST":
+// 			if field.PaymentResponsibility == nil {
+// 				continue
+// 			}
+
+// 			switch *field.PaymentResponsibility {
+
+// 			case "CLINIC":
+// 				if v.GrossAmount != nil {
+// 					expenseSum += *v.GrossAmount
+// 				}
+// 				if v.GstAmount != nil {
+// 					expenseGST += *v.GstAmount
+// 				}
+
+// 			case "OWNER":
+// 				if v.GrossAmount != nil {
+// 					expenseSum += *v.GrossAmount
+// 					paidByOwnerSum += *v.GrossAmount
+// 				}
+// 			}
+
+// 		case "OTHER_COST":
+// 			if v.NetAmount != nil {
+// 				otherCostSum += *v.NetAmount
+// 			}
+// 		}
+// 	}
+// 	//Deduct GST from gross income to get net income
+// 	netIncome := incomeSum - incomeGST
+
+// 	// Deduct expenses (excluding owner-paid, which is passed through) to get net amount
+// 	netAmount := netIncome - expenseSum
+
+// 	clinicShare := float64(formDetail.ClinicShare)
+// 	serviceFee := netAmount * (clinicShare / 100)
+// 	gstServiceFee := serviceFee * 0.1
+// 	totalServiceFee := serviceFee + gstServiceFee
+
+// 	remittedAmount := netAmount - totalServiceFee - otherCostSum + incomeGST + paidByOwnerSum - expenseGST
+
+// 	return &GrossResult{
+// 		NetAmount:       util.Round(netAmount, 2),
+// 		ServiceFee:      util.Round(serviceFee, 2),
+// 		GstServiceFee:   util.Round(gstServiceFee, 2),
+// 		TotalServiceFee: util.Round(totalServiceFee, 2),
+// 		RemittedAmount:  util.Round(remittedAmount, 2),
+// 	}, nil
+// }
+
+func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue) (*GrossResult, error) {
+
+	var (
+		incomeSum      float64
+		incomeGST      float64
+		expenseSum     float64
+		expenseGST     float64
+		otherCostSum   float64
 		paidByOwnerSum float64
 	)
 
 	for _, v := range formValue {
+
 		field, err := s.fieldSvc.GetByID(ctx, v.FormFieldID)
 		if err != nil {
 			return nil, err
 		}
 
+		input := &method.Input{}
+
+		if v.NetAmount != nil {
+			input.Amount = *v.NetAmount
+		}
+
+		if v.GstAmount != nil {
+			input.GstAmount = v.GstAmount
+		}
+
 		switch field.SectionType {
 
 		case "COLLECTION":
-			if v.NetAmount != nil {
-				incomeSum += *v.NetAmount
-			}
-			if v.GstAmount != nil {
-				incomeGST += *v.GstAmount
+
+			if field.TaxType != nil && (*field.TaxType == string(method.TaxTreatmentManual) || *field.TaxType == string(method.TaxTreatmentInclusive) || *field.TaxType == string(method.TaxTreatmentExclusive)) {
+				result, _ := s.methodSvc.Calculate(ctx, method.TaxTreatment(*field.TaxType), input)
+				if *field.TaxType == string(method.TaxTreatmentManual) {
+					incomeSum += (result.Amount - result.GstAmount)
+					incomeGST += result.GstAmount
+				} else {
+					incomeSum += result.Amount
+					incomeGST += result.GstAmount
+				}
+
+			} else if v.NetAmount != nil {
+				incomeGST += *v.NetAmount
 			}
 
 		case "COST":
+
 			if field.PaymentResponsibility == nil {
 				continue
 			}
@@ -67,39 +166,56 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 			switch *field.PaymentResponsibility {
 
 			case "CLINIC":
-				if v.GrossAmount != nil {
-					expenseSum += *v.GrossAmount
-				}
-				if v.GstAmount != nil {
-					expenseGST += *v.GstAmount
+
+				if field.TaxType != nil && (*field.TaxType == string(method.TaxTreatmentManual) || *field.TaxType == string(method.TaxTreatmentInclusive) || *field.TaxType == string(method.TaxTreatmentExclusive)) {
+
+					result, _ := s.methodSvc.Calculate(ctx, method.TaxTreatment(*field.TaxType), input)
+
+					expenseSum += result.Amount
+					expenseGST += result.GstAmount
+
+				} else if v.NetAmount != nil {
+					expenseSum += *v.NetAmount
 				}
 
 			case "OWNER":
-				if v.GrossAmount != nil {
-					expenseSum += *v.GrossAmount
-					paidByOwnerSum += *v.GrossAmount
+
+				if field.TaxType != nil && (*field.TaxType == string(method.TaxTreatmentManual) || *field.TaxType == string(method.TaxTreatmentInclusive) || *field.TaxType == string(method.TaxTreatmentExclusive)) {
+
+					result, _ := s.methodSvc.Calculate(ctx, method.TaxTreatment(*field.TaxType), input)
+					expenseSum += result.TotalAmount
+					paidByOwnerSum += result.TotalAmount
+
+				} else if v.NetAmount != nil {
+					expenseSum += *v.NetAmount
+					paidByOwnerSum += *v.NetAmount
 				}
 			}
 
 		case "OTHER_COST":
-			if v.NetAmount != nil {
+
+			if field.TaxType != nil && (*field.TaxType == string(method.TaxTreatmentManual) || *field.TaxType == string(method.TaxTreatmentInclusive) || *field.TaxType == string(method.TaxTreatmentExclusive)) {
+
+				result, _ := s.methodSvc.Calculate(ctx, method.TaxTreatment(*field.TaxType), input)
+
+				otherCostSum += result.TotalAmount
+
+			} else if v.NetAmount != nil {
 				otherCostSum += *v.NetAmount
 			}
 		}
 	}
 
-	// Deduct GST from gross income to get net income
-	netIncome := incomeSum - incomeGST
-
-	// Deduct expenses (excluding owner-paid, which is passed through) to get net amount
-	netAmount := netIncome - (expenseSum - paidByOwnerSum)
+	netIncome := incomeSum
+	netAmount := netIncome - expenseSum
 
 	clinicShare := float64(formDetail.ClinicShare)
+
 	serviceFee := netAmount * (clinicShare / 100)
 	gstServiceFee := serviceFee * 0.1
 	totalServiceFee := serviceFee + gstServiceFee
 
-	remittedAmount := netAmount - totalServiceFee - otherCostSum + incomeGST + paidByOwnerSum
+	remittedAmount := netAmount - totalServiceFee - otherCostSum + incomeGST + paidByOwnerSum - expenseGST
 
 	return &GrossResult{
 		NetAmount:       util.Round(netAmount, 2),
