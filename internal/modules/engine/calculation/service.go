@@ -68,7 +68,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 
 			case "CLINIC":
 				if v.GrossAmount != nil {
-					expenseSum += *v.GrossAmount
+					expenseSum += *v.NetAmount
 				}
 				if v.GstAmount != nil {
 					expenseGST += *v.GstAmount
