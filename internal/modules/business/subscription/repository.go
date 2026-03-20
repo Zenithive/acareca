@@ -21,6 +21,8 @@ type Repository interface {
 	Update(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
 	CountByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
+
+	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSubscription, error)
 }
 
 type repository struct {
@@ -132,4 +134,30 @@ func (r *repository) CountByPractitionerID(ctx context.Context, practitionerID u
 		return 0, fmt.Errorf("count practitioner subscriptions: %w", err)
 	}
 	return count, nil
+}
+
+func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSubscription, error) {
+	query := `
+		SELECT ps.id, ps.practitioner_id, ps.subscription_id, ps.start_date, ps.end_date, ps.status, ps.created_at, ps.updated_at, ps.deleted_at
+		FROM tbl_practitioner_subscription ps
+		WHERE ps.practitioner_id = $1 AND ps.status = 'ACTIVE' AND ps.deleted_at IS NULL
+		ORDER BY ps.created_at DESC
+		LIMIT 1
+	`
+
+	// Debug: Log the query and practitioner ID
+	fmt.Printf("DEBUG: Querying for practitioner_id: %s\n", practitionerID.String())
+
+	var s PractitionerSubscription
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID).StructScan(&s); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Printf("DEBUG: No active subscription found for practitioner: %s\n", practitionerID.String())
+			return nil, ErrNotFound
+		}
+		fmt.Printf("DEBUG: Database error: %v\n", err)
+		return nil, fmt.Errorf("get active practitioner subscription: %w", err)
+	}
+
+	fmt.Printf("DEBUG: Found subscription ID: %d for practitioner: %s\n", s.ID, practitionerID.String())
+	return &s, nil
 }

@@ -15,6 +15,9 @@ type Service interface {
 	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 	Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
+
+	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSubscription, error)
+	GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 }
 
 type service struct {
@@ -95,4 +98,33 @@ func (s *service) Update(ctx context.Context, id int, req *RqUpdatePractitionerS
 
 func (s *service) Delete(ctx context.Context, id int) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *service) GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSubscription, error) {
+	sub, err := s.repo.GetActiveSubscription(ctx, practitionerID)
+	if err != nil {
+		return nil, err
+	}
+	return sub.ToRs(), nil
+}
+
+func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListByPractitionerID(ctx, practitionerID, ft)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.repo.CountByPractitionerID(ctx, practitionerID, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]*RsPractitionerSubscription, len(list))
+	for i := range list {
+		data[i] = list[i].ToRs()
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	return &rsList, nil
 }

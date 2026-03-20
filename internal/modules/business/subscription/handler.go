@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,8 @@ type IHandler interface {
 	ListByPractitionerID(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	GetActiveSubscription(c *gin.Context)
+	GetSubscriptionHistory(c *gin.Context)
 }
 
 type handler struct {
@@ -186,4 +189,70 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"}, "Subscription deleted successfully")
+}
+
+// @Summary Get active subscription
+// @Description Get the active subscription of the practitioner from token
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitionerSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /practitioner/subscription/active [get]
+func (h *handler) GetActiveSubscription(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	// Debug: Log the practitioner ID
+	fmt.Printf("DEBUG: Practitioner ID from token: %s\n", practitionerID.String())
+
+	subscription, err := h.svc.GetActiveSubscription(c.Request.Context(), practitionerID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, fmt.Errorf("no active subscription found for practitioner %s", practitionerID.String()))
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, subscription, "Active subscription fetched successfully")
+}
+
+// @Summary Get subscription history
+// @Description Get all subscriptions (active and inactive) of the practitioner from token
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Param limit query int false "Pagination limit"
+// @Param offset query int false "Pagination offset"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /practitioner/subscription/history [get]
+func (h *handler) GetSubscriptionHistory(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	history, err := h.svc.GetSubscriptionHistory(c.Request.Context(), practitionerID, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, history, "Subscription history fetched successfully")
 }

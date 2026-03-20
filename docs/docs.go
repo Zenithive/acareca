@@ -994,6 +994,252 @@ const docTemplate = `{
                 }
             }
         },
+        "/bas/clinic/{clinic_id}/by-account": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns quarterly GST totals broken down per Chart of Accounts entry and BAS category (TAXABLE / GST_FREE). Useful for reconciliation and identifying which accounts drive your 1A / 1B figures.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "BAS breakdown by COA account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to a financial year by UUID",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bas.RsBASByAccount"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/clinic/{clinic_id}/monthly": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns BAS figures grouped by calendar month. Useful for dashboards and tracking GST accrual within a quarter. Does not include G8 / G15 subtotals (use the quarterly summary for those).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Monthly BAS data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bas.RsBASMonthly"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/clinic/{clinic_id}/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns G1, G3, G8, 1A, G11, G14, G15, 1B and Net GST Payable per quarter for a clinic. Mirrors the Australian ATO BAS form labels. Only SUBMITTED entries are included. BAS Excluded accounts are omitted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Quarterly BAS summary (ATO labels)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD) — rounded to quarter start",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD) — rounded to quarter end",
+                        "name": "to_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to a financial year by UUID",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/bas.RsBASSummary"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/report": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns G1, 1A, G11, 1B totals scoped to the authenticated practitioner, filtered by quarter_id or month name.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "BAS totals report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial quarter UUID",
+                        "name": "quarter_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Month name e.g. January",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bas.RsBASReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/calculate": {
             "post": {
                 "security": [
@@ -2751,6 +2997,319 @@ const docTemplate = `{
                 }
             }
         },
+        "/pl/by-account": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns monthly totals broken down per Chart of Accounts entry, filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "P\u0026L by COA account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLAccount"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/by-responsibility": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns monthly totals split by OWNER vs CLINIC, filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "P\u0026L split by payment responsibility",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLResponsibility"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/fy-summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns P\u0026L summarised by financial year and quarter (Q1–Q4), filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Quarterly P\u0026L by financial year",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter to a single financial year (UUID)",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLFYSummary"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/report": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a nested P\u0026L report grouped by clinic → form → section → field, filtered by date range, COA, tax type, and form.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Structured P\u0026L report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID (omit for all clinics)",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "date_until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by COA UUID",
+                        "name": "coa_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tax type name (e.g. GST on Income)",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form UUID",
+                        "name": "form_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pl.RsReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns Income, COGS, Gross Profit, Other Expenses and Net Profit grouped by calendar month, filtered by clinic_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Monthly P\u0026L summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date filter (YYYY-MM-DD)",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date filter (YYYY-MM-DD)",
+                        "name": "to_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/pl.RsPLSummary"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/practitioner": {
             "get": {
                 "security": [
@@ -2925,6 +3484,106 @@ const docTemplate = `{
                         "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/subscription.RsPractitionerSubscription"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/practitioner/subscription/active": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get the active subscription of the practitioner from token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "subscription"
+                ],
+                "summary": "Get active subscription",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/subscription.RsPractitionerSubscription"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/practitioner/subscription/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get all subscriptions (active and inactive) of the practitioner from token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "subscription"
+                ],
+                "summary": "Get subscription history",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Pagination limit",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Pagination offset",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
                         }
                     },
                     "400": {
@@ -3613,6 +4272,148 @@ const docTemplate = `{
                 },
                 "refresh_token": {
                     "type": "string"
+                }
+            }
+        },
+        "bas.RsBASByAccount": {
+            "type": "object",
+            "properties": {
+                "account_code": {
+                    "type": "integer"
+                },
+                "account_name": {
+                    "type": "string"
+                },
+                "bas_category": {
+                    "type": "string"
+                },
+                "entry_count": {
+                    "type": "integer"
+                },
+                "period_quarter": {
+                    "type": "string"
+                },
+                "period_year": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "tax_name": {
+                    "type": "string"
+                },
+                "tax_rate": {
+                    "type": "number"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.RsBASMonthly": {
+            "type": "object",
+            "properties": {
+                "g11_total_purchases_gross": {
+                    "type": "number"
+                },
+                "g14_gst_free_purchases": {
+                    "type": "number"
+                },
+                "g1_total_sales_gross": {
+                    "type": "number"
+                },
+                "g3_gst_free_sales": {
+                    "type": "number"
+                },
+                "label_1a_gst_on_sales": {
+                    "type": "number"
+                },
+                "label_1b_gst_on_purchases": {
+                    "type": "number"
+                },
+                "net_gst_payable": {
+                    "type": "number"
+                },
+                "period_month": {
+                    "type": "string"
+                },
+                "total_purchases_net": {
+                    "type": "number"
+                },
+                "total_sales_net": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.RsBASReport": {
+            "type": "object",
+            "properties": {
+                "1A": {
+                    "type": "number"
+                },
+                "1B": {
+                    "type": "number"
+                },
+                "G1": {
+                    "type": "number"
+                },
+                "G11": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.RsBASSummary": {
+            "type": "object",
+            "properties": {
+                "g11_total_purchases_gross": {
+                    "description": "Purchases (ATO labels)",
+                    "type": "number"
+                },
+                "g14_gst_free_purchases": {
+                    "type": "number"
+                },
+                "g15_taxable_purchases": {
+                    "type": "number"
+                },
+                "g1_total_sales_gross": {
+                    "description": "Sales (ATO labels)",
+                    "type": "number"
+                },
+                "g3_gst_free_sales": {
+                    "type": "number"
+                },
+                "g8_taxable_sales": {
+                    "type": "number"
+                },
+                "label_1a_gst_on_sales": {
+                    "type": "number"
+                },
+                "label_1b_gst_on_purchases": {
+                    "type": "number"
+                },
+                "net_gst_payable": {
+                    "description": "Net GST",
+                    "type": "number"
+                },
+                "period_quarter": {
+                    "description": "Period",
+                    "type": "string"
+                },
+                "period_year": {
+                    "description": "e.g. \"2026-01-01\"",
+                    "type": "string"
+                },
+                "total_purchases_net": {
+                    "type": "number"
+                },
+                "total_sales_net": {
+                    "type": "number"
                 }
             }
         },
@@ -4580,6 +5381,244 @@ const docTemplate = `{
                 },
                 "start_date": {
                     "type": "string"
+                }
+            }
+        },
+        "pl.RsPLAccount": {
+            "type": "object",
+            "properties": {
+                "account_code": {
+                    "type": "integer"
+                },
+                "account_name": {
+                    "type": "string"
+                },
+                "account_type": {
+                    "type": "string"
+                },
+                "entry_count": {
+                    "type": "integer"
+                },
+                "period_month": {
+                    "type": "string"
+                },
+                "pl_section": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "signed_gross": {
+                    "type": "number"
+                },
+                "signed_net": {
+                    "type": "number"
+                },
+                "tax_name": {
+                    "type": "string"
+                },
+                "tax_rate": {
+                    "type": "number"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
+                    "type": "number"
+                }
+            }
+        },
+        "pl.RsPLFYSummary": {
+            "type": "object",
+            "properties": {
+                "cogs_gross": {
+                    "type": "number"
+                },
+                "cogs_gst": {
+                    "type": "number"
+                },
+                "cogs_net": {
+                    "type": "number"
+                },
+                "financial_quarter_id": {
+                    "type": "string"
+                },
+                "financial_year": {
+                    "type": "string"
+                },
+                "financial_year_id": {
+                    "type": "string"
+                },
+                "gross_profit_net": {
+                    "type": "number"
+                },
+                "income_gross": {
+                    "type": "number"
+                },
+                "income_gst": {
+                    "type": "number"
+                },
+                "income_net": {
+                    "type": "number"
+                },
+                "net_profit_gross": {
+                    "type": "number"
+                },
+                "net_profit_net": {
+                    "type": "number"
+                },
+                "other_expenses_net": {
+                    "type": "number"
+                },
+                "quarter": {
+                    "type": "string"
+                }
+            }
+        },
+        "pl.RsPLResponsibility": {
+            "type": "object",
+            "properties": {
+                "account_code": {
+                    "type": "integer"
+                },
+                "account_name": {
+                    "type": "string"
+                },
+                "entry_count": {
+                    "type": "integer"
+                },
+                "payment_responsibility": {
+                    "type": "string"
+                },
+                "period_month": {
+                    "type": "string"
+                },
+                "pl_section": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
+                    "type": "number"
+                }
+            }
+        },
+        "pl.RsPLSummary": {
+            "type": "object",
+            "properties": {
+                "cogs_gross": {
+                    "type": "number"
+                },
+                "cogs_gst": {
+                    "type": "number"
+                },
+                "cogs_net": {
+                    "type": "number"
+                },
+                "gross_profit_net": {
+                    "type": "number"
+                },
+                "income_gross": {
+                    "type": "number"
+                },
+                "income_gst": {
+                    "type": "number"
+                },
+                "income_net": {
+                    "type": "number"
+                },
+                "net_profit_gross": {
+                    "type": "number"
+                },
+                "net_profit_net": {
+                    "type": "number"
+                },
+                "other_expenses_gross": {
+                    "type": "number"
+                },
+                "other_expenses_gst": {
+                    "type": "number"
+                },
+                "other_expenses_net": {
+                    "type": "number"
+                },
+                "period_month": {
+                    "type": "string"
+                }
+            }
+        },
+        "pl.RsReport": {
+            "type": "object",
+            "properties": {
+                "cost_of_sales": {
+                    "$ref": "#/definitions/pl.RsReportGroup"
+                },
+                "gross_profit": {
+                    "type": "number"
+                },
+                "income": {
+                    "$ref": "#/definitions/pl.RsReportGroup"
+                },
+                "net_profit": {
+                    "type": "number"
+                },
+                "other_costs": {
+                    "$ref": "#/definitions/pl.RsReportGroup"
+                },
+                "report_metadata": {
+                    "$ref": "#/definitions/pl.RsReportMetadata"
+                }
+            }
+        },
+        "pl.RsReportAccount": {
+            "type": "object",
+            "properties": {
+                "coa_id": {
+                    "type": "string"
+                },
+                "coa_name": {
+                    "type": "string"
+                },
+                "total_value": {
+                    "type": "number"
+                }
+            }
+        },
+        "pl.RsReportGroup": {
+            "type": "object",
+            "properties": {
+                "accounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pl.RsReportAccount"
+                    }
+                },
+                "group_total": {
+                    "type": "number"
+                }
+            }
+        },
+        "pl.RsReportMetadata": {
+            "type": "object",
+            "properties": {
+                "date_from": {
+                    "type": "string"
+                },
+                "date_until": {
+                    "type": "string"
+                },
+                "overall_net_profit": {
+                    "type": "number"
                 }
             }
         },

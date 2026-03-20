@@ -8,11 +8,16 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.Use(MiddlewarePractitionerID())
+
+	rg.GET("/active", h.GetActiveSubscription)
+	rg.GET("/history", h.GetSubscriptionHistory)
+
 	rg.GET("", h.ListByPractitionerID)
 	rg.POST("", h.Create)
 	rg.GET("/:sub_id", h.GetByID)
 	rg.PATCH("/:sub_id", h.Update)
 	rg.DELETE("/:sub_id", h.Delete)
+
 }
 
 func MiddlewarePractitionerID() gin.HandlerFunc {
