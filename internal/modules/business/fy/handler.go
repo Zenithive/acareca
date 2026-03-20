@@ -30,7 +30,7 @@ func NewHandler(svc Service) IHandler {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateFY true "Financial Year Data"
-// @Success 201 {object} RsFinancialYear
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -66,7 +66,7 @@ func (h *handler) CreateFY(c *gin.Context) {
 // @Produce json
 // @Param financial_year_id path string true "Financial Year UUID"
 // @Param request body RqUpdateFYLabel true "Updated Label Data"
-// @Success 200 {object} RsFinancialYear
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError

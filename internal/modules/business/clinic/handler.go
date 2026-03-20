@@ -35,7 +35,7 @@ func NewHandler(svc Service) IHandler {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateClinic true "Clinic Data"
-// @Success 201 {object} RsClinic
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -107,7 +107,7 @@ func (h *handler) List(c *gin.Context) {
 // @Tags clinic
 // @Produce json
 // @Param id path string true "Clinic UUID"
-// @Success 200 {object} RsClinic
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -146,7 +146,7 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Clinic UUID"
 // @Param request body RqUpdateClinic true "Updated Clinic Data"
-// @Success 200 {object} RsClinic
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -226,7 +226,7 @@ func (h *handler) Delete(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqBulkUpdateClinic true "Bulk Update Data"
-// @Success 200 {object} util.RsList
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError

@@ -58,9 +58,7 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 		ClinicID:      d.ClinicID,
 		Status:        d.Status,
 		CreatedAt:     d.CreatedAt,
-	}
-	if d.UpdatedAt != nil {
-		rs.UpdatedAt = *d.UpdatedAt
+		UpdatedAt:     d.UpdatedAt,
 	}
 	rs.SubmittedBy = d.SubmittedBy
 	if d.SubmittedAt != nil {
@@ -87,7 +85,7 @@ type RsFormEntry struct {
 	Status        string         `json:"status"`
 	Values        []RsEntryValue `json:"values,omitempty"`
 	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	UpdatedAt     *string        `json:"updated_at"`
 }
 
 type RsEntryValue struct {

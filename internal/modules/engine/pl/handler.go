@@ -167,7 +167,7 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Param        coa_id      query  string  false  "Filter by COA UUID"
 // @Param        tax_type_id query  string  false  "Filter by tax type name (e.g. GST on Income)"
 // @Param        form_id     query  string  false  "Filter by form UUID"
-// @Success      200  {object}  RsReport
+// @Success      200  {object}  response.RsBase
 // @Failure      400  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken

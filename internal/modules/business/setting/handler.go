@@ -35,7 +35,7 @@ func NewHandler(svc Service) IHandler {
 // @Accept       json
 // @Produce      json
 // @Param        request body RqCreatePractitioner true "Practitioner Data"
-// @Success      201 {object} RsPractitioner
+// @Success      201 {object} response.RsBase
 // @Failure      400 {object} response.RsError
 // @Failure      500 {object} response.RsError
 // @Security     BearerToken
@@ -59,7 +59,7 @@ func (h *handler) CreatePractitioner(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsPractitioner
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -88,7 +88,7 @@ func (h *handler) GetPractitioner(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param user_id path string true "User ID"
-// @Success 200 {object} RsPractitioner
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -142,7 +142,7 @@ func (h *handler) ListPractitioners(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqUpdatePractitioner true "Updated Practitioner Data"
-// @Success 200 {object} RsPractitioner
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -200,7 +200,7 @@ func (h *handler) DeletePractitioner(c *gin.Context) {
 // @Tags setting
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsPractitionerSetting
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -228,7 +228,7 @@ func (h *handler) GetSetting(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqUpsertPractitionerSetting true "Setting Data"
-// @Success 200 {object} RsPractitionerSetting
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken

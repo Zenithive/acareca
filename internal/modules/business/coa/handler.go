@@ -60,7 +60,7 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path int true "Account Type ID"
-// @Success 200 {object} AccountType
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -113,7 +113,7 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path int true "Account Tax ID"
-// @Success 200 {object} AccountTax
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -176,7 +176,7 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
-// @Success 200 {object} RsChartOfAccount
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -209,7 +209,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateChartOfAccountOfAccount true "COA Data"
-// @Success 201 {object} RsChartOfAccount
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -247,7 +247,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
 // @Param request body RqUpdateCharOfAccountOfAccount true "Updated COA Data"
-// @Success 200 {object} RsChartOfAccount
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError

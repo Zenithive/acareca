@@ -21,7 +21,7 @@ func NewHandler(svc IService) *Handler {
 // @Tags practitioner
 // @Produce json
 // @Param id path string true "Practitioner ID"
-// @Success 200 {object} RsPractitioner
+// @Success 200 {object} response.RsBase
 // @Security BearerToken
 // @Router /practitioner/{id} [get]
 func (h *Handler) GetPractitioner(c *gin.Context) {
