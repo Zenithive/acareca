@@ -92,14 +92,14 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 	netIncome := incomeSum - incomeGST
 
 	// Deduct expenses (excluding owner-paid, which is passed through) to get net amount
-	netAmount := netIncome - (expenseSum - paidByOwnerSum)
+	netAmount := netIncome - expenseSum
 
 	clinicShare := float64(formDetail.ClinicShare)
 	serviceFee := netAmount * (clinicShare / 100)
 	gstServiceFee := serviceFee * 0.1
 	totalServiceFee := serviceFee + gstServiceFee
 
-	remittedAmount := netAmount - totalServiceFee - otherCostSum + incomeGST + paidByOwnerSum
+	remittedAmount := netAmount - totalServiceFee - otherCostSum + incomeGST + paidByOwnerSum - expenseGST
 
 	return &GrossResult{
 		NetAmount:       util.Round(netAmount, 2),
