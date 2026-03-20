@@ -4829,13 +4829,12 @@
                         "OTHER_COST"
                     ]
                 },
+                "sort_order": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "tax_type": {
-                    "type": "string",
-                    "enum": [
-                        "INCLUSIVE",
-                        "EXCLUSIVE",
-                        "MANUAL"
-                    ]
+                    "type": "string"
                 }
             }
         },
@@ -4870,13 +4869,12 @@
                         "OTHER_COST"
                     ]
                 },
+                "sort_order": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "tax_type": {
-                    "type": "string",
-                    "enum": [
-                        "INCLUSIVE",
-                        "EXCLUSIVE",
-                        "MANUAL"
-                    ]
+                    "type": "string"
                 }
             }
         },
@@ -4929,6 +4927,11 @@
                         "PUBLISHED",
                         "ARCHIVED"
                     ]
+                },
+                "super_component": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
                 }
             }
         },
@@ -4986,6 +4989,11 @@
                         "PUBLISHED",
                         "ARCHIVED"
                     ]
+                },
+                "super_component": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
                 },
                 "update": {
                     "type": "array",

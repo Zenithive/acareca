@@ -427,11 +427,10 @@ definitions:
         - COST
         - OTHER_COST
         type: string
+      sort_order:
+        minimum: 0
+        type: integer
       tax_type:
-        enum:
-        - INCLUSIVE
-        - EXCLUSIVE
-        - MANUAL
         type: string
     required:
     - coa_id
@@ -458,11 +457,10 @@ definitions:
         - COST
         - OTHER_COST
         type: string
+      sort_order:
+        minimum: 0
+        type: integer
       tax_type:
-        enum:
-        - INCLUSIVE
-        - EXCLUSIVE
-        - MANUAL
         type: string
     required:
     - id
@@ -498,6 +496,10 @@ definitions:
         - PUBLISHED
         - ARCHIVED
         type: string
+      super_component:
+        maximum: 100
+        minimum: 0
+        type: number
     required:
     - clinic_id
     - clinic_share
@@ -542,6 +544,10 @@ definitions:
         - PUBLISHED
         - ARCHIVED
         type: string
+      super_component:
+        maximum: 100
+        minimum: 0
+        type: number
       update:
         items:
           $ref: '#/definitions/field.RqUpdateFormField'

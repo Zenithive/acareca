@@ -4832,13 +4832,12 @@ const docTemplate = `{
                         "OTHER_COST"
                     ]
                 },
+                "sort_order": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "tax_type": {
-                    "type": "string",
-                    "enum": [
-                        "INCLUSIVE",
-                        "EXCLUSIVE",
-                        "MANUAL"
-                    ]
+                    "type": "string"
                 }
             }
         },
@@ -4873,13 +4872,12 @@ const docTemplate = `{
                         "OTHER_COST"
                     ]
                 },
+                "sort_order": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "tax_type": {
-                    "type": "string",
-                    "enum": [
-                        "INCLUSIVE",
-                        "EXCLUSIVE",
-                        "MANUAL"
-                    ]
+                    "type": "string"
                 }
             }
         },
@@ -4932,6 +4930,11 @@ const docTemplate = `{
                         "PUBLISHED",
                         "ARCHIVED"
                     ]
+                },
+                "super_component": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
                 }
             }
         },
@@ -4989,6 +4992,11 @@ const docTemplate = `{
                         "PUBLISHED",
                         "ARCHIVED"
                     ]
+                },
+                "super_component": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
                 },
                 "update": {
                     "type": "array",
