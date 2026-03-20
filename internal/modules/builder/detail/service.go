@@ -103,18 +103,18 @@ func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {
 	if d.Description != nil {
 		existing.Description = d.Description
 	}
+	if d.OwnerShare != nil {
+		existing.OwnerShare = *d.OwnerShare
+	}
+	if d.ClinicShare != nil {
+		existing.ClinicShare = *d.ClinicShare
+	}
 	if existing.Status != StatusPublished {
 		if d.Status != nil {
 			existing.Status = *d.Status
 		}
 		if d.Method != nil {
 			existing.Method = *d.Method
-		}
-		if d.OwnerShare != nil {
-			existing.OwnerShare = *d.OwnerShare
-		}
-		if d.ClinicShare != nil {
-			existing.ClinicShare = *d.ClinicShare
 		}
 	}
 	return nil
