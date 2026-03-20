@@ -283,6 +283,17 @@ definitions:
       value:
         type: string
     type: object
+  coa.RqCheckCodeUnique:
+    properties:
+      code:
+        maximum: 9999
+        minimum: 100
+        type: integer
+      exclude_id:
+        type: string
+    required:
+    - code
+    type: object
   coa.RqCreateChartOfAccountOfAccount:
     properties:
       account_tax_id:
@@ -321,6 +332,11 @@ definitions:
       name:
         maxLength: 255
         type: string
+    type: object
+  coa.RsCodeUnique:
+    properties:
+      is_unique:
+        type: boolean
     type: object
   entry.RqEntryValue:
     properties:
@@ -372,6 +388,25 @@ definitions:
       gst_amount:
         type: number
       net_amount:
+        type: number
+    type: object
+  entry.RsFieldSummary:
+    properties:
+      form_field_id:
+        type: string
+      label:
+        type: string
+      payment_responsibility:
+        type: string
+      section_type:
+        type: string
+      tax_type:
+        type: string
+      total_gross:
+        type: number
+      total_gst:
+        type: number
+      total_net:
         type: number
     type: object
   field.RqFormField:
@@ -1558,14 +1593,9 @@ paths:
       - engine/bas
   /bas/report:
     get:
-      description: Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id
-        or month name.
+      description: Returns G1, 1A, G11, 1B totals scoped to the authenticated practitioner,
+        filtered by quarter_id or month name.
       parameters:
-      - description: Clinic UUID
-        in: query
-        name: clinic_id
-        required: true
-        type: string
       - description: Financial quarter UUID
         in: query
         name: quarter_id
@@ -2264,6 +2294,37 @@ paths:
       security:
       - BearerToken: []
       summary: Update an existing chart of account
+      tags:
+      - coa
+  /coa/chart-of-account/check-code:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Code to check
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqCheckCodeUnique'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.RsCodeUnique'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
   /entry/{field_id}/summary:

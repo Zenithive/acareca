@@ -22,6 +22,7 @@ type IHandler interface {
 	CreateChartOfAccount(c *gin.Context)
 	UpdateCharOfAccount(c *gin.Context)
 	DeleteChartOfAccount(c *gin.Context)
+	CheckCodeUnique(c *gin.Context)
 }
 
 type handler struct {
@@ -324,4 +325,34 @@ func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"}, "Chart of account deleted successfully")
+}
+
+// @Summary Check if a chart of account code is unique for the practitioner
+// @Tags coa
+// @Accept json
+// @Produce json
+// @Param request body RqCheckCodeUnique true "Code to check"
+// @Success 200 {object} RsCodeUnique
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /coa/chart-of-account/check-code [post]
+func (h *handler) CheckCodeUnique(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var req RqCheckCodeUnique
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.CheckCodeUnique(c.Request.Context(), practitionerID, req.Code, req.ExcludeID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, result, "Code uniqueness checked successfully")
 }

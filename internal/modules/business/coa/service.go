@@ -18,6 +18,7 @@ type Service interface {
 
 	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
+	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
@@ -260,6 +261,11 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 	})
 
 	return nil
+}
+
+func (s *service) CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error) {
+	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, code, practitionerID, excludeID)
+	return &RsCodeUnique{IsUnique: existing == nil}, nil
 }
 
 func strPtr(s string) *string { return &s }

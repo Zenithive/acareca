@@ -1201,7 +1201,7 @@
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns G1, 1A, G11, 1B totals for a clinic filtered by quarter_id or month name.",
+                "description": "Returns G1, 1A, G11, 1B totals scoped to the authenticated practitioner, filtered by quarter_id or month name.",
                 "produces": [
                     "application/json"
                 ],
@@ -1210,13 +1210,6 @@
                 ],
                 "summary": "BAS totals report",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "query",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Financial quarter UUID",
@@ -2115,6 +2108,56 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/chart-of-account/check-code": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "coa"
+                ],
+                "summary": "Check if a chart of account code is unique for the practitioner",
+                "parameters": [
+                    {
+                        "description": "Code to check",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqCheckCodeUnique"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/coa.RsCodeUnique"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -3374,319 +3417,6 @@
                 }
             }
         },
-        "/pl/by-account": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns monthly totals broken down per Chart of Accounts entry, filtered by clinic_id.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "engine/pl"
-                ],
-                "summary": "P\u0026L by COA account",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Start date filter (YYYY-MM-DD)",
-                        "name": "from_date",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "End date filter (YYYY-MM-DD)",
-                        "name": "to_date",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pl.RsPLAccount"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/pl/by-responsibility": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns monthly totals split by OWNER vs CLINIC, filtered by clinic_id.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "engine/pl"
-                ],
-                "summary": "P\u0026L split by payment responsibility",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Start date filter (YYYY-MM-DD)",
-                        "name": "from_date",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "End date filter (YYYY-MM-DD)",
-                        "name": "to_date",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pl.RsPLResponsibility"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/pl/fy-summary": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns P\u0026L summarised by financial year and quarter (Q1–Q4), filtered by clinic_id.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "engine/pl"
-                ],
-                "summary": "Quarterly P\u0026L by financial year",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter to a single financial year (UUID)",
-                        "name": "financial_year_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pl.RsPLFYSummary"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/pl/report": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns a nested P\u0026L report grouped by clinic → form → section → field, filtered by date range, COA, tax type, and form.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "engine/pl"
-                ],
-                "summary": "Structured P\u0026L report",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Clinic UUID (omit for all clinics)",
-                        "name": "clinic_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Start date (YYYY-MM-DD)",
-                        "name": "date_from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "End date (YYYY-MM-DD)",
-                        "name": "date_until",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by COA UUID",
-                        "name": "coa_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by tax type name (e.g. GST on Income)",
-                        "name": "tax_type_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by form UUID",
-                        "name": "form_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/pl.RsReport"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/pl/summary": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns Income, COGS, Gross Profit, Other Expenses and Net Profit grouped by calendar month, filtered by clinic_id.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "engine/pl"
-                ],
-                "summary": "Monthly P\u0026L summary",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Start date filter (YYYY-MM-DD)",
-                        "name": "from_date",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "End date filter (YYYY-MM-DD)",
-                        "name": "to_date",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/pl.RsPLSummary"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/practitioner": {
             "get": {
                 "security": [
@@ -4519,113 +4249,6 @@
                 }
             }
         },
-        "auth.RsToken": {
-            "type": "object",
-            "properties": {
-                "access_token": {
-                    "type": "string"
-                },
-                "is_superadmin": {
-                    "type": "boolean"
-                },
-                "refresh_token": {
-                    "type": "string"
-                }
-            }
-        },
-        "bas.RsBASByAccount": {
-            "type": "object",
-            "properties": {
-                "account_code": {
-                    "type": "integer"
-                },
-                "account_name": {
-                    "type": "string"
-                },
-                "bas_category": {
-                    "type": "string"
-                },
-                "entry_count": {
-                    "type": "integer"
-                },
-                "period_quarter": {
-                    "type": "string"
-                },
-                "period_year": {
-                    "type": "string"
-                },
-                "section_type": {
-                    "type": "string"
-                },
-                "tax_name": {
-                    "type": "string"
-                },
-                "tax_rate": {
-                    "type": "number"
-                },
-                "total_gross": {
-                    "type": "number"
-                },
-                "total_gst": {
-                    "type": "number"
-                },
-                "total_net": {
-                    "type": "number"
-                }
-            }
-        },
-        "bas.RsBASMonthly": {
-            "type": "object",
-            "properties": {
-                "g11_total_purchases_gross": {
-                    "type": "number"
-                },
-                "g14_gst_free_purchases": {
-                    "type": "number"
-                },
-                "g1_total_sales_gross": {
-                    "type": "number"
-                },
-                "g3_gst_free_sales": {
-                    "type": "number"
-                },
-                "label_1a_gst_on_sales": {
-                    "type": "number"
-                },
-                "label_1b_gst_on_purchases": {
-                    "type": "number"
-                },
-                "net_gst_payable": {
-                    "type": "number"
-                },
-                "period_month": {
-                    "type": "string"
-                },
-                "total_purchases_net": {
-                    "type": "number"
-                },
-                "total_sales_net": {
-                    "type": "number"
-                }
-            }
-        },
-        "bas.RsBASReport": {
-            "type": "object",
-            "properties": {
-                "1A": {
-                    "type": "number"
-                },
-                "1B": {
-                    "type": "number"
-                },
-                "G1": {
-                    "type": "number"
-                },
-                "G11": {
-                    "type": "number"
-                }
-            }
-        },
         "bas.RsBASByAccount": {
             "type": "object",
             "properties": {
@@ -4992,6 +4615,22 @@
                 }
             }
         },
+        "coa.RqCheckCodeUnique": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "maximum": 9999,
+                    "minimum": 100
+                },
+                "exclude_id": {
+                    "type": "string"
+                }
+            }
+        },
         "coa.RqCreateChartOfAccountOfAccount": {
             "type": "object",
             "required": [
@@ -5042,6 +4681,14 @@
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "coa.RsCodeUnique": {
+            "type": "object",
+            "properties": {
+                "is_unique": {
+                    "type": "boolean"
                 }
             }
         },
@@ -5119,6 +4766,35 @@
                     "type": "number"
                 },
                 "net_amount": {
+                    "type": "number"
+                }
+            }
+        },
+        "entry.RsFieldSummary": {
+            "type": "object",
+            "properties": {
+                "form_field_id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "payment_responsibility": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "tax_type": {
+                    "type": "string"
+                },
+                "total_gross": {
+                    "type": "number"
+                },
+                "total_gst": {
+                    "type": "number"
+                },
+                "total_net": {
                     "type": "number"
                 }
             }
