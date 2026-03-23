@@ -89,47 +89,6 @@ func (h *handler) Login(c *gin.Context) {
 	response.JSON(c, http.StatusOK, token, "User logged in successfully")
 }
 
-// GoogleLogin godoc
-// @Summary Get Google OAuth consent-screen URL
-// @Description get Google OAuth consent-screen URL
-// @Tags auth
-// @Produce json
-// @Success 200 {object} response.RsBase
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /auth/google [get]
-func (h *handler) GoogleLogin(c *gin.Context) {
-	state := util.NewUUID()
-	result := h.svc.GoogleAuthURL(state)
-	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
-}
-
-// GoogleCallback godoc
-// @Summary Handle Google OAuth callback
-// @Description handle Google OAuth callback and return tokens
-// @Tags auth
-// @Produce json
-// @Param code query string true "OAuth authorization code"
-// @Success 200 {object} response.RsBase
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /auth/google/callback [get]
-func (h *handler) GoogleCallback(c *gin.Context) {
-	code := c.Query("code")
-	if code == "" {
-		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
-		return
-	}
-
-	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
-}
-
 // Logout godoc
 // @Summary Logout a user
 // @Description revoke the current session using the refresh token
@@ -155,6 +114,21 @@ func (h *handler) Logout(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "Logged out successfully")
 }
 
+// GoogleLogin godoc
+// @Summary Get Google OAuth consent-screen URL
+// @Description get Google OAuth consent-screen URL
+// @Tags auth
+// @Produce json
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google [get]
+func (h *handler) GoogleLogin(c *gin.Context) {
+	state := util.NewUUID()
+	result := h.svc.GoogleAuthURL(state)
+	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
+}
+
 // GoogleAuthURL godoc
 // @Summary Get Google OAuth consent-screen URL
 // @Description get Google OAuth consent-screen URL
@@ -166,6 +140,45 @@ func (h *handler) Logout(c *gin.Context) {
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
+	// Store state in a short-lived, HttpOnly cookie so the callback can verify it
+	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
+}
+
+// GoogleCallback godoc
+// @Summary Handle Google OAuth callback
+// @Description handle Google OAuth callback and return tokens
+// @Tags auth
+// @Produce json
+// @Param code query string true "OAuth authorization code"
+// @Param state query string true "OAuth state (CSRF token)"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google/callback [get]
+func (h *handler) GoogleCallback(c *gin.Context) {
+	code := c.Query("code")
+	if code == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
+		return
+	}
+
+	// Validate state to prevent CSRF
+	stateParam := c.Query("state")
+	stateCookie, err := c.Cookie("oauth_state")
+	if err != nil || stateParam == "" || stateParam != stateCookie {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid oauth state"))
+		return
+	}
+	// Consume the state cookie
+	c.SetCookie("oauth_state", "", -1, "/", "", true, true)
+
+	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
 }

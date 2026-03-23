@@ -69,10 +69,6 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
-	if _, err := s.repo.FindByEmail(ctx, req.Email); err == nil {
-		return nil, ErrEmailTaken
-	}
-
 	hashedPassword, err := util.GenerateHash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -83,14 +79,17 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	var created *User
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		var err error
-		created, err = s.repo.CreateUser(ctx, u, tx)
-		if err != nil {
-			return err
+		var txErr error
+		created, txErr = s.repo.CreateUser(ctx, u, tx)
+		if txErr != nil {
+			if errors.Is(txErr, ErrEmailTaken) {
+				return ErrEmailTaken
+			}
+			return txErr
 		}
-		_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
-		if err != nil {
-			return fmt.Errorf("create practitioner: %w", err)
+		_, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+		if txErr != nil {
+			return fmt.Errorf("create practitioner: %w", txErr)
 		}
 		return nil
 	})
@@ -119,10 +118,13 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	user, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
+		// Run a dummy hash comparison to prevent timing-based user enumeration
+		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
 		return nil, ErrInvalidPassword
 	}
 
 	if user.Password == nil || *user.Password == "" {
+		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
 		return nil, ErrOAuthOnly
 	}
 
@@ -203,21 +205,22 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		return nil, err
 	}
 
-	user, err := s.repo.FindByEmail(ctx, googleUser.Email)
+	user, findErr := s.repo.FindByEmail(ctx, googleUser.Email)
 	isNewUser := false
 
 	if err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		if err != nil {
-			if !errors.Is(err, ErrNotFound) {
-				return err
+		if findErr != nil {
+			if !errors.Is(findErr, ErrNotFound) {
+				return findErr
 			}
-			user, err = s.repo.CreateUser(ctx, &User{
+			var createErr error
+			user, createErr = s.repo.CreateUser(ctx, &User{
 				Email:     googleUser.Email,
 				FirstName: googleUser.FirstName,
 				LastName:  googleUser.LastName,
 			}, tx)
-			if err != nil {
-				return err
+			if createErr != nil {
+				return createErr
 			}
 			isNewUser = true
 		}
@@ -299,12 +302,12 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 }
 
 func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Hour, s.cfg.JWTSecret)
+	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Minute, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
 	if err != nil {
 		return nil, err
 	}

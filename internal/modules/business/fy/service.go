@@ -166,7 +166,7 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 	}
 	var updatedFY *FinancialYear
 
-	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	if err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if req.IsActive != nil && *req.IsActive {
 			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
 				return fmt.Errorf("deactivate existing financial years: %w", err)
@@ -175,14 +175,19 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 		} else if req.IsActive != nil {
 			fy.IsActive = *req.IsActive
 		}
-		UpdatedFY, err := s.repo.UpdateFinancialYear(ctx, fy, tx)
-		if err != nil {
-			return fmt.Errorf("failde to update  financial years: %w", err)
+		var txErr error
+		updatedFY, txErr = s.repo.UpdateFinancialYear(ctx, fy, tx)
+		if txErr != nil {
+			return fmt.Errorf("failed to update financial year: %w", txErr)
 		}
-		updatedFY = UpdatedFY
 		return nil
-	})
-	// If is_active is provided and set to true, deactivate all other financial years
+	}); err != nil {
+		return nil, err
+	}
+
+	if updatedFY == nil {
+		return nil, fmt.Errorf("update financial year returned nil")
+	}
 
 	result := &RsFinancialYear{
 		ID:        updatedFY.ID,

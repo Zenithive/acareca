@@ -35,7 +35,7 @@ func NewHandler(svc Service) IHandler {
 // @Produce json
 // @Param id path string true "Form ID"
 // @Param super_component query number false "Super component value override"
-// @Success 200 {object} response.RsBase
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -55,7 +55,11 @@ func (h *handler) Calculation(c *gin.Context) {
 	if superComponent := c.Query("super_component"); superComponent != "" {
 		val, err := strconv.ParseFloat(superComponent, 64)
 		if err != nil {
-			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid super_component"))
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("super_component must be a number"))
+			return
+		}
+		if val < 0 || val > 100 {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("super_component must be between 0 and 100 (e.g. 11.5 for 11.5%%)"))
 			return
 		}
 		filter.SuperComponent = &val
@@ -83,7 +87,7 @@ func (h *handler) Calculation(c *gin.Context) {
 // @Accept  json
 // @Produce json
 // @Param request body RqCalculateFromEntries true "Form ID, entries, and optional super component"
-// @Success 200 {object} response.RsBase
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError

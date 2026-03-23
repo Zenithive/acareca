@@ -21,13 +21,7 @@ type IService interface {
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 
-	ListTransactions(ctx context.Context, practitionerID uuid.UUID, filter TransactionFilter) (*util.RsList, error)
-	// Transaction variants
-	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error)
-	UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
-	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
-
-	GetFieldSummary(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
+	ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error)
 }
 
 type Service struct {
@@ -71,9 +65,9 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	if err := s.repo.Create(ctx, e, values); err != nil {
 		return nil, err
 	}
-	created, vals, _ := s.repo.GetByID(ctx, e.ID)
-	if created == nil {
-		return e.ToRs(values), nil
+	created, vals, err := s.repo.GetByID(ctx, e.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch entry after create: %w", err)
 	}
 	return created.ToRs(vals), nil
 }
@@ -111,9 +105,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if err := s.repo.Update(ctx, existing, newValues); err != nil {
 		return nil, err
 	}
-	updated, vals, _ := s.repo.GetByID(ctx, id)
-	if updated == nil {
-		return existing.ToRs(values), nil
+	updated, vals, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("fetch entry after update: %w", err)
 	}
 	return updated.ToRs(vals), nil
 }
@@ -156,10 +150,9 @@ func (s *Service) GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntr
 }
 
 // ListTransactions implements [IService].
-func (s *Service) ListTransactions(ctx context.Context, practitionerID uuid.UUID, filter TransactionFilter) (*util.RsList, error) {
-	pid := practitionerID.String()
-	filter.PractitionerID = &pid
+func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error) {
 	f := filter.ToCommonFilter()
+
 	items, err := s.repo.ListTransactions(ctx, f)
 	if err != nil {
 		return nil, err
@@ -170,69 +163,9 @@ func (s *Service) ListTransactions(ctx context.Context, practitionerID uuid.UUID
 	}
 
 	var rs util.RsList
-	cf := filter.ToCommonFilter()
-	rs.MapToList(items, total, cf.Offset, cf.Limit)
+	rs.MapToList(items, total, f.Offset, f.Limit)
 	return &rs, nil
 }
-
-// func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {
-// 	out := make([]*FormEntryValue, 0, len(rq))
-
-// 	for _, v := range rq {
-// 		fieldID, err := uuid.Parse(v.FormFieldID)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		field, err := s.fieldRepo.GetByID(ctx, fieldID)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		var gstAmount *float64
-
-// 		var taxType method.TaxTreatment
-// 		if field.TaxType != nil && *field.TaxType != "" {
-// 			taxType = method.TaxTreatment(*field.TaxType)
-// 		}
-
-// 		switch taxType {
-// 		case method.TaxTreatmentInclusive, method.TaxTreatmentExclusive:
-// 			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
-// 				Amount: v.Amount,
-// 			})
-// 			if err != nil {
-// 				return nil, err
-// 			}
-// 			gstAmount = &result.GstAmount
-
-// 		case method.TaxTreatmentManual:
-// 			gstAmount = v.GstAmount
-
-// 		default:
-// 			// TaxTreatmentZero or no tax type set — no GST
-// 			gstAmount = nil
-// 		}
-
-// 		totalAmount := v.Amount
-// 		if gstAmount != nil {
-// 			totalAmount += *gstAmount
-// 		}
-
-// 		formValue := &FormEntryValue{
-// 			ID:          uuid.New(),
-// 			EntryID:     entryID,
-// 			FormFieldID: fieldID,
-// 			NetAmount:   &v.Amount,
-// 			GstAmount:   gstAmount,
-// 			GrossAmount: &totalAmount,
-// 		}
-
-// 		out = append(out, formValue)
-// 	}
-
-// 	return out, nil
-// }
 
 func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {
 	out := make([]*FormEntryValue, 0, len(rq))
@@ -248,126 +181,62 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, err
 		}
 
-		var netAmount float64
-		var gstAmount *float64
-		var grossAmount float64
-
-		var taxType method.TaxTreatment
-		if field.TaxType != nil && *field.TaxType != "" {
-			taxType = method.TaxTreatment(*field.TaxType)
+		if field.TaxType == nil {
+			return nil, fmt.Errorf("field %s has no tax type set", fieldID)
 		}
 
+		var gstAmount *float64
+		netBase := v.Amount
+		grossTotal := v.Amount
+
+		taxType := method.TaxTreatment(*field.TaxType)
 		switch taxType {
-		case method.TaxTreatmentInclusive, method.TaxTreatmentExclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
-				Amount: v.Amount,
-			})
+
+		case method.TaxTreatmentInclusive:
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
 			if err != nil {
 				return nil, err
 			}
-			netAmount = result.Amount
 			gstAmount = &result.GstAmount
-			grossAmount = result.TotalAmount
+			netBase = result.Amount         // ex-GST base  (e.g. 100 when input is 110)
+			grossTotal = result.TotalAmount // = v.Amount  (e.g. 110)
+
+		case method.TaxTreatmentExclusive:
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			if err != nil {
+				return nil, err
+			}
+			gstAmount = &result.GstAmount
+			netBase = v.Amount              // ex-GST base  (e.g. 100)
+			grossTotal = result.TotalAmount // base + GST (e.g. 110)
 
 		case method.TaxTreatmentManual:
-			netAmount = v.Amount
 			gstAmount = v.GstAmount
-			grossAmount = v.Amount
+			netBase = v.Amount
 			if gstAmount != nil {
-				grossAmount += *gstAmount
+				grossTotal = v.Amount + *gstAmount
 			}
 
-		default:
-			// TaxTreatmentZero or no tax type set — no GST
-			netAmount = v.Amount
+		case method.TaxTreatmentZero:
 			gstAmount = nil
-			grossAmount = v.Amount
+			netBase = v.Amount
+			grossTotal = v.Amount
+
+		default:
+			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
 		formValue := &FormEntryValue{
 			ID:          uuid.New(),
 			EntryID:     entryID,
 			FormFieldID: fieldID,
-			NetAmount:   &netAmount,
+			NetAmount:   &netBase,
 			GstAmount:   gstAmount,
-			GrossAmount: &grossAmount,
+			GrossAmount: &grossTotal,
 		}
 
 		out = append(out, formValue)
 	}
 
 	return out, nil
-}
-
-// CreateTx creates a form entry within a transaction.
-func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error) {
-	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyTransactionCreate); err != nil {
-		return nil, err
-	}
-
-	status := EntryStatusDraft
-	if req.Status != "" {
-		status = req.Status
-	}
-	var submittedAt *string
-	if status == EntryStatusSubmitted {
-		now := time.Now().UTC().Format(time.RFC3339)
-		submittedAt = &now
-	}
-	e := &FormEntry{
-		ID:            uuid.New(),
-		FormVersionID: formVersionID,
-		ClinicID:      req.ClinicID,
-		SubmittedBy:   submittedBy,
-		SubmittedAt:   submittedAt,
-		Status:        status,
-	}
-	values, err := s.CalculateValues(ctx, e.ID, req.Values)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.repo.CreateTx(ctx, tx, e, values); err != nil {
-		return nil, err
-	}
-	return e.ToRs(values), nil
-}
-
-// UpdateTx updates a form entry within a transaction.
-func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
-	existing, values, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if req.Status != nil {
-		existing.Status = *req.Status
-		if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {
-			now := time.Now().UTC().Format(time.RFC3339)
-			existing.SubmittedAt = &now
-		}
-		existing.SubmittedBy = submittedBy
-	}
-	newValues := values
-	if len(req.Values) > 0 {
-		newValues, err = s.CalculateValues(ctx, existing.ID, req.Values)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if err := s.repo.UpdateTx(ctx, tx, existing, newValues); err != nil {
-		return nil, err
-	}
-	return existing.ToRs(newValues), nil
-}
-
-// DeleteTx deletes a form entry within a transaction.
-func (s *Service) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
-	return s.repo.DeleteTx(ctx, tx, id)
-}
-
-func (s *Service) GetFieldSummary(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error) {
-	summary, err := s.repo.GetSummedValuesByFieldID(ctx, fieldID)
-	if err != nil {
-		return nil, fmt.Errorf("service get field summary: %w", err)
-	}
-	return summary, nil
 }

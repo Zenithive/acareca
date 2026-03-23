@@ -22,6 +22,8 @@ import (
 const UserIDKey = "userID"
 const PractitionerIDKey = "practitionerID"
 
+var validate = validator.New()
+
 func NewUUID() string {
 	return uuid.New().String()
 }
@@ -49,7 +51,7 @@ func BindAndValidate(c *gin.Context, v any) error {
 		return err
 	}
 
-	return validator.New().Struct(v)
+	return validate.Struct(v)
 }
 
 type CustomClaims struct {

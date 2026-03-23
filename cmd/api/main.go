@@ -1,17 +1,19 @@
 package main
 
 import (
+	"context"
 	"log"
-	_ "net/http"
+	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	"github.com/iamarpitzala/acareca/docs"
-	_ "github.com/iamarpitzala/acareca/docs"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -108,10 +110,33 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 	r.Use(middleware.ClientInfo())
-	route.RegisterRoutes(r, cfg)
+	auditSvc := route.RegisterRoutes(r, cfg)
 
-	log.Printf("server starting on :%s", cfg.ServerPort)
-	if err := r.Run(":" + cfg.ServerPort); err != nil {
-		log.Fatalf("server error: %v", err)
+	srv := &http.Server{
+		Addr:    ":" + cfg.ServerPort,
+		Handler: r,
 	}
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("server starting on :%s", cfg.ServerPort)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	<-quit
+	log.Println("shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("server forced to shutdown: %v", err)
+	}
+
+	auditSvc.Shutdown()
+	log.Println("server exited")
 }

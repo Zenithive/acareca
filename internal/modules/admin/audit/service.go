@@ -12,17 +12,20 @@ type Service interface {
 	LogAsync(entry *LogEntry)
 	Query(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
+	Shutdown()
 }
 
 type service struct {
 	repo    Repository
 	logChan chan *LogEntry
+	done    chan struct{}
 }
 
 func NewService(repo Repository) Service {
 	s := &service{
 		repo:    repo,
-		logChan: make(chan *LogEntry, 1000), // Buffer for async logging
+		logChan: make(chan *LogEntry, 1000),
+		done:    make(chan struct{}),
 	}
 
 	// Start async worker
@@ -57,6 +60,13 @@ func (s *service) asyncWorker() {
 			log.Printf("ERROR: failed to insert audit log: %v (action: %s.%s)", err, entry.Module, entry.Action)
 		}
 	}
+	close(s.done)
+}
+
+// Shutdown drains the log channel and waits for the worker to finish.
+func (s *service) Shutdown() {
+	close(s.logChan)
+	<-s.done
 }
 
 // Query retrieves audit logs based on filter parameters
