@@ -36,6 +36,9 @@ type Service interface {
 	Logout(ctx context.Context, refreshToken string) error
 	GoogleAuthURL(state string) *RsGoogleAuthURL
 	GoogleCallback(ctx context.Context, code string) (*RsToken, error)
+
+	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
+	DeleteUser(ctx context.Context, userID uuid.UUID) error
 }
 
 type service struct {
@@ -349,4 +352,76 @@ func sanitizeUser(u *User) map[string]interface{} {
 		"first_name": u.FirstName,
 		"last_name":  u.LastName,
 	}
+}
+
+func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error) {
+	// 1. Fetch existing user
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	beforeState := sanitizeUser(user)
+
+	// 2. Map new data to the model
+	user.Email = req.Email
+	user.FirstName = req.FirstName
+	user.LastName = req.LastName
+	user.Phone = &req.Phone
+
+	updated, err := s.repo.UpdateUser(ctx, user, nil)
+	if err != nil {
+		return nil, fmt.Errorf("update profile: %w", err)
+	}
+
+	// 4. Audit log: Profile Update
+	meta := auditctx.GetMetadata(ctx)
+	userIDStr := updated.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      &userIDStr,
+		Action:      auditctx.ActionUserUpdated,
+		Module:      auditctx.ModuleAuth,
+		EntityType:  strPtr(auditctx.EntityUser),
+		EntityID:    &userIDStr,
+		BeforeState: beforeState,
+		AfterState:  sanitizeUser(updated),
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return updated.ToRsUser(), nil
+}
+
+func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	// 1. Fetch user to confirm existence and for audit logging
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	beforeState := sanitizeUser(user)
+
+	// 2. Perform the soft delete in repository
+	if err := s.repo.DeleteUser(ctx, userID, nil); err != nil {
+		return fmt.Errorf("delete user service: %w", err)
+	}
+
+	// 3. Audit Log
+	meta := auditctx.GetMetadata(ctx)
+	userIDStr := userID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      &userIDStr,
+		Action:      auditctx.ActionUserDeleted, 
+		Module:      auditctx.ModuleAuth,
+		EntityType:  strPtr(auditctx.EntityUser),
+		EntityID:    &userIDStr,
+		BeforeState: beforeState,
+		AfterState:  nil, 
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }

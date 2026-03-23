@@ -81,7 +81,7 @@ func (r *repository) ListByPractitionerID(ctx context.Context, practitionerID uu
 	base := `
 		SELECT id, practitioner_id, subscription_id, start_date, end_date, status, created_at, updated_at, deleted_at
 		FROM tbl_practitioner_subscription
-		WHERE practitioner_id = $1 AND deleted_at IS NULL
+		WHERE practitioner_id = ? AND deleted_at IS NULL
 	`
 	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchCols, false)
 	args := append([]interface{}{practitionerID}, filterArgs...)

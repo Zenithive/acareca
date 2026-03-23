@@ -16,6 +16,8 @@ var ErrNotFound = errors.New("user not found")
 type Repository interface {
 	// User
 	CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error)
+	UpdateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error)
+	DeleteUser(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 
@@ -66,6 +68,66 @@ func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return &u, nil
+}
+
+func (r *repository) UpdateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
+	const returning = `RETURNING id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at`
+
+	query := `
+        UPDATE tbl_user 
+        SET email = $2, 
+            first_name = $3, 
+            last_name = $4, 
+            phone = $5,
+            updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL
+    ` + returning
+
+	var u User
+	var err error
+	// 1. Check if a transaction was provided
+	if tx != nil {
+		// Use the transaction (tx)
+		err = tx.QueryRowxContext(ctx, query,
+			user.ID,        // $1
+			user.Email,     // $2
+			user.FirstName, // $3
+			user.LastName,  // $4
+			user.Phone,     // $5
+		).StructScan(&u)
+	} else {
+		// Fallback to the standard DB connection (r.db)
+		err = r.db.QueryRowxContext(ctx, query,
+			user.ID,        // $1
+			user.Email,     // $2
+			user.FirstName, // $3
+			user.LastName,  // $4
+			user.Phone,     // $5
+		).StructScan(&u)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+
+	return &u, nil
+}
+
+func (r *repository) DeleteUser(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error {
+	query := `UPDATE tbl_user SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`
+
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, id)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, id)
+	}
+
+	if err != nil {
+		return fmt.Errorf("repository delete user: %w", err)
+	}
+
+	return nil
 }
 
 func (r *repository) FindByEmail(ctx context.Context, email string) (*User, error) {

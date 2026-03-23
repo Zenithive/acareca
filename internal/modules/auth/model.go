@@ -52,6 +52,13 @@ type RqUser struct {
 	IsSuperadmin *bool   `json:"is_superadmin" validate:"omitempty"`
 }
 
+type RqUpdateUser struct {
+	Email     string `json:"email" validate:"required,email"`
+	FirstName string `json:"first_name" validate:"required"`
+	LastName  string `json:"last_name" validate:"required"`
+	Phone     string `json:"phone" validate:"required"`
+}
+
 func (r *RqUser) ToDBModel() *User {
 	return &User{
 		Email:        r.Email,

@@ -12,6 +12,22 @@ definitions:
     - email
     - password
     type: object
+  auth.RqUpdateUser:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - phone
+    type: object
   auth.RqUser:
     properties:
       email:
@@ -36,6 +52,25 @@ definitions:
   auth.RsGoogleAuthURL:
     properties:
       url:
+        type: string
+    type: object
+  auth.RsUser:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      is_superadmin:
+        type: boolean
+      last_name:
+        type: string
+      phone:
+        type: string
+      updated_at:
         type: string
     type: object
   bas.RsBASByAccount:
@@ -1483,6 +1518,65 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Register a new user
+      tags:
+      - auth
+  /auth/user:
+    delete:
+      description: Soft delete the currently authenticated user's account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete user account
+      tags:
+      - auth
+  /auth/user/profile:
+    put:
+      consumes:
+      - application/json
+      description: Update the profile details of the user (email, names, phone)
+      parameters:
+      - description: Update Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqUpdateUser'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsUser'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update user profile
       tags:
       - auth
   /bas/clinic/{clinic_id}/by-account:
