@@ -181,13 +181,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, err
 		}
 
-		if field.TaxType == nil {
-			return nil, fmt.Errorf("field %s has no tax type set", fieldID)
-		}
-
 		var gstAmount *float64
 		netBase := v.Amount
 		grossTotal := v.Amount
+
+		// nil tax_type means no GST — treat as zero-rated
+		if field.TaxType == nil {
+			out = append(out, &FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: fieldID,
+				NetAmount:   &netBase,
+				GstAmount:   nil,
+				GrossAmount: &grossTotal,
+			})
+			continue
+		}
 
 		taxType := method.TaxTreatment(*field.TaxType)
 		switch taxType {
