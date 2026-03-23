@@ -191,6 +191,7 @@ definitions:
       form_id:
         type: string
       super_component:
+        maximum: 100
         minimum: 0
         type: number
     required:
@@ -436,25 +437,6 @@ definitions:
       gst_amount:
         type: number
       net_amount:
-        type: number
-    type: object
-  entry.RsFieldSummary:
-    properties:
-      form_field_id:
-        type: string
-      label:
-        type: string
-      payment_responsibility:
-        type: string
-      section_type:
-        type: string
-      tax_type:
-        type: string
-      total_gross:
-        type: number
-      total_gst:
-        type: number
-      total_net:
         type: number
     type: object
   field.RqFormField:
@@ -1424,6 +1406,11 @@ paths:
         name: code
         required: true
         type: string
+      - description: OAuth state (CSRF token)
+        in: query
+        name: state
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -1826,7 +1813,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -1863,7 +1851,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -2508,40 +2497,6 @@ paths:
       summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
-  /entry/{field_id}/summary:
-    get:
-      description: Returns the total net, gst, and gross amounts for all active entries
-        of a field
-      parameters:
-      - description: Form Field ID
-        in: path
-        name: field_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/entry.RsFieldSummary'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get summed values for a specific field
-      tags:
-      - entry
   /entry/{id}:
     delete:
       consumes:

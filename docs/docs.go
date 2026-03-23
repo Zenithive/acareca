@@ -839,6 +839,13 @@ const docTemplate = `{
                         "name": "code",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "OAuth state (CSRF token)",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -1454,7 +1461,8 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -1512,7 +1520,8 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -2750,58 +2759,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/entry/{field_id}/summary": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns the total net, gst, and gross amounts for all active entries of a field",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "entry"
-                ],
-                "summary": "Get summed values for a specific field",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Form Field ID",
-                        "name": "field_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/entry.RsFieldSummary"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -4759,6 +4716,7 @@ const docTemplate = `{
                 },
                 "super_component": {
                     "type": "number",
+                    "maximum": 100,
                     "minimum": 0
                 }
             }
@@ -5115,35 +5073,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "net_amount": {
-                    "type": "number"
-                }
-            }
-        },
-        "entry.RsFieldSummary": {
-            "type": "object",
-            "properties": {
-                "form_field_id": {
-                    "type": "string"
-                },
-                "label": {
-                    "type": "string"
-                },
-                "payment_responsibility": {
-                    "type": "string"
-                },
-                "section_type": {
-                    "type": "string"
-                },
-                "tax_type": {
-                    "type": "string"
-                },
-                "total_gross": {
-                    "type": "number"
-                },
-                "total_gst": {
-                    "type": "number"
-                },
-                "total_net": {
                     "type": "number"
                 }
             }
