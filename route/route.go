@@ -111,7 +111,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	fy.RegisterRoutes(v1, fyHandler)
 
 	formGroup := v1.Group("/form")
-	formGroup.Use(middleware.Auth(cfg))
+	formGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
 
 	detailRepo := detail.NewRepository(dbConn)
 	versionRepo := version.NewRepository(dbConn)
@@ -121,14 +121,14 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
 
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
-	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc)
 	formHandler := form.NewHandler(formSvc)
 	form.RegisterRoutes(formGroup, formHandler)
 
 	entryGroup := v1.Group("/entry")
-	entryGroup.Use(middleware.Auth(cfg))
+	entryGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc)
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entry.RegisterRoutes(entryGroup, entriesHandler)
@@ -151,7 +151,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	settingGroup := v1.Group("/setting")
 	settingRepo := setting.NewRepository(dbConn)
-	settingSvc := setting.NewService(dbConn, settingRepo)
+	settingSvc := setting.NewService(dbConn, settingRepo, auditSvc)
 	settingHandler := setting.NewHandler(settingSvc)
 
 	setting.RegisterRoutes(settingGroup, settingHandler, cfg)

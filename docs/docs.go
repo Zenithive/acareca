@@ -1182,6 +1182,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/verify-email": {
+            "get": {
+                "description": "Validates the UUID token sent via email. If valid, marks the user as verified and the token as used.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Verify user email address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Verification Token (UUID)",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email verified successfully",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid token format or token already used",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "410": {
+                        "description": "Token has expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/bas/clinic/{clinic_id}/by-account": {
             "get": {
                 "security": [

@@ -17,6 +17,8 @@ type IHandler interface {
 	Logout(c *gin.Context)
 	GoogleAuthURL(c *gin.Context)
 	GoogleCallback(c *gin.Context)
+
+	VerifyEmail(c *gin.Context)
 	ChangePassword(c *gin.Context)
 	UpdateProfile(c *gin.Context)
 	DeleteUser(c *gin.Context)
@@ -320,4 +322,29 @@ func (h *handler) DeleteUser(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, nil, "User account deleted successfully")
+}
+
+// @Summary Verify user email address
+// @Description Validates the UUID token sent via email. If valid, marks the user as verified and the token as used.
+// @Tags auth
+// @Produce json
+// @Param token query string true "Verification Token (UUID)"
+// @Success 200 {object} response.RsBase "Email verified successfully"
+// @Failure 400 {object} response.RsError "Invalid token format or token already used"
+// @Failure 410 {object} response.RsError "Token has expired"
+// @Failure 500 {object} response.RsError "Internal server error"
+// @Router /auth/verify-email [get]
+func (h *handler) VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("token query parameter is required"))
+		return
+	}
+
+	if err := h.svc.VerifyEmail(c.Request.Context(), token); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "Email verified successfully. You can now log in.")
 }

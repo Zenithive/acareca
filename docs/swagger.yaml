@@ -1628,6 +1628,38 @@ paths:
       summary: Update user profile
       tags:
       - auth
+  /auth/verify-email:
+    get:
+      description: Validates the UUID token sent via email. If valid, marks the user
+        as verified and the token as used.
+      parameters:
+      - description: Verification Token (UUID)
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email verified successfully
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Invalid token format or token already used
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "410":
+          description: Token has expired
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Verify user email address
+      tags:
+      - auth
   /bas/clinic/{clinic_id}/by-account:
     get:
       description: Returns quarterly GST totals broken down per Chart of Accounts

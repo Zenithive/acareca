@@ -16,6 +16,8 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	auth.GET("/google", h.GoogleAuthURL)
 	auth.GET("/google/callback", h.GoogleCallback)
 
+	auth.GET("/verify", h.VerifyEmail)
+
 	// Protected Routes
 	protected := auth.Group("/user", authMiddleware, middleware.AuditContext())
 	{

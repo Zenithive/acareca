@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -30,6 +31,12 @@ type Repository interface {
 	CreateSession(ctx context.Context, s *Session) (*Session, error)
 	FindSessionByRefreshToken(ctx context.Context, refreshToken string) (*Session, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
+
+	// verificaction token
+	CreateVerificationToken(ctx context.Context, tx *sqlx.Tx, token *VerificationToken) error
+	DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
+	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)
+	MarkUserVerified(ctx context.Context, userID uuid.UUID, tokenID uuid.UUID) error
 }
 
 type repository struct {
@@ -256,6 +263,44 @@ func (r *repository) DeleteSession(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 	return nil
+}
+
+func (r *repository) CreateVerificationToken(ctx context.Context, tx *sqlx.Tx, token *VerificationToken) error {
+	query := `
+        INSERT INTO tbl_verification_token (id, entity_id, role, status, expires_at)
+        VALUES ($1, $2, $3, $4, $5)`
+	_, err := tx.ExecContext(ctx, query, token.ID, token.EntityID, token.Role, token.Status, token.ExpiresAt)
+	return err
+}
+
+func (r *repository) DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
+	query := `UPDATE tbl_verification_token SET status = 'RESENT' WHERE entity_id = $1 AND status = 'PENDING'`
+	_, err := tx.ExecContext(ctx, query, entityID)
+	return err
+}
+
+func (r *repository) GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error) {
+	var t VerificationToken
+	query := `SELECT * FROM tbl_verification_token WHERE id = $1`
+	if err := r.db.GetContext(ctx, &t, query, tokenID); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *repository) MarkUserVerified(ctx context.Context, userID uuid.UUID, tokenID uuid.UUID) error {
+	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Mark user as verified (There is no such column in tbl_user yet)
+		// if _, err := tx.ExecContext(ctx, "UPDATE tbl_user SET verified = true WHERE id = $1", userID); err != nil {
+		// 	return err
+		// }
+
+		// Mark token as used
+		if _, err := tx.ExecContext(ctx, "UPDATE tbl_verification_token SET status = 'USED' WHERE id = $1", tokenID); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (r *repository) UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error {

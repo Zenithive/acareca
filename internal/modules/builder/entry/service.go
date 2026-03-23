@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -33,10 +35,11 @@ type Service struct {
 	limitsSvc  limits.Service
 	detailSvc  detail.IService
 	versionSvc version.IService
+	auditSvc   audit.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc}
 }
 
 // Create implements [IService].
@@ -73,9 +76,26 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	if err != nil {
 		return nil, fmt.Errorf("fetch entry after create: %w", err)
 	}
-	rs := created.ToRs(vals)
-	s.attachICCalculation(ctx, rs)
-	return rs, nil
+
+	result := created.ToRs(vals)
+	s.attachICCalculation(ctx, result)
+
+	// Audit log: entry created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := created.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionEntryCreated,
+		Module:     auditctx.ModuleForms,
+		EntityType: strPtr(auditctx.EntityFormFieldEntry),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
+	return result, nil
 }
 
 // GetByID implements [IService].
@@ -95,6 +115,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if err != nil {
 		return nil, err
 	}
+	beforeState := existing.ToRs(values)
 	if req.Status != nil {
 		existing.Status = *req.Status
 		if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {
@@ -117,14 +138,58 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if err != nil {
 		return nil, fmt.Errorf("fetch entry after update: %w", err)
 	}
-	rs := updated.ToRs(vals)
-	s.attachICCalculation(ctx, rs)
-	return rs, nil
+
+	result := updated.ToRs(vals)
+	s.attachICCalculation(ctx, result)
+
+	// Audit log: entry updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionEntryUpdated,
+		Module:      auditctx.ModuleForms,
+		EntityType:  strPtr(auditctx.EntityFormFieldEntry),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		AfterState:  result,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return result, nil
 }
 
 // Delete implements [IService].
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	// Get entry details before deletion for audit log
+	existing, values, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	beforeState := existing.ToRs(values)
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Audit log: entry deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionEntryDeleted,
+		Module:      auditctx.ModuleForms,
+		EntityType:  strPtr(auditctx.EntityFormFieldEntry),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
 
 // List implements [IService].
@@ -342,3 +407,5 @@ func roundEntry(v float64) float64 {
 	}
 	return float64(int(shifted)) / 100
 }
+
+func strPtr(s string) *string { return &s }

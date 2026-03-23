@@ -126,3 +126,20 @@ type GoogleUserInfo struct {
 	FirstName string `json:"given_name"`
 	LastName  string `json:"family_name"`
 }
+
+// For email verification token operations
+const (
+	TokenStatusPending = "PENDING"
+	TokenStatusUsed    = "USED"
+	TokenStatusExpired = "EXPIRED"
+	TokenStatusResent  = "RESENT"
+)
+
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
+}

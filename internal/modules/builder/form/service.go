@@ -5,11 +5,13 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -31,11 +33,12 @@ type service struct {
 	fieldSvc   field.IService
 	entryRepo  entry.IRepository
 	coaSvc     coa.Service
+	auditSvc   audit.Service
 	clinicSvc  interface{} // Will be clinic.Service but avoiding circular import
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
@@ -102,6 +105,21 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		return nil, nil, err
 	}
 
+	// Audit log: form created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := created.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionFormCreated,
+		Module:     auditctx.ModuleForms,
+		EntityType: strPtr(auditctx.EntityForm),
+		EntityID:   &idStr,
+		AfterState: created,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return created, syncResult, nil
 }
 
@@ -110,6 +128,8 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if err != nil {
 		return nil, nil, err
 	}
+	// Clone to prevent shared memory pointer updates
+	beforeState := *existing
 
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
@@ -134,7 +154,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return err
 		}
 		updated = upd
-		syncResult := &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
+		syncResult = &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
 
 		// Get Active Version
 		versions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
@@ -213,6 +233,22 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Audit log: form updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := updated.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionFormUpdated,
+		Module:      auditctx.ModuleForms,
+		EntityType:  strPtr(auditctx.EntityForm),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		AfterState:  updated,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
 
 	return updated, syncResult, nil
 }
@@ -344,7 +380,26 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	return s.detailSvc.Delete(ctx, formDetail.ID)
+	if err := s.detailSvc.Delete(ctx, formDetail.ID); err != nil {
+		return err
+	}
+
+	// Audit log: form deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := formID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionFormDeleted,
+		Module:      auditctx.ModuleForms,
+		EntityType:  strPtr(auditctx.EntityForm),
+		EntityID:    &idStr,
+		BeforeState: formDetail,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
 
 // GetByID implements [IService].
@@ -357,3 +412,5 @@ func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.Rs
 
 	return detail, err
 }
+
+func strPtr(s string) *string { return &s }

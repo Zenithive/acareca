@@ -82,4 +82,5 @@ const (
 	EntityFormFieldEntry         = "tbl_form_field_entry"
 	EntityPlanPermission         = "tbl_plan_permission"
 	EntitySubscriptionPermission = "tbl_subscription_permission"
+	EntityVerificationToken      = "tbl_verification_token"
 )

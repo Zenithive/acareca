@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -24,12 +26,13 @@ type Service interface {
 }
 
 type service struct {
-	db   *sqlx.DB
-	repo Repository
+	db       *sqlx.DB
+	repo     Repository
+	auditSvc audit.Service
 }
 
-func NewService(db *sqlx.DB, repo Repository) Service {
-	return &service{db: db, repo: repo}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc}
 }
 
 func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner) (*RsPractitioner, error) {
@@ -38,7 +41,22 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 	if err != nil {
 		return nil, err
 	}
-	return created.ToRs(), nil
+	result := created.ToRs()
+	// Audit log: practitioner created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := result.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionPractitionerCreated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityPractitioner),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+	return result, nil
 }
 
 func (s *service) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
@@ -83,12 +101,34 @@ func (s *service) UpdatePractitioner(ctx context.Context, id uuid.UUID, req *RqU
 	if err != nil {
 		return nil, err
 	}
+
+	// Capture state before update
+	beforeState := existing.ToRs()
+
 	applyUpdate(existing, req)
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
 	}
-	return updated.ToRs(), nil
+	result := updated.ToRs()
+
+	// Audit log: practitioner updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionPractitionerUpdated,
+		Module:      auditctx.ModuleBusiness,
+		EntityType:  strPtr(auditctx.EntityPractitioner),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		AfterState:  result,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return result, nil
 }
 
 func applyUpdate(t *Practitioner, req *RqUpdatePractitioner) {
@@ -102,7 +142,33 @@ func applyUpdate(t *Practitioner, req *RqUpdatePractitioner) {
 }
 
 func (s *service) DeletePractitioner(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	// Get existing data so we can log what was deleted
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	beforeState := existing.ToRs()
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Audit log: practitioner deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionPractitionerDeleted,
+		Module:      auditctx.ModuleBusiness,
+		EntityType:  strPtr(auditctx.EntityPractitioner),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
 
 func (s *service) GetSetting(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSetting, error) {
@@ -134,7 +200,25 @@ func (s *service) UpsertSetting(ctx context.Context, practitionerID uuid.UUID, r
 	if err != nil {
 		return nil, err
 	}
-	return updated.ToRs(), nil
+
+	result := updated.ToRs()
+
+	// Audit log: setting updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := practitionerID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionSettingUpdated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityFinancialSettings),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
+	return result, nil
 }
 
 // UpsertSettingTx upserts a practitioner setting within a transaction.
@@ -163,3 +247,5 @@ func (s *service) UpsertSettingTx(ctx context.Context, tx *sqlx.Tx, practitioner
 	}
 	return updated.ToRs(), nil
 }
+
+func strPtr(s string) *string { return &s }
