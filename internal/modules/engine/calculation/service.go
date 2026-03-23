@@ -55,7 +55,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 			if v.NetAmount != nil {
 				incomeSum += *v.NetAmount
 			}
-			if v.GstAmount != nil {
+			if f.TaxType != nil && *f.TaxType == field.TaxTypeManual && v.GstAmount != nil {
 				incomeGST += *v.GstAmount
 			}
 
@@ -97,7 +97,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 	gstServiceFee := serviceFee * 0.1
 	totalServiceFee := serviceFee + gstServiceFee
 
-	remittedAmount := netAmount - totalServiceFee - otherCostSum + paidByOwnerSum
+	remittedAmount := netAmount - totalServiceFee - otherCostSum + paidByOwnerSum + incomeGST
 
 	return &GrossResult{
 		NetAmount:        util.Round(netAmount, 2),
