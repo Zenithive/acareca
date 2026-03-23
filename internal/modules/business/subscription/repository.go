@@ -18,11 +18,13 @@ type Repository interface {
 	Create(ctx context.Context, s *PractitionerSubscription, tx *sqlx.Tx) (*PractitionerSubscription, error)
 	GetByID(ctx context.Context, id int) (*PractitionerSubscription, error)
 	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*PractitionerSubscription, error)
+	ListHistoryByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsActiveSubscription, error)
+
 	Update(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
 	CountByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
 
-	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSubscription, error)
+	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error)
 }
 
 type repository struct {
@@ -93,6 +95,54 @@ func (r *repository) ListByPractitionerID(ctx context.Context, practitionerID uu
 	return list, nil
 }
 
+func (r *repository) ListHistoryByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsActiveSubscription, error) {
+	// 1. Base query with JOIN
+	base := `
+        SELECT 
+            ps.id, ps.practitioner_id, ps.subscription_id, ps.start_date, ps.end_date, ps.status, ps.created_at, ps.updated_at,
+            s.name AS s_name, s.description AS s_description
+        FROM tbl_practitioner_subscription ps
+        INNER JOIN tbl_subscription s ON ps.subscription_id = s.id
+        WHERE ps.practitioner_id = ? AND ps.deleted_at IS NULL
+    `
+
+	// 2. Build the dynamic query (sorting, search, etc.)
+	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchCols, false)
+	args := append([]interface{}{practitionerID}, filterArgs...)
+
+	// 3. Scan into a temporary struct that captures joined fields
+	var rows []struct {
+		PractitionerSubscription
+		SName        string  `db:"s_name"`
+		SDescription *string `db:"s_description"`
+	}
+
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), args...); err != nil {
+		return nil, fmt.Errorf("list subscription history: %w", err)
+	}
+
+	// 4. Map to the nested response slice
+	result := make([]*RsActiveSubscription, len(rows))
+	for i, row := range rows {
+		result[i] = &RsActiveSubscription{
+			ID:             row.ID,
+			PractitionerID: row.PractitionerID,
+			StartDate:      row.StartDate,
+			EndDate:        row.EndDate,
+			Status:         row.Status,
+			CreatedAt:      row.CreatedAt,
+			UpdatedAt:      row.UpdatedAt,
+			Subscription: SubscriptionInfo{
+				ID:          row.SubscriptionID,
+				Name:        row.SName,
+				Description: row.SDescription,
+			},
+		}
+	}
+
+	return result, nil
+}
+
 func (r *repository) Update(ctx context.Context, s *PractitionerSubscription) (*PractitionerSubscription, error) {
 	query := `
 		UPDATE tbl_practitioner_subscription
@@ -136,6 +186,7 @@ func (r *repository) CountByPractitionerID(ctx context.Context, practitionerID u
 	return count, nil
 }
 
+/*
 func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSubscription, error) {
 	query := `
 		SELECT ps.id, ps.practitioner_id, ps.subscription_id, ps.start_date, ps.end_date, ps.status, ps.created_at, ps.updated_at, ps.deleted_at
@@ -160,4 +211,56 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 
 	fmt.Printf("DEBUG: Found subscription ID: %d for practitioner: %s\n", s.ID, practitionerID.String())
 	return &s, nil
+}
+*/
+
+func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error) {
+	// 1. Updated query with INNER JOIN to get plan details
+	query := `
+		SELECT 
+			ps.id, ps.practitioner_id, ps.subscription_id, ps.start_date, ps.end_date, ps.status, ps.created_at, ps.updated_at,
+			s.name AS s_name, s.description AS s_description
+		FROM tbl_practitioner_subscription ps
+		INNER JOIN tbl_subscription s ON ps.subscription_id = s.id
+		WHERE ps.practitioner_id = $1 
+		  AND ps.status = 'ACTIVE' 
+		  AND ps.deleted_at IS NULL
+		  AND s.deleted_at IS NULL
+		ORDER BY ps.created_at DESC
+		LIMIT 1
+	`
+
+	var row struct {
+		PractitionerSubscription
+		SName        string  `db:"s_name"`
+		SDescription *string `db:"s_description"`
+	}
+
+	// 3. Execute the query
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID).StructScan(&row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Printf("DEBUG: No active subscription found for practitioner: %s\n", practitionerID.String())
+			return nil, ErrNotFound
+		}
+		fmt.Printf("DEBUG: Database error: %v\n", err)
+		return nil, fmt.Errorf("get active practitioner subscription with join: %w", err)
+	}
+
+	// 4. Map the flat database row to our nested Response struct
+	res := &RsActiveSubscription{
+		ID:             row.ID,
+		PractitionerID: row.PractitionerID,
+		StartDate:      row.StartDate,
+		EndDate:        row.EndDate,
+		Status:         row.Status,
+		CreatedAt:      row.CreatedAt,
+		UpdatedAt:      row.UpdatedAt,
+		Subscription: SubscriptionInfo{
+			ID:          row.SubscriptionID,
+			Name:        row.SName,
+			Description: row.SDescription,
+		},
+	}
+
+	return res, nil
 }

@@ -197,3 +197,16 @@ func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
 	}
 	return count, nil
 }
+
+func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
+	query := `
+        UPDATE tbl_practitioner 
+        SET deleted_at = now(), updated_at = now(),status = 'INACTIVE'
+        WHERE user_id = $1 AND deleted_at IS NULL
+    `
+	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("delete practitioner by user id: %w", err)
+	}
+	return nil
+}

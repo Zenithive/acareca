@@ -16,7 +16,7 @@ type Service interface {
 	Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
 
-	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSubscription, error)
+	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error)
 	GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 }
 
@@ -100,17 +100,18 @@ func (s *service) Delete(ctx context.Context, id int) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *service) GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerSubscription, error) {
+func (s *service) GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error) {
 	sub, err := s.repo.GetActiveSubscription(ctx, practitionerID)
 	if err != nil {
 		return nil, err
 	}
-	return sub.ToRs(), nil
+	return sub, nil
 }
 
+/*
 func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
 	ft := f.MapToFilter()
-	list, err := s.repo.ListByPractitionerID(ctx, practitionerID, ft)
+	list, err := s.repo.ListHistoryByPractitionerID(ctx, practitionerID, ft)
 	if err != nil {
 		return nil, err
 	}
@@ -126,5 +127,28 @@ func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uui
 
 	var rsList util.RsList
 	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	return &rsList, nil
+}
+*/
+
+func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+
+	// 1. Call the new specialized repository method
+	// list is now []*RsActiveSubscription
+	list, err := s.repo.ListHistoryByPractitionerID(ctx, practitionerID, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get the total count for pagination
+	total, err := s.repo.CountByPractitionerID(ctx, practitionerID, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(list, total, ft.Offset, ft.Limit)
+
 	return &rsList, nil
 }

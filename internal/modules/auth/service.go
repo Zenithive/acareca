@@ -43,15 +43,16 @@ type Service interface {
 }
 
 type service struct {
-	repo            Repository
-	cfg             *config.Config
-	db              *sqlx.DB
-	oauthConfig     *oauth2.Config
-	practitionerSvc practitioner.IService
-	auditSvc        audit.Service
+	repo             Repository
+	cfg              *config.Config
+	db               *sqlx.DB
+	oauthConfig      *oauth2.Config
+	practitionerSvc  practitioner.IService
+	auditSvc         audit.Service
+	practitionerRepo practitioner.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, practitionerRepo practitioner.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -63,12 +64,13 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		Endpoint: google.Endpoint,
 	}
 	return &service{
-		repo:            repo,
-		cfg:             cfg,
-		oauthConfig:     oauthCfg,
-		db:              db,
-		practitionerSvc: practitionerSvc,
-		auditSvc:        auditSvc,
+		repo:             repo,
+		cfg:              cfg,
+		oauthConfig:      oauthCfg,
+		db:               db,
+		practitionerSvc:  practitionerSvc,
+		auditSvc:         auditSvc,
+		practitionerRepo: practitionerRepo,
 	}
 }
 
@@ -472,6 +474,12 @@ func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 	// 2. Perform the soft delete in repository
 	if err := s.repo.DeleteUser(ctx, userID, nil); err != nil {
 		return fmt.Errorf("delete user service: %w", err)
+	}
+
+	if err := s.practitionerRepo.DeleteByUserID(ctx, userID); err != nil {
+		// We log the error but might not want to fail the whole request
+		// if the user was just a standard user without a practitioner profile.
+		fmt.Printf("INFO: No practitioner profile deleted for user %s: %v\n", userID, err)
 	}
 
 	// 3. Audit Log

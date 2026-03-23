@@ -208,9 +208,6 @@ func (h *handler) GetActiveSubscription(c *gin.Context) {
 		return
 	}
 
-	// Debug: Log the practitioner ID
-	fmt.Printf("DEBUG: Practitioner ID from token: %s\n", practitionerID.String())
-
 	subscription, err := h.svc.GetActiveSubscription(c.Request.Context(), practitionerID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

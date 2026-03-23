@@ -61,7 +61,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, practitionerRepo)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
