@@ -15,6 +15,7 @@ import (
 type IService interface {
 	Create(ctx context.Context, formVersionID uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormField, error)
+	GetFieldMap(ctx context.Context, formVersionID uuid.UUID) (map[uuid.UUID]*RsFormField, error)
 	Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error)
@@ -139,6 +140,19 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (s *Service) ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error) {
 	return s.repo.ListRsByFormVersionID(ctx, formVersionID)
+}
+
+// GetFieldMap returns all fields for a form version keyed by field ID for O(1) lookup.
+func (s *Service) GetFieldMap(ctx context.Context, formVersionID uuid.UUID) (map[uuid.UUID]*RsFormField, error) {
+	fields, err := s.repo.ListRsByFormVersionID(ctx, formVersionID)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uuid.UUID]*RsFormField, len(fields))
+	for _, f := range fields {
+		m[f.ID] = f
+	}
+	return m, nil
 }
 
 // CreateTx creates a form field within a transaction.

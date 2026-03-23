@@ -34,7 +34,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -63,7 +63,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc)
 	authHandler := auth.NewHandler(authSvc)
-	auth.RegisterRoutes(v1, authHandler)
+	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
 	superadminCheck := func(ctx context.Context, userID uuid.UUID) (bool, error) {
 		u, err := authRepo.FindByID(ctx, userID)
@@ -159,4 +159,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	practitionerHandler := practitioner.NewHandler(practitionerSvc)
 	practitioner.RegisterRoutes(v1, practitionerHandler, cfg)
 
+	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
+
+	userSubscriptionGroup := v1.Group("/practitioner/subscription")
+
+	userSubscriptionGroup.Use(middleware.Auth(cfg))
+
+	userSubscription.RegisterRoutes(userSubscriptionGroup, userSubscriptionHandler)
+
+	return auditSvc
 }

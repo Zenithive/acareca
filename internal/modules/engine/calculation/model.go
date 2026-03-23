@@ -16,24 +16,33 @@ type GrossResult struct {
 	GstServiceFee   float64 `json:"gst_service_fee"`
 	TotalServiceFee float64 `json:"total_service_fee"`
 	RemittedAmount  float64 `json:"remitted_amount"`
+
+	ClinicExpenseGST float64 `json:"clinic_expense_gst"`
 }
 
 type NetResult struct {
-	NetAmount                float64  `json:"net_amount"`
-	Commission               float64  `json:"commission"`
-	SuperComponent           *float64 `json:"super_component"`
-	SuperComponentCommission *float64 `json:"super_component_commission"`
-	TotalRemuneration        *float64 `json:"total_remuneration"`
-	GstCommission            float64  `json:"gst_commission"`
-	TotalCommission          float64  `json:"total_commission"`
+	NetAmount float64 `json:"net_amount"`
+
+	TotalRemuneration float64 `json:"total_remuneration"`
+
+	BaseRemuneration *float64 `json:"base_remuneration,omitempty"`
+
+	SuperComponent *float64 `json:"super_component,omitempty"`
+
+	GstOnRemuneration float64 `json:"gst_on_remuneration"`
+
+	InvoiceTotal float64 `json:"invoice_total"`
+
+	OtherCostDeduction float64 `json:"other_cost_deduction"`
 }
 
 type NetFilter struct {
-	SuperComponent *float64 `json:"super_component"`
+	SuperComponent *float64 `json:"super_component" validate:"omitempty,min=0,max=100"`
 }
 
 type RqCalculateFromEntries struct {
-	FormID         string               `json:"form_id"         validate:"required,uuid"`
-	Entries        []entry.RsEntryValue `json:"entries"         validate:"required,min=1,dive"`
-	SuperComponent *float64             `json:"super_component" validate:"omitempty,min=0"`
+	FormID  string               `json:"form_id" validate:"required,uuid"`
+	Entries []entry.RsEntryValue `json:"entries" validate:"required,min=1,dive"`
+
+	SuperComponent *float64 `json:"super_component" validate:"omitempty,min=0,max=100"`
 }

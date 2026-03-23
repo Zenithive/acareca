@@ -1,5 +1,16 @@
 basePath: /api/v1
 definitions:
+  auth.RqChangePassword:
+    properties:
+      new_password:
+        minLength: 8
+        type: string
+      old_password:
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
   auth.RqLogin:
     properties:
       email:
@@ -11,6 +22,24 @@ definitions:
     required:
     - email
     - password
+    type: object
+  auth.RqLogout:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  auth.RqUpdateUser:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      phone:
+        type: string
     type: object
   auth.RqUser:
     properties:
@@ -36,6 +65,25 @@ definitions:
   auth.RsGoogleAuthURL:
     properties:
       url:
+        type: string
+    type: object
+  auth.RsUser:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      is_superadmin:
+        type: boolean
+      last_name:
+        type: string
+      phone:
+        type: string
+      updated_at:
         type: string
     type: object
   bas.RsBASByAccount:
@@ -143,6 +191,7 @@ definitions:
       form_id:
         type: string
       super_component:
+        maximum: 100
         minimum: 0
         type: number
     required:
@@ -388,25 +437,6 @@ definitions:
       gst_amount:
         type: number
       net_amount:
-        type: number
-    type: object
-  entry.RsFieldSummary:
-    properties:
-      form_field_id:
-        type: string
-      label:
-        type: string
-      payment_responsibility:
-        type: string
-      section_type:
-        type: string
-      tax_type:
-        type: string
-      total_gross:
-        type: number
-      total_gst:
-        type: number
-      total_net:
         type: number
     type: object
   field.RqFormField:
@@ -792,6 +822,25 @@ definitions:
       price:
         minimum: 0
         type: number
+    type: object
+  subscription.RsPractitionerSubscription:
+    properties:
+      created_at:
+        type: string
+      end_date:
+        type: string
+      id:
+        type: integer
+      practitioner_id:
+        type: string
+      start_date:
+        type: string
+      status:
+        $ref: '#/definitions/subscription.Status'
+      subscription_id:
+        type: integer
+      updated_at:
+        type: string
     type: object
   subscription.RsSubscriptionPermission:
     properties:
@@ -1357,6 +1406,11 @@ paths:
         name: code
         required: true
         type: string
+      - description: OAuth state (CSRF token)
+        in: query
+        name: state
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -1409,29 +1463,6 @@ paths:
       summary: Login a user
       tags:
       - auth
-  /auth/logout:
-    post:
-      consumes:
-      - application/json
-      description: revoke the current session using the refresh token
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Logout a user
-      tags:
-      - auth
   /auth/register:
     post:
       consumes:
@@ -1464,6 +1495,137 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Register a new user
+      tags:
+      - auth
+  /auth/user:
+    delete:
+      description: Soft delete the currently authenticated user's account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete user account
+      tags:
+      - auth
+  /auth/user/change-password:
+    put:
+      consumes:
+      - application/json
+      description: updates the password for the authenticated user
+      parameters:
+      - description: Password Change Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqChangePassword'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Change user password
+      tags:
+      - auth
+  /auth/user/logout:
+    post:
+      consumes:
+      - application/json
+      description: revoke the current session using the refresh token
+      parameters:
+      - description: Logout Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqLogout'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Logout a user
+      tags:
+      - auth
+  /auth/user/profile:
+    put:
+      consumes:
+      - application/json
+      description: Update the profile details of the user (email, names, phone)
+      parameters:
+      - description: Update Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqUpdateUser'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsUser'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update user profile
       tags:
       - auth
   /auth/verify-email:
@@ -1683,7 +1845,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -1720,7 +1883,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
@@ -2365,40 +2529,6 @@ paths:
       summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
-  /entry/{field_id}/summary:
-    get:
-      description: Returns the total net, gst, and gross amounts for all active entries
-        of a field
-      parameters:
-      - description: Form Field ID
-        in: path
-        name: field_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/entry.RsFieldSummary'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get summed values for a specific field
-      tags:
-      - entry
   /entry/{id}:
     delete:
       consumes:
@@ -3300,6 +3430,70 @@ paths:
       security:
       - BearerToken: []
       summary: Update a subscription
+      tags:
+      - subscription
+  /practitioner/subscription/active:
+    get:
+      consumes:
+      - application/json
+      description: Get the active subscription of the practitioner from token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/subscription.RsPractitionerSubscription'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get active subscription
+      tags:
+      - subscription
+  /practitioner/subscription/history:
+    get:
+      consumes:
+      - application/json
+      description: Get all subscriptions (active and inactive) of the practitioner
+        from token
+      parameters:
+      - description: Pagination limit
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get subscription history
       tags:
       - subscription
   /setting:

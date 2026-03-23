@@ -16,6 +16,8 @@ const (
 // Action constants - Auth module
 const (
 	ActionUserRegistered  = "user.registered"
+	ActionUserUpdated     = "user.updated"
+	ActionUserDeleted     = "user.deleted"
 	ActionUserLoggedIn    = "user.logged_in"
 	ActionUserLoggedOut   = "user.logged_out"
 	ActionPasswordReset   = "user.password_reset"
