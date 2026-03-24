@@ -262,9 +262,9 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 // @Security BearerToken
 // @Router /auth/user/change-password [put]
 func (h *handler) ChangePassword(c *gin.Context) {
-	userID, ok := util.GetUserID(c)
+	pracID, ok := util.GetPractitionerID(c)
 	if !ok {
-		return // GetUserID already sends the error response via Gin
+		return
 	}
 
 	var req RqChangePassword
@@ -273,11 +273,7 @@ func (h *handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.ChangePassword(c.Request.Context(), userID, &req); err != nil {
-		if errors.Is(err, ErrInvalidPassword) {
-			response.Error(c, http.StatusBadRequest, errors.New("incorrect old password"))
-			return
-		}
+	if err := h.svc.ChangePassword(c.Request.Context(), pracID, &req); err != nil {
 		if errors.Is(err, ErrOAuthOnly) {
 			response.Error(c, http.StatusForbidden, err)
 			return

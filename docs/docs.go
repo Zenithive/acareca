@@ -4476,16 +4476,12 @@ const docTemplate = `{
         "auth.RqChangePassword": {
             "type": "object",
             "required": [
-                "new_password",
-                "old_password"
+                "new_password"
             ],
             "properties": {
                 "new_password": {
                     "type": "string",
                     "minLength": 8
-                },
-                "old_password": {
-                    "type": "string"
                 }
             }
         },

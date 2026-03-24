@@ -21,6 +21,7 @@ type Repository interface {
 	DeleteUser(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
+	FindByPractitionerID(ctx context.Context, pracID uuid.UUID) (*User, error)
 	UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error
 
 	// Auth provider
@@ -166,6 +167,20 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) 
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("find user by id: %w", err)
+	}
+	return &u, nil
+}
+
+func (r *repository) FindByPractitionerID(ctx context.Context, pracID uuid.UUID) (*User, error) {
+	query := `
+		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone, u.is_superadmin 
+		FROM tbl_user u
+		JOIN tbl_practitioner p ON p.user_id = u.id
+		WHERE p.id = $1 AND u.deleted_at IS NULL
+	`
+	var u User
+	if err := r.db.GetContext(ctx, &u, query, pracID); err != nil {
+		return nil, err
 	}
 	return &u, nil
 }

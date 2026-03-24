@@ -5,11 +5,8 @@ definitions:
       new_password:
         minLength: 8
         type: string
-      old_password:
-        type: string
     required:
     - new_password
-    - old_password
     type: object
   auth.RqLogin:
     properties:
