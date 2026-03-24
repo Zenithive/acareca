@@ -52,6 +52,13 @@ type RqUser struct {
 	Role      string  `json:"role"       validate:"required,oneof=ADMIN PRACTITIONER ACCOUNTANT"`
 }
 
+type RqUpdateUser struct {
+	Email     *string `json:"email"      validate:"omitempty,email"`
+	FirstName *string `json:"first_name" validate:"omitempty"`
+	LastName  *string `json:"last_name"  validate:"omitempty"`
+	Phone     *string `json:"phone"      validate:"omitempty,e164"`
+}
+
 func (r *RqUser) ToDBModel() *User {
 	return &User{
 		Email:     r.Email,
@@ -66,6 +73,14 @@ type RqLogin struct {
 	Email    string  `json:"email"         validate:"required,email"`
 	Password string  `json:"password"      validate:"required"`
 	Role     *string `json:"role" validate:"omitempty"`
+}
+
+type RqLogout struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type RqChangePassword struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 
 // ── Response models ───────────────────────────────────────────────────────────
@@ -109,4 +124,21 @@ type GoogleUserInfo struct {
 	Email     string `json:"email"`
 	FirstName string `json:"given_name"`
 	LastName  string `json:"family_name"`
+}
+
+// For email verification token operations
+const (
+	TokenStatusPending = "PENDING"
+	TokenStatusUsed    = "USED"
+	TokenStatusExpired = "EXPIRED"
+	TokenStatusResent  = "RESENT"
+)
+
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
 }

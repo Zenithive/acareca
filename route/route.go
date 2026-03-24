@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -22,8 +23,10 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -32,7 +35,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -50,20 +53,20 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 	practitionerRepo := practitioner.NewRepository(dbConn)
 	userSubscriptionRepo := userSubscription.NewRepository(dbConn)
 	coaRepo := coa.NewRepository(dbConn)
-	subscriptionSvc := subscription.NewService(subscriptionRepo)
+
+	// Initialize audit service
+	auditRepo := audit.NewRepository(dbConn)
+	auditSvc := audit.NewService(auditRepo)
+
+	subscriptionSvc := subscription.NewService(dbConn, subscriptionRepo, auditSvc)
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
 	accountantRepo := accountant.NewRepository(dbConn)
 	accountantSvc := accountant.NewService(accountantRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, accountantSvc)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, practitionerRepo, accountantSvc)
 	authHandler := auth.NewHandler(authSvc)
-	auth.RegisterRoutes(v1, authHandler)
-
-	calculationRepo := calculation.NewRepository(dbConn)
-	calculationSvc := calculation.NewService(calculationRepo, method.NewService())
-	calculationHandler := calculation.NewHandler(calculationSvc)
-	calculation.RegisterRoutes(v1, calculationHandler)
+	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
 	superadminCheck := func(ctx context.Context, userID uuid.UUID) (bool, error) {
 		u, err := authRepo.FindByID(ctx, userID)
@@ -80,46 +83,95 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) {
 			return false, err
 		}
 		return superadminCheck(ctx, id)
-	}))
+	}), middleware.AuditContext())
 	subscriptionHandler := subscription.NewHandler(subscriptionSvc)
 	subscription.RegisterRoutes(subscriptionGroup, subscriptionHandler)
 
+	// Audit routes
+	auditGroup := adminGroup.Group("/audit")
+	auditGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
+		id, err := util.ParseUUID(userID)
+		if err != nil {
+			return false, err
+		}
+		return superadminCheck(ctx, id)
+	}))
+	auditHandler := audit.NewHandler(auditSvc)
+	audit.RegisterRoutes(auditGroup, auditHandler)
+
 	// clinic
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(clinicRepo)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, auditSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
-	coaSvc := coa.NewService(coaRepo, dbConn)
+	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
 
 	fyRepo := fy.NewRepository(dbConn)
-	fySvc := fy.NewService(fyRepo, dbConn)
+	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
 	fyHandler := fy.NewHandler(fySvc)
 	fyGroup := v1.Group("/")
 	fyGroup.Use(middleware.Auth(cfg))
 	fy.RegisterRoutes(fyGroup, fyHandler)
 
 	formGroup := v1.Group("/form")
-	formGroup.Use(middleware.Auth(cfg))
+	formGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
 
 	detailRepo := detail.NewRepository(dbConn)
 	versionRepo := version.NewRepository(dbConn)
 	fieldRepo := field.NewRepository(dbConn)
 	entryRepo := entry.NewRepository(dbConn)
-	detailSvc := detail.NewService(detailRepo, version.NewService(versionRepo, clinicSvc))
-	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(versionRepo, clinicSvc), entryRepo)
+	detailSvc := detail.NewService(dbConn, detailRepo, version.NewService(dbConn, versionRepo, clinicSvc))
+	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
 
-	versionSvc := version.NewService(versionRepo, clinicSvc)
-	formSvc := form.NewService(detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc)
+	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc)
 	formHandler := form.NewHandler(formSvc)
 	form.RegisterRoutes(formGroup, formHandler)
 
+	entryGroup := v1.Group("/entry")
+	entryGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
+	entriesRepo := entry.NewRepository(dbConn)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc)
+	entriesHandler := entry.NewHandler(entriesSvc)
+
+	entry.RegisterRoutes(entryGroup, entriesHandler)
+
+	calculationSvc := calculation.NewService(formSvc, versionSvc, fieldSvc, entriesSvc)
+	calculationHandler := calculation.NewHandler(calculationSvc)
+	calculation.RegisterRoutes(v1, calculationHandler)
+
+	// P&L reporting — engine/pl module
+	plRepo := pl.NewRepository(dbConn)
+	plSvc := pl.NewService(plRepo)
+	plHandler := pl.NewHandler(plSvc)
+	pl.RegisterRoutes(v1, plHandler, cfg)
+
+	// BAS reporting — engine/bas module
+	basRepo := bas.NewRepository(dbConn)
+	basSvc := bas.NewService(basRepo)
+	basHandler := bas.NewHandler(basSvc)
+	bas.RegisterRoutes(v1, basHandler, cfg)
+
 	settingGroup := v1.Group("/setting")
 	settingRepo := setting.NewRepository(dbConn)
-	settingSvc := setting.NewService(settingRepo)
+	settingSvc := setting.NewService(dbConn, settingRepo, auditSvc)
 	settingHandler := setting.NewHandler(settingSvc)
 
 	setting.RegisterRoutes(settingGroup, settingHandler, cfg)
+
+	practitionerHandler := practitioner.NewHandler(practitionerSvc)
+	practitioner.RegisterRoutes(v1, practitionerHandler, cfg)
+
+	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
+
+	userSubscriptionGroup := v1.Group("/practitioner/subscription")
+
+	userSubscriptionGroup.Use(middleware.Auth(cfg))
+
+	userSubscription.RegisterRoutes(userSubscriptionGroup, userSubscriptionHandler)
+
+	return auditSvc
 }

@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,8 @@ type IHandler interface {
 	ListByPractitionerID(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	GetActiveSubscription(c *gin.Context)
+	GetSubscriptionHistory(c *gin.Context)
 }
 
 type handler struct {
@@ -28,16 +31,16 @@ func NewHandler(svc Service, db *sqlx.DB) IHandler {
 	return &handler{svc: svc, db: db}
 }
 
-// @Summary Get a subscription by ID
-// @Description get a subscription by ID
+// @Summary Create a subscription
+// @Description create a subscription for a practitioner
 // @Tags subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /practitioner/subscription/{id} [get]
-// @Param id path int true "Subscription ID"
+// @Security BearerToken
+// @Router /practitioner/subscription [post]
 func (h *handler) Create(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -65,16 +68,17 @@ func (h *handler) Create(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, created, "Subscription created successfully")
 }
 
-// @Summary List subscriptions by practitioner ID
-// @Description list subscriptions by practitioner ID
+// @Summary Get a subscription by ID
+// @Description get a subscription by ID
 // @Tags subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Param sub_id path int true "Subscription ID"
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /practitioner/subscription [get]
-// @Param practitioner_id path string true "Practitioner ID"
+// @Security BearerToken
+// @Router /practitioner/subscription/{sub_id} [get]
 func (h *handler) GetByID(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
@@ -97,17 +101,27 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Tags subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Param status query string false "Filter by Status (ACTIVE, CANCELLED, etc.)"
+// @Param subscription_id query int false "Filter by specific Subscription ID"
+// @Param search query string false "Search within subscriptions"
+// @Param limit query int false "Pagination limit"
+// @Param offset query int false "Pagination offset"
+// @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /practitioner/subscription [get]
-// @Param practitioner_id path string true "Practitioner ID"
 func (h *handler) ListByPractitionerID(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
-	list, err := h.svc.ListByPractitionerID(c.Request.Context(), practitionerID)
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListByPractitionerID(c.Request.Context(), practitionerID, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -120,12 +134,14 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 // @Tags subscription
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsSubscription
+// @Param sub_id path int true "Subscription ID"
+// @Param request body RqUpdatePractitionerSubscription true "Updated Subscription Data"
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /practitioner/subscription/{id} [put]
-// @Param id path int true "Subscription ID"
-// @Param practitioner_id path string true "Practitioner ID"
+// @Security BearerToken
+// @Router /practitioner/subscription/{sub_id} [patch]
 func (h *handler) Update(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
@@ -153,12 +169,12 @@ func (h *handler) Update(c *gin.Context) {
 // @Tags subscription
 // @Accept json
 // @Produce json
+// @Param sub_id path int true "Subscription ID"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /practitioner/subscription/{id} [delete]
-// @Param id path int true "Subscription ID"
-// @Param practitioner_id path string true "Practitioner ID"
+// @Security BearerToken
+// @Router /practitioner/subscription/{sub_id} [delete]
 func (h *handler) Delete(c *gin.Context) {
 	id, ok := util.ParseIntID(c, "sub_id")
 	if !ok {
@@ -173,4 +189,67 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, map[string]string{"message": "deleted"}, "Subscription deleted successfully")
+}
+
+// @Summary Get active subscription
+// @Description Get the active subscription of the practitioner from token
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Success 200 {object} RsPractitionerSubscription
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /practitioner/subscription/active [get]
+func (h *handler) GetActiveSubscription(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	subscription, err := h.svc.GetActiveSubscription(c.Request.Context(), practitionerID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, fmt.Errorf("no active subscription found for practitioner %s", practitionerID.String()))
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, subscription, "Active subscription fetched successfully")
+}
+
+// @Summary Get subscription history
+// @Description Get all subscriptions (active and inactive) of the practitioner from token
+// @Tags subscription
+// @Accept json
+// @Produce json
+// @Param limit query int false "Pagination limit"
+// @Param offset query int false "Pagination offset"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /practitioner/subscription/history [get]
+func (h *handler) GetSubscriptionHistory(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	history, err := h.svc.GetSubscriptionHistory(c.Request.Context(), practitionerID, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, history, "Subscription history fetched successfully")
 }

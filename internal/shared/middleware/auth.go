@@ -90,6 +90,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		if err != nil {
 			fmt.Println(err.Error())
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
+			c.Abort()
 			return
 		}
 

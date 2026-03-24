@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // Status matches practitioner_subscription_status enum.
@@ -43,6 +44,25 @@ type RqUpdatePractitionerSubscription struct {
 	Status *Status `json:"status" validate:"omitempty,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
 }
 
+// New struct to hold the plan details
+type SubscriptionInfo struct {
+	ID          int     `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+}
+
+// New response struct specifically for Active/History endpoints
+type RsActiveSubscription struct {
+	ID             int              `json:"id"`
+	PractitionerID uuid.UUID        `json:"practitioner_id"`
+	Subscription   SubscriptionInfo `json:"subscription"` // Nested object
+	StartDate      time.Time        `json:"start_date"`
+	EndDate        time.Time        `json:"end_date"`
+	Status         Status           `json:"status"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
+}
+
 // RsPractitionerSubscription response.
 type RsPractitionerSubscription struct {
 	ID             int       `json:"id"`
@@ -66,4 +86,51 @@ func (s *PractitionerSubscription) ToRs() *RsPractitionerSubscription {
 		CreatedAt:      s.CreatedAt,
 		UpdatedAt:      s.UpdatedAt,
 	}
+}
+
+type Filter struct {
+	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	SubscriptionID *int       `form:"subscription_id"`
+	Status         *Status    `form:"status"`
+	FromDate       *time.Time `form:"from_date"`
+	ToDate         *time.Time `form:"to_date"`
+	Search         *string    `form:"search"`
+	Limit          *int       `form:"limit"`
+	Offset         *int       `form:"offset"`
+	SortBy         *string    `form:"sort_by"`
+	OrderBy        *string    `form:"order_by"`
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+
+	if filter.PractitionerID != nil {
+		filters["practitioner_id"] = *filter.PractitionerID
+	}
+	if filter.SubscriptionID != nil {
+		filters["subscription_id"] = *filter.SubscriptionID
+	}
+	if filter.Status != nil {
+		filters["status"] = string(*filter.Status)
+	}
+	if filter.FromDate != nil {
+		filters["created_at_gte"] = *filter.FromDate
+	}
+	if filter.ToDate != nil {
+		filters["created_at_lte"] = *filter.ToDate
+	}
+
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+	return f
 }

@@ -4,42 +4,50 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
-	ListAccountTypes(ctx context.Context) ([]AccountType, error)
+	ListAccountTypes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
-	ListAccountTaxes(ctx context.Context) ([]AccountTax, error)
+	ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 
-	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f ListChartOfAccountFilter) (*RsChartOfAccountList, error)
+	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
+	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 }
 
 type service struct {
-	repo Repository
-	db   *sqlx.DB
+	repo     Repository
+	db       *sqlx.DB
+	auditSvc audit.Service
 }
 
-func NewService(repo Repository, db *sqlx.DB) Service {
-	return &service{repo: repo, db: db}
+func NewService(repo Repository, db *sqlx.DB, auditSvc audit.Service) Service {
+	return &service{repo: repo, db: db, auditSvc: auditSvc}
 }
 
-func (s *service) ListAccountTypes(ctx context.Context) ([]AccountType, error) {
-	list, err := s.repo.ListAccountTypes(ctx)
+func (s *service) ListAccountTypes(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListAccountTypes(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AccountType, len(list))
+	data := make([]AccountType, len(list))
 	for i := range list {
-		out[i] = list[i].ToRs()
+		data[i] = list[i].ToRs()
 	}
-	return out, nil
+
+	var rsList util.RsList
+	rsList.MapToList(data, len(data), ft.Offset, ft.Limit)
+	return &rsList, nil
 }
 
 func (s *service) GetAccountType(ctx context.Context, id int16) (*AccountType, error) {
@@ -51,16 +59,20 @@ func (s *service) GetAccountType(ctx context.Context, id int16) (*AccountType, e
 	return &rs, nil
 }
 
-func (s *service) ListAccountTaxes(ctx context.Context) ([]AccountTax, error) {
-	list, err := s.repo.ListAccountTaxes(ctx)
+func (s *service) ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter()
+	list, err := s.repo.ListAccountTaxes(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AccountTax, len(list))
+	data := make([]AccountTax, len(list))
 	for i := range list {
-		out[i] = list[i].ToRs()
+		data[i] = list[i].ToRs()
 	}
-	return out, nil
+
+	var rsList util.RsList
+	rsList.MapToList(data, len(data), ft.Offset, ft.Limit)
+	return &rsList, nil
 }
 
 func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, error) {
@@ -72,36 +84,34 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 	return &rs, nil
 }
 
-func (s *service) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f ListChartOfAccountFilter) (*RsChartOfAccountList, error) {
-	list, err := s.repo.ListChartOfAccountWithFilter(ctx, practitionerID, f)
+func (s *service) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
+	if f.AccountType != nil {
+		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
+		if err != nil {
+			return nil, err
+		}
+		typeID := int16(id)
+		f.AccountTypeID = &typeID
+	}
+	ft := f.MapToFilter()
+	list, err := s.repo.ListChartOfAccount(ctx, practitionerID, ft)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountChartOfAccount(ctx, practitionerID, f)
+	total, err := s.repo.CountChartOfAccount(ctx, practitionerID, ft)
 	if err != nil {
 		return nil, err
 	}
-	limit := f.Limit
-	if limit <= 0 {
-		limit = 20
+
+	data := make([]RsChartOfAccount, 0, len(list))
+	for _, item := range list {
+		data = append(data, item.ToRs())
 	}
-	if limit > 100 {
-		limit = 100
-	}
-	page := f.Page
-	if page < 1 {
-		page = 1
-	}
-	out := make([]RsChartOfAccount, len(list))
-	for i := range list {
-		out[i] = list[i].ToRs()
-	}
-	return &RsChartOfAccountList{
-		Data:  out,
-		Total: total,
-		Page:  page,
-		Limit: limit,
-	}, nil
+
+	var rsList util.RsList
+	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+
+	return &rsList, nil
 }
 
 func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error) {
@@ -147,6 +157,22 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		return nil
 	})
 	rs := created.ToRs()
+
+	// Audit log: COA created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := created.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionCOACreated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityCOA),
+		EntityID:   &idStr,
+		AfterState: rs,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return &rs, nil
 }
 
@@ -187,6 +213,22 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 		return nil, err
 	}
 	rs := updated.ToRs()
+
+	// Audit log: COA updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionCOAUpdated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityCOA),
+		EntityID:   &idStr,
+		AfterState: rs,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return &rs, nil
 }
 
@@ -198,5 +240,32 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 	if existing.IsSystem {
 		return ErrSystemAccountProtected
 	}
-	return s.repo.DeleteChartOfAccount(ctx, id, practitionerID)
+	if err := s.repo.DeleteChartOfAccount(ctx, id, practitionerID); err != nil {
+		return err
+	}
+
+	// Audit log: COA deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	rs := existing.ToRs()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionCOADeleted,
+		Module:      auditctx.ModuleBusiness,
+		EntityType:  strPtr(auditctx.EntityCOA),
+		EntityID:    &idStr,
+		BeforeState: rs,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
+
+func (s *service) CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error) {
+	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, code, practitionerID, excludeID)
+	return &RsCodeUnique{IsUnique: existing == nil}, nil
+}
+
+func strPtr(s string) *string { return &s }

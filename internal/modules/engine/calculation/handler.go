@@ -1,18 +1,21 @@
 package calculation
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type IHandler interface {
-	NetAmount(c *gin.Context)
-	NetResult(c *gin.Context)
-	GrossResult(c *gin.Context)
-	OutWorkResult(c *gin.Context)
+	Calculation(c *gin.Context)
+	CalculateFromEntries(c *gin.Context)
 }
 
 type handler struct {
@@ -20,97 +23,92 @@ type handler struct {
 }
 
 func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+	return &handler{
+		svc: svc,
+	}
 }
 
-// @Summary Calculate net amount
+// Calculation godoc
+// @Summary Run calculation for a form
+// @Description Calculate results for a specific form by ID
 // @Tags calculation
-// @Accept json
 // @Produce json
-// @Param request body Entry true "Calculation Entry Data"
-// @Success 200 {object} NetAmountResult
+// @Param id path string true "Form ID"
+// @Param super_component query number false "Super component value override"
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /calculation/net-amount [post]
-func (h *handler) NetAmount(c *gin.Context) {
-	var entry Entry
-	if err := util.BindAndValidate(c, &entry); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
+// @Security BearerToken
+// @Router /calculate/{id} [get]
+// Calculation implements [IHandler].
+func (h *handler) Calculation(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	formID, ok := util.ParseUuidID(c, "id")
+	if !ok {
 		return
 	}
-	result, err := h.svc.NetAmount(c.Request.Context(), &entry)
+
+	var filter NetFilter
+
+	if superComponent := c.Query("super_component"); superComponent != "" {
+		val, err := strconv.ParseFloat(superComponent, 64)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("super_component must be a number"))
+			return
+		}
+		if val < 0 || val > 100 {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("super_component must be between 0 and 100 (e.g. 11.5 for 11.5%%)"))
+			return
+		}
+		filter.SuperComponent = &val
+	}
+
+	result, err := h.svc.Calculate(ctx, formID, &filter)
 	if err != nil {
+		if errors.Is(err, entry.ErrNotFound) || errors.Is(err, version.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result, "Net amount calculated successfully")
+
+	response.JSON(c, http.StatusOK, result, "Calculation completed successfully")
 }
 
-// @Summary Calculate net result
+// CalculateFromEntries godoc
+// @Summary Calculate from supplied entries
+// @Description Run GrossMethod or NetMethod using entries provided in the request body.
+// @Description No database lookup of entries is performed — suitable for previewing
+// @Description calculations before an entry is submitted.
 // @Tags calculation
-// @Accept json
+// @Accept  json
 // @Produce json
-// @Param request body Entry true "Calculation Entry Data"
-// @Success 200 {object} NetResult
+// @Param request body RqCalculateFromEntries true "Form ID, entries, and optional super component"
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /calculation/net-result [post]
-func (h *handler) NetResult(c *gin.Context) {
-	var entry Entry
-	if err := util.BindAndValidate(c, &entry); err != nil {
+// @Security BearerToken
+// @Router /calculate [post]
+func (h *handler) CalculateFromEntries(c *gin.Context) {
+	var req RqCalculateFromEntries
+	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	result, err := h.svc.NetResult(c.Request.Context(), &entry)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-	response.JSON(c, http.StatusOK, result, "Net result calculated successfully")
-}
 
-// @Summary Calculate gross result
-// @Tags calculation
-// @Accept json
-// @Produce json
-// @Param request body Entry true "Calculation Entry Data"
-// @Success 200 {object} GrossResult
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /calculation/gross-result [post]
-func (h *handler) GrossResult(c *gin.Context) {
-	var entry Entry
-	if err := util.BindAndValidate(c, &entry); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-	result, err := h.svc.GrossResult(c.Request.Context(), &entry)
+	result, err := h.svc.CalculateFromEntries(c.Request.Context(), &req)
 	if err != nil {
+		if errors.Is(err, entry.ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, result, "Gross result calculated successfully")
-}
 
-// @Summary Calculate outwork result
-// @Tags calculation
-// @Accept json
-// @Produce json
-// @Param request body Entry true "Calculation Entry Data"
-// @Success 200 {object} OutWorkResult
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /calculation/outwork-result [post]
-func (h *handler) OutWorkResult(c *gin.Context) {
-	var entry Entry
-	if err := util.BindAndValidate(c, &entry); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-	result, err := h.svc.OutWorkResult(c.Request.Context(), &entry)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-	response.JSON(c, http.StatusOK, result, "Outwork result calculated successfully")
+	response.JSON(c, http.StatusOK, result, "Calculation completed successfully")
 }

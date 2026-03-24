@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -20,12 +22,13 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
-	db   *sqlx.DB
+	repo     Repository
+	db       *sqlx.DB
+	auditSvc audit.Service
 }
 
-func NewService(repo Repository, db *sqlx.DB) Service {
-	return &service{repo: repo, db: db}
+func NewService(repo Repository, db *sqlx.DB, auditSvc audit.Service) Service {
+	return &service{repo: repo, db: db, auditSvc: auditSvc}
 }
 
 func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYear, error) {
@@ -121,12 +124,29 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 		return nil, err
 	}
 
-	return &RsFinancialYear{
+	result := &RsFinancialYear{
 		ID:        createdFY.ID,
 		Label:     createdFY.Label,
 		StartDate: createdFY.StartDate,
 		EndDate:   createdFY.EndDate,
-	}, nil
+	}
+
+	// Audit log: FY created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := createdFY.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionFYCreated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityFinancialYear),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
+	return result, nil
 }
 
 func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdateFYLabel) (*RsFinancialYear, error) {
@@ -146,7 +166,7 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 	}
 	var updatedFY *FinancialYear
 
-	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	if err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if req.IsActive != nil && *req.IsActive {
 			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
 				return fmt.Errorf("deactivate existing financial years: %w", err)
@@ -155,21 +175,43 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 		} else if req.IsActive != nil {
 			fy.IsActive = *req.IsActive
 		}
-		UpdatedFY, err := s.repo.UpdateFinancialYear(ctx, fy, tx)
-		if err != nil {
-			return fmt.Errorf("failde to update  financial years: %w", err)
+		var txErr error
+		updatedFY, txErr = s.repo.UpdateFinancialYear(ctx, fy, tx)
+		if txErr != nil {
+			return fmt.Errorf("failed to update financial year: %w", txErr)
 		}
-		updatedFY = UpdatedFY
 		return nil
-	})
-	// If is_active is provided and set to true, deactivate all other financial years
+	}); err != nil {
+		return nil, err
+	}
 
-	return &RsFinancialYear{
+	if updatedFY == nil {
+		return nil, fmt.Errorf("update financial year returned nil")
+	}
+
+	result := &RsFinancialYear{
 		ID:        updatedFY.ID,
 		Label:     updatedFY.Label,
 		StartDate: updatedFY.StartDate,
 		EndDate:   updatedFY.EndDate,
-	}, nil
+	}
+
+	// Audit log: FY updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionFYUpdated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityFinancialYear),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
+	return result, nil
 }
 
 func (s *service) GetFinancialYears(ctx context.Context) ([]RsFinancialYear, error) {
@@ -212,3 +254,5 @@ func (s *service) GetFinancialQuarters(ctx context.Context, financialYearID uuid
 
 	return result, nil
 }
+
+func strPtr(s string) *string { return &s }

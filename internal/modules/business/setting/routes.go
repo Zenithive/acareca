@@ -7,7 +7,7 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
-	rg.Use(middleware.Auth(cfg))
+	rg.Use(middleware.Auth(cfg), middleware.AuditContext())
 	rg.POST("", h.CreatePractitioner)
 	rg.GET("list", h.ListPractitioners)
 	rg.GET("/by-user/:user_id", h.GetPractitionerByUserID)

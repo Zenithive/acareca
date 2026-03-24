@@ -5,13 +5,17 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
 	CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error)
-	GetClinics(ctx context.Context, practitionerID uuid.UUID) ([]RsClinic, error)
+	ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (*util.RsList, error)
+	CountClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (int, error)
 	GetClinicByID(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) (*RsClinic, error)
 	UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error)
 	BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkUpdateClinic) ([]RsClinic, error)
@@ -23,17 +27,24 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	db        *sqlx.DB
+	repo      Repository
+	auditSvc  audit.Service
+	limitsSvc limits.Service
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc, limitsSvc: limits.NewService(db)}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
+	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyClinicCreate); err != nil {
+		return nil, err
+	}
+
 	var result *RsClinic
 
-	err := util.RunInTransaction(ctx, s.repo.GetDB(), func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Get active financial year
 		activeFinancialYearID, err := s.repo.GetActiveFinancialYearTx(ctx, tx)
 		if err != nil {
@@ -155,61 +166,69 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 		return nil, fmt.Errorf("create clinic transaction failed: %w", err)
 	}
 
+	// Audit log: clinic created
+	meta := auditctx.GetMetadata(ctx)
+	idStr := result.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionClinicCreated,
+		Module:     auditctx.ModuleClinic,
+		EntityType: strPtr(auditctx.EntityClinic),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return result, nil
 }
 
-func (s *service) GetClinics(ctx context.Context, practitionerID uuid.UUID) ([]RsClinic, error) {
-	clinics, err := s.repo.GetClinicsByPractitioner(ctx, practitionerID)
+func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (*util.RsList, error) {
+	f := filter.MapToFilter()
+
+	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
 	if err != nil {
 		return nil, err
 	}
 
 	result := make([]RsClinic, 0, len(clinics))
 	for _, clinic := range clinics {
-		// Get addresses for this clinic
-		addresses, err := s.repo.GetClinicAddresses(ctx, clinic.ID)
-		if err != nil {
-			return nil, err
+		addresses, addrErr := s.repo.GetClinicAddresses(ctx, clinic.ID)
+		if addrErr != nil {
+			return nil, addrErr
 		}
-
-		// Get contacts for this clinic
-		contacts, err := s.repo.GetClinicContacts(ctx, clinic.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		// Get financial settings for this clinic
-		financialSettings, err := s.repo.GetFinancialSettings(ctx, clinic.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		// Convert addresses to response format
-		rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-		for _, addr := range addresses {
-			rsAddresses = append(rsAddresses, RsClinicAddress{
+		rsAddresses := make([]RsClinicAddress, len(addresses))
+		for i, addr := range addresses {
+			rsAddresses[i] = RsClinicAddress{
 				ID:        addr.ID,
 				Address:   addr.Address,
 				City:      addr.City,
 				State:     addr.State,
 				Postcode:  addr.Postcode,
 				IsPrimary: addr.IsPrimary,
-			})
+			}
 		}
 
-		// Convert contacts to response format
-		rsContacts := make([]RsClinicContact, 0, len(contacts))
-		for _, cont := range contacts {
-			rsContacts = append(rsContacts, RsClinicContact{
+		contacts, contErr := s.repo.GetClinicContacts(ctx, clinic.ID)
+		if contErr != nil {
+			return nil, contErr
+		}
+		rsContacts := make([]RsClinicContact, len(contacts))
+		for i, cont := range contacts {
+			rsContacts[i] = RsClinicContact{
 				ID:          cont.ID,
 				ContactType: cont.ContactType,
 				Value:       cont.Value,
 				Label:       cont.Label,
 				IsPrimary:   cont.IsPrimary,
-			})
+			}
 		}
 
-		// Convert financial settings to response format
+		financialSettings, fsErr := s.repo.GetFinancialSettings(ctx, clinic.ID)
+		if fsErr != nil {
+			return nil, fsErr
+		}
 		var rsFinancialSettings *RsFinancialSettings
 		if financialSettings != nil {
 			rsFinancialSettings = &RsFinancialSettings{
@@ -235,11 +254,23 @@ func (s *service) GetClinics(ctx context.Context, practitionerID uuid.UUID) ([]R
 		})
 	}
 
-	return result, nil
+	total, err := s.CountClinic(ctx, practitionerID, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	rsList := &util.RsList{}
+	rsList.MapToList(result, total, f.Offset, f.Limit)
+
+	return rsList, nil
+}
+
+func (s *service) CountClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (int, error) {
+	f := filter.MapToFilter()
+	return s.repo.CountClinicByPractitioner(ctx, practitionerID, f)
 }
 
 func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
-
 	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
 	if err != nil {
 		return nil, err
@@ -309,17 +340,36 @@ func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, i
 }
 
 func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) error {
-	_, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
+	existing, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
 	if err != nil {
 		return err
 	}
 
-	return s.repo.DeleteClinic(ctx, id)
+	if err := s.repo.DeleteClinic(ctx, id); err != nil {
+		return err
+	}
+
+	// Audit log: clinic deleted
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionClinicDeleted,
+		Module:      auditctx.ModuleClinic,
+		EntityType:  strPtr(auditctx.EntityClinic),
+		EntityID:    &idStr,
+		BeforeState: existing,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
 func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
 	var result *RsClinic
 
-	err := util.RunInTransaction(ctx, s.repo.GetDB(), func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, practitionerID)
 		if err != nil {
 			return fmt.Errorf("get clinic: %w", err)
@@ -465,6 +515,21 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		return nil, fmt.Errorf("update clinic transaction failed: %w", err)
 	}
 
+	// Audit log: clinic updated
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionClinicUpdated,
+		Module:     auditctx.ModuleClinic,
+		EntityType: strPtr(auditctx.EntityClinic),
+		EntityID:   &idStr,
+		AfterState: result,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
 	return result, nil
 }
 
@@ -541,7 +606,7 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkUpdateClinic) ([]RsClinic, error) {
 	var results []RsClinic
 
-	err := util.RunInTransaction(ctx, s.repo.GetDB(), func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		for _, clinicReq := range req.Clinics {
 			if clinicReq.ID == nil {
 				return fmt.Errorf("clinic ID is required for bulk update")
@@ -566,7 +631,6 @@ func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUI
 }
 
 func (s *service) BulkDeleteClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkDeleteClinic) error {
-	// Verify all clinics belong to the practitioner before deleting
 	for _, clinicID := range req.ClinicIDs {
 		_, err := s.repo.GetClinicByIDAndPractitioner(ctx, clinicID, practitionerID)
 		if err != nil {
@@ -574,7 +638,6 @@ func (s *service) BulkDeleteClinics(ctx context.Context, practitionerID uuid.UUI
 		}
 	}
 
-	// Perform bulk delete
 	return s.repo.BulkDeleteClinics(ctx, req.ClinicIDs)
 }
 
@@ -784,3 +847,5 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, practitione
 	// Get the updated clinic with all related data
 	return s.getClinicByIDInternalTx(ctx, tx, id)
 }
+
+func strPtr(s string) *string { return &s }

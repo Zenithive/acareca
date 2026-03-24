@@ -3,10 +3,10 @@ package method
 type TaxTreatment string
 
 const (
-	TaxTreatmentInclusive TaxTreatment = "inclusive"
-	TaxTreatmentExclusive TaxTreatment = "exclusive"
-	TaxTreatmentManual    TaxTreatment = "manual"
-	TaxTreatmentZero      TaxTreatment = "zero"
+	TaxTreatmentInclusive TaxTreatment = "INCLUSIVE"
+	TaxTreatmentExclusive TaxTreatment = "EXCLUSIVE"
+	TaxTreatmentManual    TaxTreatment = "MANUAL"
+	TaxTreatmentZero      TaxTreatment = "ZERO"
 )
 
 type Input struct {

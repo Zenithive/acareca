@@ -1,6 +1,12 @@
 package subscription
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
+)
 
 type Subscription struct {
 	ID           int        `db:"id"`
@@ -68,4 +74,83 @@ func (s *Subscription) ToRs() *RsSubscription {
 		CreatedAt:    s.CreatedAt,
 		UpdatedAt:    s.UpdatedAt,
 	}
+}
+
+// --- Plan Permission models ---
+
+// PlanPermission represents a single permission key (e.g. "clinic.create").
+type PlanPermission struct {
+	ID  int    `db:"id"`
+	Key string `db:"key"`
+}
+
+// SubscriptionPermission is the join between a plan and a permission key with its limit.
+type SubscriptionPermission struct {
+	ID             int    `db:"id"`
+	SubscriptionID int    `db:"subscription_id"`
+	PermissionID   int    `db:"permission_id"`
+	Key            string `db:"key"`
+	IsEnabled      bool   `db:"is_enabled"`
+	UsageLimit     int    `db:"usage_limit"`
+}
+
+// RqUpdatePermission is the request body for updating a single permission limit on a plan.
+type RqUpdatePermission struct {
+	UsageLimit *int  `json:"usage_limit"` // -1 = unlimited, 0 = blocked, >0 = capped
+	IsEnabled  *bool `json:"is_enabled"`
+}
+
+// RsSubscriptionPermission is the response for a single permission entry.
+type RsSubscriptionPermission struct {
+	Key        string `json:"key"`
+	IsEnabled  bool   `json:"is_enabled"`
+	UsageLimit int    `json:"usage_limit"`
+}
+
+func (p *SubscriptionPermission) ToRs() *RsSubscriptionPermission {
+	return &RsSubscriptionPermission{
+		Key:        p.Key,
+		IsEnabled:  p.IsEnabled,
+		UsageLimit: p.UsageLimit,
+	}
+}
+
+type Filter struct {
+	Id      *string `form:"id"`
+	Name    *string `form:"name"`
+	Search  *string `form:"search"`
+	SortBy  *string `form:"sort_by"`
+	OrderBy *string `form:"order_by"`
+	Limit   *int    `form:"limit"`
+	Offset  *int    `form:"offset"`
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if filter.Id != nil {
+		id, err := uuid.Parse(*filter.Id)
+		if err != nil {
+			fmt.Println("invalid subscription_id: %w", err)
+		}
+		filters["id"] = uuid.UUID(id)
+	}
+	if filter.Name != nil {
+		filters["name"] = *filter.Name
+	}
+
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+
+	return f
 }

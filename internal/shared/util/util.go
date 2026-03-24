@@ -3,9 +3,11 @@ package util
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,6 +21,8 @@ import (
 
 const UserIDKey = "userID"
 const PractitionerIDKey = "practitionerID"
+
+var validate = validator.New()
 
 func NewUUID() string {
 	return uuid.New().String()
@@ -37,19 +41,17 @@ func CompareHash(password, hash string) error {
 }
 
 func BindAndValidate(c *gin.Context, v any) error {
-	validate := validator.New()
-	if err := c.ShouldBindJSON(v); err != nil {
-		return err
-	}
-	if err := validate.Struct(v); err != nil {
-		return err
+	if c.Request.Body != nil && c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(v); err != nil {
+			return err
+		}
 	}
 
 	if err := c.ShouldBindQuery(v); err != nil {
 		return err
 	}
 
-	return nil
+	return validate.Struct(v)
 }
 
 type CustomClaims struct {
@@ -104,22 +106,6 @@ func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
 	return id, true
 }
 
-// const ClinicIDKey = "clinicID"
-
-// func GetClinicID(c *gin.Context) (uuid.UUID, bool) {
-// 	idVal, exists := c.Get(ClinicIDKey)
-// 	if !exists {
-// 		response.Error(c, http.StatusBadRequest, errors.New("clinic id not in context"))
-// 		return uuid.Nil, false
-// 	}
-// 	id, ok := idVal.(uuid.UUID)
-// 	if !ok {
-// 		response.Error(c, http.StatusInternalServerError, errors.New("invalid clinic id type"))
-// 		return uuid.Nil, false
-// 	}
-// 	return id, true
-// }
-
 func ParseIntID(c *gin.Context, param string) (int, bool) {
 	id, err := strconv.Atoi(c.Param(param))
 	if err != nil {
@@ -149,4 +135,71 @@ func RunInTransaction(ctx context.Context, db *sqlx.DB, fn func(ctx context.Cont
 		return err
 	}
 	return tx.Commit()
+}
+
+type RsList struct {
+	Items interface{} `json:"items"`
+	Total int         `json:"total"`
+	Page  int         `json:"page"`
+	Limit int         `json:"limit"`
+}
+
+func (rs *RsList) MapToList(data interface{}, total, page, limit int) {
+	rs.Items = data
+	rs.Total = total
+	rs.Page = page
+	rs.Limit = limit
+}
+
+func GetMonthRange(monthName string) (time.Time, time.Time, error) {
+	now := time.Now()
+	loc := now.Location()
+
+	months := map[string]time.Month{
+		"january":   time.January,
+		"february":  time.February,
+		"march":     time.March,
+		"april":     time.April,
+		"may":       time.May,
+		"june":      time.June,
+		"july":      time.July,
+		"august":    time.August,
+		"september": time.September,
+		"october":   time.October,
+		"november":  time.November,
+		"december":  time.December,
+	}
+
+	month, ok := months[strings.ToLower(monthName)]
+	if !ok {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid month")
+	}
+
+	start := time.Date(now.Year(), month, 1, 0, 0, 0, 0, loc)
+	end := start.AddDate(0, 1, 0).Add(-time.Nanosecond)
+
+	return start, end, nil
+}
+
+func GetUserID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(UserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("user id not in context"))
+		return uuid.Nil, false
+	}
+
+	idStr, ok := idVal.(string)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("invalid user id type"))
+		return uuid.Nil, false
+	}
+
+	// Parse the string into a UUID
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errors.New("failed to parse user uuid"))
+		return uuid.Nil, false
+	}
+
+	return id, true
 }

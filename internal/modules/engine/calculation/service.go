@@ -4,169 +4,150 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
+	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
-	NetAmount(ctx context.Context, entry *Entry) (*NetAmountResult, error)
-	NetResult(ctx context.Context, entry *Entry) (*NetResult, error)
-	GrossResult(ctx context.Context, entry *Entry) (*GrossResult, error)
-	OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error)
-	TaxCalculate(ctx context.Context, taxType method.TaxTreatment, input *Input) (*method.Result, error)
+	GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, fieldMap map[uuid.UUID]*field.RsFormField) (*GrossResult, error)
+	NetMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, fieldMap map[uuid.UUID]*field.RsFormField, filter *NetFilter) (*NetResult, error)
+	Calculate(ctx context.Context, formId uuid.UUID, filter *NetFilter) (interface{}, error)
+
+	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error)
 }
 
 type service struct {
-	repo   Repository
-	method method.IService
+	formSvc    form.IService
+	versionSvc version.IService
+	fieldSvc   field.IService
+	entries    entry.IService
 }
 
-func NewService(repo Repository, method method.IService) Service {
-	return &service{repo: repo, method: method}
+func NewService(formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService) Service {
+	return &service{formSvc: formSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entries: entries}
 }
 
-func (s *service) TaxCalculate(ctx context.Context, taxType method.TaxTreatment, input *Input) (*method.Result, error) {
-	if taxType == method.TaxTreatmentManual && input.TaxValue != nil {
-		return s.method.Calculate(ctx, taxType, &method.Input{
-			Amount:    input.Value - *input.TaxValue,
-			GstAmount: input.TaxValue,
-		})
-	}
+func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, fieldMap map[uuid.UUID]*field.RsFormField) (*GrossResult, error) {
+	var (
+		incomeSum    float64
+		incomeGST    float64
+		expenseSum   float64
+		expenseGST   float64
+		otherCostSum float64
 
-	return s.method.Calculate(ctx, taxType, &method.Input{
-		Amount:    input.Value,
-		GstAmount: input.TaxValue,
-	})
-}
+		paidByOwnerSum float64
+	)
 
-func (s *service) calcInputs(ctx context.Context, inputs []Input, label string) (totals []float64, sum float64, results []*method.Result, err error) {
-	totals = make([]float64, 0, len(inputs))
-	results = make([]*method.Result, 0, len(inputs))
-	for i := range inputs {
-		res, e := s.TaxCalculate(ctx, inputs[i].TaxType, &inputs[i])
-		if e != nil {
-			return nil, 0, nil, fmt.Errorf("calculate %s[%d]: %w", label, i, e)
+	for _, v := range formValue {
+		f, ok := fieldMap[v.FormFieldID]
+		if !ok {
+			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
 		}
-		totals = append(totals, res.TotalAmount)
-		sum += res.TotalAmount
-		results = append(results, res)
-	}
-	return
-}
 
-func (s *service) NetAmount(ctx context.Context, entry *Entry) (*NetAmountResult, error) {
-	_, incomeSum, _, err := s.calcInputs(ctx, entry.Income, "income")
-	if err != nil {
-		return nil, err
-	}
+		switch f.SectionType {
 
-	_, expenseSum, _, err := s.calcInputs(ctx, entry.Expense, "expense")
-	if err != nil {
-		return nil, err
-	}
+		case "COLLECTION":
+			if v.NetAmount != nil {
+				incomeSum += *v.NetAmount
+			}
+			if f.TaxType != nil && *f.TaxType == field.TaxTypeManual && v.GstAmount != nil {
+				incomeGST += *v.GstAmount
+			}
 
-	return &NetAmountResult{
-		Income:  []float64{util.Round(incomeSum, 2)},
-		Expense: []float64{util.Round(expenseSum, 2)},
-		Result:  util.Round(incomeSum-expenseSum, 2),
-	}, nil
-}
+		case "COST":
+			if f.PaymentResponsibility == nil {
+				continue
+			}
 
-func (s *service) GrossResult(ctx context.Context, entry *Entry) (*GrossResult, error) {
-	_, _, incResults, err := s.calcInputs(ctx, entry.Income, "income")
-	if err != nil {
-		return nil, err
-	}
-	incomeSum := 0.0
-	for _, r := range incResults {
-		incomeSum += r.Amount
-	}
-	incomeGST := 0.0
-	for _, r := range incResults {
-		incomeGST += r.GstAmount
-	}
-	incomeSum -= incomeGST
+			switch *f.PaymentResponsibility {
 
-	_, _, expResults, err := s.calcInputs(ctx, entry.Expense, "expense")
-	if err != nil {
-		return nil, err
-	}
+			case "CLINIC":
+				if v.NetAmount != nil {
+					expenseSum += *v.NetAmount
+				}
+				if v.GstAmount != nil {
+					expenseGST += *v.GstAmount
+				}
 
-	expenseGST := 0.0
-	expenseSum := 0.0
-	paidByClinicSum := 0.0
-	paidByOwnerSum := 0.0
-	for i, exp := range entry.Expense {
-		if exp.PaidBy == nil {
-			continue
-		}
-		switch *exp.PaidBy {
-		case PaidByClinic:
-			paidByClinicSum += expResults[i].Amount
-			expenseSum += expResults[i].Amount
-			expenseGST += expResults[i].GstAmount
-		case PaidByOwner:
-			expenseSum += expResults[i].TotalAmount
-			paidByOwnerSum += expenseSum
+			case "OWNER":
+				if v.NetAmount != nil {
+					expenseSum += *v.NetAmount
+					paidByOwnerSum += *v.NetAmount
+				}
+			}
+
+		case "OTHER_COST":
+			if v.NetAmount != nil {
+				otherCostSum += *v.NetAmount
+			}
 		}
 	}
 
-	_, otherCostsSum, _, err := s.calcInputs(ctx, entry.OtherCosts, "other_costs")
-	if err != nil {
-		return nil, err
-	}
-	otherCostsSum += expenseGST
+	netIncome := incomeSum
 
-	clinicShare := 0.0
-	if entry.ClinicShare != nil {
-		clinicShare = *entry.ClinicShare
-	}
+	netAmount := netIncome - expenseSum
 
-	netAmount := incomeSum - expenseSum
+	clinicShare := float64(formDetail.ClinicShare)
 	serviceFee := netAmount * (clinicShare / 100)
 	gstServiceFee := serviceFee * 0.1
 	totalServiceFee := serviceFee + gstServiceFee
 
-	remittedAmount := netAmount - totalServiceFee - otherCostsSum + incomeGST + paidByOwnerSum
+	remittedAmount := netAmount - totalServiceFee - otherCostSum + paidByOwnerSum + incomeGST
 
 	return &GrossResult{
-		NetAmount:       util.Round(netAmount, 2),
-		ServiceFee:      util.Round(serviceFee, 2),
-		GstServiceFee:   util.Round(gstServiceFee, 2),
-		TotalServiceFee: util.Round(totalServiceFee, 2),
-		RemittedAmount:  util.Round(remittedAmount, 2),
+		NetAmount:        util.Round(netAmount, 2),
+		ServiceFee:       util.Round(serviceFee, 2),
+		GstServiceFee:    util.Round(gstServiceFee, 2),
+		TotalServiceFee:  util.Round(totalServiceFee, 2),
+		RemittedAmount:   util.Round(remittedAmount, 2),
+		ClinicExpenseGST: util.Round(expenseGST, 2),
 	}, nil
 }
 
-// NetResult implements [Service].
-func (s *service) NetResult(ctx context.Context, entry *Entry) (*NetResult, error) {
-	_, _, incResults, err := s.calcInputs(ctx, entry.Income, "income")
-	if err != nil {
-		return nil, err
-	}
-	var incomeSum, expenseSum float64
-	for _, r := range incResults {
-		incomeSum += r.Amount
+func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, fieldMap map[uuid.UUID]*field.RsFormField, filter *NetFilter) (*NetResult, error) {
+	var (
+		incomeSum    float64
+		expenseSum   float64
+		otherCostSum float64
+	)
+
+	for _, v := range formValue {
+		f, ok := fieldMap[v.FormFieldID]
+		if !ok {
+			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
+		}
+
+		switch f.SectionType {
+
+		case "COLLECTION":
+			if v.NetAmount != nil {
+				incomeSum += *v.NetAmount
+			}
+
+		case "COST":
+			if v.NetAmount != nil {
+				expenseSum += *v.NetAmount
+			}
+
+		case "OTHER_COST":
+			if v.NetAmount != nil {
+				otherCostSum += *v.NetAmount
+			}
+		}
 	}
 
-	_, _, expResults, err := s.calcInputs(ctx, entry.Expense, "expense")
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range expResults {
-		expenseSum += r.Amount + r.GstAmount
-	}
+	netAmount := incomeSum - expenseSum - otherCostSum
 
-	netAmount := incomeSum - expenseSum
-
-	ownerShare := 0.0
-	if entry.OwnerShare != nil {
-		ownerShare = *entry.OwnerShare
-	}
+	ownerShare := float64(formDetail.OwnerShare)
 
 	superDecimal := 0.0
-	if entry.SuperComponent != nil {
-		superDecimal = *entry.SuperComponent / 100
+	if filter != nil && filter.SuperComponent != nil {
+		superDecimal = *filter.SuperComponent / 100
 	}
 
 	totalRemuneration := netAmount * (ownerShare / 100)
@@ -174,98 +155,90 @@ func (s *service) NetResult(ctx context.Context, entry *Entry) (*NetResult, erro
 	commissionBase := totalRemuneration
 	var superAmount float64
 	if superDecimal > 0 {
-		commissionBase = totalRemuneration / (1 + superDecimal)
 		superAmount = commissionBase * superDecimal
 	}
 
-	gstCommission := commissionBase * 0.10
-	totalCommission := commissionBase + gstCommission
+	gstOnRemuneration := commissionBase * 0.10
+	invoiceTotal := commissionBase + gstOnRemuneration + superAmount
 
 	netResult := NetResult{
-		NetAmount:       util.Round(netAmount, 2),
-		Commission:      util.Round(totalRemuneration, 2),
-		GstCommission:   util.Round(gstCommission, 2),
-		TotalCommission: util.Round(totalCommission, 2),
+		NetAmount:          util.Round(netAmount, 2),
+		TotalRemuneration:  util.Round(totalRemuneration, 2),
+		GstOnRemuneration:  util.Round(gstOnRemuneration, 2),
+		InvoiceTotal:       util.Round(invoiceTotal, 2),
+		OtherCostDeduction: util.Round(otherCostSum, 2),
 	}
 
 	if superDecimal > 0 {
 		sa := util.Round(superAmount, 2)
 		netResult.SuperComponent = &sa
 
-		cb := util.Round(commissionBase, 2)
-		netResult.SuperComponentCommission = &cb
+		br := util.Round(commissionBase, 2)
+		netResult.BaseRemuneration = &br
 	}
-
-	tr := util.Round(totalRemuneration, 2)
-	netResult.TotalRemuneration = &tr
 
 	return &netResult, nil
 }
 
-// OutWorkResult implements [Service].
-func (s *service) OutWorkResult(ctx context.Context, entry *Entry) (*OutWorkResult, error) {
-	_, _, incResults, err := s.calcInputs(ctx, entry.Income, "income")
+// Calculate implements [Service].
+func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFilter) (interface{}, error) {
+
+	form, err := s.formSvc.GetFormByID(ctx, formID)
 	if err != nil {
 		return nil, err
 	}
-	incomeSum := 0.0
-	for _, r := range incResults {
-		incomeSum += r.Amount
-	}
-	incomeGST := 0.0
-	for _, r := range incResults {
-		incomeGST += r.GstAmount
-	}
-	incomeSum -= incomeGST
-
-	_, _, expenseResults, err := s.calcInputs(ctx, entry.Expense, "expense")
+	version, err := s.versionSvc.GetVersionByFormID(ctx, form.ID)
 	if err != nil {
 		return nil, err
 	}
-	expenseGST := 0.0
-	for i, exp := range entry.Expense {
-		if exp.PaidBy == nil {
-			continue
-		}
-		switch *exp.PaidBy {
-		case PaidByClinic:
-			expenseGST += expenseResults[i].GstAmount
-		}
-	}
-
-	expenseSum := 0.0
-	for _, r := range expenseResults {
-		expenseSum += r.Amount
-	}
-	expenseSum -= expenseGST
-
-	_, otherCostsSum, _, err := s.calcInputs(ctx, entry.OtherCosts, "other_costs")
+	entries, err := s.entries.GetByVersionID(ctx, version.Id)
 	if err != nil {
 		return nil, err
 	}
-	otherCostsSum += expenseSum
+	fieldMap, err := s.fieldSvc.GetFieldMap(ctx, version.Id)
+	if err != nil {
+		return nil, err
+	}
+	switch Method(form.Method) {
+	case IndependentContractor:
+		return s.NetMethod(ctx, form, entries.Values, fieldMap, filter)
+	case ServiceFee:
+		return s.GrossMethod(ctx, form, entries.Values, fieldMap)
+	default:
+		return nil, fmt.Errorf("unsupported method: %s", form.Method)
+	}
+}
 
-	clinicShare := 0.0
-	if entry.ClinicShare != nil {
-		clinicShare = *entry.ClinicShare
+// CalculateFromEntries implements [Service].
+func (s *service) CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error) {
+	formID, err := uuid.Parse(req.FormID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid form_id: %w", err)
 	}
 
-	outWorkPercentage := 0.0
-	if entry.OutWorkPercentage != nil {
-		outWorkPercentage = *entry.OutWorkPercentage
+	form, err := s.formSvc.GetFormByID(ctx, formID)
+	if err != nil {
+		return nil, err
 	}
 
-	serviceFee := incomeSum * (clinicShare / 100)
-	outWorkAmount := otherCostsSum * (outWorkPercentage / 100)
-	outServiceFee := outWorkAmount + serviceFee
-	gstOutServiceFee := outServiceFee * 0.1
-	totalOutServiceFee := outServiceFee + gstOutServiceFee
+	version, err := s.versionSvc.GetVersionByFormID(ctx, form.ID)
+	if err != nil {
+		return nil, err
+	}
 
-	return &OutWorkResult{
-		NetAmount:       util.Round(incomeSum-otherCostsSum, 2),
-		ServiceFee:      util.Round(outServiceFee, 2),
-		GstServiceFee:   util.Round(gstOutServiceFee, 2),
-		TotalServiceFee: util.Round(totalOutServiceFee, 2),
-		NetPayable:      util.Round(incomeSum-totalOutServiceFee, 2),
-	}, nil
+	fieldMap, err := s.fieldSvc.GetFieldMap(ctx, version.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := &NetFilter{SuperComponent: req.SuperComponent}
+
+	switch Method(form.Method) {
+	case IndependentContractor:
+		return s.NetMethod(ctx, form, req.Entries, fieldMap, filter)
+	case ServiceFee:
+		return s.GrossMethod(ctx, form, req.Entries, fieldMap)
+	default:
+		return nil, fmt.Errorf("unsupported method: %s", form.Method)
+	}
 }

@@ -22,6 +22,7 @@ type IHandler interface {
 	CreateChartOfAccount(c *gin.Context)
 	UpdateCharOfAccount(c *gin.Context)
 	DeleteChartOfAccount(c *gin.Context)
+	CheckCodeUnique(c *gin.Context)
 }
 
 type handler struct {
@@ -35,11 +36,20 @@ func NewHandler(svc Service) IHandler {
 // @Summary List all account types
 // @Tags coa
 // @Produce json
-// @Success 200 {array} AccountType
+// @Param id query int false "Filter by id"
+// @Param name query string false "Filter by name"
+// @Param search query string false "Search name"
+// @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-types [get]
 func (h *handler) ListAccountTypes(c *gin.Context) {
-	list, err := h.svc.ListAccountTypes(c.Request.Context())
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListAccountTypes(c.Request.Context(), &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -51,10 +61,11 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path int true "Account Type ID"
-// @Success 200 {object} AccountType
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-types/{id} [get]
 func (h *handler) GetAccountType(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 16)
@@ -77,11 +88,21 @@ func (h *handler) GetAccountType(c *gin.Context) {
 // @Summary List all account tax types
 // @Tags coa
 // @Produce json
-// @Success 200 {array} AccountTax
+// @Param id query int false "Filter by id"
+// @Param name query string false "Filter by name"
+// @Param rate query number false "Filter by rate"
+// @Param search query string false "Search name or is_taxable"
+// @Success 200 {object} util.RsList
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-taxes [get]
 func (h *handler) ListAccountTaxes(c *gin.Context) {
-	list, err := h.svc.ListAccountTaxes(c.Request.Context())
+	var f Filter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	list, err := h.svc.ListAccountTaxes(c.Request.Context(), &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -93,10 +114,11 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path int true "Account Tax ID"
-// @Success 200 {object} AccountTax
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security BearerToken
 // @Router /coa/account-taxes/{id} [get]
 func (h *handler) GetAccountTax(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 16)
@@ -119,35 +141,31 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Summary List chart of accounts for practitioner
 // @Tags coa
 // @Produce json
-// @Success 200 {array} RsChartOfAccount
+// @Param name query string false "Filter by name"
+// @Param code query int false "Filter by code"
+// @Param account_type query string false "Filter by account type name"
+// @Param search query string false "Search keyword"
+// @Param sort_by query string false "Sort field"
+// @Param order_by query string false "Order direction (ASC/DESC)"
+// @Param limit query int false "Page size (default 20, max 100)"
+// @Param offset query int false "Offset"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart [get]
+// @Security BearerToken
+// @Router /coa/chart-of-account [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
-	f := ListChartOfAccountFilter{
-		Page:  1,
-		Limit: 0,
+	var filter Filter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
 	}
-	if v := c.Query("page"); v != "" {
-		if p, err := strconv.Atoi(v); err == nil && p > 0 {
-			f.Page = p
-		}
-	}
-	if v := c.Query("limit"); v != "" {
-		if l, err := strconv.Atoi(v); err == nil && l > 0 {
-			f.Limit = l
-		}
-	}
-	if v := c.Query("account_type_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 16); err == nil && id > 0 {
-			t := int16(id)
-			f.AccountTypeID = &t
-		}
-	}
-	result, err := h.svc.ListChartOfAccount(c.Request.Context(), practitionerID, f)
+
+	result, err := h.svc.ListChartOfAccount(c.Request.Context(), practitionerID, &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -159,11 +177,12 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
-// @Success 200 {object} RsChartOfAccount
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart/{id} [get]
+// @Security BearerToken
+// @Router /coa/chart-of-account/{id} [get]
 func (h *handler) GetChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -191,11 +210,12 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateChartOfAccountOfAccount true "COA Data"
-// @Success 201 {object} RsChartOfAccount
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart [post]
+// @Security BearerToken
+// @Router /coa/chart-of-account [post]
 func (h *handler) CreateChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -228,13 +248,14 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
 // @Param request body RqUpdateCharOfAccountOfAccount true "Updated COA Data"
-// @Success 200 {object} RsChartOfAccount
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart/{id} [put]
+// @Security BearerToken
+// @Router /coa/chart-of-account/{id} [put]
 func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -279,7 +300,8 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /coa/chart/{id} [delete]
+// @Security BearerToken
+// @Router /coa/chart-of-account/{id} [delete]
 func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 	practitionerID, ok := util.GetPractitionerID(c)
 	if !ok {
@@ -303,4 +325,34 @@ func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"}, "Chart of account deleted successfully")
+}
+
+// @Summary Check if a chart of account code is unique for the practitioner
+// @Tags coa
+// @Accept json
+// @Produce json
+// @Param request body RqCheckCodeUnique true "Code to check"
+// @Success 200 {object} RsCodeUnique
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /coa/chart-of-account/check-code [post]
+func (h *handler) CheckCodeUnique(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var req RqCheckCodeUnique
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.CheckCodeUnique(c.Request.Context(), practitionerID, req.Code, req.ExcludeID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, result, "Code uniqueness checked successfully")
 }
