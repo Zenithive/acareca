@@ -36,7 +36,7 @@ func NewHandler(svc Service) IHandler {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateSubscription true "Subscription Data"
-// @Success 201 {object} RsSubscription
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -61,7 +61,7 @@ func (h *handler) CreateSubscription(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "Subscription ID"
-// @Success 200 {object} RsSubscription
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -121,7 +121,7 @@ func (h *handler) ListSubscriptions(c *gin.Context) {
 // @Produce json
 // @Param id path int true "Subscription ID"
 // @Param request body RqUpdateSubscription true "Updated Subscription Data"
-// @Success 200 {object} RsSubscription
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -209,7 +209,7 @@ func (h *handler) ListPermissions(c *gin.Context) {
 // @Param id path int true "Subscription ID"
 // @Param key path string true "Permission key (e.g. clinic.create)"
 // @Param request body RqUpdatePermission true "Permission update"
-// @Success 200 {object} RsSubscriptionPermission
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError

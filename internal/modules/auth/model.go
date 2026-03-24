@@ -7,16 +7,16 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID  `db:"id"`
-	Email        string     `db:"email"`
-	Password     *string    `db:"password"`
-	FirstName    string     `db:"first_name"`
-	LastName     string     `db:"last_name"`
-	Phone        *string    `db:"phone"`
-	IsSuperadmin *bool      `db:"is_superadmin"`
-	CreatedAt    time.Time  `db:"created_at"`
-	UpdatedAt    time.Time  `db:"updated_at"`
-	DeletedAt    *time.Time `db:"deleted_at"`
+	ID        uuid.UUID  `db:"id"`
+	Email     string     `db:"email"`
+	Password  *string    `db:"password"`
+	FirstName string     `db:"first_name"`
+	LastName  string     `db:"last_name"`
+	Phone     *string    `db:"phone"`
+	Role      string     `db:"role"`
+	CreatedAt time.Time  `db:"created_at"`
+	UpdatedAt time.Time  `db:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at"`
 }
 
 type AuthProvider struct {
@@ -44,59 +44,73 @@ type Session struct {
 }
 
 type RqUser struct {
-	Email        string  `json:"email"         validate:"required,email"`
-	Password     string  `json:"password"      validate:"required,min=8"`
-	FirstName    string  `json:"first_name"    validate:"required"`
-	LastName     string  `json:"last_name"     validate:"required"`
-	Phone        *string `json:"phone"         validate:"omitempty,e164"`
-	IsSuperadmin *bool   `json:"is_superadmin" validate:"omitempty"`
+	Email     string  `json:"email"      validate:"required,email"`
+	Password  string  `json:"password"   validate:"required,min=8"`
+	FirstName string  `json:"first_name" validate:"required"`
+	LastName  string  `json:"last_name"  validate:"required"`
+	Phone     *string `json:"phone"      validate:"omitempty,e164"`
+	Role      string  `json:"role"       validate:"required,oneof=ADMIN PRACTITIONER ACCOUNTANT"`
+}
+
+type RqUpdateUser struct {
+	Email     *string `json:"email"      validate:"omitempty,email"`
+	FirstName *string `json:"first_name" validate:"omitempty"`
+	LastName  *string `json:"last_name"  validate:"omitempty"`
+	Phone     *string `json:"phone"      validate:"omitempty,e164"`
 }
 
 func (r *RqUser) ToDBModel() *User {
 	return &User{
-		Email:        r.Email,
-		FirstName:    r.FirstName,
-		LastName:     r.LastName,
-		Phone:        r.Phone,
-		IsSuperadmin: r.IsSuperadmin,
+		Email:     r.Email,
+		FirstName: r.FirstName,
+		LastName:  r.LastName,
+		Phone:     r.Phone,
+		Role:      r.Role,
 	}
 }
 
 type RqLogin struct {
-	Email        string `json:"email"         validate:"required,email"`
-	Password     string `json:"password"      validate:"required"`
-	IsSuperadmin *bool  `json:"is_superadmin" validate:"omitempty"`
+	Email    string `json:"email"         validate:"required,email"`
+	Password string `json:"password"      validate:"required"`
+}
+
+type RqLogout struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type RqChangePassword struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 
 // ── Response models ───────────────────────────────────────────────────────────
 
 type RsToken struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	IsSuperadmin *bool  `json:"is_superadmin"`
+	AccessToken  string  `json:"access_token"`
+	RefreshToken string  `json:"refresh_token"`
+	Role         *string `json:"role"`
 }
 
 type RsUser struct {
-	ID           uuid.UUID `json:"id"`
-	Email        string    `json:"email"`
-	FirstName    string    `json:"first_name"`
-	LastName     string    `json:"last_name"`
-	Phone        *string   `json:"phone,omitempty"`
-	IsSuperadmin *bool     `json:"is_superadmin"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	FirstName string    `json:"first_name"`
+	LastName  string    `json:"last_name"`
+	Phone     *string   `json:"phone,omitempty"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (u *User) ToRsUser() *RsUser {
 	return &RsUser{
-		ID:           u.ID,
-		Email:        u.Email,
-		FirstName:    u.FirstName,
-		LastName:     u.LastName,
-		Phone:        u.Phone,
-		IsSuperadmin: u.IsSuperadmin,
-		CreatedAt:    u.CreatedAt,
-		UpdatedAt:    u.UpdatedAt,
+		ID:        u.ID,
+		Email:     u.Email,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
+		Phone:     u.Phone,
+		Role:      u.Role,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
 	}
 }
 
@@ -109,4 +123,21 @@ type GoogleUserInfo struct {
 	Email     string `json:"email"`
 	FirstName string `json:"given_name"`
 	LastName  string `json:"family_name"`
+}
+
+// For email verification token operations
+const (
+	TokenStatusPending = "PENDING"
+	TokenStatusUsed    = "USED"
+	TokenStatusExpired = "EXPIRED"
+	TokenStatusResent  = "RESENT"
+)
+
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
 }

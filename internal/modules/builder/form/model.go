@@ -38,28 +38,30 @@ type RsFormWithFieldsSyncResult struct {
 }
 
 type RqCreateFormWithFields struct {
-	Name        string              `json:"name" validate:"required"`
-	Description *string             `json:"description" validate:"omitempty"`
-	Status      string              `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
-	Method      string              `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	OwnerShare  int                 `json:"owner_share" validate:"required,min=0,max=100"`
-	ClinicShare int                 `json:"clinic_share" validate:"required,min=0,max=100"`
-	ClinicID    uuid.UUID           `json:"clinic_id" validate:"required,uuid"`
-	Fields      []field.RqFormField `json:"fields" validate:"omitempty,dive"`
+	Name           string              `json:"name" validate:"required"`
+	Description    *string             `json:"description" validate:"omitempty"`
+	Status         string              `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Method         string              `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	OwnerShare     int                 `json:"owner_share" validate:"required,min=0,max=100"`
+	ClinicShare    int                 `json:"clinic_share" validate:"required,min=0,max=100"`
+	SuperComponent *float64            `json:"super_component" validate:"omitempty,min=0,max=100"`
+	ClinicID       uuid.UUID           `json:"clinic_id" validate:"required,uuid"`
+	Fields         []field.RqFormField `json:"fields" validate:"omitempty,dive"`
 }
 
 type RqUpdateFormWithFields struct {
-	ID          *uuid.UUID                `json:"id" validate:"omitempty,uuid"`
-	Name        *string                   `json:"name" validate:"omitempty"`
-	Description *string                   `json:"description" validate:"omitempty"`
-	Status      *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
-	Method      *string                   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	OwnerShare  *int                      `json:"owner_share" validate:"omitempty,min=0,max=100"`
-	ClinicShare *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
-	ClinicID    uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
-	Update      []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
-	Create      []field.RqFormField       `json:"create" validate:"omitempty,dive"`
-	Delete      []string                  `json:"delete" validate:"omitempty,dive"`
+	ID             *uuid.UUID                `json:"id" validate:"omitempty,uuid"`
+	Name           *string                   `json:"name" validate:"omitempty"`
+	Description    *string                   `json:"description" validate:"omitempty"`
+	Status         *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Method         *string                   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	OwnerShare     *int                      `json:"owner_share" validate:"omitempty,min=0,max=100"`
+	ClinicShare    *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
+	SuperComponent *float64                  `json:"super_component" validate:"omitempty,min=0,max=100"`
+	ClinicID       uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
+	Update         []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
+	Create         []field.RqFormField       `json:"create" validate:"omitempty,dive"`
+	Delete         []string                  `json:"delete" validate:"omitempty,dive"`
 }
 
 type RsFormWithFields struct {

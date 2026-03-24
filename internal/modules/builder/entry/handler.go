@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -18,6 +17,7 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
+	// GetFieldSummary(c *gin.Context)
 }
 
 type handler struct {
@@ -35,7 +35,7 @@ func NewHandler(svc IService) IHandler {
 // @Produce json
 // @Param version_id path string true "Version ID"
 // @Param request body RqFormEntry true "Entry details"
-// @Success 201 {object} RsFormEntry
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -54,8 +54,8 @@ func (h *handler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	var submittedBy *uuid.UUID
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, submittedBy, practitionerID)
+
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &practitionerID, practitionerID)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -73,7 +73,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Entry ID"
-// @Success 200 {object} RsFormEntry
+// @Success 200 {object} response.RsBase
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -102,7 +102,7 @@ func (h *handler) Get(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Entry ID"
 // @Param request body RqUpdateFormEntry true "Updated details"
-// @Success 200 {object} RsFormEntry
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -114,13 +114,18 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
 	var req RqUpdateFormEntry
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	var submittedBy *uuid.UUID
-	updated, err := h.svc.Update(c.Request.Context(), id, &req, submittedBy)
+
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, &practitionerID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -229,10 +234,40 @@ func (h *handler) ListTransactions(c *gin.Context) {
 	pracIDStr := practitionerID.String()
 	filter.PractitionerID = &pracIDStr
 
-	list, err := h.svc.ListTransactions(c.Request.Context(), practitionerID, filter)
+	list, err := h.svc.ListTransactions(c.Request.Context(), filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
 }
+
+// // @Summary Get summed values for a specific field
+// // @Description Returns the total net, gst, and gross amounts for all active entries of a field
+// // @Tags entry
+// // @Produce json
+// // @Param field_id path string true "Form Field ID"
+// // @Success 200 {object} RsFieldSummary
+// // @Failure 400 {object} response.RsError
+// // @Failure 404 {object} response.RsError
+// // @Failure 500 {object} response.RsError
+// // @Security BearerToken
+// // @Router /entry/{field_id}/summary [get]
+// func (h *handler) GetFieldSummary(c *gin.Context) {
+// 	fieldID, ok := util.ParseUuidID(c, "field_id")
+// 	if !ok {
+// 		return
+// 	}
+
+// 	summary, err := h.svc.GetFieldSummary(c.Request.Context(), fieldID)
+// 	if err != nil {
+// 		if errors.Is(err, ErrNotFound) {
+// 			response.Error(c, http.StatusNotFound, err)
+// 			return
+// 		}
+// 		response.Error(c, http.StatusInternalServerError, err)
+// 		return
+// 	}
+
+// 	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
+// }

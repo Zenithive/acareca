@@ -25,8 +25,18 @@ type RqFormField struct {
 	Label                 string  `json:"label" validate:"required,max=255"`
 	SectionType           string  `json:"section_type" validate:"required,oneof=COLLECTION COST OTHER_COST"`
 	PaymentResponsibility *string `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
-	TaxType               *string `json:"tax_type" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE MANUAL"`
+	TaxType               *string `json:"tax_type" validate:"omitempty"`
 	CoaID                 string  `json:"coa_id" validate:"required,uuid"`
+	SortOrder             int     `json:"sort_order" validate:"min=0"`
+}
+
+func (r *RqFormField) Sanitize() {
+	if r.TaxType != nil && *r.TaxType == "" {
+		r.TaxType = nil
+	}
+	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
+		r.PaymentResponsibility = nil
+	}
 }
 
 type RqUpdateFormField struct {
@@ -34,8 +44,19 @@ type RqUpdateFormField struct {
 	Label                 *string   `json:"label" validate:"omitempty,max=255"`
 	SectionType           *string   `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST"`
 	PaymentResponsibility *string   `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
-	TaxType               *string   `json:"tax_type" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE MANUAL"`
+	TaxType               *string   `json:"tax_type" validate:"omitempty"`
 	CoaID                 *string   `json:"coa_id" validate:"omitempty,uuid"`
+	SortOrder             *int      `json:"sort_order" validate:"omitempty,min=0"`
+}
+
+// Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
+func (r *RqUpdateFormField) Sanitize() {
+	if r.TaxType != nil && *r.TaxType == "" {
+		r.TaxType = nil
+	}
+	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
+		r.PaymentResponsibility = nil
+	}
 }
 
 type FormField struct {
@@ -46,6 +67,7 @@ type FormField struct {
 	PaymentResponsibility *string   `db:"payment_responsibility"`
 	TaxType               *string   `db:"tax_type"`
 	CoaID                 uuid.UUID `db:"coa_id"`
+	SortOrder             int       `db:"sort_order"`
 	CreatedAt             string    `db:"created_at"`
 	UpdatedAt             string    `db:"updated_at"`
 }
@@ -60,6 +82,7 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		PaymentResponsibility: r.PaymentResponsibility,
 		TaxType:               r.TaxType,
 		CoaID:                 coaID,
+		SortOrder:             r.SortOrder,
 	}
 }
 
@@ -72,6 +95,7 @@ func (d *FormField) ToRs() *RsFormField {
 		PaymentResponsibility: d.PaymentResponsibility,
 		TaxType:               d.TaxType,
 		CoaID:                 d.CoaID,
+		SortOrder:             d.SortOrder,
 		CreatedAt:             d.CreatedAt,
 		UpdatedAt:             d.UpdatedAt,
 	}
@@ -86,14 +110,15 @@ type RsCoaDetail struct {
 }
 
 type RsFormField struct {
-	ID                    uuid.UUID     `json:"id"`
-	FormVersionID         uuid.UUID     `json:"form_version_id"`
-	Label                 string        `json:"label"`
-	SectionType           string        `json:"section_type"`
-	PaymentResponsibility *string       `json:"payment_responsibility"`
-	TaxType               *string       `json:"tax_type"`
-	CoaID                 uuid.UUID     `json:"coa_id"`
-	Coa                   *RsCoaDetail  `json:"coa,omitempty"`
-	CreatedAt             string        `json:"created_at"`
-	UpdatedAt             string        `json:"updated_at"`
+	ID                    uuid.UUID    `json:"id"`
+	FormVersionID         uuid.UUID    `json:"form_version_id"`
+	Label                 string       `json:"label"`
+	SectionType           string       `json:"section_type"`
+	PaymentResponsibility *string      `json:"payment_responsibility"`
+	TaxType               *string      `json:"tax_type"`
+	CoaID                 uuid.UUID    `json:"coa_id"`
+	Coa                   *RsCoaDetail `json:"coa,omitempty"`
+	SortOrder             int          `json:"sort_order"`
+	CreatedAt             string       `json:"created_at"`
+	UpdatedAt             string       `json:"updated_at"`
 }

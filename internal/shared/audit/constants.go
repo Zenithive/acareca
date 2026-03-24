@@ -16,6 +16,8 @@ const (
 // Action constants - Auth module
 const (
 	ActionUserRegistered  = "user.registered"
+	ActionUserUpdated     = "user.updated"
+	ActionUserDeleted     = "user.deleted"
 	ActionUserLoggedIn    = "user.logged_in"
 	ActionUserLoggedOut   = "user.logged_out"
 	ActionPasswordReset   = "user.password_reset"
@@ -80,4 +82,5 @@ const (
 	EntityFormFieldEntry         = "tbl_form_field_entry"
 	EntityPlanPermission         = "tbl_plan_permission"
 	EntitySubscriptionPermission = "tbl_subscription_permission"
+	EntityVerificationToken      = "tbl_verification_token"
 )

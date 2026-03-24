@@ -180,9 +180,9 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 	for _, r := range rows {
 		var val float64
 		if r.SectionType == "COLLECTION" {
-			val = round2(r.GrossAmount)
+			val = r.GrossAmount
 		} else {
-			val = round2(r.NetAmount)
+			val = r.NetAmount
 		}
 
 		ck := coaKey{r.SectionType, r.CoaID}
@@ -199,12 +199,11 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 		var total float64
 		for _, cid := range coaOrder[sectionType] {
 			ck := coaKey{sectionType, cid}
-			v := round2(coaTotals[ck])
-			total += v
+			total += coaTotals[ck]
 			accounts = append(accounts, RsReportAccount{
 				CoaID:      cid,
 				CoaName:    coaNames[ck],
-				TotalValue: v,
+				TotalValue: round2(coaTotals[ck]),
 			})
 		}
 		return RsReportGroup{GroupTotal: round2(total), Accounts: accounts}

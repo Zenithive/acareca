@@ -36,12 +36,12 @@ func NewRepository(db *sqlx.DB) IRepository {
 // Create implements [IRepository].
 func (r *Repository) Create(ctx context.Context, d *FormDetail) error {
 	query := `
-		INSERT INTO tbl_form (id, clinic_id, name, description, status, method, owner_share, clinic_share)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO tbl_form (id, clinic_id, name, description, status, method, owner_share, clinic_share, super_component)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at
 	`
 	if err := r.db.QueryRowContext(ctx, query,
-		d.ID, d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare,
+		d.ID, d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.SuperComponent,
 	).Scan(&d.CreatedAt, &d.UpdatedAt); err != nil {
 		return fmt.Errorf("create form detail: %w", err)
 	}
@@ -102,7 +102,7 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 
 	query = `
 	SELECT f.id, f.clinic_id, f.name, f.description, f.status, f.method,
-	       f.owner_share, f.clinic_share, v.id AS active_version_id, f.created_at, f.updated_at
+	       f.owner_share, f.clinic_share, f.super_component, v.id AS active_version_id, f.created_at, f.updated_at
 	` + query
 
 	query = r.db.Rebind(query)
@@ -150,14 +150,14 @@ func (r *Repository) CountForm(ctx context.Context, filter common.Filter, practi
 func (r *Repository) Update(ctx context.Context, d *FormDetail) (*FormDetail, error) {
 	query := `
 		UPDATE tbl_form
-		SET name = $1, description = $2, status = $3, method = $4, owner_share = $5, clinic_share = $6, updated_at = now()
-		WHERE id = $7 AND deleted_at IS NULL
-		RETURNING id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at
+		SET name = $1, description = $2, status = $3, method = $4, owner_share = $5, clinic_share = $6, super_component = $7, updated_at = now()
+		WHERE id = $8 AND deleted_at IS NULL
+		RETURNING id, clinic_id, name, description, status, method, owner_share, clinic_share, super_component, created_at, updated_at
 	`
 	var out FormDetail
 	if err := r.db.QueryRowContext(ctx, query,
-		d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.ID,
-	).Scan(&out.ID, &out.ClinicID, &out.Name, &out.Description, &out.Status, &out.Method, &out.OwnerShare, &out.ClinicShare, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.SuperComponent, d.ID,
+	).Scan(&out.ID, &out.ClinicID, &out.Name, &out.Description, &out.Status, &out.Method, &out.OwnerShare, &out.ClinicShare, &out.SuperComponent, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -168,10 +168,10 @@ func (r *Repository) Update(ctx context.Context, d *FormDetail) (*FormDetail, er
 
 // GetByID implements [IRepository].
 func (r *Repository) GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error) {
-	query := `SELECT id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at FROM tbl_form WHERE id = $1 AND deleted_at IS NULL`
+	query := `SELECT id, clinic_id, name, description, status, method, owner_share, clinic_share, super_component, created_at, updated_at FROM tbl_form WHERE id = $1 AND deleted_at IS NULL`
 	var d FormDetail
 	if err := r.db.QueryRowContext(ctx, query, formID).Scan(
-		&d.ID, &d.ClinicID, &d.Name, &d.Description, &d.Status, &d.Method, &d.OwnerShare, &d.ClinicShare, &d.CreatedAt, &d.UpdatedAt,
+		&d.ID, &d.ClinicID, &d.Name, &d.Description, &d.Status, &d.Method, &d.OwnerShare, &d.ClinicShare, &d.SuperComponent, &d.CreatedAt, &d.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -184,12 +184,12 @@ func (r *Repository) GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail
 // CreateTx creates a form detail within a transaction.
 func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) error {
 	query := `
-		INSERT INTO tbl_form (id, clinic_id, name, description, status, method, owner_share, clinic_share)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO tbl_form (id, clinic_id, name, description, status, method, owner_share, clinic_share, super_component)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at
 	`
 	if err := tx.QueryRowContext(ctx, query,
-		d.ID, d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare,
+		d.ID, d.ClinicID, d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.SuperComponent,
 	).Scan(&d.CreatedAt, &d.UpdatedAt); err != nil {
 		return fmt.Errorf("create form detail in transaction: %w", err)
 	}
@@ -200,14 +200,14 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) e
 func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (*FormDetail, error) {
 	query := `
 		UPDATE tbl_form
-		SET name = $1, description = $2, status = $3, method = $4, owner_share = $5, clinic_share = $6, updated_at = now()
-		WHERE id = $7 AND deleted_at IS NULL
-		RETURNING id, clinic_id, name, description, status, method, owner_share, clinic_share, created_at, updated_at
+		SET name = $1, description = $2, status = $3, method = $4, owner_share = $5, clinic_share = $6, super_component = $7, updated_at = now()
+		WHERE id = $8 AND deleted_at IS NULL
+		RETURNING id, clinic_id, name, description, status, method, owner_share, clinic_share, super_component, created_at, updated_at
 	`
 	var out FormDetail
 	if err := tx.QueryRowContext(ctx, query,
-		d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.ID,
-	).Scan(&out.ID, &out.ClinicID, &out.Name, &out.Description, &out.Status, &out.Method, &out.OwnerShare, &out.ClinicShare, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		d.Name, d.Description, d.Status, d.Method, d.OwnerShare, d.ClinicShare, d.SuperComponent, d.ID,
+	).Scan(&out.ID, &out.ClinicID, &out.Name, &out.Description, &out.Status, &out.Method, &out.OwnerShare, &out.ClinicShare, &out.SuperComponent, &out.CreatedAt, &out.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}

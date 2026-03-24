@@ -37,7 +37,7 @@ type FormEntry struct {
 	SubmittedAt   *string    `db:"submitted_at" json:"submitted_at,omitempty"`
 	Status        string     `db:"status" json:"status"`
 	CreatedAt     string     `db:"created_at" json:"created_at"`
-	UpdatedAt     string     `db:"updated_at" json:"updated_at"`
+	UpdatedAt     *string    `db:"updated_at" json:"updated_at,omitempty"`
 }
 
 type FormEntryValue struct {
@@ -48,7 +48,7 @@ type FormEntryValue struct {
 	GstAmount   *float64  `db:"gst_amount"`
 	GrossAmount *float64  `db:"gross_amount"`
 	CreatedAt   string    `db:"created_at"`
-	UpdatedAt   string    `db:"updated_at"`
+	UpdatedAt   *string   `db:"updated_at"`
 }
 
 func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
@@ -85,7 +85,12 @@ type RsFormEntry struct {
 	Status        string         `json:"status"`
 	Values        []RsEntryValue `json:"values,omitempty"`
 	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	UpdatedAt     *string        `json:"updated_at"`
+
+	// Populated for INDEPENDENT_CONTRACTOR forms only.
+	Commission       *float64 `json:"commission,omitempty"`
+	GstOnCommission  *float64 `json:"gst_on_commission,omitempty"`
+	PaymentReceived  *float64 `json:"payment_received,omitempty"`
 }
 
 type RsEntryValue struct {
@@ -122,7 +127,7 @@ type RsTransactionRow struct {
 	GstAmount     *float64  `json:"gst_amount"`
 	GrossAmount   *float64  `json:"gross_amount"`
 	CreatedAt     string    `json:"created_at"`
-	UpdatedAt     string    `json:"updated_at"`
+	UpdatedAt     *string   `json:"updated_at,omitempty"`
 }
 
 // RsTransactionDetail kept for backward compat (used by old RsTransaction).
@@ -248,5 +253,16 @@ type transactionFlatRow struct {
 	GstAmount     *float64  `db:"gst_amount"`
 	GrossAmount   *float64  `db:"gross_amount"`
 	CreatedAt     string    `db:"created_at"`
-	UpdatedAt     string    `db:"updated_at"`
+	UpdatedAt     *string   `db:"updated_at"`
+}
+
+type RsFieldSummary struct {
+	FormFieldID    uuid.UUID `json:"form_field_id"`
+	Label          string    `json:"label"`
+	SectionType    string    `json:"section_type"`
+	Responsibility string    `json:"payment_responsibility"`
+	TaxType        string    `json:"tax_type"`
+	TotalNet       float64   `json:"total_net"`
+	TotalGst       float64   `json:"total_gst"`
+	TotalGross     float64   `json:"total_gross"`
 }

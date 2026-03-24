@@ -37,9 +37,20 @@ func Message(c *gin.Context, status int, message string) {
 
 func Error(c *gin.Context, status int, err error) {
 	var msg string
-	if status >= http.StatusInternalServerError {
+	switch {
+	case status >= http.StatusInternalServerError:
 		msg = "internal server error"
-	} else {
+	case status == http.StatusUnprocessableEntity:
+		msg = "unprocessable entity"
+	case status == http.StatusBadRequest:
+		msg = "bad request"
+	case status == http.StatusNotFound:
+		msg = "not found"
+	case status == http.StatusForbidden:
+		msg = "forbidden"
+	case status == http.StatusUnauthorized:
+		msg = "unauthorized"
+	default:
 		msg = "unknown error"
 	}
 

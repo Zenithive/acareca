@@ -92,16 +92,20 @@ func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {
 	if existing.Status == StatusArchived {
 		return errors.New("form is archived")
 	}
-	// if existing.Status == StatusPublished {
-	// 	if d.Status != nil || d.Method != nil || d.OwnerShare != nil || d.ClinicShare != nil {
-	// 		return errors.New("form is published and cannot be updated")
-	// 	}
-	// }
 	if d.Name != nil {
 		existing.Name = *d.Name
 	}
 	if d.Description != nil {
 		existing.Description = d.Description
+	}
+	if d.OwnerShare != nil {
+		existing.OwnerShare = *d.OwnerShare
+	}
+	if d.ClinicShare != nil {
+		existing.ClinicShare = *d.ClinicShare
+	}
+	if d.SuperComponent != nil {
+		existing.SuperComponent = d.SuperComponent
 	}
 	if existing.Status != StatusPublished {
 		if d.Status != nil {
@@ -109,12 +113,6 @@ func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {
 		}
 		if d.Method != nil {
 			existing.Method = *d.Method
-		}
-		if d.OwnerShare != nil {
-			existing.OwnerShare = *d.OwnerShare
-		}
-		if d.ClinicShare != nil {
-			existing.ClinicShare = *d.ClinicShare
 		}
 	}
 	return nil

@@ -22,6 +22,7 @@ type IHandler interface {
 	CreateChartOfAccount(c *gin.Context)
 	UpdateCharOfAccount(c *gin.Context)
 	DeleteChartOfAccount(c *gin.Context)
+	CheckCodeUnique(c *gin.Context)
 }
 
 type handler struct {
@@ -60,7 +61,7 @@ func (h *handler) ListAccountTypes(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path int true "Account Type ID"
-// @Success 200 {object} AccountType
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -113,7 +114,7 @@ func (h *handler) ListAccountTaxes(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path int true "Account Tax ID"
-// @Success 200 {object} AccountTax
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -176,7 +177,7 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
-// @Success 200 {object} RsChartOfAccount
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -209,7 +210,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqCreateChartOfAccountOfAccount true "COA Data"
-// @Success 201 {object} RsChartOfAccount
+// @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -247,7 +248,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
 // @Param request body RqUpdateCharOfAccountOfAccount true "Updated COA Data"
-// @Success 200 {object} RsChartOfAccount
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
@@ -324,4 +325,34 @@ func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"}, "Chart of account deleted successfully")
+}
+
+// @Summary Check if a chart of account code is unique for the practitioner
+// @Tags coa
+// @Accept json
+// @Produce json
+// @Param request body RqCheckCodeUnique true "Code to check"
+// @Success 200 {object} RsCodeUnique
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /coa/chart-of-account/check-code [post]
+func (h *handler) CheckCodeUnique(c *gin.Context) {
+	practitionerID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var req RqCheckCodeUnique
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.CheckCodeUnique(c.Request.Context(), practitionerID, req.Code, req.ExcludeID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, result, "Code uniqueness checked successfully")
 }

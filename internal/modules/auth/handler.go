@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -15,6 +17,11 @@ type IHandler interface {
 	Logout(c *gin.Context)
 	GoogleAuthURL(c *gin.Context)
 	GoogleCallback(c *gin.Context)
+
+	VerifyEmail(c *gin.Context)
+	ChangePassword(c *gin.Context)
+	UpdateProfile(c *gin.Context)
+	DeleteUser(c *gin.Context)
 }
 
 type handler struct {
@@ -63,7 +70,8 @@ func (h *handler) Register(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Success 200 {object} RsToken
+// @Param        request  body      RqLogin  true  "Login Credentials"
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -88,45 +96,56 @@ func (h *handler) Login(c *gin.Context) {
 	response.JSON(c, http.StatusOK, token, "User logged in successfully")
 }
 
-// GoogleLogin godoc
-// @Summary Get Google OAuth consent-screen URL
-// @Description get Google OAuth consent-screen URL
+// UpdateProfile godoc
+// @Summary Update user profile
+// @Description Update the profile details of the user (email, names, phone)
 // @Tags auth
+// @Accept json
 // @Produce json
-// @Success 200 {object} RsGoogleAuthURL
+// @Security BearerToken
+// @Param request body RqUpdateUser true "Update Data"
+// @Success 200 {object} RsUser
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /auth/google [get]
-func (h *handler) GoogleLogin(c *gin.Context) {
-	state := util.NewUUID()
-	result := h.svc.GoogleAuthURL(state)
-	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
-}
+// @Router /auth/user/profile [put]
+func (h *handler) UpdateProfile(c *gin.Context) {
 
-// GoogleCallback godoc
-// @Summary Handle Google OAuth callback
-// @Description handle Google OAuth callback and return tokens
-// @Tags auth
-// @Produce json
-// @Param code query string true "OAuth authorization code"
-// @Success 200 {object} RsToken
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /auth/google/callback [get]
-func (h *handler) GoogleCallback(c *gin.Context) {
-	code := c.Query("code")
-	if code == "" {
-		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
+	userIDPtr := auditctx.GetUserID(c.Request.Context())
+
+	// 2. Check if the pointer is nil (Unauthorized)
+	if userIDPtr == nil {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
 		return
 	}
 
-	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
+	// 3. Parse the string value into a uuid.UUID for the service layer
+	userID, err := uuid.Parse(*userIDPtr)
 	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+		return
+	}
+
+	// 4. Bind and validate the update request body
+	var req RqUpdateUser
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// 5. Call service layer with the parsed UUID
+	user, err := h.svc.UpdateProfile(c.Request.Context(), userID, &req)
+	if err != nil {
+		if errors.Is(err, ErrEmailTaken) {
+			response.Error(c, http.StatusConflict, err)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
+	response.JSON(c, http.StatusOK, user, "Profile updated successfully")
 }
 
 // Logout godoc
@@ -135,23 +154,44 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Success 200 {object} map[string]string
+// @Param request body RqLogout true "Logout Data"
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
-// @Router /auth/logout [post]
+// @Security BearerToken
+// @Router /auth/user/logout [post]
 func (h *handler) Logout(c *gin.Context) {
-	var req struct {
-		RefreshToken string `json:"refresh_token" validate:"required"`
+	// Get UserID from context (set by middleware)
+	userID, ok := util.GetUserID(c)
+	if !ok {
+		return // GetUserID handles the error response
 	}
+
+	var req RqLogout
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	if err := h.svc.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+	if err := h.svc.Logout(c.Request.Context(), userID, req.RefreshToken); err != nil {
 		response.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, nil, "Logged out successfully")
+}
+
+// GoogleLogin godoc
+// @Summary Get Google OAuth consent-screen URL
+// @Description get Google OAuth consent-screen URL
+// @Tags auth
+// @Produce json
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google [get]
+func (h *handler) GoogleLogin(c *gin.Context) {
+	state := util.NewUUID()
+	result := h.svc.GoogleAuthURL(state)
+	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
 
 // GoogleAuthURL godoc
@@ -165,6 +205,142 @@ func (h *handler) Logout(c *gin.Context) {
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
+	// Store state in a short-lived, HttpOnly cookie so the callback can verify it
+	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
+}
+
+// GoogleCallback godoc
+// @Summary Handle Google OAuth callback
+// @Description handle Google OAuth callback and return tokens
+// @Tags auth
+// @Produce json
+// @Param code query string true "OAuth authorization code"
+// @Param state query string true "OAuth state (CSRF token)"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/google/callback [get]
+func (h *handler) GoogleCallback(c *gin.Context) {
+	code := c.Query("code")
+	if code == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
+		return
+	}
+
+	// Validate state to prevent CSRF
+	stateParam := c.Query("state")
+	stateCookie, err := c.Cookie("oauth_state")
+	if err != nil || stateParam == "" || stateParam != stateCookie {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid oauth state"))
+		return
+	}
+	// Consume the state cookie
+	c.SetCookie("oauth_state", "", -1, "/", "", true, true)
+
+	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
+}
+
+// ChangePassword godoc
+// @Summary Change user password
+// @Description updates the password for the authenticated user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body RqChangePassword true "Password Change Data"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 403 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /auth/user/change-password [put]
+func (h *handler) ChangePassword(c *gin.Context) {
+	pracID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return
+	}
+
+	var req RqChangePassword
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	if err := h.svc.ChangePassword(c.Request.Context(), pracID, &req); err != nil {
+		if errors.Is(err, ErrOAuthOnly) {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "Password changed successfully")
+}
+
+// DeleteUser godoc
+// @Summary Delete user account
+// @Description Soft delete the currently authenticated user's account
+// @Tags auth
+// @Produce json
+// @Security BearerToken
+// @Success 200 {object} response.RsBase
+// @Failure 401 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/user [delete]
+func (h *handler) DeleteUser(c *gin.Context) {
+
+	userIDPtr := auditctx.GetUserID(c.Request.Context())
+
+	// 2. Check if the pointer is nil (Unauthorized)
+	if userIDPtr == nil {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
+		return
+	}
+
+	userID, err := uuid.Parse(*userIDPtr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+		return
+	}
+
+	// 4. Call service layer to perform the soft delete
+	if err := h.svc.DeleteUser(c.Request.Context(), userID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "User account deleted successfully")
+}
+
+// @Summary Verify user email address
+// @Description Validates the UUID token sent via email. If valid, marks the user as verified and the token as used.
+// @Tags auth
+// @Produce json
+// @Param token query string true "Verification Token (UUID)"
+// @Success 200 {object} response.RsBase "Email verified successfully"
+// @Failure 400 {object} response.RsError "Invalid token format or token already used"
+// @Failure 410 {object} response.RsError "Token has expired"
+// @Failure 500 {object} response.RsError "Internal server error"
+// @Router /auth/verify-email [get]
+func (h *handler) VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("token query parameter is required"))
+		return
+	}
+
+	if err := h.svc.VerifyEmail(c.Request.Context(), token); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "Email verified successfully. You can now log in.")
 }

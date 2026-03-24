@@ -44,6 +44,25 @@ type RqUpdatePractitionerSubscription struct {
 	Status *Status `json:"status" validate:"omitempty,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
 }
 
+// New struct to hold the plan details
+type SubscriptionInfo struct {
+	ID          int     `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+}
+
+// New response struct specifically for Active/History endpoints
+type RsActiveSubscription struct {
+	ID             int              `json:"id"`
+	PractitionerID uuid.UUID        `json:"practitioner_id"`
+	Subscription   SubscriptionInfo `json:"subscription"` // Nested object
+	StartDate      time.Time        `json:"start_date"`
+	EndDate        time.Time        `json:"end_date"`
+	Status         Status           `json:"status"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
+}
+
 // RsPractitionerSubscription response.
 type RsPractitionerSubscription struct {
 	ID             int       `json:"id"`

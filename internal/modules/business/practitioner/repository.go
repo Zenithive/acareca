@@ -19,6 +19,8 @@ type Repository interface {
 	ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	CountPractitioners(ctx context.Context, f common.Filter) (int, error)
+
+	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
 type repository struct {
@@ -127,4 +129,45 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 		return 0, err
 	}
 	return count, nil
+}
+
+/*
+func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
+	query := `UPDATE tbl_practitioner SET deleted_at = now() WHERE user_id = $1 AND deleted_at IS NULL`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	return err
+}
+*/
+
+func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
+	// 1. Soft Delete the Practitioner Profile
+	// Note: No 'status' column here based on your schema check
+	profileQuery := `
+        UPDATE tbl_practitioner 
+        SET 
+            deleted_at = now(), 
+            updated_at = now()
+        WHERE user_id = $1 AND deleted_at IS NULL
+    `
+	if _, err := r.db.ExecContext(ctx, profileQuery, userID); err != nil {
+		return fmt.Errorf("failed to soft-delete practitioner profile: %w", err)
+	}
+
+	// 2. Soft Delete and Deactivate the Subscriptions
+	// Here we DO update the 'status' column
+	subQuery := `
+        UPDATE tbl_practitioner_subscription 
+        SET 
+            deleted_at = now(), 
+            updated_at = now(),
+            status = 'CANCELLED'
+        WHERE practitioner_id IN (
+            SELECT id FROM tbl_practitioner WHERE user_id = $1
+        ) AND deleted_at IS NULL
+    `
+	if _, err := r.db.ExecContext(ctx, subQuery, userID); err != nil {
+		return fmt.Errorf("failed to deactivate practitioner subscriptions: %w", err)
+	}
+
+	return nil
 }
