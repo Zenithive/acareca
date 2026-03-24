@@ -42,7 +42,7 @@ type Service interface {
 	GoogleCallback(ctx context.Context, code string) (*RsToken, error)
 
 	VerifyEmail(ctx context.Context, tokenStr string) error
-	ChangePassword(ctx context.Context, userID uuid.UUID, req *RqChangePassword) error
+	ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error
 
 	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
@@ -539,21 +539,16 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	return nil
 }
 
-func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req *RqChangePassword) error {
-	// Get user to check current password
-	user, err := s.repo.FindByID(ctx, userID)
+func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error {
+	// Find user by practitioner ID
+	user, err := s.repo.FindByPractitionerID(ctx, pracID)
 	if err != nil {
-		return err
+		return fmt.Errorf("user not found for practitioner: %w", err)
 	}
 
 	// Prevent password change for OAuth-only accounts
 	if user.Password == nil || *user.Password == "" {
 		return ErrOAuthOnly
-	}
-
-	// Verify old password
-	if err := util.CompareHash(req.OldPassword, *user.Password); err != nil {
-		return ErrInvalidPassword
 	}
 
 	// Hash new password
@@ -563,13 +558,13 @@ func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req *RqC
 	}
 
 	// Update new password in DB
-	if err := s.repo.UpdatePassword(ctx, userID, newHashedPassword); err != nil {
+	if err := s.repo.UpdatePassword(ctx, user.ID, newHashedPassword); err != nil {
 		return err
 	}
 
 	// Audit log : Password Change
 	meta := auditctx.GetMetadata(ctx)
-	userIDStr := userID.String()
+	userIDStr := user.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPasswordChanged,
