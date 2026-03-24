@@ -4492,10 +4492,10 @@
                 "email": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
-                },
                 "password": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 }
             }
@@ -4534,7 +4534,8 @@
                 "email",
                 "first_name",
                 "last_name",
-                "password"
+                "password",
+                "role"
             ],
             "properties": {
                 "email": {
@@ -4542,9 +4543,6 @@
                 },
                 "first_name": {
                     "type": "string"
-                },
-                "is_superadmin": {
-                    "type": "boolean"
                 },
                 "last_name": {
                     "type": "string"
@@ -4555,6 +4553,14 @@
                 },
                 "phone": {
                     "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "ADMIN",
+                        "PRACTITIONER",
+                        "ACCOUNTANT"
+                    ]
                 }
             }
         },
@@ -4581,13 +4587,13 @@
                 "id": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
-                },
                 "last_name": {
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 },
                 "updated_at": {

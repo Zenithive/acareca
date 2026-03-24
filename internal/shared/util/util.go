@@ -55,15 +55,18 @@ func BindAndValidate(c *gin.Context, v any) error {
 }
 
 type CustomClaims struct {
-	PractitionerID string `json:"prac"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-func SignToken(userID string, practitionerID string, ttl time.Duration, jwtSecret string) (string, error) {
+func SignToken(userID string, id string, role string, ttl time.Duration, jwtSecret string) (string, error) {
 	now := time.Now()
 
 	claims := CustomClaims{
-		PractitionerID: practitionerID,
+		ID:   id,
+		Role: role,
+
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),

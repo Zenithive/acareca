@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -56,9 +57,10 @@ type service struct {
 	practitionerSvc  practitioner.IService
 	auditSvc         audit.Service
 	practitionerRepo practitioner.Repository
+	accountantSvc    accountant.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, practitionerRepo practitioner.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -77,10 +79,16 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		practitionerSvc:  practitionerSvc,
 		auditSvc:         auditSvc,
 		practitionerRepo: practitionerRepo,
-	}
+		accountantSvc:    accountantSvc}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
+
+	existing, err := s.repo.FindByEmail(ctx, req.Email)
+	if err == nil && existing != nil {
+		return nil, ErrEmailTaken
+	}
+
 	hashedPassword, err := util.GenerateHash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -90,7 +98,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	u.Password = &hashedPassword
 
 	var created *User
-	var createdPractitioner *practitioner.RsPractitioner
+	var entityID uuid.UUID
+	var p *practitioner.RsPractitioner
+	var a *accountant.RsAccountant
 	var tokenID uuid.UUID
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
@@ -102,16 +112,28 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			}
 			return txErr
 		}
-		_, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+
+		switch created.Role {
+		case util.RolePractitioner:
+			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+			if txErr == nil {
+				entityID = p.ID
+			}
+		case util.RoleAccountant:
+			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{UserID: created.ID.String()}, tx)
+			if txErr == nil {
+				entityID = a.ID
+			}
+		}
 		if txErr != nil {
-			return fmt.Errorf("create practitioner: %w", txErr)
+			return fmt.Errorf("create role: %w", txErr)
 		}
 
 		// Generate Verification Token
 		tokenID = uuid.New()
 		vToken := &VerificationToken{
 			ID:        tokenID,
-			EntityID:  createdPractitioner.ID,
+			EntityID:  entityID,
 			Status:    TokenStatusPending,
 			ExpiresAt: time.Now().Add(10 * time.Hour),
 		}
@@ -119,9 +141,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		if err := s.repo.CreateVerificationToken(ctx, tx, vToken); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
-
 		return nil
 	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +158,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	// Audit log: user registration
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
+	entityIDStr := entityID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+		PracticeID: &entityIDStr,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserRegistered,
 		Module:     auditctx.ModuleAuth,
@@ -168,13 +191,8 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, ErrInvalidPassword
 	}
 
-	if req.IsSuperadmin != nil && *req.IsSuperadmin {
-		if user.IsSuperadmin == nil || !*user.IsSuperadmin {
-			return nil, ErrInvalidPassword
-		}
-	}
-
-	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	// Resolve the specific Entity ID for the JWT
+	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +201,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserLoggedIn,
 		Module:     auditctx.ModuleAuth,
@@ -194,7 +212,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		UserAgent:  meta.UserAgent,
 	})
 
-	return s.issueTokens(ctx, user, practitionerID.ID.String())
+	return s.issueTokens(ctx, user, entityID)
 }
 
 func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error {
@@ -359,13 +377,13 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Hour, s.cfg.JWTSecret)
+func (s *service) issueTokens(ctx context.Context, user *User, entityID string) (*RsToken, error) {
+	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +414,7 @@ func (s *service) issueTokens(ctx context.Context, user *User, practitionerID st
 	userIDStr := user.ID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: &practitionerID,
+		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionSessionCreated,
 		Module:     auditctx.ModuleAuth,
@@ -413,7 +431,7 @@ func (s *service) issueTokens(ctx context.Context, user *User, practitionerID st
 	return &RsToken{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		IsSuperadmin: user.IsSuperadmin,
+		Role:         &user.Role,
 	}, nil
 }
 
@@ -668,4 +686,24 @@ func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 	})
 
 	return nil
+}
+
+// Helper to resolve PractitionerID or AccountantID based on role
+func (s *service) resolveEntityID(ctx context.Context, user *User) (string, error) {
+	switch user.Role {
+	case util.RolePractitioner:
+		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return p.ID.String(), nil
+	case util.RoleAccountant:
+		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return acc.ID.String(), nil
+	default:
+		return user.ID.String(), nil
+	}
 }

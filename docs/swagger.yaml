@@ -12,9 +12,9 @@ definitions:
     properties:
       email:
         type: string
-      is_superadmin:
-        type: boolean
       password:
+        type: string
+      role:
         type: string
     required:
     - email
@@ -44,8 +44,6 @@ definitions:
         type: string
       first_name:
         type: string
-      is_superadmin:
-        type: boolean
       last_name:
         type: string
       password:
@@ -53,11 +51,18 @@ definitions:
         type: string
       phone:
         type: string
+      role:
+        enum:
+        - ADMIN
+        - PRACTITIONER
+        - ACCOUNTANT
+        type: string
     required:
     - email
     - first_name
     - last_name
     - password
+    - role
     type: object
   auth.RsGoogleAuthURL:
     properties:
@@ -74,11 +79,11 @@ definitions:
         type: string
       id:
         type: string
-      is_superadmin:
-        type: boolean
       last_name:
         type: string
       phone:
+        type: string
+      role:
         type: string
       updated_at:
         type: string

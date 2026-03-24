@@ -49,28 +49,28 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
-	const returning = `RETURNING id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at`
+	const returning = `RETURNING id, email, password, first_name, last_name, phone, role, created_at, updated_at`
 	var u User
 	var err error
 	if user.ID == uuid.Nil {
 		query := `
-			INSERT INTO tbl_user (email, password, first_name, last_name, phone, is_superadmin)
-			VALUES ($1, NULLIF($2, ''), $3, $4, $5, COALESCE($6, FALSE))
+			INSERT INTO tbl_user (email, password, first_name, last_name, phone, role)
+			VALUES ($1, NULLIF($2, ''), $3, $4, $5,$6)
 			` + returning
 		err = tx.QueryRowxContext(ctx, query,
 			user.Email, user.Password,
 			user.FirstName, user.LastName,
-			user.Phone, user.IsSuperadmin,
+			user.Phone, user.Role,
 		).StructScan(&u)
 	} else {
 		query := `
-			INSERT INTO tbl_user (id, email, password, first_name, last_name, phone, is_superadmin)
-			VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, COALESCE($7, FALSE))
+			INSERT INTO tbl_user (id, email, password, first_name, last_name, phone, role)
+			VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7)
 			` + returning
 		err = tx.QueryRowxContext(ctx, query,
 			user.ID, user.Email, user.Password,
 			user.FirstName, user.LastName,
-			user.Phone, user.IsSuperadmin,
+			user.Phone, user.Role,
 		).StructScan(&u)
 	}
 	if err != nil {
@@ -141,7 +141,7 @@ func (r *repository) DeleteUser(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) 
 
 func (r *repository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-		SELECT id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at
+		SELECT id, email, password, first_name, last_name, phone, role, created_at, updated_at
 		FROM tbl_user
 		WHERE email = $1 AND deleted_at IS NULL
 	`
@@ -157,7 +157,7 @@ func (r *repository) FindByEmail(ctx context.Context, email string) (*User, erro
 
 func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	query := `
-		SELECT id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at
+		SELECT id, email, password, first_name, last_name, phone, role, created_at, updated_at
 		FROM tbl_user
 		WHERE id = $1 AND deleted_at IS NULL
 	`

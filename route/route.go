@@ -16,6 +16,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
@@ -60,8 +61,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	subscriptionSvc := subscription.NewService(dbConn, subscriptionRepo, auditSvc)
 	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
 	practitionerSvc := practitioner.NewService(practitionerRepo, subscriptionSvc, userSubscriptionSvc, coaRepo)
+	accountantRepo := accountant.NewRepository(dbConn)
+	accountantSvc := accountant.NewService(accountantRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, practitionerRepo)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, practitionerRepo, accountantSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
@@ -70,7 +73,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 		if err != nil {
 			return false, err
 		}
-		return u.IsSuperadmin != nil && *u.IsSuperadmin, nil
+		return u.Role != "" && u.Role == util.RoleAdmin, nil
 	}
 	adminGroup := v1.Group("/admin")
 	subscriptionGroup := adminGroup.Group("/subscription")
@@ -105,10 +108,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
+
 	fyRepo := fy.NewRepository(dbConn)
 	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
 	fyHandler := fy.NewHandler(fySvc)
-	fy.RegisterRoutes(v1, fyHandler)
+	fyGroup := v1.Group("/")
+	fyGroup.Use(middleware.Auth(cfg))
+	fy.RegisterRoutes(fyGroup, fyHandler)
 
 	formGroup := v1.Group("/form")
 	formGroup.Use(middleware.Auth(cfg), middleware.AuditContext())

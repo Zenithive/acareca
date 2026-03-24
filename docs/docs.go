@@ -4495,10 +4495,10 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
-                },
                 "password": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 }
             }
@@ -4537,7 +4537,8 @@ const docTemplate = `{
                 "email",
                 "first_name",
                 "last_name",
-                "password"
+                "password",
+                "role"
             ],
             "properties": {
                 "email": {
@@ -4545,9 +4546,6 @@ const docTemplate = `{
                 },
                 "first_name": {
                     "type": "string"
-                },
-                "is_superadmin": {
-                    "type": "boolean"
                 },
                 "last_name": {
                     "type": "string"
@@ -4558,6 +4556,14 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "ADMIN",
+                        "PRACTITIONER",
+                        "ACCOUNTANT"
+                    ]
                 }
             }
         },
@@ -4584,13 +4590,13 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
-                },
                 "last_name": {
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 },
                 "updated_at": {
