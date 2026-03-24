@@ -53,7 +53,7 @@ func BindAndValidate(c *gin.Context, v any) error {
 }
 
 type CustomClaims struct {
-	ID   string `json:"prac"`
+	ID   string `json:"id"`
 	Role string `json:"role"`
 	jwt.RegisteredClaims
 }

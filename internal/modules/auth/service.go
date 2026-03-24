@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -41,9 +42,10 @@ type service struct {
 	db              *sqlx.DB
 	oauthConfig     *oauth2.Config
 	practitionerSvc practitioner.IService
+	accountantSvc   accountant.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, accountantSvc accountant.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -54,7 +56,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		},
 		Endpoint: google.Endpoint,
 	}
-	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, db: db, practitionerSvc: practitionerSvc}
+	return &service{repo: repo, cfg: cfg, oauthConfig: oauthCfg, db: db, practitionerSvc: practitionerSvc, accountantSvc: accountantSvc}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -84,19 +86,11 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 		switch created.Role {
 		case util.RolePractitioner:
-			_, err = s.practitionerSvc.CreatePractitioner(
-				ctx,
-				&practitioner.RqCreatePractitioner{
-					UserID: created.ID.String(),
-				},
-				tx,
-			)
-			if err != nil {
-				return fmt.Errorf("create practitioner: %w", err)
-			}
+			_, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+		case util.RoleAccountant:
+			_, err = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{UserID: created.ID.String()}, tx)
 		}
-
-		return nil
+		return err
 	})
 
 	if err != nil {
@@ -120,19 +114,13 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, ErrInvalidPassword
 	}
 
-	var id string
-	switch user.Role {
-
-	case util.RolePractitioner:
-		practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
-		id = practitionerID.ID.String()
-		if err != nil {
-			return nil, err
-		}
-	case util.RoleAdmin, util.RoleAccountant:
-		id = user.ID.String()
+	// Resolve the specific Entity ID for the JWT
+	entityID, err := s.resolveEntityID(ctx, user)
+	if err != nil {
+		return nil, err
 	}
-	return s.issueTokens(ctx, user, id)
+
+	return s.issueTokens(ctx, user, entityID)
 }
 
 func (s *service) GoogleAuthURL(state string) *RsGoogleAuthURL {
@@ -225,13 +213,13 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), practitionerID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
+func (s *service) issueTokens(ctx context.Context, user *User, entityID string) (*RsToken, error) {
+	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), practitionerID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -261,4 +249,24 @@ func (s *service) issueTokens(ctx context.Context, user *User, practitionerID st
 		RefreshToken: refreshToken,
 		Role:         &user.Role,
 	}, nil
+}
+
+// Helper to resolve PractitionerID or AccountantID based on role
+func (s *service) resolveEntityID(ctx context.Context, user *User) (string, error) {
+	switch user.Role {
+	case util.RolePractitioner:
+		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return p.ID.String(), nil
+	case util.RoleAccountant:
+		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return acc.ID.String(), nil
+	default:
+		return user.ID.String(), nil
+	}
 }
