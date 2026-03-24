@@ -113,7 +113,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			ID:        tokenID,
 			EntityID:  createdPractitioner.ID,
 			Status:    TokenStatusPending,
-			ExpiresAt: time.Now().Add(10 * time.Minute),
+			ExpiresAt: time.Now().Add(10 * time.Hour),
 		}
 
 		if err := s.repo.CreateVerificationToken(ctx, tx, vToken); err != nil {
@@ -360,7 +360,7 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 }
 
 func (s *service) issueTokens(ctx context.Context, user *User, practitionerID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Minute, s.cfg.JWTSecret)
+	accessToken, err := util.SignToken(user.ID.String(), practitionerID, 15*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
