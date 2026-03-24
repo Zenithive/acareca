@@ -1,5 +1,24 @@
 basePath: /api/v1
 definitions:
+  accountant.RsAccountantUser:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      is_superadmin:
+        type: boolean
+      last_name:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+    type: object
   auth.RqChangePassword:
     properties:
       new_password:
@@ -13,8 +32,6 @@ definitions:
       email:
         type: string
       password:
-        type: string
-      role:
         type: string
     required:
     - email
@@ -606,6 +623,47 @@ definitions:
       label:
         type: string
     type: object
+  invitation.InvitationStatus:
+    enum:
+    - SENT
+    - ACCEPTED
+    - COMPLETED
+    - REJECTED
+    type: string
+    x-enum-varnames:
+    - StatusSent
+    - StatusAccepted
+    - StatusCompleted
+    - StatusRejected
+  invitation.RqSendInvitation:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  invitation.RsInvitation:
+    properties:
+      email:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      invite_link:
+        type: string
+      status:
+        $ref: '#/definitions/invitation.InvitationStatus'
+    type: object
+  invitation.RsInviteProcess:
+    properties:
+      invitation_id:
+        type: string
+      is_found:
+        type: boolean
+      status:
+        $ref: '#/definitions/invitation.InvitationStatus'
+    type: object
   pl.RsPLAccount:
     properties:
       account_code:
@@ -884,6 +942,25 @@ info:
   title: Backend API
   version: 1.0.0
 paths:
+  /accountant/:
+    get:
+      description: Retrieves a list of all registered users for the accountant view.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/accountant.RsAccountantUser'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Fetch all users
+      tags:
+      - accountant
   /admin/audit:
     get:
       consumes:
@@ -2985,6 +3062,69 @@ paths:
       summary: Update form with fields
       tags:
       - form
+  /invite/:
+    post:
+      consumes:
+      - application/json
+      description: Practitioner sends an invitation to a person's email.
+      parameters:
+      - description: Email of the Accountant/Bookkeeper
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invitation.RqSendInvitation'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/invitation.RsInvitation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Send an invitation
+      tags:
+      - invitation
+  /invite/{id}:
+    get:
+      description: Processes the invitation link.
+      parameters:
+      - description: Invitation UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Set to 'reject' to decline the invitation
+        in: query
+        name: action
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/invitation.RsInviteProcess'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Process invitation
+      tags:
+      - invitation
   /pl/by-account:
     get:
       description: Returns monthly totals broken down per Chart of Accounts entry,

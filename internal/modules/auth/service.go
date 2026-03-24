@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -56,11 +57,12 @@ type service struct {
 	oauthConfig      *oauth2.Config
 	practitionerSvc  practitioner.IService
 	auditSvc         audit.Service
+	invitationSvc    invitation.Service
 	practitionerRepo practitioner.Repository
 	accountantSvc    accountant.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -78,6 +80,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		db:               db,
 		practitionerSvc:  practitionerSvc,
 		auditSvc:         auditSvc,
+		invitationSvc:    invitationSvc,
 		practitionerRepo: practitionerRepo,
 		accountantSvc:    accountantSvc}
 }
@@ -141,6 +144,13 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		if err := s.repo.CreateVerificationToken(ctx, tx, vToken); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
+
+		// This function looks for an invitation by email and links it to the user id
+		err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, created.ID)
+		if err != nil {
+			return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
+		}
+
 		return nil
 	})
 

@@ -10,6 +10,7 @@ import (
 type IService interface {
 	CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error)
 	GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error)
+	ListUsers(ctx context.Context) ([]RsAccountantUser, error)
 }
 
 type service struct {
@@ -44,4 +45,8 @@ func (s *service) GetAccountantByUserID(ctx context.Context, userID string) (*Rs
 	}
 
 	return nil, fmt.Errorf("accountant not found for user ID: %s", userID)
+}
+
+func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {
+	return s.repo.GetAllUsers(ctx)
 }
