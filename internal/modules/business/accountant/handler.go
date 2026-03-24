@@ -12,10 +12,10 @@ type IHandler interface {
 }
 
 type Handler struct {
-	svc Service
+	svc IService
 }
 
-func NewHandler(svc Service) *Handler {
+func NewHandler(svc IService) *Handler {
 	return &Handler{svc: svc}
 }
 
