@@ -63,7 +63,7 @@ func (s *service) GetAccountantByUserID(ctx context.Context, userID string) (*Rs
 func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {
 	// 1. Grab the ID from the context (The ID starting with 9559fd60...)
 	// This value is the Accountant's unique ID from the token
-	userIDInterface := ctx.Value(util.PractitionerIDKey)
+	userIDInterface := ctx.Value(util.EntityIDKey)
 
 	var accountantID string
 	switch v := userIDInterface.(type) {

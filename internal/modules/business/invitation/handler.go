@@ -2,6 +2,7 @@ package invitation
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,7 +24,7 @@ func NewHandler(svc Service) *Handler {
 // @Accept       json
 // @Produce      json
 // @Param        request body RqSendInvitation true "Email of the Accountant/Bookkeeper"
-// @Success      201 {object} RsInvitation
+// @Success      201 {object} response.RsBase
 // @Failure      400 {object} response.RsError
 // @Failure      500 {object} response.RsError
 // @Security     BearerToken
@@ -55,7 +56,7 @@ func (h *Handler) SendInvitation(c *gin.Context) {
 // @Tags         invitation
 // @Produce      json
 // @Param        id     path   string  true  "Invitation UUID"
-// @Success      200 {object} RsInviteProcess
+// @Success      200 {object} response.RsBase
 // @Failure      400 {object} response.RsError
 // @Failure      500 {object} response.RsError
 // @Router       /invite/{id} [get]
@@ -82,7 +83,7 @@ func (h *Handler) GetInvitation(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        request body RqProcessAction true "Token ID and Action (accept/reject)"
-// @Success      200 {object} RsInviteProcess
+// @Success      200 {object} response.RsBase
 // @Failure      400 {object} response.RsError
 // @Failure      500 {object} response.RsError
 // @Router       /invite/process [post]
@@ -100,4 +101,60 @@ func (h *Handler) ProcessInvitation(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, res, "Invitation processed")
+}
+
+// @Summary      List invitations
+// @Description  Retrieve a paginated list of invitations. If logged in as a Practitioner, it shows sent invites. If an Accountant, it shows received invites.
+// @Tags         invitation
+// @Produce      json
+// @Param        email    query     string  false  "Filter by exact email address"
+// @Param        status   query     string  false  "Filter by status (SENT, ACCEPTED, COMPLETED, REJECTED)"
+// @Param        search   query     string  false  "Fuzzy search by email"
+// @Param        limit    query     int     false  "Number of records to return (default 10, max 100)"
+// @Param        offset   query     int     false  "Number of records to skip"
+// @Param        sort_by  query     string  false  "Field to sort by (e.g., created_at, email)"
+// @Param        order_by query     string  false  "Order of sorting (ASC or DESC)"
+// @Success      200      {object}  util.RsList
+// @Failure      400      {object}  response.RsError
+// @Failure      401      {object}  response.RsError
+// @Failure      403      {object}  response.RsError
+// @Failure      500      {object}  response.RsError
+// @Security     BearerToken
+// @Router       /invite [get]
+func (h *Handler) ListInvitations(c *gin.Context) {
+	var pIDPtr, aIDPtr *uuid.UUID
+
+	role := strings.ToUpper(c.GetString("role"))
+	switch role {
+	case util.RolePractitioner:
+		pID, ok := util.GetPractitionerID(c)
+		if !ok || pID == uuid.Nil {
+			return
+		}
+		pIDPtr = &pID
+
+	case util.RoleAccountant:
+		aID, ok := util.GetAccountantID(c)
+		if !ok || aID == uuid.Nil {
+			return
+		}
+		aIDPtr = &aID
+
+	default:
+		return
+	}
+
+	var reqFilter InvitationFilter
+	if err := c.ShouldBindQuery(&reqFilter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	res, err := h.svc.ListInvitations(c.Request.Context(), pIDPtr, aIDPtr, &reqFilter)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, res, "Invitations retrieved successfully")
 }

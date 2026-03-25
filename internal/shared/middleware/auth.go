@@ -77,7 +77,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		practitionerUUID, err := util.ParseUUID(claims.ID)
+		entityUUID, err := util.ParseUUID(claims.ID)
 
 		if err != nil {
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
@@ -86,7 +86,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		c.Set(util.UserIDKey, claims.Subject)
-		c.Set(util.PractitionerIDKey, practitionerUUID)
+		c.Set(util.EntityIDKey, entityUUID)
 		c.Set("role", claims.Role)
 
 		c.Next()

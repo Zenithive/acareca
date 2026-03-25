@@ -21,7 +21,7 @@ func AuditContext() gin.HandlerFunc {
 		}
 
 		// Extract practitioner ID (used as practice_id)
-		if practitionerID, exists := c.Get(util.PractitionerIDKey); exists {
+		if practitionerID, exists := c.Get(util.EntityIDKey); exists {
 			if id, ok := practitionerID.(uuid.UUID); ok && id != uuid.Nil {
 				idStr := id.String()
 				ctx = audit.WithPracticeID(ctx, idStr)
