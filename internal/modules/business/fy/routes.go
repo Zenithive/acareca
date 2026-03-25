@@ -12,11 +12,14 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 		// --- User Access ---
 		admin.GET("/get-fys", h.GetFinancialYears)
 		admin.GET("/get-quarters/:financial_year_id", h.GetFinancialQuarters)
+		admin.POST("/create-fy", h.CreateFY)
+
 		// --- Admin-Only Access ---
 		restricted := admin.Group("/")
 		restricted.Use(middleware.RequireRole("ADMIN"))
 		{
-			restricted.POST("/create-fy", h.CreateFY)
+			// restricted.POST("/create-fy", h.CreateFY)
+
 			restricted.PUT("/update-fy/:financial_year_id", h.UpdateFYLabel)
 		}
 	}
