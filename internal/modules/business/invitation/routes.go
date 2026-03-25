@@ -13,10 +13,11 @@ func RegisterRoutes(rg *gin.RouterGroup, h *Handler, cfg *config.Config) {
 	invite.POST("/process", h.ProcessInvitation)
 	invite.GET("/:id", h.GetInvitation)
 
-	// Protected Route (Only practitioners can send invitations)
+	// Protected Route
 	protected := invite.Group("/")
 	protected.Use(middleware.Auth(cfg))
 	{
-		protected.POST("/", h.SendInvitation)
+		protected.POST("", h.SendInvitation)
+		protected.GET("", h.ListInvitations)
 	}
 }

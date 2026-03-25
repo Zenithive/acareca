@@ -32,7 +32,7 @@ func MiddlewarePractitionerID() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		c.Set(util.PractitionerIDKey, id)
+		c.Set(util.EntityIDKey, id)
 		c.Next()
 	}
 }

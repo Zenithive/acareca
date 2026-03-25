@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -21,7 +22,8 @@ type Service interface {
 	SendInvite(ctx context.Context, practitionerID uuid.UUID, req *RqSendInvitation) (*RsInvitation, error)
 	GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteProcess, error)
 	ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error)
-	FinalizeRegistrationInternal(ctx context.Context, email string, userID uuid.UUID) error
+	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
+	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *InvitationFilter) (*util.RsList, error)
 }
 
 const (
@@ -165,22 +167,44 @@ func (s *service) sendEmailViaResend(to string, link string, senderName string) 
 }
 
 func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteProcess, error) {
-	inv, err := s.repo.GetByID(ctx, inviteID)
-	if err != nil || inv == nil {
+	inv, err := s.repo.GetInvitationByID(ctx, inviteID)
+	if err != nil {
+		return nil, err
+	}
+
+	if inv == nil {
 		return &RsInviteProcess{InvitationID: inviteID, IsFound: false}, nil
 	}
 
+	// Expiration check
 	if time.Now().After(inv.ExpiresAt) {
 		return nil, errors.New("Invitation expired")
 	}
 
+	recipient := UserDetails{
+		Email: inv.Email,
+	}
+
 	// Check if user already exists in system
-	userID, _ := s.repo.GetUserIDByEmail(ctx, inv.Email)
+	queryUser, _ := s.repo.GetUserDetailsByEmail(ctx, inv.Email)
+	isFound := false
+	if queryUser != nil {
+		recipient.FirstName = queryUser.FirstName
+		recipient.LastName = queryUser.LastName
+		isFound = true
+	}
 
 	return &RsInviteProcess{
 		InvitationID: inv.ID,
 		Status:       inv.Status,
-		IsFound:      userID != nil,
+		IsFound:      isFound,
+		SenderRole:   util.RolePractitioner,
+		SentBy: UserDetails{
+			FirstName: inv.SenderFirstName,
+			LastName:  inv.SenderLastName,
+			Email:     inv.SenderEmail,
+		},
+		SentTo: recipient,
 	}, nil
 }
 
@@ -244,7 +268,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 }
 
 // FinalizeRegistrationInternal is called by the Auth Service after a user registers
-func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string, userID uuid.UUID) error {
+func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error {
 	// Look for an invitation with this email where status is currently 'ACCEPTED'
 	inv, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
@@ -261,6 +285,28 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string
 		return nil
 	}
 
-	// If they signed up after clicking the link, update status to COMPLETED and link the new User ID
-	return s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &userID)
+	// If they signed up after clicking the link, update status to COMPLETED and link the new accountant ID
+	return s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &entityID)
+}
+
+// ListInvitations fetches invitations based on the user's role (Practitioner or Accountant)
+func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *InvitationFilter) (*util.RsList, error) {
+	ft := f.MapToFilter(pID, aID)
+
+	// Fetch the list of invitations from the repository
+	list, err := s.repo.List(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the total count
+	total, err := s.repo.Count(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(list, total, ft.Offset, ft.Limit)
+
+	return &rsList, nil
 }

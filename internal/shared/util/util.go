@@ -20,7 +20,7 @@ import (
 )
 
 const UserIDKey = "userID"
-const PractitionerIDKey = "practitionerID"
+const EntityIDKey = "EntityID"
 
 var validate = validator.New()
 
@@ -93,7 +93,7 @@ func ParseUUID(s string) (uuid.UUID, error) {
 }
 
 func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
-	idVal, exists := c.Get(PractitionerIDKey)
+	idVal, exists := c.Get(EntityIDKey)
 	if !exists {
 		response.Error(c, http.StatusBadRequest, errors.New("practitioner id not in context"))
 		return uuid.Nil, false
@@ -101,6 +101,20 @@ func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
 	id, ok := idVal.(uuid.UUID)
 	if !ok {
 		response.Error(c, http.StatusInternalServerError, errors.New("invalid practitioner id type"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func GetAccountantID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(EntityIDKey)
+	if !exists {
+		response.Error(c, http.StatusBadRequest, errors.New("accountant id not in context"))
+		return uuid.Nil, false
+	}
+	id, ok := idVal.(uuid.UUID)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("invalid accountant id type"))
 		return uuid.Nil, false
 	}
 	return id, true

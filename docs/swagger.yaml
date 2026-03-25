@@ -627,18 +627,6 @@ definitions:
       label:
         type: string
     type: object
-  invitation.InvitationStatus:
-    enum:
-    - SENT
-    - ACCEPTED
-    - COMPLETED
-    - REJECTED
-    type: string
-    x-enum-varnames:
-    - StatusSent
-    - StatusAccepted
-    - StatusCompleted
-    - StatusRejected
   invitation.RqProcessAction:
     properties:
       action:
@@ -658,28 +646,6 @@ definitions:
         type: string
     required:
     - email
-    type: object
-  invitation.RsInvitation:
-    properties:
-      email:
-        type: string
-      expires_at:
-        type: string
-      id:
-        type: string
-      invite_link:
-        type: string
-      status:
-        $ref: '#/definitions/invitation.InvitationStatus'
-    type: object
-  invitation.RsInviteProcess:
-    properties:
-      invitation_id:
-        type: string
-      is_found:
-        type: boolean
-      status:
-        $ref: '#/definitions/invitation.InvitationStatus'
     type: object
   pl.RsPLAccount:
     properties:
@@ -3087,6 +3053,67 @@ paths:
       summary: Update form with fields
       tags:
       - form
+  /invite:
+    get:
+      description: Retrieve a paginated list of invitations. If logged in as a Practitioner,
+        it shows sent invites. If an Accountant, it shows received invites.
+      parameters:
+      - description: Filter by exact email address
+        in: query
+        name: email
+        type: string
+      - description: Filter by status (SENT, ACCEPTED, COMPLETED, REJECTED)
+        in: query
+        name: status
+        type: string
+      - description: Fuzzy search by email
+        in: query
+        name: search
+        type: string
+      - description: Number of records to return (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Number of records to skip
+        in: query
+        name: offset
+        type: integer
+      - description: Field to sort by (e.g., created_at, email)
+        in: query
+        name: sort_by
+        type: string
+      - description: Order of sorting (ASC or DESC)
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List invitations
+      tags:
+      - invitation
   /invite/:
     post:
       consumes:
@@ -3105,7 +3132,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/invitation.RsInvitation'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3134,7 +3161,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/invitation.RsInviteProcess'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3164,7 +3191,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/invitation.RsInviteProcess'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:

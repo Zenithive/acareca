@@ -3327,6 +3327,99 @@ const docTemplate = `{
                 }
             }
         },
+        "/invite": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieve a paginated list of invitations. If logged in as a Practitioner, it shows sent invites. If an Accountant, it shows received invites.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "List invitations",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email address",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (SENT, ACCEPTED, COMPLETED, REJECTED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fuzzy search by email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to return (default 10, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Field to sort by (e.g., created_at, email)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Order of sorting (ASC or DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/invite/": {
             "post": {
                 "security": [
@@ -3360,7 +3453,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/invitation.RsInvitation"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3406,7 +3499,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/invitation.RsInviteProcess"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3447,7 +3540,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/invitation.RsInviteProcess"
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -5572,21 +5665,6 @@ const docTemplate = `{
                 }
             }
         },
-        "invitation.InvitationStatus": {
-            "type": "string",
-            "enum": [
-                "SENT",
-                "ACCEPTED",
-                "COMPLETED",
-                "REJECTED"
-            ],
-            "x-enum-varnames": [
-                "StatusSent",
-                "StatusAccepted",
-                "StatusCompleted",
-                "StatusRejected"
-            ]
-        },
         "invitation.RqProcessAction": {
             "type": "object",
             "required": [
@@ -5614,40 +5692,6 @@ const docTemplate = `{
             "properties": {
                 "email": {
                     "type": "string"
-                }
-            }
-        },
-        "invitation.RsInvitation": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "expires_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "invite_link": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/invitation.InvitationStatus"
-                }
-            }
-        },
-        "invitation.RsInviteProcess": {
-            "type": "object",
-            "properties": {
-                "invitation_id": {
-                    "type": "string"
-                },
-                "is_found": {
-                    "type": "boolean"
-                },
-                "status": {
-                    "$ref": "#/definitions/invitation.InvitationStatus"
                 }
             }
         },
