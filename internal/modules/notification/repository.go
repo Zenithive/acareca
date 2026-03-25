@@ -87,7 +87,7 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		return nil, 0, 0, fmt.Errorf("count unread notifications: %w", err)
 	}
 
-	selectBase := `SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id, status, payload, retry_count, created_at, read_at ` + base
+	selectBase := `SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id, status, payload, retry_count, created_at, readed_at ` + base
 	listQuery, listArgs := common.BuildQuery(selectBase, filter, allowedColumns, nil, false)
 	listQuery = r.db.Rebind(listQuery)
 
@@ -102,7 +102,7 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 func (r *repository) MarkRead(ctx context.Context, recipientID, notificationID uuid.UUID) error {
 	const q = `
 		UPDATE tbl_notification
-		SET status = 'READ', read_at = NOW()
+		SET status = 'READ', readed_at = NOW()
 		WHERE id = $1 AND recipient_id = $2
 	`
 	res, err := r.db.ExecContext(ctx, q, notificationID, recipientID)

@@ -57,17 +57,17 @@ const (
 // ─── Domain structs ───────────────────────────────────────────────────────────
 
 type Notification struct {
-	ID          uuid.UUID  `db:"id"           json:"id"`
-	RecipientID uuid.UUID  `db:"recipient_id" json:"recipient_id"`
-	SenderID    *uuid.UUID `db:"sender_id"    json:"sender_id,omitempty"`
-	EventType   EventType  `db:"event_type"   json:"event_type"`
-	EntityType  EntityType `db:"entity_type"  json:"entity_type"`
-	EntityID    uuid.UUID  `db:"entity_id"    json:"entity_id"`
-	Status      Status     `db:"status"       json:"status"`
-	Payload     []byte     `db:"payload"      json:"payload"`
-	RetryCount  int        `db:"retry_count"  json:"retry_count"`
-	CreatedAt   time.Time  `db:"created_at"   json:"created_at"`
-	ReadAt      *time.Time `db:"read_at"      json:"read_at,omitempty"`
+	ID          uuid.UUID  `db:"id"`
+	RecipientID uuid.UUID  `db:"recipient_id"`
+	SenderID    *uuid.UUID `db:"sender_id"`
+	EventType   EventType  `db:"event_type"`
+	EntityType  EntityType `db:"entity_type"`
+	EntityID    uuid.UUID  `db:"entity_id"`
+	Status      Status     `db:"status"`
+	Payload     []byte     `db:"payload"`
+	RetryCount  int        `db:"retry_count"`
+	CreatedAt   time.Time  `db:"created_at"`
+	ReadedAt    *time.Time `db:"readed_at"`
 }
 
 type OutboxEvent struct {
@@ -82,21 +82,10 @@ type OutboxEvent struct {
 }
 
 type Preference struct {
-	UserID    uuid.UUID `db:"user_id"`
+	EntityID  uuid.UUID `db:"entity_id"`
 	EventType EventType `db:"event_type"`
 	// JSON array: ["in_app","email","push"]
 	Channels []byte `db:"channels"`
-}
-
-type InviteQueue struct {
-	ID             uuid.UUID  `db:"id"              json:"id"`
-	PractitionerID uuid.UUID  `db:"practitioner_id" json:"practitioner_id"`
-	InviteEmail    string     `db:"invite_email"    json:"invite_email"`
-	Token          string     `db:"token"           json:"token"`
-	Status         string     `db:"status"          json:"status"` // pending | accepted | expired
-	ExpiresAt      time.Time  `db:"expires_at"      json:"expires_at"`
-	CreatedAt      time.Time  `db:"created_at"      json:"created_at"`
-	AcceptedAt     *time.Time `db:"accepted_at"     json:"accepted_at,omitempty"`
 }
 
 // ─── Payload helpers (stored as jsonb) ───────────────────────────────────────
@@ -107,12 +96,6 @@ type NotificationPayload struct {
 	SenderName string         `json:"sender_name,omitempty"`
 	EntityName string         `json:"entity_name,omitempty"`
 	ExtraData  map[string]any `json:"extra_data,omitempty"`
-}
-
-// ─── Request / Response types ─────────────────────────────────────────────────
-
-type SendInviteRequest struct {
-	Email string `json:"email" binding:"required,email"`
 }
 
 type Filter struct {
@@ -136,18 +119,18 @@ func (f *Filter) MapToFilter() common.Filter {
 	return common.ParseQueryFilter(f.QueryFilter, fields, nil, "created_at")
 }
 
-type ListNotificationsResponse struct {
+type RsListNotifications struct {
 	Notifications []Notification `json:"notifications"`
 	UnreadCount   int            `json:"unread_count"`
 	Total         int            `json:"total"`
 }
 
-type UpdatePreferenceRequest struct {
+type RqUpdatePreference struct {
 	EventType EventType `json:"event_type" binding:"required"`
 	Channels  []Channel `json:"channels"   binding:"required"`
 }
 
-type PublishEventRequest struct {
+type RqPublishEvent struct {
 	EventType  EventType           `json:"event_type"`
 	ActorID    uuid.UUID           `json:"actor_id"`
 	EntityType EntityType          `json:"entity_type"`

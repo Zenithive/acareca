@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tbl_notification (
     status          enum_notification_status NOT NULL DEFAULT 'PENDING',
     payload         JSONB       NOT NULL DEFAULT '{}',
     retry_count     INT         NOT NULL DEFAULT 0,
-    read_at         TIMESTAMPTZ,
+    readed_at         TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -48,11 +48,11 @@ CREATE INDEX idx_outbox_unprocessed
 
 -- Per-user, per-event-type channel preferences
 CREATE TABLE IF NOT EXISTS tbl_notification_preferences (
-    user_id     UUID        NOT NULL,
+    entity_id     UUID        NOT NULL,
     event_type  VARCHAR(64) NOT NULL,
     -- JSON array of channels: ["in_app","email","push"]
     channels    JSONB       NOT NULL DEFAULT '["in_app"]',
-    PRIMARY KEY (user_id, event_type)
+    PRIMARY KEY (entity_id, event_type)
 );
 
 
