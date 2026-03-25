@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // Enums
@@ -114,10 +115,25 @@ type SendInviteRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
-type ListNotificationsRequest struct {
-	Page   int    `form:"page"   binding:"min=1"`
-	Limit  int    `form:"limit"  binding:"min=1,max=100"`
-	Status Status `form:"status"`
+type Filter struct {
+	common.QueryFilter
+	Status     *Status     `form:"status"`
+	EventType  *EventType  `form:"event_type"`
+	EntityType *EntityType `form:"entity_type"`
+}
+
+func (f *Filter) MapToFilter() common.Filter {
+	fields := map[string]interface{}{}
+	if f.Status != nil {
+		fields["status"] = string(*f.Status)
+	}
+	if f.EventType != nil {
+		fields["event_type"] = string(*f.EventType)
+	}
+	if f.EntityType != nil {
+		fields["entity_type"] = string(*f.EntityType)
+	}
+	return common.ParseQueryFilter(f.QueryFilter, fields, nil, "created_at")
 }
 
 type ListNotificationsResponse struct {

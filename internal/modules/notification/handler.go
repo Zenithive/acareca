@@ -2,14 +2,18 @@ package notification
 
 import (
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
+
+type IHandler interface {
+	ListNotifications(c *gin.Context)
+	MarkRead(c *gin.Context)
+	MarkDismissed(c *gin.Context)
+}
 
 type Handler struct {
 	svc Service
@@ -25,29 +29,13 @@ func (h *Handler) ListNotifications(c *gin.Context) {
 		return
 	}
 
-	page := 1
-	limit := 20
-	if v := strings.TrimSpace(c.Query("page")); v != "" {
-		if p, err := strconv.Atoi(v); err == nil && p > 0 {
-			page = p
-		}
-	}
-	if v := strings.TrimSpace(c.Query("limit")); v != "" {
-		if l, err := strconv.Atoi(v); err == nil && l > 0 && l <= 100 {
-			limit = l
-		}
+	var filter Filter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
 	}
 
-	var statusPtr *Status
-	if v := strings.TrimSpace(c.Query("status")); v != "" {
-		s := Status(strings.ToUpper(v))
-		switch s {
-		case StatusPending, StatusDelivered, StatusRead, StatusDismissed, StatusFailed:
-			statusPtr = &s
-		}
-	}
-
-	res, err := h.svc.ListNotifications(c.Request.Context(), uid, statusPtr, page, limit)
+	res, err := h.svc.ListNotifications(c.Request.Context(), uid, filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
