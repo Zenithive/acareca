@@ -180,6 +180,10 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	userSubscription.RegisterRoutes(userSubscriptionGroup, userSubscriptionHandler)
 
+	accountantHandler := accountant.NewHandler(accountantSvc)
+
+	accountant.RegisterRoutes(v1, accountantHandler, middleware.Auth(cfg))
+
 	return auditSvc
 
 }

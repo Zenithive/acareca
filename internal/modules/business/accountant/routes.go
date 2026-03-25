@@ -2,9 +2,11 @@ package accountant
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
-	accountant := r.Group("/accountant")
+func RegisterRoutes(r *gin.RouterGroup, h *Handler, authMiddleware gin.HandlerFunc) {
+	accountant := r.Group("/accountant", authMiddleware)
 	{
+		accountant.Use(authMiddleware)
+
 		accountant.GET("/", h.ListUsers)
 	}
 }

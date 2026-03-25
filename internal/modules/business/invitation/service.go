@@ -171,27 +171,50 @@ func (s *service) ProcessInvitation(ctx context.Context, inviteID uuid.UUID, act
 		return res, nil
 	}
 
-	existingUserID, err := s.repo.GetUserIDByEmail(ctx, inv.Email)
+	/*
+		existingUserID, err := s.repo.GetUserIDByEmail(ctx, inv.Email)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check user existence: %w", err)
+		}
+
+		if existingUserID != nil {
+			// User exists in tbl_user
+			if err := s.repo.UpdateStatus(ctx, inviteID, StatusCompleted, existingUserID); err != nil {
+				return nil, err
+			}
+			res.Status = StatusCompleted
+			res.IsFound = true // Redirect to login
+		} else {
+			// User does not exist
+			if err := s.repo.UpdateStatus(ctx, inviteID, StatusAccepted, nil); err != nil {
+				return nil, err
+			}
+			res.Status = StatusAccepted
+			res.IsFound = false // Redirect to register
+		}
+
+	*/
+	accountantID, err := s.repo.GetAccountantIDByEmail(ctx, inv.Email)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check user existence: %w", err)
+		return nil, fmt.Errorf("failed to check accountant existence: %w", err)
 	}
 
-	if existingUserID != nil {
-		// User exists in tbl_user
-		if err := s.repo.UpdateStatus(ctx, inviteID, StatusCompleted, existingUserID); err != nil {
+	if accountantID != nil {
+		// SUCCESS: The user has an Accountant profile.
+		// Store the Accountant ID (955...) in entity_id.
+		if err := s.repo.UpdateStatus(ctx, inviteID, StatusCompleted, accountantID); err != nil {
 			return nil, err
 		}
 		res.Status = StatusCompleted
-		res.IsFound = true // Redirect to login
+		res.IsFound = true // Flow: Redirect to login
 	} else {
-		// User does not exist
+		// CASE: User doesn't exist OR they exist as a User but NOT an Accountant yet
 		if err := s.repo.UpdateStatus(ctx, inviteID, StatusAccepted, nil); err != nil {
 			return nil, err
 		}
 		res.Status = StatusAccepted
-		res.IsFound = false // Redirect to register
+		res.IsFound = false // Flow: Redirect to register/create profile
 	}
-
 	return res, nil
 }
 

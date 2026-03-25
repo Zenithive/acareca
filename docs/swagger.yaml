@@ -2,6 +2,10 @@ basePath: /api/v1
 definitions:
   accountant.RsAccountantUser:
     properties:
+      clinics:
+        items:
+          type: object
+        type: array
       created_at:
         type: string
       email:
@@ -10,8 +14,8 @@ definitions:
         type: string
       id:
         type: string
-      is_superadmin:
-        type: boolean
+      invitation_status:
+        type: string
       last_name:
         type: string
       phone:
@@ -944,6 +948,8 @@ info:
 paths:
   /accountant/:
     get:
+      consumes:
+      - application/json
       description: Retrieves a list of all registered users for the accountant view.
       produces:
       - application/json
@@ -954,10 +960,16 @@ paths:
             items:
               $ref: '#/definitions/accountant.RsAccountantUser'
             type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Fetch all users
       tags:
       - accountant

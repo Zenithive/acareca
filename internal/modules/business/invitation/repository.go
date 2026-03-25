@@ -17,6 +17,8 @@ type Repository interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
 	GetPractitionerName(ctx context.Context, practitionerID uuid.UUID) (string, error)
 	GetUserIDByEmail(ctx context.Context, email string) (*uuid.UUID, error)
+
+	GetAccountantIDByEmail(ctx context.Context, email string) (*uuid.UUID, error)
 }
 
 type repository struct {
@@ -102,4 +104,23 @@ func (r *repository) GetUserIDByEmail(ctx context.Context, email string) (*uuid.
 		return nil, err
 	}
 	return &userID, nil
+}
+
+func (r *repository) GetAccountantIDByEmail(ctx context.Context, email string) (*uuid.UUID, error) {
+	var accountantID uuid.UUID
+	query := `
+        SELECT a.id 
+        FROM tbl_accountant a
+        JOIN tbl_user u ON a.user_id = u.id
+        WHERE u.email = $1 
+        LIMIT 1`
+
+	err := r.db.GetContext(ctx, &accountantID, query, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &accountantID, nil
 }

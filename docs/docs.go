@@ -19,7 +19,15 @@ const docTemplate = `{
     "paths": {
         "/accountant/": {
             "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Retrieves a list of all registered users for the accountant view.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -35,6 +43,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/accountant.RsAccountantUser"
                             }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
@@ -4603,6 +4617,12 @@ const docTemplate = `{
         "accountant.RsAccountantUser": {
             "type": "object",
             "properties": {
+                "clinics": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -4615,8 +4635,8 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
+                "invitation_status": {
+                    "type": "string"
                 },
                 "last_name": {
                     "type": "string"
