@@ -19,6 +19,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  admin.RqCreateAdmin:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
   auth.RqChangePassword:
     properties:
       new_password:
@@ -961,6 +980,64 @@ paths:
       summary: Fetch all users
       tags:
       - accountant
+  /admin:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new entry in tbl_user with Role=ADMIN and a corresponding
+        entry in tbl_admin within a single transaction.
+      parameters:
+      - description: Admin and User details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/admin.RqCreateAdmin'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create admin profile and user
+      tags:
+      - admin
+  /admin/{id}:
+    get:
+      description: Get nested Admin and User information by Admin ID
+      parameters:
+      - description: Admin ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Admin Detail
+      tags:
+      - admin
   /admin/audit:
     get:
       consumes:
