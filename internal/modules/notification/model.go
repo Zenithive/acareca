@@ -91,11 +91,11 @@ type Preference struct {
 // ─── Payload helpers (stored as jsonb) ───────────────────────────────────────
 
 type NotificationPayload struct {
-	Title      string         `json:"title"`
-	Body       string         `json:"body"`
-	SenderName string         `json:"sender_name,omitempty"`
-	EntityName string         `json:"entity_name,omitempty"`
-	ExtraData  map[string]any `json:"extra_data,omitempty"`
+	Title      string                 `json:"title"`
+	Body       string                 `json:"body"`
+	SenderName string                 `json:"sender_name,omitempty"`
+	EntityName string                 `json:"entity_name,omitempty"`
+	ExtraData  map[string]interface{} `json:"extra_data,omitempty"`
 }
 
 type Filter struct {
