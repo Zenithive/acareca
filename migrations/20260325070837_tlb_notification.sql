@@ -9,7 +9,7 @@ CREATE TYPE enum_notification_status AS ENUM (
     'FAILED'
 );
 
--- Main notifications table
+-- Main tbl_notification table
 CREATE TABLE IF NOT EXISTS tbl_notification (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     recipient_id    UUID        NOT NULL,
@@ -25,10 +25,10 @@ CREATE TABLE IF NOT EXISTS tbl_notification (
 );
 
 CREATE INDEX idx_notifications_recipient_status
-    ON notifications (recipient_id, status);
+    ON tbl_notification (recipient_id, status);
 
 CREATE INDEX idx_notifications_recipient_created
-    ON notifications (recipient_id, created_at DESC);
+    ON tbl_notification (recipient_id, created_at DESC);
 
 -- Outbox table (written in same tx as the triggering action)
 CREATE TABLE IF NOT EXISTS tbl_notification_outbox (
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS tbl_notification_outbox (
 );
 
 CREATE INDEX idx_outbox_unprocessed
-    ON notification_outbox (created_at ASC)
+    ON tbl_notification_outbox (created_at ASC)
     WHERE processed_at IS NULL;
 
 -- Per-user, per-event-type channel preferences
