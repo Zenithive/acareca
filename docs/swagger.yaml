@@ -665,6 +665,102 @@ definitions:
     required:
     - email
     type: object
+  notification.ActorType:
+    enum:
+    - PRACTITIONER
+    - ACCOUNTANT
+    - SYSTEM
+    type: string
+    x-enum-varnames:
+    - ActorPractitioner
+    - ActorAccountant
+    - ActorSystem
+  notification.EntityType:
+    enum:
+    - clinic
+    - form
+    - transaction
+    - document
+    - invite
+    type: string
+    x-enum-varnames:
+    - EntityClinic
+    - EntityForm
+    - EntityTransaction
+    - EntityDocument
+    - EntityInvite
+  notification.EventType:
+    enum:
+    - invite.sent
+    - invite.accepted
+    - invite.declined
+    - clinic.updated
+    - form.submitted
+    - form.updated
+    - transaction.created
+    - transaction.status_changed
+    - document.uploaded
+    type: string
+    x-enum-varnames:
+    - EventInviteSent
+    - EventInviteAccepted
+    - EventInviteDeclined
+    - EventClinicUpdated
+    - EventFormSubmitted
+    - EventFormUpdated
+    - EventTransactionCreated
+    - EventTransactionUpdated
+    - EventDocumentUploaded
+  notification.Notification:
+    properties:
+      createdAt:
+        type: string
+      entityID:
+        type: string
+      entityType:
+        $ref: '#/definitions/notification.EntityType'
+      eventType:
+        $ref: '#/definitions/notification.EventType'
+      id:
+        type: string
+      payload:
+        items:
+          type: integer
+        type: array
+      readedAt:
+        type: string
+      recipientID:
+        type: string
+      recipientType:
+        $ref: '#/definitions/notification.ActorType'
+      senderID:
+        type: string
+      senderType:
+        $ref: '#/definitions/notification.ActorType'
+      status:
+        $ref: '#/definitions/notification.Status'
+    type: object
+  notification.RsListNotification:
+    properties:
+      notifications:
+        items:
+          $ref: '#/definitions/notification.Notification'
+        type: array
+      total:
+        type: integer
+      unread_count:
+        type: integer
+    type: object
+  notification.Status:
+    enum:
+    - UNREAD
+    - READ
+    - DISMISSED
+    type: string
+    x-enum-varnames:
+    - StatusUnread
+    - StatusRead
+    - StatusDismissed
   pl.RsPLAccount:
     properties:
       account_code:
@@ -3289,6 +3385,115 @@ paths:
       summary: Process invitation action
       tags:
       - invitation
+  /notification:
+    get:
+      description: Returns a paginated list of notifications for the authenticated
+        entity, along with unread count.
+      parameters:
+      - description: Filter by status (UNREAD, READ, DISMISSED)
+        in: query
+        name: status
+        type: string
+      - description: Number of records to return
+        in: query
+        name: limit
+        type: integer
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/notification.RsListNotification'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List notifications
+      tags:
+      - notification
+  /notification/{id}/dismissed:
+    patch:
+      description: Marks a specific notification as DISMISSED for the authenticated
+        entity.
+      parameters:
+      - description: Notification UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Dismiss a notification
+      tags:
+      - notification
+  /notification/{id}/read:
+    patch:
+      description: Marks a specific notification as READ for the authenticated entity.
+      parameters:
+      - description: Notification UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Mark notification as read
+      tags:
+      - notification
   /pl/by-account:
     get:
       description: Returns monthly totals broken down per Chart of Accounts entry,

@@ -23,6 +23,18 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// @Summary      List notifications
+// @Description  Returns a paginated list of notifications for the authenticated entity, along with unread count.
+// @Tags         notification
+// @Produce      json
+// @Param        status  query     string  false  "Filter by status (UNREAD, READ, DISMISSED)"
+// @Param        limit   query     int     false  "Number of records to return"
+// @Param        page    query     int     false  "Page number"
+// @Success      200     {object}  response.RsBase{data=RsListNotification}
+// @Failure      400     {object}  response.RsError
+// @Failure      500     {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification [get]
 func (h *handler) ListNotifications(c *gin.Context) {
 	entityID, ok := util.GetEntityID(c)
 	if !ok {
@@ -43,6 +55,17 @@ func (h *handler) ListNotifications(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result, "")
 }
 
+// @Summary      Mark notification as read
+// @Description  Marks a specific notification as READ for the authenticated entity.
+// @Tags         notification
+// @Produce      json
+// @Param        id   path      string  true  "Notification UUID"
+// @Success      200  {object}  response.RsBase
+// @Failure      404  {object}  response.RsError
+// @Failure      409  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/{id}/read [patch]
 func (h *handler) MarkRead(c *gin.Context) {
 	entityID, ok := util.GetEntityID(c)
 	if !ok {
@@ -59,6 +82,17 @@ func (h *handler) MarkRead(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "marked as read")
 }
 
+// @Summary      Dismiss a notification
+// @Description  Marks a specific notification as DISMISSED for the authenticated entity.
+// @Tags         notification
+// @Produce      json
+// @Param        id   path      string  true  "Notification UUID"
+// @Success      200  {object}  response.RsBase
+// @Failure      404  {object}  response.RsError
+// @Failure      409  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/{id}/dismissed [patch]
 func (h *handler) MarkDismissed(c *gin.Context) {
 	entityID, ok := util.GetEntityID(c)
 	if !ok {

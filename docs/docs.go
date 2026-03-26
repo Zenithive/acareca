@@ -3663,6 +3663,179 @@ const docTemplate = `{
                 }
             }
         },
+        "/notification": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a paginated list of notifications for the authenticated entity, along with unread count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "List notifications",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by status (UNREAD, READ, DISMISSED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/notification.RsListNotification"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/{id}/dismissed": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks a specific notification as DISMISSED for the authenticated entity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Dismiss a notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/{id}/read": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks a specific notification as READ for the authenticated entity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Mark notification as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/pl/by-account": {
             "get": {
                 "security": [
@@ -5826,6 +5999,135 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "notification.ActorType": {
+            "type": "string",
+            "enum": [
+                "PRACTITIONER",
+                "ACCOUNTANT",
+                "SYSTEM"
+            ],
+            "x-enum-varnames": [
+                "ActorPractitioner",
+                "ActorAccountant",
+                "ActorSystem"
+            ]
+        },
+        "notification.EntityType": {
+            "type": "string",
+            "enum": [
+                "clinic",
+                "form",
+                "transaction",
+                "document",
+                "invite"
+            ],
+            "x-enum-varnames": [
+                "EntityClinic",
+                "EntityForm",
+                "EntityTransaction",
+                "EntityDocument",
+                "EntityInvite"
+            ]
+        },
+        "notification.EventType": {
+            "type": "string",
+            "enum": [
+                "invite.sent",
+                "invite.accepted",
+                "invite.declined",
+                "clinic.updated",
+                "form.submitted",
+                "form.updated",
+                "transaction.created",
+                "transaction.status_changed",
+                "document.uploaded"
+            ],
+            "x-enum-varnames": [
+                "EventInviteSent",
+                "EventInviteAccepted",
+                "EventInviteDeclined",
+                "EventClinicUpdated",
+                "EventFormSubmitted",
+                "EventFormUpdated",
+                "EventTransactionCreated",
+                "EventTransactionUpdated",
+                "EventDocumentUploaded"
+            ]
+        },
+        "notification.Notification": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "entityID": {
+                    "type": "string"
+                },
+                "entityType": {
+                    "$ref": "#/definitions/notification.EntityType"
+                },
+                "eventType": {
+                    "$ref": "#/definitions/notification.EventType"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "readedAt": {
+                    "type": "string"
+                },
+                "recipientID": {
+                    "type": "string"
+                },
+                "recipientType": {
+                    "$ref": "#/definitions/notification.ActorType"
+                },
+                "senderID": {
+                    "type": "string"
+                },
+                "senderType": {
+                    "$ref": "#/definitions/notification.ActorType"
+                },
+                "status": {
+                    "$ref": "#/definitions/notification.Status"
+                }
+            }
+        },
+        "notification.RsListNotification": {
+            "type": "object",
+            "properties": {
+                "notifications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/notification.Notification"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "unread_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "notification.Status": {
+            "type": "string",
+            "enum": [
+                "UNREAD",
+                "READ",
+                "DISMISSED"
+            ],
+            "x-enum-varnames": [
+                "StatusUnread",
+                "StatusRead",
+                "StatusDismissed"
+            ]
         },
         "pl.RsPLAccount": {
             "type": "object",
