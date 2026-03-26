@@ -38,19 +38,27 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		return err
 	}
 
-	if s.notifier != nil {
-		push := map[string]any{
-			"id":           notificationID,
-			"recipient_id": rq.RecipientID,
-			"sender_id":    rq.SenderID,
-			"event_type":   rq.EventType,
-			"entity_type":  rq.EntityType,
-			"entity_id":    rq.EntityID,
-			"status":       rq.Status,
-			"payload":      json.RawMessage(rq.Payload),
-			"created_at":   rq.CreatedAt,
+	// Attempt in_app delivery via WebSocket and update delivery status
+	for _, ch := range channels {
+		if ch == ChannelInApp && s.notifier != nil {
+			push := map[string]any{
+				"id":           notificationID,
+				"recipient_id": rq.RecipientID,
+				"sender_id":    rq.SenderID,
+				"event_type":   rq.EventType,
+				"entity_type":  rq.EntityType,
+				"entity_id":    rq.EntityID,
+				"status":       rq.Status,
+				"payload":      json.RawMessage(rq.Payload),
+				"created_at":   rq.CreatedAt,
+			}
+			if s.notifier.Push(rq.RecipientID, push) {
+				_ = s.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp)
+			} else {
+				_ = s.repo.MarkDeliveryFailed(ctx, notificationID, ChannelInApp, "no active WebSocket clients")
+			}
 		}
-		s.notifier.Push(rq.RecipientID, push)
+		// push / email channels: delivery workers handle those separately
 	}
 	return nil
 }

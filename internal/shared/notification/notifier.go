@@ -45,7 +45,8 @@ func NewNotifier(db *sqlx.DB) *Hub {
 }
 
 // Push sends a live notification event to all connections belonging to entityID.
-func (h *Hub) Push(entityID uuid.UUID, payload any) {
+// Returns true if at least one client received the message.
+func (h *Hub) Push(entityID uuid.UUID, payload any) bool {
 	msg := map[string]any{
 		"type": "notification",
 		"data": payload,
@@ -53,7 +54,7 @@ func (h *Hub) Push(entityID uuid.UUID, payload any) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		log.Printf("notifier: marshal error: %v", err)
-		return
+		return false
 	}
 
 	h.mu.RLock()
@@ -64,17 +65,20 @@ func (h *Hub) Push(entityID uuid.UUID, payload any) {
 
 	if len(conns) == 0 {
 		log.Printf("notifier: no active WS clients for entityID=%s, notification saved to DB only", entityID)
-		return
+		return false
 	}
 
+	delivered := false
 	for _, c := range conns {
 		select {
 		case c.send <- data:
 			log.Printf("notifier: queued message to entityID=%s", entityID)
+			delivered = true
 		default:
 			log.Printf("notifier: dropped message for entityID=%s (slow client)", entityID)
 		}
 	}
+	return delivered
 }
 
 // ServeWS upgrades the HTTP connection to WebSocket, authenticates via ?token=,
@@ -176,13 +180,17 @@ type storedNotification struct {
 }
 
 func (h *Hub) sendStored(ctx context.Context, cl *client) error {
+	// Only fetch notifications where the in_app delivery was DELIVERED
 	const q = `
-		SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id,
-		       status, payload, created_at, read_at AS readed_at
-		FROM tbl_notification
-		WHERE recipient_id = $1
-		  AND status != 'DISMISSED'
-		ORDER BY created_at DESC
+		SELECT n.id, n.recipient_id, n.sender_id, n.event_type, n.entity_type, n.entity_id,
+		       n.status, n.payload, n.created_at, n.read_at AS readed_at
+		FROM tbl_notification n
+		JOIN tbl_notification_delivery d
+		  ON d.notification_id = n.id AND d.channel = 'in_app'
+		WHERE n.recipient_id = $1
+		  AND n.status != 'DISMISSED'
+		  AND d.status = 'DELIVERED'
+		ORDER BY n.created_at DESC
 		LIMIT 50
 	`
 	rows, err := h.db.QueryxContext(ctx, q, cl.entityID)
