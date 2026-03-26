@@ -64,9 +64,10 @@ type service struct {
 	invitationSvc    invitation.Service
 	practitionerRepo practitioner.Repository
 	accountantSvc    accountant.IService
+	inviteRepo       invitation.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, inviteRepo invitation.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -86,7 +87,8 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		auditSvc:         auditSvc,
 		invitationSvc:    invitationSvc,
 		practitionerRepo: practitionerRepo,
-		accountantSvc:    accountantSvc}
+		accountantSvc:    accountantSvc,
+		inviteRepo:       inviteRepo}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -805,6 +807,20 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 	user, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		return nil
+	}
+
+	// 2. NEW: Invitation Status Guard for Accountants
+	if user.Role == util.RoleAccountant {
+		// You likely have a method to get the invitation by email
+		inv, err := s.inviteRepo.GetByEmail(ctx, req.Email)
+		if err != nil || inv == nil {
+			return errors.New("no active account found")
+		}
+
+		// Block if the invitation isn't finished yet
+		if inv.Status != "COMPLETED" {
+			return errors.New("Please complete your account setup via the invitation link first")
+		}
 	}
 
 	// 2. Generate Raw Token and Hash it

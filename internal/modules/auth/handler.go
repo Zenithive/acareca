@@ -368,6 +368,8 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 	if err != nil {
 		// We log the error but return success to avoid "User Enumeration"
 		// log.Printf("Forgot password error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	response.JSON(c, http.StatusOK, nil, "If an account exists, a reset link has been sent.")
