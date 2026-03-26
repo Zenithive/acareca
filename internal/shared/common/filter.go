@@ -27,10 +27,10 @@ type Condition struct {
 type Filter struct {
 	Search  *string
 	Where   []Condition
-	Limit   int
-	Offset  int
-	SortBy  string
-	OrderBy string
+	Limit   *int
+	Offset  *int
+	SortBy  *string
+	OrderBy *string
 }
 
 func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchCols []string, count bool) (string, []interface{}) {
@@ -98,22 +98,37 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 	// 🔥 NORMAL MODE
 	query := base
 
+	var sortBy string
+	var OrderBy string
+
+	if f.SortBy != nil {
+		sortBy = *f.SortBy
+	} else {
+		sortBy = "created_at"
+	}
+
+	if f.OrderBy != nil {
+		OrderBy = *f.OrderBy
+	} else {
+		OrderBy = "DESC"
+	}
+
 	// Sorting
-	if col, ok := allowedColumns[f.SortBy]; ok {
+	if col, ok := allowedColumns[sortBy]; ok {
 		order := "ASC"
-		if strings.ToUpper(f.OrderBy) == "DESC" {
+		if strings.ToUpper(OrderBy) == "DESC" {
 			order = "DESC"
 		}
 		query += fmt.Sprintf(" ORDER BY %s %s", col, order)
 	}
 
 	// Pagination
-	if f.Limit > 0 {
+	if f.Limit != nil {
 		query += " LIMIT ?"
 		args = append(args, f.Limit)
 	}
 
-	if f.Offset > 0 {
+	if f.Offset != nil {
 		query += " OFFSET ?"
 		args = append(args, f.Offset)
 	}
@@ -180,9 +195,9 @@ func NewFilter(search *string, filters map[string]interface{}, operators map[str
 	return Filter{
 		Search:  search,
 		Where:   where,
-		Limit:   l,
-		Offset:  o,
-		SortBy:  "",
-		OrderBy: "",
+		Limit:   &l,
+		Offset:  &o,
+		SortBy:  nil,
+		OrderBy: nil,
 	}
 }

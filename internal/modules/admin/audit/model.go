@@ -79,11 +79,7 @@ type Filter struct {
 	EntityID   *string    `form:"entity_id"`
 	StartDate  *time.Time `form:"start_date" time_format:"2006-01-02T15:04:05Z07:00"`
 	EndDate    *time.Time `form:"end_date" time_format:"2006-01-02T15:04:05Z07:00"`
-	Search     *string    `form:"search"`
-	SortBy     *string    `form:"sort_by"`
-	OrderBy    *string    `form:"order_by"`
-	Limit      *int       `form:"limit"`
-	Offset     *int       `form:"offset"`
+	common.Filter
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
@@ -114,18 +110,6 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
-
-	if filter.SortBy != nil {
-		f.SortBy = *filter.SortBy
-	} else {
-		f.SortBy = "created_at"
-	}
-
-	if filter.OrderBy != nil {
-		f.OrderBy = *filter.OrderBy
-	} else {
-		f.OrderBy = "DESC"
-	}
 
 	return f
 }

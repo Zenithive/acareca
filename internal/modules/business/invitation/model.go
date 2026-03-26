@@ -84,17 +84,13 @@ var invitationColumns = map[string]string{
 
 var invitationSearchCols = []string{"email"}
 
-type InvitationFilter struct {
-	Email   *string `form:"email"`
-	Status  *string `form:"status"`
-	Search  *string `form:"search"`
-	Limit   *int    `form:"limit"`
-	Offset  *int    `form:"offset"`
-	SortBy  *string `form:"sort_by"`
-	OrderBy *string `form:"order_by"`
+type Filter struct {
+	Email  *string `form:"email"`
+	Status *string `form:"status"`
+	common.Filter
 }
 
-func (filter *InvitationFilter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
+func (filter *Filter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
 	filters := map[string]interface{}{}
 
 	// Role-based security: Apply the correct ID based on who is asking
@@ -112,18 +108,6 @@ func (filter *InvitationFilter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
-
-	if filter.SortBy != nil {
-		f.SortBy = *filter.SortBy
-	} else {
-		f.SortBy = "created_at"
-	}
-
-	if filter.OrderBy != nil {
-		f.OrderBy = *filter.OrderBy
-	} else {
-		f.OrderBy = "DESC"
-	}
 
 	return f
 }

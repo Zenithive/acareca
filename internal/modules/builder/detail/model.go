@@ -50,12 +50,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["form_name"] = *filter.FormName
 	}
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
-	if filter.SortBy != nil {
-		f.SortBy = *filter.SortBy
-	}
-	if filter.SortOrder != nil {
-		f.OrderBy = *filter.SortOrder
-	}
+
 	return f
 }
 

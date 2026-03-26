@@ -76,7 +76,7 @@ func (s *service) ListByPractitionerID(ctx context.Context, practitionerID uuid.
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
 }
 
@@ -148,7 +148,7 @@ func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uui
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(list, total, ft.Offset, ft.Limit)
+	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
 
 	return &rsList, nil
 }

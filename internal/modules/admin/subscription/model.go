@@ -116,13 +116,9 @@ func (p *SubscriptionPermission) ToRs() *RsSubscriptionPermission {
 }
 
 type Filter struct {
-	Id      *string `form:"id"`
-	Name    *string `form:"name"`
-	Search  *string `form:"search"`
-	SortBy  *string `form:"sort_by"`
-	OrderBy *string `form:"order_by"`
-	Limit   *int    `form:"limit"`
-	Offset  *int    `form:"offset"`
+	Id   *string `form:"id"`
+	Name *string `form:"name"`
+	common.Filter
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
@@ -139,18 +135,6 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
-
-	if filter.SortBy != nil {
-		f.SortBy = *filter.SortBy
-	} else {
-		f.SortBy = "created_at"
-	}
-
-	if filter.OrderBy != nil {
-		f.OrderBy = *filter.OrderBy
-	} else {
-		f.OrderBy = "DESC"
-	}
 
 	return f
 }

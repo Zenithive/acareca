@@ -83,7 +83,7 @@ func (s *Service) List(ctx context.Context, filter Filter, practitionerID uuid.U
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(items, total, ft.Offset, ft.Limit)
+	rsList.MapToList(items, total, *ft.Offset, *ft.Limit)
 
 	return &rsList, nil
 }

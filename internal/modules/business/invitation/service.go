@@ -23,7 +23,7 @@ type Service interface {
 	GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteProcess, error)
 	ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error)
 	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
-	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *InvitationFilter) (*util.RsList, error)
+	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
 }
 
 const (
@@ -289,7 +289,7 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string
 }
 
 // ListInvitations fetches invitations based on the user's role (Practitioner or Accountant)
-func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *InvitationFilter) (*util.RsList, error) {
+func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
 	ft := f.MapToFilter(pID, aID)
 
 	// Fetch the list of invitations from the repository
@@ -305,7 +305,7 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *I
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(list, total, ft.Offset, ft.Limit)
+	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
 
 	return &rsList, nil
 }

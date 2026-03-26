@@ -122,29 +122,12 @@ func (h *Handler) ProcessInvitation(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /invite [get]
 func (h *Handler) ListInvitations(c *gin.Context) {
-	var pIDPtr, aIDPtr *uuid.UUID
-
-	role := strings.ToUpper(c.GetString("role"))
-	switch role {
-	case util.RolePractitioner:
-		pID, ok := util.GetPractitionerID(c)
-		if !ok || pID == uuid.Nil {
-			return
-		}
-		pIDPtr = &pID
-
-	case util.RoleAccountant:
-		aID, ok := util.GetAccountantID(c)
-		if !ok || aID == uuid.Nil {
-			return
-		}
-		aIDPtr = &aID
-
-	default:
+	pIDPtr, aIDPtr, ok := GetRoleBasedIDs(c)
+	if !ok {
 		return
 	}
 
-	var reqFilter InvitationFilter
+	var reqFilter Filter
 	if err := c.ShouldBindQuery(&reqFilter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -157,4 +140,34 @@ func (h *Handler) ListInvitations(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, res, "Invitations retrieved successfully")
+}
+
+type RequestContext struct {
+	PractitionerID *uuid.UUID
+	AccountantID   *uuid.UUID
+	Role           string
+}
+
+// Helper function to return pointers to Practitioner or Accountant IDs based on the user's role.
+func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
+	role := strings.ToUpper(c.GetString("role"))
+
+	switch role {
+	case util.RolePractitioner:
+		id, exists := util.GetPractitionerID(c)
+		if !exists || id == uuid.Nil {
+			return nil, nil, false
+		}
+		return &id, nil, true
+
+	case util.RoleAccountant:
+		id, exists := util.GetAccountantID(c)
+		if !exists || id == uuid.Nil {
+			return nil, nil, false
+		}
+		return nil, &id, true
+
+	default:
+		return nil, nil, false
+	}
 }
