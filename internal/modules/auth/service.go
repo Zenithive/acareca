@@ -149,10 +149,15 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			return fmt.Errorf("create verification token: %w", err)
 		}
 
-		// This function looks for an invitation by email and links it to the accountant id
-		err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, a.ID)
-		if err != nil {
-			return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
+		if created.Role == util.RoleAccountant {
+			if a == nil {
+				return errors.New("failed to retrieve accountant profile for invitation finalization")
+			}
+			// This function looks for an invitation by email and links it to the accountant id
+			err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, a.ID)
+			if err != nil {
+				return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
+			}
 		}
 
 		return nil
@@ -469,7 +474,14 @@ func (s *service) sendVerificationEmail(to string, firstName string, tokenID uui
 	url := "https://api.resend.com/emails"
 	apikey := s.cfg.ResendAPIKey
 
-	verificationLink := fmt.Sprintf("https://acareca.com/verify-email?token=%s", tokenID)
+	var baseUrl string
+	if s.cfg.Env == "dev" {
+		baseUrl = s.cfg.DevUrl
+	} else {
+		baseUrl = s.cfg.LocalUrl
+	}
+
+	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
 	expiryTime := "10 minutes"
 
 	payload := map[string]interface{}{
