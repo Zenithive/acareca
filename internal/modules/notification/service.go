@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -31,7 +32,19 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		return err
 	}
 	if s.notifier != nil {
-		s.notifier.Push(rq.RecipientID, rq)
+		// Build a push-friendly struct so payload renders as JSON object, not base64
+		push := map[string]any{
+			"id":           rq.ID,
+			"recipient_id": rq.RecipientID,
+			"sender_id":    rq.SenderID,
+			"event_type":   rq.EventType,
+			"entity_type":  rq.EntityType,
+			"entity_id":    rq.EntityID,
+			"status":       rq.Status,
+			"payload":      json.RawMessage(rq.Payload),
+			"created_at":   rq.CreatedAt,
+		}
+		s.notifier.Push(rq.RecipientID, push)
 	}
 	return nil
 }

@@ -93,19 +93,24 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 			extraData := map[string]interface{}{"invite_id": invite.ID.String()}
 			payload := notification.BuildNotificationPayload("Invitation received", body, nil, nil, &extraData)
 			payloadBytes, _ := json.Marshal(payload)
+			senderType := notification.ActorPractitioner
 			rq := notification.RqNotification{
-				ID:          uuid.New(),
-				RecipientID: *recipientID,
-				SenderID:    &practitionerID,
-				EventType:   notification.EventInviteSent,
-				EntityType:  notification.EntityInvite,
-				EntityID:    invite.ID,
-				Status:      notification.StatusPending,
-				Payload:     payloadBytes,
-				RetryCount:  0,
-				CreatedAt:   time.Now(),
+				ID:            uuid.New(),
+				RecipientID:   *recipientID,
+				RecipientType: notification.ActorAccountant,
+				SenderID:      &practitionerID,
+				SenderType:    &senderType,
+				EventType:     notification.EventInviteSent,
+				EntityType:    notification.EntityInvite,
+				EntityID:      invite.ID,
+				Status:        notification.StatusPending,
+				Payload:       payloadBytes,
+				RetryCount:    0,
+				CreatedAt:     time.Now(),
 			}
-			_ = s.notification.Publish(ctx, rq)
+			if err := s.notification.Publish(ctx, rq); err != nil {
+				fmt.Printf("[ERROR] failed to publish invite.sent notification: %v\n", err)
+			}
 		}
 	}
 
@@ -270,18 +275,23 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 			extraData := map[string]interface{}{"invite_id": inv.ID.String()}
 			payload := notification.BuildNotificationPayload("Invitation Accepted", body, nil, nil, &extraData)
 			payloadBytes, _ := json.Marshal(payload)
+			senderType := notification.ActorAccountant
 			rq := notification.RqNotification{
-				ID:          uuid.New(),
-				RecipientID: inv.PractitionerID,
-				SenderID:    accountantID,
-				EventType:   notification.EventInviteAccepted,
-				EntityType:  notification.EntityInvite,
-				EntityID:    inv.ID,
-				Status:      notification.StatusPending,
-				Payload:     payloadBytes,
-				CreatedAt:   time.Now(),
+				ID:            uuid.New(),
+				RecipientID:   inv.PractitionerID,
+				RecipientType: notification.ActorPractitioner,
+				SenderID:      accountantID,
+				SenderType:    &senderType,
+				EventType:     notification.EventInviteAccepted,
+				EntityType:    notification.EntityInvite,
+				EntityID:      inv.ID,
+				Status:        notification.StatusPending,
+				Payload:       payloadBytes,
+				CreatedAt:     time.Now(),
 			}
-			_ = s.notification.Publish(ctx, rq)
+			if err := s.notification.Publish(ctx, rq); err != nil {
+				fmt.Printf("[ERROR] failed to publish invite.accepted notification: %v\n", err)
+			}
 		}
 
 		return res, nil

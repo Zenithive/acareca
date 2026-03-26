@@ -2,7 +2,6 @@ package notification
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -37,23 +36,21 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) CreateNotification(ctx context.Context, notification Notification) error {
-	payloadBytes, err := json.Marshal(notification.Payload)
-	if err != nil {
-		return fmt.Errorf("marshal notification payload: %w", err)
-	}
-
 	const q = `
 		INSERT INTO tbl_notification (
-			recipient_id, sender_id, event_type, entity_type, entity_id, status, payload
-		) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)
+			recipient_id, recipient_type, sender_id, sender_type,
+			event_type, entity_type, entity_id, status, payload
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8)
 	`
-	_, err = r.db.ExecContext(ctx, q,
+	_, err := r.db.ExecContext(ctx, q,
 		notification.RecipientID,
+		notification.RecipientType,
 		notification.SenderID,
+		notification.SenderType,
 		notification.EventType,
 		notification.EntityType,
 		notification.EntityID,
-		payloadBytes,
+		notification.Payload,
 	)
 	if err != nil {
 		return fmt.Errorf("insert notification: %w", err)

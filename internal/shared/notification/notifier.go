@@ -60,11 +60,19 @@ func (h *Hub) Push(entityID uuid.UUID, payload any) {
 	conns := h.clients[entityID]
 	h.mu.RUnlock()
 
+	log.Printf("notifier: Push to entityID=%s — %d active connection(s)", entityID, len(conns))
+
+	if len(conns) == 0 {
+		log.Printf("notifier: no active WS clients for entityID=%s, notification saved to DB only", entityID)
+		return
+	}
+
 	for _, c := range conns {
 		select {
 		case c.send <- data:
+			log.Printf("notifier: queued message to entityID=%s", entityID)
 		default:
-			// slow client — drop
+			log.Printf("notifier: dropped message for entityID=%s (slow client)", entityID)
 		}
 	}
 }
@@ -132,7 +140,9 @@ func (h *Hub) authenticate(c *gin.Context, cfg *config.Config) (uuid.UUID, bool)
 func (h *Hub) register(cl *client) {
 	h.mu.Lock()
 	h.clients[cl.entityID] = append(h.clients[cl.entityID], cl)
+	count := len(h.clients[cl.entityID])
 	h.mu.Unlock()
+	log.Printf("notifier: client registered entityID=%s, total=%d", cl.entityID, count)
 }
 
 func (h *Hub) unregister(cl *client) {
@@ -145,6 +155,7 @@ func (h *Hub) unregister(cl *client) {
 			break
 		}
 	}
+	log.Printf("notifier: client unregistered entityID=%s, remaining=%d", cl.entityID, len(h.clients[cl.entityID]))
 	close(cl.send)
 	_ = cl.conn.Close()
 }
