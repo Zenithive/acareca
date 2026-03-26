@@ -99,7 +99,7 @@ type NotificationPayload struct {
 }
 
 type FilterNotification struct {
-	status string `form:"status"`
+	status *string `form:"status"`
 	common.Filter
 }
 

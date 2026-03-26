@@ -16,7 +16,7 @@ import (
 type Repository interface {
 	CreateNotification(ctx context.Context, recipientID uuid.UUID, senderID *uuid.UUID, eventType EventType, entityType EntityType, entityID uuid.UUID, payload NotificationPayload) error
 
-	ListByRecipient(ctx context.Context, recipientID uuid.UUID, status *Status) ([]util.RsList, error)
+	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]util.RsList, error)
 
 	MarkRead(ctx context.Context, recipientID, notificationID uuid.UUID) error
 	MarkDismissed(ctx context.Context, recipientID, notificationID uuid.UUID) error
@@ -55,28 +55,14 @@ func (r *repository) CreateNotification(ctx context.Context, recipientID uuid.UU
 	return nil
 }
 
-func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID, status *Status) ([]util.RsList, error) {
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 {
-		limit = 10
-	}
+func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]util.RsList, error) {
 
-	offset := (page - 1) * limit
-
-	// Unread = PENDING only (matches Status enum values).
-	// If you later add more "unread" states, update this filter.
 	base := `
 		FROM tbl_notification
 		WHERE recipient_id = $1
 		  AND deleted_at IS NULL
 	`
-	// deleted_at does not exist in current migration; keep query robust:
-	// if your schema doesn't have deleted_at, remove this condition.
-	// Since we don't know at compile time, we won't include it.
 
-	// We will instead build without deleted_at.
 	base = `
 		FROM tbl_notification
 		WHERE recipient_id = $1
@@ -86,16 +72,16 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	var args []any
 	args = append(args, recipientID)
 
-	if status != nil && *status != "" {
+	if filter.status != nil && *filter.status != "" {
 		statusClause = ` AND status = $2 `
-		args = append(args, *status)
+		args = append(args, &filter.status)
 	}
 
 	// Total count with optional status filter.
 	totalQuery := `SELECT COUNT(*) ` + base + statusClause
 	var total int
 	if err := r.db.GetContext(ctx, &total, totalQuery, args...); err != nil {
-		return nil, 0, 0, fmt.Errorf("count notifications: %w", err)
+		return nil, fmt.Errorf("count notifications: %w", err)
 	}
 
 	// Unread count: always based on pending and optional status filter.
@@ -103,7 +89,7 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	unreadBase := base
 	unreadStatusClause := ` AND status = 'PENDING' `
 	unreadStatusClauseOptional := ""
-	if status != nil && *status != "" {
+	if filter.status != nil && *filter.status != "" {
 		unreadStatusClauseOptional = ` AND status = $2 `
 		// args already has $2 in statusClause path; keep consistent.
 		// We'll reuse the same args slice.
@@ -111,19 +97,19 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	unreadQuery := `SELECT COUNT(*) ` + unreadBase + unreadStatusClause + unreadStatusClauseOptional
 	var unread int
 	if err := r.db.GetContext(ctx, &unread, unreadQuery, args...); err != nil {
-		return nil, 0, 0, fmt.Errorf("count unread notifications: %w", err)
+		return nil, fmt.Errorf("count unread notifications: %w", err)
 	}
 
 	selectBase := `SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id, status, payload, retry_count, created_at, readed_at ` + base
-	listQuery, listArgs := common.BuildQuery(selectBase, filter, allowedColumns, nil, false)
+	listQuery, listArgs := common.BuildQuery(selectBase, filter.Filter, allowedColumns, nil, false)
 	listQuery = r.db.Rebind(listQuery)
 
 	var items []Notification
 	if err := r.db.SelectContext(ctx, &items, listQuery, listArgs...); err != nil {
-		return nil, 0, 0, fmt.Errorf("list notifications: %w", err)
+		return nil, fmt.Errorf("list notifications: %w", err)
 	}
 
-	return items, unread, total, nil
+	return items, nil
 }
 
 func (r *repository) MarkRead(ctx context.Context, recipientID, notificationID uuid.UUID) error {
