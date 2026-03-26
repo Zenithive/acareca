@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // Enums
@@ -118,7 +117,8 @@ type NotificationPayload struct {
 
 type FilterNotification struct {
 	Status *string `form:"status"`
-	common.Filter
+	Limit  int     `form:"limit"`
+	Page   int     `form:"page"`
 }
 
 type RqUpdatePreference struct {

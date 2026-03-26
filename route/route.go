@@ -75,7 +75,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	// invitation
 	invitationRepo := invitation.NewRepository(dbConn)
-	invitationSvc := invitation.NewService(invitationRepo, cfg, notifier)
+	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc)
 	invitationHandler := invitation.NewHandler(invitationSvc)
 	invitation.RegisterRoutes(v1, invitationHandler, cfg)
 
@@ -188,10 +188,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	userSubscription.RegisterRoutes(userSubscriptionGroup, userSubscriptionHandler)
 
-	// notification (in-app list)
-
+	// notification (in-app list + WebSocket)
 	notificationHandler := notification.NewHandler(notificationSvc)
-	notification.RegisterRoutes(v1, notificationHandler, cfg)
+	notification.RegisterRoutes(v1, notificationHandler, notifier, cfg)
 
 	accountantHandler := accountant.NewHandler(accountantSvc)
 
