@@ -1,6 +1,7 @@
 package notification
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,7 +55,19 @@ const (
 	ChannelEmail Channel = "email"
 )
 
-// ─── Domain structs ───────────────────────────────────────────────────────────
+type RqNotification struct {
+	ID          uuid.UUID  `json:"id"`
+	RecipientID uuid.UUID  `json:"recipient_id"`
+	SenderID    *uuid.UUID `json:"sender_id"`
+	EventType   EventType  `json:"event_type"`
+	EntityType  EntityType `json:"entity_type"`
+	EntityID    uuid.UUID  `json:"entity_id"`
+	Status      Status     `json:"status"`
+	Payload     []byte     `json:"payload"`
+	RetryCount  int        `json:"retry_count"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ReadedAt    *time.Time `json:"readed_at"`
+}
 
 type Notification struct {
 	ID          uuid.UUID  `db:"id"`
@@ -70,15 +83,20 @@ type Notification struct {
 	ReadedAt    *time.Time `db:"readed_at"`
 }
 
-type OutboxEvent struct {
-	ID          uuid.UUID  `db:"id"`
-	EventType   EventType  `db:"event_type"`
-	ActorID     uuid.UUID  `db:"actor_id"`
-	EntityType  EntityType `db:"entity_type"`
-	EntityID    uuid.UUID  `db:"entity_id"`
-	Payload     []byte     `db:"payload"`
-	ProcessedAt *time.Time `db:"processed_at"`
-	CreatedAt   time.Time  `db:"created_at"`
+func (n *RqNotification) MapToDB() Notification {
+	return Notification{
+		ID:          n.ID,
+		RecipientID: n.RecipientID,
+		SenderID:    n.SenderID,
+		EventType:   n.EventType,
+		EntityType:  n.EntityType,
+		EntityID:    n.EntityID,
+		Status:      n.Status,
+		Payload:     n.Payload,
+		RetryCount:  n.RetryCount,
+		CreatedAt:   n.CreatedAt,
+		ReadedAt:    n.ReadedAt,
+	}
 }
 
 type Preference struct {
@@ -91,11 +109,11 @@ type Preference struct {
 // ─── Payload helpers (stored as jsonb) ───────────────────────────────────────
 
 type NotificationPayload struct {
-	Title      string                 `json:"title"`
-	Body       string                 `json:"body"`
-	SenderName string                 `json:"sender_name,omitempty"`
-	EntityName string                 `json:"entity_name,omitempty"`
-	ExtraData  map[string]interface{} `json:"extra_data,omitempty"`
+	Title      string                  `json:"title"`
+	Body       json.RawMessage         `json:"body"`
+	SenderName *string                 `json:"sender_name,omitempty"`
+	EntityName *string                 `json:"entity_name,omitempty"`
+	ExtraData  *map[string]interface{} `json:"extra_data,omitempty"`
 }
 
 type FilterNotification struct {
@@ -108,25 +126,18 @@ type RqUpdatePreference struct {
 	Channels  []Channel `json:"channels"   binding:"required"`
 }
 
-type RqPublishEvent struct {
-	EventType  EventType           `json:"event_type"`
-	ActorID    uuid.UUID           `json:"actor_id"`
-	EntityType EntityType          `json:"entity_type"`
-	EntityID   uuid.UUID           `json:"entity_id"`
-	Payload    NotificationPayload `json:"payload"`
-}
-
-type ListNotificationsResponse struct {
+type RsListNotification struct {
 	Notifications []Notification `json:"notifications"`
 	UnreadCount   int            `json:"unread_count"`
 	Total         int            `json:"total"`
 }
-var allowedColumns = map[string]string{
-	"recipient_id": "recipient_id",
-	"sender_id":    "sender_id",
-	"event_type":   "event_type",
-	"entity_type":  "entity_type",
-	"entity_id":    "entity_id",
-	"status":       "status",
-	"created_at":   "created_at",
+
+func BuildNotificationPayload(title string, body json.RawMessage, senderName *string, entityName *string, extraData *map[string]interface{}) *NotificationPayload {
+	return &NotificationPayload{
+		Title:      title,
+		Body:       body,
+		SenderName: senderName,
+		EntityName: entityName,
+		ExtraData:  extraData,
+	}
 }

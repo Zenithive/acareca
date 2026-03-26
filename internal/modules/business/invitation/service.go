@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"golang.org/x/text/cases"
@@ -36,10 +36,10 @@ const (
 type service struct {
 	repo         Repository
 	cfg          *config.Config
-	notification sharednotification.Notifier
+	notification notification.Service
 }
 
-func NewService(repo Repository, cfg *config.Config, notification sharednotification.Notifier) Service {
+func NewService(repo Repository, cfg *config.Config, notification notification.Service) Service {
 	return &service{
 		repo:         repo,
 		cfg:          cfg,
@@ -90,19 +90,28 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		}
 	}()
 
-	// Notify the invitee (best-effort; silently skipped if they haven't registered yet)
+	// Notify the invitee
 	if s.notification != nil {
 		recipientID, _ := s.repo.GetAccountantIDByEmail(ctx, invite.Email)
 		if recipientID != nil && *recipientID != practitionerID {
-			_ = s.notification.SendToAccountant(ctx, *recipientID, &practitionerID, sharednotification.Event{
-				Kind:     sharednotification.EventInviteSent,
-				Title:    "Invitation received",
-				Body:     fmt.Sprintf("%s invited you to collaborate.", senderName),
-				EntityID: invite.ID,
-				ExtraData: map[string]any{
-					"invite_id": invite.ID.String(),
-				},
-			})
+			body := json.RawMessage(fmt.Sprintf(`"%s invited you to collaborate."`, senderName))
+			extraData := map[string]interface{}{"invite_id": invite.ID.String()}
+			payload := notification.BuildNotificationPayload("Invitation received", body, nil, nil, &extraData)
+			rqNotif := notification.RqNotification{
+				RecipientID: *recipientID,
+				SenderID:    &practitionerID,
+				EventType:   notification.EventInviteSent,
+				EntityType:  notification.EntityInvite,
+				EntityID:    invite.ID,
+				Payload: func() []byte {
+					b, _ := json.Marshal(payload)
+					return b
+				}(),
+				Status:     notification.StatusPending,
+				RetryCount: 0,
+				CreatedAt:  time.Now(),
+			}
+			_ = s.notification.Publish(ctx, rqNotif)
 		}
 	}
 
@@ -251,24 +260,8 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 
 	// Handle STATUS REJECTED
 	if req.Action == ActionReject {
-		// Best-effort: resolve the invitee's accountant entity ID from their email (actor = invitee)
-		var actorEntityID *uuid.UUID
-		if s.notification != nil {
-			actorEntityID, _ = s.repo.GetAccountantIDByEmail(ctx, inv.Email)
-		}
-
 		if err := s.repo.UpdateStatus(ctx, inv.ID, StatusRejected, nil); err != nil {
 			return nil, err
-		}
-
-		if s.notification != nil {
-			_ = s.notification.SendToPractitioner(ctx, inv.PractitionerID, actorEntityID, sharednotification.Event{
-				Kind:     sharednotification.EventInviteDeclined,
-				Title:    "Invitation declined",
-				Body:     "The invitee declined the invitation.",
-				EntityID: inv.ID,
-				ExtraData: map[string]any{"invite_id": inv.ID.String()},
-			})
 		}
 
 		res.Status = StatusRejected
@@ -285,11 +278,9 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 
 		var targetStatus InvitationStatus
 		if accountantID != nil {
-			// User exists: mark as COMPLETED immediately
 			targetStatus = StatusCompleted
 			res.IsFound = true
 		} else {
-			// User doesn't exist: mark as ACCEPTED (pending registration)
 			targetStatus = StatusAccepted
 			res.IsFound = false
 		}
@@ -299,18 +290,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		}
 
 		res.Status = targetStatus
-		res.IsFound = false // Redirect to register
-
-		// Notify practitioner once — actor is the accountant entity ID (nil if not registered yet)
-		if s.notification != nil {
-			_ = s.notification.SendToPractitioner(ctx, inv.PractitionerID, accountantID, sharednotification.Event{
-				Kind:     sharednotification.EventInviteAccepted,
-				Title:    "Invitation accepted",
-				Body:     "The invitee accepted the invitation.",
-				EntityID: inv.ID,
-				ExtraData: map[string]any{"invite_id": inv.ID.String()},
-			})
-		}
+		res.IsFound = false
 
 		return res, nil
 
