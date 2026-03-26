@@ -88,23 +88,33 @@ func main() {
 	//
 	// AllowCredentials: true requires specific origins — browsers reject the
 	// combination of wildcard ("*") + credentials, so we only enable credentials
-	// when real origins are configured. In development (no env var set) the
-	// wildcard is kept for convenience but credentials are disabled.
+	// when real origins are configured.
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	var origins []string
 	allowCredentials := false
 	if allowedOrigins == "" {
-		origins = []string{"*"}
-		log.Println("[WARN] ALLOWED_ORIGINS not set — CORS running in wildcard mode, credentials disabled")
+		origins = []string{cfg.LocalUrl}
+		allowCredentials = true
+		log.Printf("[WARN] ALLOWED_ORIGINS not set — using cfg.LocalUrl=%q for CORS\n", cfg.LocalUrl)
 	} else {
 		origins = strings.Split(allowedOrigins, ",")
 		allowCredentials = true
+		containsWildcard := false
+		for _, o := range origins {
+			if strings.TrimSpace(o) == "*" {
+				containsWildcard = true
+				break
+			}
+		}
+		if containsWildcard {
+			allowCredentials = false
+		}
 	}
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
 		ExposeHeaders:    []string{"Authorization", "token"},
 		AllowCredentials: allowCredentials,
 		MaxAge:           12 * time.Hour,

@@ -10,11 +10,18 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
+type IHandler interface {
+	SendInvitation(c *gin.Context)
+	GetInvitation(c *gin.Context)
+	ProcessInvitation(c *gin.Context)
+	ListInvitations(c *gin.Context)
+}
+
 type Handler struct {
 	svc Service
 }
 
-func NewHandler(svc Service) *Handler {
+func NewHandler(svc Service) IHandler {
 	return &Handler{svc: svc}
 }
 
