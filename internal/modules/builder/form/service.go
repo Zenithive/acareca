@@ -364,14 +364,11 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error) {
 	// Pass the request to the detail service and return the consolidated result
 	return s.detailSvc.List(ctx, detail.Filter{
-		ClinicID:  filter.ClinicID,
-		FormName:  filter.FormName,
-		Status:    filter.Status,
-		Method:    filter.Method,
-		SortBy:    filter.SortBy,
-		SortOrder: filter.SortOrder,
-		Limit:     filter.Limit,
-		Offset:    filter.Offset,
+		ClinicID: filter.ClinicID,
+		FormName: filter.FormName,
+		Status:   filter.Status,
+		Method:   filter.Method,
+		Filter:   filter.Filter, // Include the embedded common.Filter fields (Search, Limit, Offset, etc.)
 	}, practitionerID)
 }
 

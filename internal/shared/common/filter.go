@@ -11,11 +11,12 @@ import (
 type Operator string
 
 const (
-	OpEq   Operator = "eq"
-	OpLike Operator = "like"
-	OpIn   Operator = "in"
-	OpGt   Operator = "gt"
-	OpLt   Operator = "lt"
+	OpEq    Operator = "eq"
+	OpLike  Operator = "like"
+	OpIn    Operator = "in"
+	OpGt    Operator = "gt"
+	OpLt    Operator = "lt"
+	OpNotEq Operator = "neq"
 )
 
 type Condition struct {
@@ -25,12 +26,12 @@ type Condition struct {
 }
 
 type Filter struct {
-	Search  *string
+	Search  *string `form:"search"`
 	Where   []Condition
-	Limit   *int
-	Offset  *int
-	SortBy  *string
-	OrderBy *string
+	Limit   *int    `form:"limit"`
+	Offset  *int    `form:"offset"`
+	SortBy  *string `form:"sort_by"`
+	OrderBy *string `form:"order_by"`
 }
 
 func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchCols []string, count bool) (string, []interface{}) {
@@ -65,6 +66,10 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 			query, inArgs, _ := sqlx.In(fmt.Sprintf("%s IN (?)", col), c.Value)
 			conditions = append(conditions, query)
 			args = append(args, inArgs...)
+
+		case OpNotEq:
+			conditions = append(conditions, fmt.Sprintf("%s != ?", col))
+			args = append(args, c.Value)
 		}
 	}
 

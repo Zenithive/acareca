@@ -47,11 +47,34 @@ func BindAndValidate(c *gin.Context, v any) error {
 		}
 	}
 
+	// Sanitize query parameters - remove or replace invalid values like NaN, Infinity
+	sanitizeQueryParams(c)
+
 	if err := c.ShouldBindQuery(v); err != nil {
 		return err
 	}
 
 	return validate.Struct(v)
+}
+
+// sanitizeQueryParams removes or replaces invalid numeric values in query parameters
+func sanitizeQueryParams(c *gin.Context) {
+	query := c.Request.URL.Query()
+	modified := false
+
+	for _, values := range query {
+		for i, value := range values {
+			// Replace NaN and Infinity with 0 to prevent parsing errors
+			if value == "NaN" || value == "Infinity" || value == "-Infinity" {
+				values[i] = "0"
+				modified = true
+			}
+		}
+	}
+
+	if modified {
+		c.Request.URL.RawQuery = query.Encode()
+	}
 }
 
 type CustomClaims struct {

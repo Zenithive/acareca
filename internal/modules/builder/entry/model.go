@@ -102,11 +102,7 @@ type RsEntryValue struct {
 
 type Filter struct {
 	ClinicID *string `form:"clinic_id"`
-	Search   *string `form:"search"`
-	SortBy   *string `form:"sort_by"`
-	OrderBy  *string `form:"order_by"`
-	Limit    *int    `form:"limit"`
-	Offset   *int    `form:"offset"`
+	common.Filter
 }
 
 // RsTransactionRow is a flat, one-row-per-entry-value transaction response.
@@ -207,7 +203,7 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 		filters["date_to"] = *f.DateTo
 		operators["date_to"] = common.OpLt
 	}
-	return common.NewFilter(nil, filters, operators, f.Limit, f.Offset)
+	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset)
 }
 
 func (f *Filter) MapToFilter() common.Filter {
