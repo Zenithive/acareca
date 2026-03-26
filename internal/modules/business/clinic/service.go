@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -32,11 +31,10 @@ type service struct {
 	repo      Repository
 	auditSvc  audit.Service
 	limitsSvc limits.Service
-	n         notification.Service
 }
 
-func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service, n notification.Service) Service {
-	return &service{db: db, repo: repo, auditSvc: auditSvc, limitsSvc: limits.NewService(db), n: n}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc, limitsSvc: limits.NewService(db)}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
@@ -182,11 +180,6 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
-
-	// Notification for "account -> practitioner" updates (notification service will skip self).
-	if s.n != nil {
-		_ = s.n.NotifyClinicUpdated(ctx, notification.ActorUserIDFromAudit(ctx), result.ID)
-	}
 
 	return result, nil
 }
@@ -537,10 +530,6 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		UserAgent:  meta.UserAgent,
 	})
 
-	if s.n != nil {
-		_ = s.n.NotifyClinicUpdated(ctx, notification.ActorUserIDFromAudit(ctx), result.ID)
-	}
-
 	return result, nil
 }
 
@@ -636,13 +625,6 @@ func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUI
 
 	if err != nil {
 		return nil, fmt.Errorf("bulk update clinics transaction failed: %w", err)
-	}
-
-	if s.n != nil {
-		actorUserID := notification.ActorUserIDFromAudit(ctx)
-		for _, cl := range results {
-			_ = s.n.NotifyClinicUpdated(ctx, actorUserID, cl.ID)
-		}
 	}
 
 	return results, nil

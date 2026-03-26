@@ -116,24 +116,41 @@ func (p *SubscriptionPermission) ToRs() *RsSubscriptionPermission {
 }
 
 type Filter struct {
-	common.QueryFilter
-	Id   *string `form:"id"`
-	Name *string `form:"name"`
+	Id      *string `form:"id"`
+	Name    *string `form:"name"`
+	Search  *string `form:"search"`
+	SortBy  *string `form:"sort_by"`
+	OrderBy *string `form:"order_by"`
+	Limit   *int    `form:"limit"`
+	Offset  *int    `form:"offset"`
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
-	fields := map[string]interface{}{}
+	filters := map[string]interface{}{}
 	if filter.Id != nil {
 		id, err := uuid.Parse(*filter.Id)
 		if err != nil {
 			fmt.Println("invalid subscription_id: %w", err)
-		} else {
-			fields["id"] = id
 		}
+		filters["id"] = uuid.UUID(id)
 	}
 	if filter.Name != nil {
-		fields["name"] = *filter.Name
+		filters["name"] = *filter.Name
 	}
 
-	return common.ParseQueryFilter(filter.QueryFilter, fields, nil, "created_at")
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+
+	return f
 }

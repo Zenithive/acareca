@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -33,20 +32,16 @@ const (
 type service struct {
 	repo   Repository
 	apiKey string // Resend API Key
-	n      notification.Service
 }
 
-func NewService(repo Repository, apiKey string, n notification.Service) Service {
+func NewService(repo Repository, apiKey string) Service {
 	return &service{
 		repo:   repo,
 		apiKey: apiKey,
-		n:      n,
 	}
 }
 
 func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req *RqSendInvitation) (*RsInvitation, error) {
-	actorUserID := notification.ActorUserIDFromAudit(ctx)
-
 	// Fetch Practitioner Name for the email
 	senderName, err := s.repo.GetPractitionerName(ctx, practitionerID)
 	if err != nil {
@@ -78,12 +73,6 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	// Save to Database
 	if err := s.repo.Create(ctx, invite); err != nil {
 		return nil, fmt.Errorf("[DEBUG] failed to save invite: %w", err)
-	}
-
-	// Create in-app notification for the invitee (if user exists).
-	// If the invitee hasn't registered yet, this is a no-op for now.
-	if s.n != nil {
-		_ = s.n.NotifyInviteSent(ctx, actorUserID, practitionerID, invite.ID, invite.Email, senderName)
 	}
 
 	// Format the URL

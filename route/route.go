@@ -66,13 +66,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	accountantRepo := accountant.NewRepository(dbConn)
 	accountantSvc := accountant.NewService(accountantRepo)
 
-	// notification (in-app)
-	notificationRepo := notification.NewRepository(dbConn)
-	notificationSvc := notification.NewService(notificationRepo)
-
 	// invitation
 	invitationRepo := invitation.NewRepository(dbConn)
-	invitationSvc := invitation.NewService(invitationRepo, cfg.ResendAPIKey, notificationSvc)
+	invitationSvc := invitation.NewService(invitationRepo, cfg.ResendAPIKey)
 	invitationHandler := invitation.NewHandler(invitationSvc)
 	invitation.RegisterRoutes(v1, invitationHandler, cfg)
 
@@ -113,7 +109,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	// clinic
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, auditSvc, notificationSvc)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, auditSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
@@ -139,14 +135,14 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
 
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
-	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc, notificationSvc)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc)
 	formHandler := form.NewHandler(formSvc)
 	form.RegisterRoutes(formGroup, formHandler)
 
 	entryGroup := v1.Group("/entry")
 	entryGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, notificationSvc)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc)
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entry.RegisterRoutes(entryGroup, entriesHandler)

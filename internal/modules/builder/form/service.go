@@ -11,7 +11,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -35,12 +34,11 @@ type service struct {
 	entryRepo  entry.IRepository
 	coaSvc     coa.Service
 	auditSvc   audit.Service
-	n          notification.Service
 	clinicSvc  interface{} // Will be clinic.Service but avoiding circular import
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, n notification.Service) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, n: n}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
@@ -121,10 +119,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
-
-	if s.n != nil {
-		_ = s.n.NotifyFormUpdated(ctx, notification.ActorUserIDFromAudit(ctx), created.ID)
-	}
 
 	return created, syncResult, nil
 }
@@ -256,10 +250,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		UserAgent:   meta.UserAgent,
 	})
 
-	if s.n != nil {
-		_ = s.n.NotifyFormUpdated(ctx, notification.ActorUserIDFromAudit(ctx), updated.ID)
-	}
-
 	return updated, syncResult, nil
 }
 
@@ -374,11 +364,14 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error) {
 	// Pass the request to the detail service and return the consolidated result
 	return s.detailSvc.List(ctx, detail.Filter{
-		QueryFilter: filter.QueryFilter,
-		ClinicID:    filter.ClinicID,
-		FormName:    filter.FormName,
-		Status:      filter.Status,
-		Method:      filter.Method,
+		ClinicID:  filter.ClinicID,
+		FormName:  filter.FormName,
+		Status:    filter.Status,
+		Method:    filter.Method,
+		SortBy:    filter.SortBy,
+		SortOrder: filter.SortOrder,
+		Limit:     filter.Limit,
+		Offset:    filter.Offset,
 	}, practitionerID)
 }
 

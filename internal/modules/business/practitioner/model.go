@@ -77,36 +77,54 @@ func (p *PractitionerWithUser) ToRs() *RsPractitioner {
 }
 
 type Filter struct {
-	common.QueryFilter
 	ID        *uuid.UUID `form:"id"`
 	Email     *string    `form:"email"`
 	FirstName *string    `form:"first_name"`
 	LastName  *string    `form:"last_name"`
 	Phone     *string    `form:"phone"`
 	ABN       *string    `form:"abn"`
+	Search    *string    `form:"search"`
+	Limit     *int       `form:"limit"`
+	Offset    *int       `form:"offset"`
+	SortBy    *string    `form:"sort_by"`
+	OrderBy   *string    `form:"order_by"`
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
-	fields := map[string]interface{}{}
+	filters := map[string]interface{}{}
 
 	if filter.ID != nil {
-		fields["p.id"] = *filter.ID
+		filters["p.id"] = *filter.ID
 	}
 	if filter.Email != nil {
-		fields["u.email"] = *filter.Email
+		filters["u.email"] = *filter.Email
 	}
 	if filter.FirstName != nil {
-		fields["u.first_name"] = *filter.FirstName
+		filters["u.first_name"] = *filter.FirstName
 	}
 	if filter.LastName != nil {
-		fields["u.last_name"] = *filter.LastName
+		filters["u.last_name"] = *filter.LastName
 	}
 	if filter.Phone != nil {
-		fields["u.phone"] = *filter.Phone
+		filters["u.phone"] = *filter.Phone
 	}
 	if filter.ABN != nil {
-		fields["p.abn"] = *filter.ABN
+		filters["p.abn"] = *filter.ABN
 	}
 
-	return common.ParseQueryFilter(filter.QueryFilter, fields, nil, "created_at")
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+
+	return f
 }

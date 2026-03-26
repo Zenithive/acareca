@@ -8,49 +8,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// QueryFilter is a reusable struct for binding common list query params.
-// Embed this in module-level filter structs or use ParseQueryFilter directly.
-type QueryFilter struct {
-	Search  *string `form:"search"`
-	SortBy  *string `form:"sort_by"`
-	OrderBy *string `form:"order_by"`
-	Limit   *int    `form:"limit"`
-	Page    *int    `form:"page"` // 1-based page number
-}
-
-// ParseQueryFilter converts QueryFilter into a common.Filter.
-// fields: map of field -> value (nil values are skipped).
-// operators: optional custom operators per field.
-// defaultSort: column name to sort by when SortBy is not provided.
-func ParseQueryFilter(q QueryFilter, fields map[string]interface{}, operators map[string]Operator, defaultSort string) Filter {
-	// Convert page to offset
-	var offsetPtr *int
-	if q.Page != nil && *q.Page > 1 {
-		l := 10
-		if q.Limit != nil && *q.Limit > 0 {
-			l = *q.Limit
-		}
-		offset := (*q.Page - 1) * l
-		offsetPtr = &offset
-	}
-
-	f := NewFilter(q.Search, fields, operators, q.Limit, offsetPtr)
-
-	if q.SortBy != nil && *q.SortBy != "" {
-		f.SortBy = *q.SortBy
-	} else if defaultSort != "" {
-		f.SortBy = defaultSort
-	}
-
-	if q.OrderBy != nil && *q.OrderBy != "" {
-		f.OrderBy = *q.OrderBy
-	} else {
-		f.OrderBy = "DESC"
-	}
-
-	return f
-}
-
 type Operator string
 
 const (

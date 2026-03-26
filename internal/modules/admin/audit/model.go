@@ -71,7 +71,6 @@ type LogEntry struct {
 }
 
 type Filter struct {
-	common.QueryFilter
 	PracticeID *string    `form:"practice_id"`
 	UserID     *string    `form:"user_id"`
 	Module     *string    `form:"module"`
@@ -80,36 +79,55 @@ type Filter struct {
 	EntityID   *string    `form:"entity_id"`
 	StartDate  *time.Time `form:"start_date" time_format:"2006-01-02T15:04:05Z07:00"`
 	EndDate    *time.Time `form:"end_date" time_format:"2006-01-02T15:04:05Z07:00"`
+	Search     *string    `form:"search"`
+	SortBy     *string    `form:"sort_by"`
+	OrderBy    *string    `form:"order_by"`
+	Limit      *int       `form:"limit"`
+	Offset     *int       `form:"offset"`
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
-	fields := map[string]interface{}{}
+	filters := map[string]interface{}{}
 	if filter.PracticeID != nil {
-		fields["practice_id"] = *filter.PracticeID
+		filters["practice_id"] = *filter.PracticeID
 	}
 	if filter.UserID != nil {
-		fields["user_id"] = *filter.UserID
+		filters["user_id"] = *filter.UserID
 	}
 	if filter.Module != nil {
-		fields["module"] = *filter.Module
+		filters["module"] = *filter.Module
 	}
 	if filter.Action != nil {
-		fields["action"] = *filter.Action
+		filters["action"] = *filter.Action
 	}
 	if filter.EntityType != nil {
-		fields["entity_type"] = *filter.EntityType
+		filters["entity_type"] = *filter.EntityType
 	}
 	if filter.EntityID != nil {
-		fields["entity_id"] = *filter.EntityID
+		filters["entity_id"] = *filter.EntityID
 	}
 	if filter.StartDate != nil {
-		fields["created_at_gte"] = *filter.StartDate
+		filters["created_at_gte"] = *filter.StartDate
 	}
 	if filter.EndDate != nil {
-		fields["created_at_lte"] = *filter.EndDate
+		filters["created_at_lte"] = *filter.EndDate
 	}
 
-	return common.ParseQueryFilter(filter.QueryFilter, fields, nil, "created_at")
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+
+	return f
 }
 
 func (a *AuditLog) ToRs() *RsAuditLog {

@@ -89,32 +89,48 @@ func (s *PractitionerSubscription) ToRs() *RsPractitionerSubscription {
 }
 
 type Filter struct {
-	common.QueryFilter
 	PractitionerID *uuid.UUID `form:"practitioner_id"`
 	SubscriptionID *int       `form:"subscription_id"`
 	Status         *Status    `form:"status"`
 	FromDate       *time.Time `form:"from_date"`
 	ToDate         *time.Time `form:"to_date"`
+	Search         *string    `form:"search"`
+	Limit          *int       `form:"limit"`
+	Offset         *int       `form:"offset"`
+	SortBy         *string    `form:"sort_by"`
+	OrderBy        *string    `form:"order_by"`
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
-	fields := map[string]interface{}{}
+	filters := map[string]interface{}{}
 
 	if filter.PractitionerID != nil {
-		fields["practitioner_id"] = *filter.PractitionerID
+		filters["practitioner_id"] = *filter.PractitionerID
 	}
 	if filter.SubscriptionID != nil {
-		fields["subscription_id"] = *filter.SubscriptionID
+		filters["subscription_id"] = *filter.SubscriptionID
 	}
 	if filter.Status != nil {
-		fields["status"] = string(*filter.Status)
+		filters["status"] = string(*filter.Status)
 	}
 	if filter.FromDate != nil {
-		fields["created_at_gte"] = *filter.FromDate
+		filters["created_at_gte"] = *filter.FromDate
 	}
 	if filter.ToDate != nil {
-		fields["created_at_lte"] = *filter.ToDate
+		filters["created_at_lte"] = *filter.ToDate
 	}
 
-	return common.ParseQueryFilter(filter.QueryFilter, fields, nil, "created_at")
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	if filter.SortBy != nil {
+		f.SortBy = *filter.SortBy
+	} else {
+		f.SortBy = "created_at"
+	}
+
+	if filter.OrderBy != nil {
+		f.OrderBy = *filter.OrderBy
+	} else {
+		f.OrderBy = "DESC"
+	}
+	return f
 }

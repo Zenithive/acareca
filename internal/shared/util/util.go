@@ -138,26 +138,17 @@ func RunInTransaction(ctx context.Context, db *sqlx.DB, fn func(ctx context.Cont
 }
 
 type RsList struct {
-	Items      interface{} `json:"items"`
-	Total      int         `json:"total"`
-	Page       int         `json:"page"`
-	Limit      int         `json:"limit"`
-	TotalPages int         `json:"total_pages"`
+	Items interface{} `json:"items"`
+	Total int         `json:"total"`
+	Page  int         `json:"page"`
+	Limit int         `json:"limit"`
 }
 
-// MapToList populates the list response. Pass offset (not page number) and limit.
-func (rs *RsList) MapToList(data interface{}, total, offset, limit int) {
+func (rs *RsList) MapToList(data interface{}, total, page, limit int) {
 	rs.Items = data
 	rs.Total = total
+	rs.Page = page
 	rs.Limit = limit
-
-	if limit > 0 {
-		rs.Page = (offset / limit) + 1
-		rs.TotalPages = int(math.Ceil(float64(total) / float64(limit)))
-	} else {
-		rs.Page = 1
-		rs.TotalPages = 1
-	}
 }
 
 func GetMonthRange(monthName string) (time.Time, time.Time, error) {

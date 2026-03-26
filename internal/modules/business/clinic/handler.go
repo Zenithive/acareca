@@ -75,7 +75,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Param sort_by query string false "Sort field (name, is_active, created_at)"
 // @Param order_by query string false "Sort direction (ASC, DESC)"
 // @Param limit query int false "Page size (default 10, max 100)"
-// @Param page query int false "Page number (1-based, default 1)"
+// @Param offset query int false "Page offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError

@@ -11,7 +11,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -37,11 +36,10 @@ type Service struct {
 	detailSvc  detail.IService
 	versionSvc version.IService
 	auditSvc   audit.Service
-	n          notification.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, n notification.Service) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, n: n}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc}
 }
 
 // Create implements [IService].
@@ -97,10 +95,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		UserAgent:  meta.UserAgent,
 	})
 
-	if s.n != nil {
-		_ = s.n.NotifyTransactionCreated(ctx, notification.ActorUserIDFromAudit(ctx), created.ID)
-	}
-
 	return result, nil
 }
 
@@ -121,7 +115,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if err != nil {
 		return nil, err
 	}
-	beforeStatus := existing.Status
 	beforeState := existing.ToRs(values)
 	if req.Status != nil {
 		existing.Status = *req.Status
@@ -164,10 +157,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		IPAddress:   meta.IPAddress,
 		UserAgent:   meta.UserAgent,
 	})
-
-	if s.n != nil && req.Status != nil && *req.Status != beforeStatus {
-		_ = s.n.NotifyTransactionStatusChanged(ctx, notification.ActorUserIDFromAudit(ctx), updated.ID, beforeStatus, updated.Status)
-	}
 
 	return result, nil
 }
