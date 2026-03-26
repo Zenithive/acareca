@@ -19,6 +19,7 @@ type Repository interface {
 	GetPractitionerName(ctx context.Context, practitionerID uuid.UUID) (string, error)
 
 	GetAccountantIDByEmail(ctx context.Context, email string) (*uuid.UUID, error)
+	GetUserIDByEmail(ctx context.Context, email string) (*uuid.UUID, error)
 	List(ctx context.Context, f common.Filter) ([]*Invitation, error)
 	Count(ctx context.Context, f common.Filter) (int, error)
 	GetInvitationByID(ctx context.Context, id uuid.UUID) (*InvitationExtended, error)
@@ -114,6 +115,19 @@ func (r *repository) GetAccountantIDByEmail(ctx context.Context, email string) (
 		return nil, err
 	}
 	return &accountantID, nil
+}
+
+func (r *repository) GetUserIDByEmail(ctx context.Context, email string) (*uuid.UUID, error) {
+	var userID uuid.UUID
+	query := `SELECT id FROM tbl_user WHERE email = $1 LIMIT 1`
+	err := r.db.GetContext(ctx, &userID, query, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &userID, nil
 }
 
 func (r *repository) List(ctx context.Context, f common.Filter) ([]*Invitation, error) {

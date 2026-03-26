@@ -47,14 +47,17 @@ func RequireSuperadmin(check SuperadminChecker) gin.HandlerFunc {
 
 func Auth(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var tokenStr string
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		} else if q := c.Query("token"); q != "" {
+			tokenStr = q
+		} else {
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
 			c.Abort()
 			return
 		}
-
-		tokenStr := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 
 		claims := &util.CustomClaims{}
 

@@ -240,3 +240,17 @@ func GetUserID(c *gin.Context) (uuid.UUID, bool) {
 
 	return id, true
 }
+
+func GetEntityID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(EntityIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return uuid.Nil, false
+	}
+	id, ok := idVal.(uuid.UUID)
+	if !ok || id == uuid.Nil {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return uuid.Nil, false
+	}
+	return id, true
+}
