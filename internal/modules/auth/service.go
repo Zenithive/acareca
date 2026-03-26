@@ -469,7 +469,14 @@ func (s *service) sendVerificationEmail(to string, firstName string, tokenID uui
 	url := "https://api.resend.com/emails"
 	apikey := s.cfg.ResendAPIKey
 
-	verificationLink := fmt.Sprintf("https://acareca.com/verify-email?token=%s", tokenID)
+	var baseUrl string
+	if s.cfg.Env == "dev" {
+		baseUrl = s.cfg.DevUrl
+	} else {
+		baseUrl = s.cfg.LocalUrl
+	}
+
+	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
 	expiryTime := "10 minutes"
 
 	payload := map[string]interface{}{
