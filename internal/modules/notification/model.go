@@ -113,6 +113,18 @@ type Delivery struct {
 	ErrorMessage   *string        `db:"error_message"`
 }
 
+// FailedDelivery is used by the retry worker — joins delivery + notification data.
+type FailedDelivery struct {
+	NotificationID uuid.UUID `db:"notification_id"`
+	RecipientID    uuid.UUID `db:"recipient_id"`
+	RetryCount     int       `db:"retry_count"`
+	EventType      EventType `db:"event_type"`
+	EntityType     EntityType `db:"entity_type"`
+	EntityID       uuid.UUID `db:"entity_id"`
+	Payload        []byte    `db:"payload"`
+	CreatedAt      time.Time `db:"created_at"`
+}
+
 func (n *RqNotification) MapToDB() Notification {
 	return Notification{
 		ID:            n.ID,

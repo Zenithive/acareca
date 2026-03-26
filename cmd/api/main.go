@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/iamarpitzala/acareca/docs"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -117,7 +118,12 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 	r.Use(middleware.ClientInfo())
-	auditSvc := route.RegisterRoutes(r, cfg)
+	auditSvc, notifier, notificationRepo := route.RegisterRoutes(r, cfg)
+
+	// Start the in_app delivery retry worker
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,

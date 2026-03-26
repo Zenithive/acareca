@@ -24,6 +24,7 @@ type Repository interface {
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	// Delivery worker methods
+	ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error)
 	MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error
 	MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel Channel, errMsg string) error
 	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error
@@ -144,13 +145,32 @@ func (r *repository) MarkDismissed(ctx context.Context, id uuid.UUID, recipientI
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
-// ── Delivery worker methods ───────────────────────────────────────────────────
+// ListFailedInAppDeliveries returns FAILED in_app deliveries that are still under the retry cap.
+func (r *repository) ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error) {
+	const q = `
+		SELECT d.notification_id, n.recipient_id, d.retry_count,
+		       n.event_type, n.entity_type, n.entity_id, n.payload, n.created_at
+		FROM tbl_notification_delivery d
+		JOIN tbl_notification n ON n.id = d.notification_id
+		WHERE d.channel = 'in_app'
+		  AND d.status = 'FAILED'
+		  AND d.retry_count < $1
+		  AND n.status != 'DISMISSED'
+		ORDER BY n.created_at ASC
+		LIMIT $2
+	`
+	var rows []FailedDelivery
+	if err := r.db.SelectContext(ctx, &rows, q, maxRetries, limit); err != nil {
+		return nil, fmt.Errorf("list failed in_app deliveries: %w", err)
+	}
+	return rows, nil
+}
 
 func (r *repository) MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification_delivery
 		 SET status = 'DELIVERED', delivered_at = NOW(), last_attempted_at = NOW()
-		 WHERE notification_id = $1 AND channel = $2 AND status = 'PENDING'`,
+		 WHERE notification_id = $1 AND channel = $2 AND status IN ('PENDING', 'FAILED')`,
 		notificationID, channel,
 	)
 	if err != nil {
@@ -164,7 +184,7 @@ func (r *repository) MarkDeliveryFailed(ctx context.Context, notificationID uuid
 		`UPDATE tbl_notification_delivery
 		 SET status = 'FAILED', retry_count = retry_count + 1,
 		     last_attempted_at = NOW(), error_message = $3
-		 WHERE notification_id = $1 AND channel = $2 AND status = 'PENDING'`,
+		 WHERE notification_id = $1 AND channel = $2 AND status IN ('PENDING', 'DELIVERED')`,
 		notificationID, channel, errMsg,
 	)
 	if err != nil {

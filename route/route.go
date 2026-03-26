@@ -38,7 +38,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -197,6 +197,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	accountant.RegisterRoutes(v1, accountantHandler, middleware.Auth(cfg))
 
-	return auditSvc
+	return auditSvc, notifier, notificationRepo
 
 }
