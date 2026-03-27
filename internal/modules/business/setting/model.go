@@ -126,6 +126,6 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["verified"] = *filter.Verified
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 	return f
 }

@@ -5903,8 +5903,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
+                        "PUBLISHED"
                     ]
                 },
                 "super_component": {
@@ -5980,8 +5979,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
+                        "PUBLISHED"
                     ]
                 },
                 "super_component": {

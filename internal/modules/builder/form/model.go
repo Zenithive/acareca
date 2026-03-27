@@ -10,7 +10,6 @@ import (
 const (
 	StatusDraft     = "DRAFT"
 	StatusPublished = "PUBLISHED"
-	StatusArchived  = "ARCHIVED"
 )
 
 type RqBulkSyncFields struct {
@@ -39,7 +38,7 @@ type RsFormWithFieldsSyncResult struct {
 type RqCreateFormWithFields struct {
 	Name           string              `json:"name" validate:"required"`
 	Description    *string             `json:"description" validate:"omitempty"`
-	Status         string              `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Status         string              `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
 	Method         string              `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	OwnerShare     int                 `json:"owner_share" validate:"required,min=0,max=100"`
 	ClinicShare    int                 `json:"clinic_share" validate:"required,min=0,max=100"`
@@ -52,7 +51,7 @@ type RqUpdateFormWithFields struct {
 	ID             *uuid.UUID                `json:"id" validate:"omitempty,uuid"`
 	Name           *string                   `json:"name" validate:"omitempty"`
 	Description    *string                   `json:"description" validate:"omitempty"`
-	Status         *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Status         *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
 	Method         *string                   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	OwnerShare     *int                      `json:"owner_share" validate:"omitempty,min=0,max=100"`
 	ClinicShare    *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
