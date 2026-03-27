@@ -578,6 +578,16 @@ definitions:
     - name
     - owner_share
     type: object
+  form.RqUpdateFormStatus:
+    properties:
+      status:
+        enum:
+        - DRAFT
+        - PUBLISHED
+        type: string
+    required:
+    - status
+    type: object
   form.RqUpdateFormWithFields:
     properties:
       clinic_id:
@@ -3201,6 +3211,33 @@ paths:
       security:
       - BearerToken: []
       summary: Update form with fields
+      tags:
+      - form
+  /form/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle form status between DRAFT and PUBLISHED
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateFormStatus'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      summary: Update form status
       tags:
       - form
   /invite:

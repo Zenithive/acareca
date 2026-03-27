@@ -10,4 +10,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.POST("", h.CreateFormWithFields)
 	rg.PATCH("/:id", h.UpdateFormWithFields)
 	rg.DELETE("/:id", h.Delete)
+	rg.PATCH("/:id/status", h.UpdateFormStatus)
 }

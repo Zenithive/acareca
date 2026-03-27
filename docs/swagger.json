@@ -3380,6 +3380,47 @@
                 }
             }
         },
+        "/form/{id}/status": {
+            "patch": {
+                "description": "Toggle form status between DRAFT and PUBLISHED",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form"
+                ],
+                "summary": "Update form status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqUpdateFormStatus"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    }
+                }
+            }
+        },
         "/invite": {
             "get": {
                 "security": [
@@ -5867,6 +5908,21 @@
                     "type": "number",
                     "maximum": 100,
                     "minimum": 0
+                }
+            }
+        },
+        "form.RqUpdateFormStatus": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "DRAFT",
+                        "PUBLISHED"
+                    ]
                 }
             }
         },

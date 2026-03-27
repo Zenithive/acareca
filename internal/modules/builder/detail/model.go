@@ -8,7 +8,6 @@ import (
 const (
 	StatusDraft     = "DRAFT"
 	StatusPublished = "PUBLISHED"
-	StatusArchived  = "ARCHIVED"
 )
 
 type Filter struct {
@@ -147,4 +146,9 @@ type RsFormDetail struct {
 	ActiveVersionID *uuid.UUID `json:"active_version_id,omitempty"`
 	CreatedAt       string     `json:"created_at"`
 	UpdatedAt       string     `json:"updated_at"`
+}
+
+type RqUpdateFormStatus struct {
+	ID     uuid.UUID `json:"id" validate:"required"`
+	Status string    `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
 }
