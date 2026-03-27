@@ -28,15 +28,17 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -65,13 +67,20 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 	accountantRepo := accountant.NewRepository(dbConn)
 	accountantSvc := accountant.NewService(accountantRepo)
 
+	// notification (in-app list)
+	notificationRepo := notification.NewRepository(dbConn)
+
+	notifier := sharednotification.NewNotifier(dbConn)
+
+	notificationSvc := notification.NewService(notificationRepo, notifier)
+
 	// invitation
 	invitationRepo := invitation.NewRepository(dbConn)
-	invitationSvc := invitation.NewService(invitationRepo, cfg.ResendAPIKey)
+	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc)
 	invitationHandler := invitation.NewHandler(invitationSvc)
 	invitation.RegisterRoutes(v1, invitationHandler, cfg)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, invitationRepo)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
@@ -180,6 +189,14 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) audit.Service {
 
 	userSubscription.RegisterRoutes(userSubscriptionGroup, userSubscriptionHandler)
 
-	return auditSvc
+	// notification (in-app list + WebSocket)
+	notificationHandler := notification.NewHandler(notificationSvc)
+	notification.RegisterRoutes(v1, notificationHandler, notifier, cfg)
+
+	accountantHandler := accountant.NewHandler(accountantSvc)
+
+	accountant.RegisterRoutes(v1, accountantHandler, middleware.Auth(cfg))
+
+	return auditSvc, notifier, notificationRepo
 
 }

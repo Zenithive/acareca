@@ -11,11 +11,12 @@ import (
 type Operator string
 
 const (
-	OpEq   Operator = "eq"
-	OpLike Operator = "like"
-	OpIn   Operator = "in"
-	OpGt   Operator = "gt"
-	OpLt   Operator = "lt"
+	OpEq    Operator = "eq"
+	OpLike  Operator = "like"
+	OpIn    Operator = "in"
+	OpGt    Operator = "gt"
+	OpLt    Operator = "lt"
+	OpNotEq Operator = "neq"
 )
 
 type Condition struct {
@@ -25,12 +26,12 @@ type Condition struct {
 }
 
 type Filter struct {
-	Search  *string
+	Search  *string `form:"search"`
 	Where   []Condition
-	Limit   int
-	Offset  int
-	SortBy  string
-	OrderBy string
+	Limit   *int    `form:"limit"`
+	Offset  *int    `form:"offset"`
+	SortBy  *string `form:"sort_by"`
+	OrderBy *string `form:"order_by"`
 }
 
 func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchCols []string, count bool) (string, []interface{}) {
@@ -65,6 +66,10 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 			query, inArgs, _ := sqlx.In(fmt.Sprintf("%s IN (?)", col), c.Value)
 			conditions = append(conditions, query)
 			args = append(args, inArgs...)
+
+		case OpNotEq:
+			conditions = append(conditions, fmt.Sprintf("%s != ?", col))
+			args = append(args, c.Value)
 		}
 	}
 
@@ -98,22 +103,37 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 	// 🔥 NORMAL MODE
 	query := base
 
+	var sortBy string
+	var OrderBy string
+
+	if f.SortBy != nil {
+		sortBy = *f.SortBy
+	} else {
+		sortBy = "created_at"
+	}
+
+	if f.OrderBy != nil {
+		OrderBy = *f.OrderBy
+	} else {
+		OrderBy = "DESC"
+	}
+
 	// Sorting
-	if col, ok := allowedColumns[f.SortBy]; ok {
+	if col, ok := allowedColumns[sortBy]; ok {
 		order := "ASC"
-		if strings.ToUpper(f.OrderBy) == "DESC" {
+		if strings.ToUpper(OrderBy) == "DESC" {
 			order = "DESC"
 		}
 		query += fmt.Sprintf(" ORDER BY %s %s", col, order)
 	}
 
 	// Pagination
-	if f.Limit > 0 {
+	if f.Limit != nil {
 		query += " LIMIT ?"
 		args = append(args, f.Limit)
 	}
 
-	if f.Offset > 0 {
+	if f.Offset != nil {
 		query += " OFFSET ?"
 		args = append(args, f.Offset)
 	}
@@ -180,9 +200,9 @@ func NewFilter(search *string, filters map[string]interface{}, operators map[str
 	return Filter{
 		Search:  search,
 		Where:   where,
-		Limit:   l,
-		Offset:  o,
-		SortBy:  "",
-		OrderBy: "",
+		Limit:   &l,
+		Offset:  &o,
+		SortBy:  nil,
+		OrderBy: nil,
 	}
 }

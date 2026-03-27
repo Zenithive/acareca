@@ -141,3 +141,12 @@ type VerificationToken struct {
 	CreatedAt time.Time `db:"created_at"`
 	ExpiresAt time.Time `db:"expires_at"`
 }
+
+type RqForgotPassword struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type RqResetPassword struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}

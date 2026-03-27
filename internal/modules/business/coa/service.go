@@ -46,7 +46,7 @@ func (s *service) ListAccountTypes(ctx context.Context, f *Filter) (*util.RsList
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(data, len(data), ft.Offset, ft.Limit)
+	rsList.MapToList(data, len(data), *ft.Offset, *ft.Limit)
 	return &rsList, nil
 }
 
@@ -71,7 +71,7 @@ func (s *service) ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(data, len(data), ft.Offset, ft.Limit)
+	rsList.MapToList(data, len(data), *ft.Offset, *ft.Limit)
 	return &rsList, nil
 }
 
@@ -109,7 +109,7 @@ func (s *service) ListChartOfAccount(ctx context.Context, practitionerID uuid.UU
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 
 	return &rsList, nil
 }

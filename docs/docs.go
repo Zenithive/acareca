@@ -19,7 +19,15 @@ const docTemplate = `{
     "paths": {
         "/accountant/": {
             "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Retrieves a list of all registered users for the accountant view.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -35,6 +43,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/accountant.RsAccountantUser"
                             }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
@@ -819,6 +833,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/forgot-password": {
+            "post": {
+                "description": "Sends a reset link to the user's email if they exist.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Initiate password reset",
+                "parameters": [
+                    {
+                        "description": "Email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqForgotPassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/google": {
             "get": {
                 "description": "get Google OAuth consent-screen URL",
@@ -998,6 +1040,34 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/reset-password": {
+            "post": {
+                "description": "Updates the user's password using the token received via email.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Reset password using token",
+                "parameters": [
+                    {
+                        "description": "Token and New Password",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqResetPassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     }
                 }
@@ -3313,6 +3383,99 @@ const docTemplate = `{
                 }
             }
         },
+        "/invite": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieve a paginated list of invitations. If logged in as a Practitioner, it shows sent invites. If an Accountant, it shows received invites.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "List invitations",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email address",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (SENT, ACCEPTED, COMPLETED, REJECTED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fuzzy search by email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to return (default 10, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Field to sort by (e.g., created_at, email)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Order of sorting (ASC or DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/invite/": {
             "post": {
                 "security": [
@@ -3346,7 +3509,53 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/invitation.RsInvitation"
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/process": {
+            "post": {
+                "description": "Accept or Reject an invitation via POST.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Process invitation action",
+                "parameters": [
+                    {
+                        "description": "Token ID and Action (accept/reject)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invitation.RqProcessAction"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -3366,14 +3575,14 @@ const docTemplate = `{
         },
         "/invite/{id}": {
             "get": {
-                "description": "Processes the invitation link.",
+                "description": "Check if an invitation exists and if the user is already registered.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "invitation"
                 ],
-                "summary": "Process invitation",
+                "summary": "Get invitation details",
                 "parameters": [
                     {
                         "type": "string",
@@ -3381,11 +3590,111 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/{id}/resend": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Invalidates the old invitation and sends a new one to the same email.",
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Resend an invitation",
+                "parameters": [
                     {
                         "type": "string",
-                        "description": "Set to 'reject' to decline the invitation",
-                        "name": "action",
+                        "description": "Invitation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a paginated list of notifications for the authenticated entity, along with unread count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "List notifications",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by status (UNREAD, READ, DISMISSED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
                         "in": "query"
                     }
                 ],
@@ -3393,11 +3702,127 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/invitation.RsInviteProcess"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/notification.RsListNotification"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/{id}/dismissed": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks a specific notification as DISMISSED for the authenticated entity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Dismiss a notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/{id}/read": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks a specific notification as READ for the authenticated entity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Mark notification as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -4603,6 +5028,12 @@ const docTemplate = `{
         "accountant.RsAccountantUser": {
             "type": "object",
             "properties": {
+                "clinics": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -4615,8 +5046,8 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_superadmin": {
-                    "type": "boolean"
+                "invitation_status": {
+                    "type": "string"
                 },
                 "last_name": {
                     "type": "string"
@@ -4638,6 +5069,17 @@ const docTemplate = `{
                 "new_password": {
                     "type": "string",
                     "minLength": 8
+                }
+            }
+        },
+        "auth.RqForgotPassword": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
                 }
             }
         },
@@ -4663,6 +5105,22 @@ const docTemplate = `{
             ],
             "properties": {
                 "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqResetPassword": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "token": {
                     "type": "string"
                 }
             }
@@ -5512,20 +5970,24 @@ const docTemplate = `{
                 }
             }
         },
-        "invitation.InvitationStatus": {
-            "type": "string",
-            "enum": [
-                "SENT",
-                "ACCEPTED",
-                "COMPLETED",
-                "REJECTED"
+        "invitation.RqProcessAction": {
+            "type": "object",
+            "required": [
+                "action",
+                "token_id"
             ],
-            "x-enum-varnames": [
-                "StatusSent",
-                "StatusAccepted",
-                "StatusCompleted",
-                "StatusRejected"
-            ]
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "ACCEPT",
+                        "REJECT"
+                    ]
+                },
+                "token_id": {
+                    "type": "string"
+                }
+            }
         },
         "invitation.RqSendInvitation": {
             "type": "object",
@@ -5538,39 +6000,134 @@ const docTemplate = `{
                 }
             }
         },
-        "invitation.RsInvitation": {
+        "notification.ActorType": {
+            "type": "string",
+            "enum": [
+                "PRACTITIONER",
+                "ACCOUNTANT",
+                "SYSTEM"
+            ],
+            "x-enum-varnames": [
+                "ActorPractitioner",
+                "ActorAccountant",
+                "ActorSystem"
+            ]
+        },
+        "notification.EntityType": {
+            "type": "string",
+            "enum": [
+                "clinic",
+                "form",
+                "transaction",
+                "document",
+                "invite"
+            ],
+            "x-enum-varnames": [
+                "EntityClinic",
+                "EntityForm",
+                "EntityTransaction",
+                "EntityDocument",
+                "EntityInvite"
+            ]
+        },
+        "notification.EventType": {
+            "type": "string",
+            "enum": [
+                "invite.sent",
+                "invite.accepted",
+                "invite.declined",
+                "clinic.updated",
+                "form.submitted",
+                "form.updated",
+                "transaction.created",
+                "transaction.status_changed",
+                "document.uploaded"
+            ],
+            "x-enum-varnames": [
+                "EventInviteSent",
+                "EventInviteAccepted",
+                "EventInviteDeclined",
+                "EventClinicUpdated",
+                "EventFormSubmitted",
+                "EventFormUpdated",
+                "EventTransactionCreated",
+                "EventTransactionUpdated",
+                "EventDocumentUploaded"
+            ]
+        },
+        "notification.Notification": {
             "type": "object",
             "properties": {
-                "email": {
+                "createdAt": {
                     "type": "string"
                 },
-                "expires_at": {
+                "entityID": {
                     "type": "string"
+                },
+                "entityType": {
+                    "$ref": "#/definitions/notification.EntityType"
+                },
+                "eventType": {
+                    "$ref": "#/definitions/notification.EventType"
                 },
                 "id": {
                     "type": "string"
                 },
-                "invite_link": {
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "readedAt": {
                     "type": "string"
                 },
+                "recipientID": {
+                    "type": "string"
+                },
+                "recipientType": {
+                    "$ref": "#/definitions/notification.ActorType"
+                },
+                "senderID": {
+                    "type": "string"
+                },
+                "senderType": {
+                    "$ref": "#/definitions/notification.ActorType"
+                },
                 "status": {
-                    "$ref": "#/definitions/invitation.InvitationStatus"
+                    "$ref": "#/definitions/notification.Status"
                 }
             }
         },
-        "invitation.RsInviteProcess": {
+        "notification.RsListNotification": {
             "type": "object",
             "properties": {
-                "invitation_id": {
-                    "type": "string"
+                "notifications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/notification.Notification"
+                    }
                 },
-                "is_found": {
-                    "type": "boolean"
+                "total": {
+                    "type": "integer"
                 },
-                "status": {
-                    "$ref": "#/definitions/invitation.InvitationStatus"
+                "unread_count": {
+                    "type": "integer"
                 }
             }
+        },
+        "notification.Status": {
+            "type": "string",
+            "enum": [
+                "UNREAD",
+                "READ",
+                "DISMISSED"
+            ],
+            "x-enum-varnames": [
+                "StatusUnread",
+                "StatusRead",
+                "StatusDismissed"
+            ]
         },
         "pl.RsPLAccount": {
             "type": "object",

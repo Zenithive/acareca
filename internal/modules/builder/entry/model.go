@@ -88,9 +88,9 @@ type RsFormEntry struct {
 	UpdatedAt     *string        `json:"updated_at"`
 
 	// Populated for INDEPENDENT_CONTRACTOR forms only.
-	Commission       *float64 `json:"commission,omitempty"`
-	GstOnCommission  *float64 `json:"gst_on_commission,omitempty"`
-	PaymentReceived  *float64 `json:"payment_received,omitempty"`
+	Commission      *float64 `json:"commission,omitempty"`
+	GstOnCommission *float64 `json:"gst_on_commission,omitempty"`
+	PaymentReceived *float64 `json:"payment_received,omitempty"`
 }
 
 type RsEntryValue struct {
@@ -102,11 +102,7 @@ type RsEntryValue struct {
 
 type Filter struct {
 	ClinicID *string `form:"clinic_id"`
-	Search   *string `form:"search"`
-	SortBy   *string `form:"sort_by"`
-	OrderBy  *string `form:"order_by"`
-	Limit    *int    `form:"limit"`
-	Offset   *int    `form:"offset"`
+	common.Filter
 }
 
 // RsTransactionRow is a flat, one-row-per-entry-value transaction response.
@@ -161,8 +157,7 @@ type TransactionFilter struct {
 	DateTo         *string `form:"date_to"`
 	VersionID      *string `form:"version_id"`
 	Status         *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Limit          *int    `form:"limit"`
-	Offset         *int    `form:"offset"`
+	common.Filter
 }
 
 func (f *TransactionFilter) ToCommonFilter() common.Filter {
@@ -208,7 +203,7 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 		filters["date_to"] = *f.DateTo
 		operators["date_to"] = common.OpLt
 	}
-	return common.NewFilter(nil, filters, operators, f.Limit, f.Offset)
+	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset)
 }
 
 func (f *Filter) MapToFilter() common.Filter {
@@ -223,16 +218,6 @@ func (f *Filter) MapToFilter() common.Filter {
 
 	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset)
 
-	if f.SortBy != nil {
-		cf.SortBy = *f.SortBy
-	} else {
-		cf.SortBy = "created_at"
-	}
-	if f.OrderBy != nil {
-		cf.OrderBy = *f.OrderBy
-	} else {
-		cf.OrderBy = "DESC"
-	}
 	return cf
 }
 

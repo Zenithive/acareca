@@ -12,33 +12,57 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/iamarpitzala/acareca/pkg/config"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
 
 type Service interface {
 	SendInvite(ctx context.Context, practitionerID uuid.UUID, req *RqSendInvitation) (*RsInvitation, error)
-	ProcessInvitation(ctx context.Context, inviteID uuid.UUID, action string) (*RsInviteProcess, error)
-	FinalizeRegistrationInternal(ctx context.Context, email string, userID uuid.UUID) error
+	GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteDetails, error)
+	ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error)
+	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
+	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
+	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
 }
+
+const (
+	ActionAccept = "ACCEPT"
+	ActionReject = "REJECT"
+)
 
 type service struct {
-	repo   Repository
-	apiKey string // Resend API Key
+	repo         Repository
+	cfg          *config.Config
+	notification notification.Service
 }
 
-func NewService(repo Repository, apiKey string) Service {
+func NewService(repo Repository, cfg *config.Config, notification notification.Service) Service {
 	return &service{
-		repo:   repo,
-		apiKey: apiKey,
+		repo:         repo,
+		cfg:          cfg,
+		notification: notification,
 	}
 }
 
 func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req *RqSendInvitation) (*RsInvitation, error) {
-	// Fetch Practitioner Name for the email
 	senderName, err := s.repo.GetPractitionerName(ctx, practitionerID)
 	if err != nil {
-		return nil, err // If we can't identify the sender, we shouldn't send the invite
+		return nil, err
+	}
+
+	var baseURL string
+	if s.cfg.Env == "dev" {
+		baseURL = s.cfg.DevUrl
+	} else {
+		baseURL = s.cfg.LocalUrl
+	}
+
+	if baseURL == "" {
+		fmt.Printf("[CRITICAL] Configuration Error: Frontend URL is missing for ENV=%s\n", s.cfg.Env)
+		return nil, fmt.Errorf("system configuration error: frontend application URL is not defined")
 	}
 
 	invite := &Invitation{
@@ -49,22 +73,45 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		ExpiresAt:      time.Now().AddDate(0, 0, 7),
 	}
 
-	// Save to Database
 	if err := s.repo.Create(ctx, invite); err != nil {
 		return nil, fmt.Errorf("[DEBUG] failed to save invite: %w", err)
 	}
 
-	// Format the URL
-	inviteLink := fmt.Sprintf("https://acareca.com/invite/%s", invite.ID)
+	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", baseURL, invite.ID)
 
-	// Trigger Email via Resend
 	go func() {
-		// We run this in a goroutine so the API response isn't delayed by the email sending
-		err := s.sendEmailViaResend(invite.Email, inviteLink, senderName)
-		if err != nil {
+		if err := s.sendEmailViaResend(invite.Email, inviteLink, senderName); err != nil {
 			fmt.Printf("[DEBUG] Resend Error: %v\n", err)
 		}
 	}()
+
+	// Notify the invitee (accountant) if they already have an account
+	if s.notification != nil {
+		recipientID, _ := s.repo.GetAccountantIDByEmail(ctx, invite.Email)
+		if recipientID != nil && *recipientID != practitionerID {
+			body := json.RawMessage(fmt.Sprintf(`"%s invited you to collaborate."`, senderName))
+			extraData := map[string]interface{}{"invite_id": invite.ID.String()}
+			payload := notification.BuildNotificationPayload("Invitation received", body, nil, nil, &extraData)
+			payloadBytes, _ := json.Marshal(payload)
+			senderType := notification.ActorPractitioner
+			rq := notification.RqNotification{
+				ID:            uuid.New(),
+				RecipientID:   *recipientID,
+				RecipientType: notification.ActorAccountant,
+				SenderID:      &practitionerID,
+				SenderType:    &senderType,
+				EventType:     notification.EventInviteSent,
+				EntityType:    notification.EntityInvite,
+				EntityID:      invite.ID,
+				Status:        notification.StatusUnread,
+				Payload:       payloadBytes,
+				CreatedAt:     time.Now(),
+			}
+			if err := s.notification.Publish(ctx, rq); err != nil {
+				fmt.Printf("[ERROR] failed to publish invite.sent notification: %v\n", err)
+			}
+		}
+	}
 
 	return &RsInvitation{
 		ID:         invite.ID,
@@ -75,19 +122,14 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	}, nil
 }
 
-// sendEmailViaResend handles the HTTP call to Resend's API
 func (s *service) sendEmailViaResend(to string, link string, senderName string) error {
 	url := "https://api.resend.com/emails"
 
-	// Extract name from email (e.g., "john.doe@gmail.com" -> "John Doe")
 	namePart := strings.Split(to, "@")[0]
-	// Replace dots or underscores with spaces for a cleaner look
 	namePart = strings.ReplaceAll(namePart, ".", " ")
 	namePart = strings.ReplaceAll(namePart, "_", " ")
-	// Capitalize the first letter of each word
 	recipientName := cases.Title(language.English).String(namePart)
 
-	// Resend API payload structure
 	payload := map[string]interface{}{
 		"from":    "Acareca <hardik@zenithive.digital>",
 		"to":      []string{to},
@@ -119,7 +161,7 @@ func (s *service) sendEmailViaResend(to string, link string, senderName string) 
 		return err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	req.Header.Set("Authorization", "Bearer "+s.cfg.ResendAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -129,90 +171,207 @@ func (s *service) sendEmailViaResend(to string, link string, senderName string) 
 	}
 	defer resp.Body.Close()
 
-	// if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-	// 	return fmt.Errorf("resend api returned status: %d", resp.StatusCode)
-	// }
-
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		// Read the actual error message from the body
 		bodyBytes, _ := io.ReadAll(resp.Body)
-
 		return fmt.Errorf("resend api returned status: %d, detail: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
 }
 
-func (s *service) ProcessInvitation(ctx context.Context, inviteID uuid.UUID, action string) (*RsInviteProcess, error) {
-	inv, err := s.repo.GetByID(ctx, inviteID)
-	if err != nil || inv == nil {
-		return nil, errors.New("Invitation not found")
+func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteDetails, error) {
+	inv, err := s.repo.GetInvitationByID(ctx, inviteID)
+	if err != nil {
+		return nil, err
+	}
+
+	if inv == nil {
+		return &RsInviteDetails{InvitationID: inviteID, IsFound: false}, nil
 	}
 
 	if time.Now().After(inv.ExpiresAt) {
 		return nil, errors.New("Invitation expired")
 	}
 
-	res := &RsInviteProcess{InvitationID: inv.ID}
+	recipient := UserDetails{Email: inv.Email}
 
-	// Safety Check
-	if inv.Status == StatusRejected || inv.Status == StatusCompleted {
-		res.Status = inv.Status
-		res.IsFound = (inv.Status == StatusCompleted)
-		return res, nil
+	queryUser, _ := s.repo.GetUserDetailsByEmail(ctx, inv.Email)
+	isFound := false
+	if queryUser != nil {
+		recipient.FirstName = queryUser.FirstName
+		recipient.LastName = queryUser.LastName
+		isFound = true
 	}
 
-	// Handle STATUS REJECTED
-	if action == "reject" {
-		if err := s.repo.UpdateStatus(ctx, inviteID, StatusRejected, nil); err != nil {
+	return &RsInviteDetails{
+		InvitationID: inv.ID,
+		Status:       inv.Status,
+		IsFound:      isFound,
+		SenderRole:   util.RolePractitioner,
+		SentBy: UserDetails{
+			FirstName: inv.SenderFirstName,
+			LastName:  inv.SenderLastName,
+			Email:     inv.SenderEmail,
+		},
+		SentTo: recipient,
+	}, nil
+}
+
+func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error) {
+	inv, err := s.repo.GetByID(ctx, req.TokenID)
+	if err != nil || inv == nil {
+		return nil, errors.New("invitation not found")
+	}
+
+	if time.Now().After(inv.ExpiresAt) {
+		return nil, errors.New("invitation expired")
+	}
+
+	if inv.Status == StatusResent {
+		return nil, errors.New("this invitation link is no longer valid as a new one has been sent")
+	}
+
+	res := &RsInviteProcess{InvitationID: inv.ID, PractitionerID: inv.PractitionerID, Email: inv.Email}
+
+	if inv.Status == StatusRejected || inv.Status == StatusCompleted {
+		return nil, fmt.Errorf("action not allowed: invitation is already %s", inv.Status)
+	}
+
+	if req.Action == ActionReject {
+		if err := s.repo.UpdateStatus(ctx, inv.ID, StatusRejected, nil); err != nil {
 			return nil, err
 		}
 		res.Status = StatusRejected
+		res.IsFound = false
 		return res, nil
 	}
 
-	existingUserID, err := s.repo.GetUserIDByEmail(ctx, inv.Email)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check user existence: %w", err)
-	}
+	if req.Action == ActionAccept {
+		accountantID, err := s.repo.GetAccountantIDByEmail(ctx, inv.Email)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check accountant existence: %w", err)
+		}
 
-	if existingUserID != nil {
-		// User exists in tbl_user
-		if err := s.repo.UpdateStatus(ctx, inviteID, StatusCompleted, existingUserID); err != nil {
+		var targetStatus InvitationStatus
+		if accountantID != nil {
+			targetStatus = StatusCompleted
+			res.IsFound = true
+		} else {
+			targetStatus = StatusAccepted
+			res.IsFound = false
+		}
+
+		if err := s.repo.UpdateStatus(ctx, inv.ID, targetStatus, accountantID); err != nil {
 			return nil, err
 		}
-		res.Status = StatusCompleted
-		res.IsFound = true // Redirect to login
-	} else {
-		// User does not exist
-		if err := s.repo.UpdateStatus(ctx, inviteID, StatusAccepted, nil); err != nil {
-			return nil, err
+
+		res.Status = targetStatus
+		res.IsFound = false
+
+		// Notify the practitioner live
+		if s.notification != nil {
+			body := json.RawMessage(fmt.Sprintf(`"%s accepted your invitation."`, inv.Email))
+			extraData := map[string]interface{}{"invite_id": inv.ID.String()}
+			payload := notification.BuildNotificationPayload("Invitation Accepted", body, nil, nil, &extraData)
+			payloadBytes, _ := json.Marshal(payload)
+			senderType := notification.ActorAccountant
+			rq := notification.RqNotification{
+				ID:            uuid.New(),
+				RecipientID:   inv.PractitionerID,
+				RecipientType: notification.ActorPractitioner,
+				SenderID:      accountantID,
+				SenderType:    &senderType,
+				EventType:     notification.EventInviteAccepted,
+				EntityType:    notification.EntityInvite,
+				EntityID:      inv.ID,
+				Status:        notification.StatusUnread,
+				Payload:       payloadBytes,
+				CreatedAt:     time.Now(),
+			}
+			if err := s.notification.Publish(ctx, rq); err != nil {
+				fmt.Printf("[ERROR] failed to publish invite.accepted notification: %v\n", err)
+			}
 		}
-		res.Status = StatusAccepted
-		res.IsFound = false // Redirect to register
+
+		return res, nil
 	}
 
-	return res, nil
+	return nil, errors.New("invalid action: must be ACCEPT or REJECT")
 }
 
-// FinalizeRegistrationInternal is called by the Auth Service after a user registers
-func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string, userID uuid.UUID) error {
-	// Look for an invitation with this email where status is currently 'ACCEPTED'
+func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error {
 	inv, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		return err
 	}
 
-	// If no invite exists for this email, they just signed up normally.
 	if inv == nil {
 		return nil
 	}
 
-	// If it's already COMPLETED or REJECTED, we don't need to do anything
 	if inv.Status != StatusAccepted && inv.Status != StatusSent {
 		return nil
 	}
 
-	// If they signed up after clicking the link, update status to COMPLETED and link the new User ID
-	return s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &userID)
+	return s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &entityID)
+}
+
+func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
+	ft := f.MapToFilter(pID, aID)
+
+	list, err := s.repo.List(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	total, err := s.repo.Count(ctx, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
+
+	return &rsList, nil
+}
+
+func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error) {
+	oldInv, err := s.repo.GetByID(ctx, inviteID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch invitation: %w", err)
+	}
+
+	if oldInv == nil {
+		return nil, errors.New("invitation not found")
+	}
+
+	if oldInv.PractitionerID != practitionerID {
+		return nil, errors.New("unauthorized: you did not send this invitation")
+	}
+
+	if err := s.checkInvitationLimit(ctx, practitionerID, oldInv.Email); err != nil {
+		return nil, err
+	}
+
+	if oldInv.Status == StatusCompleted {
+		return nil, fmt.Errorf("cannot resend: invitation is already %s", oldInv.Status)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, oldInv.ID, StatusResent, oldInv.EntityID); err != nil {
+		return nil, fmt.Errorf("failed to invalidate old invitation: %w", err)
+	}
+
+	return s.SendInvite(ctx, practitionerID, &RqSendInvitation{Email: oldInv.Email})
+}
+
+func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email string) error {
+	count, err := s.repo.CountDailyInvitesByEmail(ctx, pID, email)
+	if err != nil {
+		return fmt.Errorf("failed to check invitation limit: %w", err)
+	}
+
+	if count >= 5 {
+		return errors.New("daily invitation limit reached for this email (max 5 per 24h)")
+	}
+	return nil
 }

@@ -211,7 +211,7 @@ func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filt
 	}
 
 	var rs util.RsList
-	rs.MapToList(data, total, f.Offset, f.Limit)
+	rs.MapToList(data, total, *f.Offset, *f.Limit)
 	return &rs, nil
 }
 
@@ -238,7 +238,7 @@ func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, f.Offset, f.Limit)
+	rs.MapToList(items, total, *f.Offset, *f.Limit)
 	return &rs, nil
 }
 

@@ -22,6 +22,8 @@ type IHandler interface {
 	ChangePassword(c *gin.Context)
 	UpdateProfile(c *gin.Context)
 	DeleteUser(c *gin.Context)
+	ForgotPassword(c *gin.Context)
+	ResetPassword(c *gin.Context)
 }
 
 type handler struct {
@@ -343,4 +345,55 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, nil, "Email verified successfully. You can now log in.")
+}
+
+// internal/modules/auth/handler.go
+
+// ForgotPassword godoc
+// @Summary      Initiate password reset
+// @Description  Sends a reset link to the user's email if they exist.
+// @Tags         auth
+// @Param        request  body      RqForgotPassword  true  "Email"
+// @Success      200      {object}  response.RsBase
+// @Router       /auth/forgot-password [post]
+func (h *handler) ForgotPassword(c *gin.Context) {
+	var req RqForgotPassword
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Call service (Service will handle token gen and Resend email)
+	err := h.svc.ForgotPassword(c.Request.Context(), &req)
+	if err != nil {
+		// We log the error but return success to avoid "User Enumeration"
+		// log.Printf("Forgot password error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "If an account exists, a reset link has been sent.")
+}
+
+// ResetPassword godoc
+// @Summary      Reset password using token
+// @Description  Updates the user's password using the token received via email.
+// @Tags         auth
+// @Param        request  body      RqResetPassword  true  "Token and New Password"
+// @Success      200      {object}  response.RsBase
+// @Router       /auth/reset-password [post]
+func (h *handler) ResetPassword(c *gin.Context) {
+	var req RqResetPassword
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	err := h.svc.ResetPassword(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "Password has been reset successfully.")
 }

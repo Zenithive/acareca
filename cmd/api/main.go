@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/iamarpitzala/acareca/docs"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -83,34 +84,46 @@ func main() {
 		log.Print(" - using code:  gin.SetMode(gin.ReleaseMode)\n\n")
 	}
 
-	// ALLOWED_ORIGINS must be explicitly set in production.
-	// e.g. "http://localhost:5173,https://your-frontend.com"
-	//
-	// AllowCredentials: true requires specific origins — browsers reject the
-	// combination of wildcard ("*") + credentials, so we only enable credentials
-	// when real origins are configured. In development (no env var set) the
-	// wildcard is kept for convenience but credentials are disabled.
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	var origins []string
-	allowCredentials := false
+	allowCredentials := true
+
 	if allowedOrigins == "" {
-		origins = []string{"*"}
-		log.Println("[WARN] ALLOWED_ORIGINS not set — CORS running in wildcard mode, credentials disabled")
+		origins = []string{cfg.LocalUrl}
+		log.Printf("[WARN] ALLOWED_ORIGINS not set — using cfg.LocalUrl=%q for CORS\n", cfg.LocalUrl)
 	} else {
-		origins = strings.Split(allowedOrigins, ",")
-		allowCredentials = true
+		splitOrigins := strings.Split(allowedOrigins, ",")
+		origins = make([]string, 0, len(splitOrigins))
+		containsWildcard := false
+		for _, o := range splitOrigins {
+			trimmed := strings.TrimSpace(o)
+			if trimmed != "" {
+				origins = append(origins, trimmed)
+				if trimmed == "*" {
+					containsWildcard = true
+				}
+			}
+		}
+		if containsWildcard {
+			allowCredentials = false
+		}
 	}
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
 		ExposeHeaders:    []string{"Authorization", "token"},
 		AllowCredentials: allowCredentials,
 		MaxAge:           12 * time.Hour,
 	}))
 	r.Use(middleware.ClientInfo())
-	auditSvc := route.RegisterRoutes(r, cfg)
+	auditSvc, notifier, notificationRepo := route.RegisterRoutes(r, cfg)
+
+	// Start the in_app delivery retry worker
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,

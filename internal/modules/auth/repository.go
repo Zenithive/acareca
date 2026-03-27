@@ -38,6 +38,10 @@ type Repository interface {
 	DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)
 	MarkUserVerified(ctx context.Context, userID uuid.UUID, tokenID uuid.UUID) error
+
+	// password reset
+	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
+	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 }
 
 type repository struct {
@@ -329,5 +333,44 @@ func (r *repository) UpdatePassword(ctx context.Context, userID uuid.UUID, hashe
 	if rows == 0 {
 		return ErrNotFound
 	}
+	return nil
+}
+
+func (r *repository) SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error {
+	query := `INSERT INTO tbl_password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`
+	_, err := r.db.ExecContext(ctx, query, userID, tokenHash, expiresAt)
+	return err
+}
+
+func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error {
+
+	query := `
+    WITH updated_token AS (
+        UPDATE tbl_password_resets 
+        SET status = CASE 
+            WHEN expires_at < NOW() THEN 'EXPIRED' 
+            ELSE 'USED' 
+        END
+        WHERE token_hash = $1 
+          AND status = 'PENDING'
+        RETURNING user_id, status
+    )
+    UPDATE tbl_user 
+    SET password = $2, updated_at = NOW() 
+    FROM updated_token
+    WHERE tbl_user.id = updated_token.user_id 
+      AND updated_token.status = 'USED'`
+
+	result, err := r.db.ExecContext(ctx, query, tokenHash, newPasswordHash)
+	if err != nil {
+		return err
+	}
+
+	// Check if any rows were actually updated
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return errors.New("invalid or expired reset link")
+	}
+
 	return nil
 }
