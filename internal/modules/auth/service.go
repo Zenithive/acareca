@@ -92,10 +92,28 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
-
 	existing, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil && existing != nil {
-		return nil, ErrEmailTaken
+		// Check if existing user is already verified
+		isVerified, _ := s.isUserVerified(ctx, existing)
+		if isVerified {
+			return nil, ErrEmailTaken
+		}
+		// If they exist but aren't verified, redirect them to verify
+		return nil, errors.New("this email is registered but not verified. Please check your email to verify your account")
+	}
+
+	// Role Check: Check if email is in tbl_invitation
+	invite, err := s.invitationSvc.GetInvitationByEmailInternal(ctx, req.Email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify invitation status: %w", err)
+	}
+
+	// Determine Role: If invitation exists, role is accountant.
+	if invite != nil {
+		req.Role = util.RoleAccountant
+	} else { // Default role if no invitation is found.
+		req.Role = util.RolePractitioner
 	}
 
 	hashedPassword, err := util.GenerateHash(req.Password)
@@ -105,6 +123,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	u := req.ToDBModel()
 	u.Password = &hashedPassword
+	u.Role = req.Role
 
 	var created *User
 	var entityID uuid.UUID
@@ -143,6 +162,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		vToken := &VerificationToken{
 			ID:        tokenID,
 			EntityID:  entityID,
+			Role:      &created.Role,
 			Status:    TokenStatusPending,
 			ExpiresAt: time.Now().Add(10 * time.Hour),
 		}
@@ -210,6 +230,15 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 
 	if err := util.CompareHash(req.Password, *user.Password); err != nil {
 		return nil, ErrInvalidPassword
+	}
+
+	// User Verification Check
+	isVerified, err := s.isUserVerified(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("verification check: %w", err)
+	}
+	if !isVerified {
+		return nil, errors.New("account not verified. Please check your email to verify your account")
 	}
 
 	// Resolve the specific Entity ID for the JWT
@@ -557,7 +586,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		return errors.New("verification link has expired")
 	}
 
-	if err := s.repo.MarkUserVerified(ctx, token.EntityID, token.ID); err != nil {
+	if err := s.repo.MarkUserVerified(ctx, token); err != nil {
 		return err
 	}
 
@@ -853,4 +882,24 @@ func (s *service) ResetPassword(ctx context.Context, req *RqResetPassword) error
 	}
 
 	return s.repo.CompletePasswordReset(ctx, tokenHash, newPasswordHash)
+}
+
+// Helper to check if user is verified
+func (s *service) isUserVerified(ctx context.Context, user *User) (bool, error) {
+	var verified bool
+	var err error
+
+	switch user.Role {
+	case util.RolePractitioner:
+		err = s.db.GetContext(ctx, &verified, "SELECT verified FROM tbl_practitioner WHERE user_id = $1", user.ID)
+	case util.RoleAccountant:
+		err = s.db.GetContext(ctx, &verified, "SELECT verified FROM tbl_accountant WHERE user_id = $1", user.ID)
+	default:
+		return false, fmt.Errorf("verification check failed: '%s %s'", user.ID, user.Role)
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("could not verify account status: %w", err)
+	}
+	return verified, nil
 }

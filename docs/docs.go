@@ -1281,7 +1281,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/verify-email": {
+        "/auth/verify": {
             "get": {
                 "description": "Validates the UUID token sent via email. If valid, marks the user as verified and the token as used.",
                 "produces": [

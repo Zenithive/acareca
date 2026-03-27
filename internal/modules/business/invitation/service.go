@@ -26,6 +26,7 @@ type Service interface {
 	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
 	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
+	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 }
 
 const (
@@ -374,4 +375,8 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 		return errors.New("daily invitation limit reached for this email (max 5 per 24h)")
 	}
 	return nil
+}
+
+func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error) {
+	return s.repo.GetByEmail(ctx, email)
 }

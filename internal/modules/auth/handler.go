@@ -331,7 +331,7 @@ func (h *handler) DeleteUser(c *gin.Context) {
 // @Failure 400 {object} response.RsError "Invalid token format or token already used"
 // @Failure 410 {object} response.RsError "Token has expired"
 // @Failure 500 {object} response.RsError "Internal server error"
-// @Router /auth/verify-email [get]
+// @Router /auth/verify [get]
 func (h *handler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -346,8 +346,6 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, nil, "Email verified successfully. You can now log in.")
 }
-
-// internal/modules/auth/handler.go
 
 // ForgotPassword godoc
 // @Summary      Initiate password reset
