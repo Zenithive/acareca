@@ -151,11 +151,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	versionRepo := version.NewRepository(dbConn)
 	fieldRepo := field.NewRepository(dbConn)
 	entryRepo := entry.NewRepository(dbConn)
-	detailSvc := detail.NewService(dbConn, detailRepo, version.NewService(dbConn, versionRepo, clinicSvc))
+	detailSvc := detail.NewService(dbConn, detailRepo, version.NewService(dbConn, versionRepo, clinicSvc), clinicRepo)
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
 
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
-	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc)
 	formHandler := form.NewHandler(formSvc)
 	form.RegisterRoutes(formGroup, formHandler)
 

@@ -3,14 +3,21 @@ package form
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -28,21 +35,34 @@ type IService interface {
 }
 
 type service struct {
-	db         *sqlx.DB
-	detailSvc  detail.IService
-	versionSvc version.IService
-	fieldSvc   field.IService
-	entryRepo  entry.IRepository
-	coaSvc     coa.Service
-	auditSvc   audit.Service
-	clinicSvc  interface{} // Will be clinic.Service but avoiding circular import
+	db             *sqlx.DB
+	detailSvc      detail.IService
+	versionSvc     version.IService
+	fieldSvc       field.IService
+	entryRepo      entry.IRepository
+	coaSvc         coa.Service
+	auditSvc       audit.Service
+	clinicSvc      interface{} // Will be clinic.Service but avoiding circular import
+	eventsSvc      events.Service
+	accountantRepo accountant.Repository
+	authRepo       auth.Repository
+	formClinic     clinic.Service
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// 1. Resolve the REAL owner at the start of THIS function
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
+	if err != nil {
+		return nil, nil, err
+	}
+	// This is the 8dd760ab... ID you saw in the logs
+	realOwnerID := clinic.PractitionerID
 	formReq := &detail.RqFormDetail{
 		Name:           d.Name,
 		Description:    d.Description,
@@ -57,7 +77,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	}
 
 	// Create form via detail service (handles its own transaction)
-	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, practitionerID)
+	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, realOwnerID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,9 +106,10 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 
 	// Create fields within transaction (atomic operation)
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+
 		for _, f := range d.Fields {
 			f.Sanitize()
-			_, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, practitionerID, &field.RqFormField{
+			_, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, realOwnerID, &field.RqFormField{
 				Label:                 f.Label,
 				SectionType:           f.SectionType,
 				PaymentResponsibility: f.PaymentResponsibility,
@@ -106,8 +127,46 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		return nil, nil, err
 	}
 
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err != nil {
+
+		} else {
+			var finalAccountantID uuid.UUID
+			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+			if err == nil {
+				finalAccountantID = accProfile.ID
+			} else {
+				finalAccountantID = actorUserID
+			}
+
+			// Fetching user details exactly like your Clinic implementation
+			user, err := s.authRepo.FindByID(ctx, actorUserID)
+			if err == nil {
+				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+
+				// Record the Event
+				err = s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: realOwnerID,
+					AccountantID:   finalAccountantID,
+					ActorID:        actorUserID,
+					ActorName:      &fullName,
+					ActorType:      "ACCOUNTANT",
+					EventType:      "form.created",
+					EntityType:     "FORM",
+					EntityID:       created.ID, // Use 'created' from s.detailSvc.Create
+					Description:    fmt.Sprintf("Accountant %s created a new form: %s", fullName, created.Name),
+					Metadata:       events.JSONBMap{"form_name": created.Name},
+					CreatedAt:      time.Now(),
+				})
+
+			}
+		}
+	}
 	// Audit log: form created
-	meta := auditctx.GetMetadata(ctx)
+
 	idStr := created.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
@@ -125,12 +184,19 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 }
 
 func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
+	meta := auditctx.GetMetadata(ctx)
 	existing, err := s.detailSvc.GetByID(ctx, *req.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Clone to prevent shared memory pointer updates
 	beforeState := *existing
+
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, existing.ClinicID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+	}
+	realOwnerID := clinic.PractitionerID
 
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
@@ -199,7 +265,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		// Update fields
 		for _, item := range req.Update {
 			item.Sanitize()
-			_, err = s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, practitionerID, &field.RqUpdateFormField{
+			_, err = s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &field.RqUpdateFormField{
 				ID:                    item.ID,
 				CoaID:                 item.CoaID,
 				Label:                 item.Label,
@@ -235,8 +301,50 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		return nil, nil, err
 	}
 
+	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			var finalAccountantID uuid.UUID
+			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+			if err == nil {
+				finalAccountantID = accProfile.ID
+			} else {
+				finalAccountantID = actorUserID
+			}
+
+			user, err := s.authRepo.FindByID(ctx, actorUserID)
+			if err == nil {
+				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+
+				// Record the Event
+				err = s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: realOwnerID,
+					AccountantID:   finalAccountantID,
+					ActorID:        actorUserID,
+					ActorName:      &fullName,
+					ActorType:      "ACCOUNTANT",
+					EventType:      "form.updated",
+					EntityType:     "FORM",
+					EntityID:       updated.ID,
+					Description:    fmt.Sprintf("Accountant %s updated the form: %s", fullName, updated.Name),
+					Metadata: events.JSONBMap{
+						"form_name":     updated.Name,
+						"updated_count": syncResult.UpdatedCount,
+						"created_count": syncResult.CreatedCount,
+						"deleted_count": syncResult.DeletedCount,
+					},
+					CreatedAt: time.Now(),
+				})
+
+			}
+		}
+	}
+
 	// Audit log: form updated
-	meta := auditctx.GetMetadata(ctx)
+	//meta := auditctx.GetMetadata(ctx)
 	idStr := updated.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
@@ -378,12 +486,53 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	// 2. Resolve the REAL owner (Practitioner) from the Clinic
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, formDetail.ClinicID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve clinic owner: %w", err)
+	}
+	realOwnerID := clinic.PractitionerID
 	if err := s.detailSvc.Delete(ctx, formDetail.ID); err != nil {
 		return err
 	}
 
-	// Audit log: form deleted
+	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
 	meta := auditctx.GetMetadata(ctx)
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			var finalAccountantID uuid.UUID
+			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+			if err == nil {
+				finalAccountantID = accProfile.ID
+			} else {
+				finalAccountantID = actorUserID
+			}
+
+			user, err := s.authRepo.FindByID(ctx, actorUserID)
+			if err == nil {
+				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+
+				// Record the Shared Event
+				_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: realOwnerID, // The Clinic Owner
+					AccountantID:   finalAccountantID,
+					ActorID:        actorUserID,
+					ActorName:      &fullName,
+					ActorType:      "ACCOUNTANT",
+					EventType:      "form.deleted",
+					EntityType:     "FORM",
+					EntityID:       formID,
+					Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
+					Metadata:       events.JSONBMap{"form_name": formDetail.Name},
+					CreatedAt:      time.Now(),
+				})
+			}
+		}
+	}
+	// Audit log: form deleted
+	//meta := auditctx.GetMetadata(ctx)
 	idStr := formID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,

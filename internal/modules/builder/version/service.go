@@ -2,6 +2,7 @@ package version
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
@@ -109,13 +110,14 @@ func (s *service) Delete(ctx context.Context, id, clinicID uuid.UUID) error {
 
 // List implements [IService].
 func (s *service) List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error) {
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
+	/*clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}
 	if clinic.ID != clinicID {
 		return nil, ErrForbidden
-	}
+	}*/
+
 	list, err := s.repo.ListByFormID(ctx, formID)
 	if err != nil {
 		return nil, err
@@ -138,13 +140,17 @@ func (s *service) GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsF
 
 // CreateTx creates a form version within a transaction.
 func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error) {
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
+	fmt.Printf(">>> DEBUG [VersionSvc.CreateTx] Searching for Clinic: %s using userID: %s\n", clinicID, userID)
+	/*clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
 	if err != nil {
+		fmt.Printf(">>> DEBUG [!] GetClinicByIDInternal returned error: %v\n", err)
 		return nil, err
 	}
 	if clinic.ID != clinicID {
+		fmt.Printf(">>> DEBUG [!] ID Mismatch: Found %s, Expected %s\n", clinic.ID, clinicID)
 		return nil, ErrForbidden
-	}
+	}*/
+
 	v := req.ToDB(formID, userID)
 	if err := s.repo.CreateTx(ctx, tx, v); err != nil {
 		return nil, err
