@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
@@ -81,7 +82,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	invitationHandler := invitation.NewHandler(invitationSvc)
 	invitation.RegisterRoutes(v1, invitationHandler, cfg)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, invitationRepo)
+	//admin auth
+	adminRepo := admin.NewRepository(dbConn)
+	adminSvc := admin.NewService(adminRepo, dbConn)
+	adminHandler := admin.NewHandler(adminSvc)
+	admin.RegisterRoutes(v1, adminHandler, cfg)
+
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 

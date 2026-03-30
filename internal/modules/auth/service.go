@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -64,10 +65,11 @@ type service struct {
 	invitationSvc    invitation.Service
 	practitionerRepo practitioner.Repository
 	accountantSvc    accountant.IService
+	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, inviteRepo invitation.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -88,6 +90,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		invitationSvc:    invitationSvc,
 		practitionerRepo: practitionerRepo,
 		accountantSvc:    accountantSvc,
+		adminSvc:         adminSvc,
 		inviteRepo:       inviteRepo}
 }
 
@@ -760,6 +763,12 @@ func (s *service) resolveEntityID(ctx context.Context, user *User) (string, erro
 			return "", err
 		}
 		return acc.ID.String(), nil
+	case util.RoleAdmin:
+		a, err := s.adminSvc.GetAdminByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return a.ID.String(), nil
 	default:
 		return user.ID.String(), nil
 	}
