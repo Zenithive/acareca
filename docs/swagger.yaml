@@ -109,18 +109,11 @@ definitions:
         type: string
       phone:
         type: string
-      role:
-        enum:
-        - ADMIN
-        - PRACTITIONER
-        - ACCOUNTANT
-        type: string
     required:
     - email
     - first_name
     - last_name
     - password
-    - role
     type: object
   auth.RsGoogleAuthURL:
     properties:

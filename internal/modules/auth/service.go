@@ -106,6 +106,8 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		return nil, errors.New("this email is registered but not verified. Please check your email to verify your account")
 	}
 
+	var assignedRole string
+
 	// Role Check: Check if email is in tbl_invitation
 	invite, err := s.invitationSvc.GetInvitationByEmailInternal(ctx, req.Email)
 	if err != nil {
@@ -114,9 +116,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	// Determine Role: If invitation exists, role is accountant.
 	if invite != nil {
-		req.Role = util.RoleAccountant
+		assignedRole = util.RoleAccountant
 	} else { // Default role if no invitation is found.
-		req.Role = util.RolePractitioner
+		assignedRole = util.RolePractitioner
 	}
 
 	hashedPassword, err := util.GenerateHash(req.Password)
@@ -126,7 +128,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	u := req.ToDBModel()
 	u.Password = &hashedPassword
-	u.Role = req.Role
+	u.Role = assignedRole
 
 	var created *User
 	var entityID uuid.UUID
@@ -235,13 +237,17 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, ErrInvalidPassword
 	}
 
-	// User Verification Check
-	isVerified, err := s.isUserVerified(ctx, user)
-	if err != nil {
-		return nil, fmt.Errorf("verification check: %w", err)
-	}
-	if !isVerified {
-		return nil, errors.New("account not verified. Please check your email to verify your account")
+	// Check if the user is an Admin to bypass verification
+	isAdmin := user.Role == util.RoleAdmin
+	// User Verification Check (only for non-admins)
+	if !isAdmin {
+		isVerified, err := s.isUserVerified(ctx, user)
+		if err != nil {
+			return nil, fmt.Errorf("verification check: %w", err)
+		}
+		if !isVerified {
+			return nil, errors.New("account not verified. Please check your email to verify your account")
+		}
 	}
 
 	// Resolve the specific Entity ID for the JWT

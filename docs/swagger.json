@@ -5308,8 +5308,7 @@
                 "email",
                 "first_name",
                 "last_name",
-                "password",
-                "role"
+                "password"
             ],
             "properties": {
                 "email": {
@@ -5327,14 +5326,6 @@
                 },
                 "phone": {
                     "type": "string"
-                },
-                "role": {
-                    "type": "string",
-                    "enum": [
-                        "ADMIN",
-                        "PRACTITIONER",
-                        "ACCOUNTANT"
-                    ]
                 }
             }
         },
