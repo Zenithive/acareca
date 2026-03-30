@@ -308,6 +308,8 @@ definitions:
         type: boolean
       name:
         type: string
+      practitioner_id:
+        type: string
       profile_picture:
         type: string
     required:
@@ -351,6 +353,8 @@ definitions:
       lock_date:
         type: string
       name:
+        type: string
+      practitioner_id:
         type: string
       profile_picture:
         type: string
@@ -2222,6 +2226,10 @@ paths:
         in: path
         name: id
         required: true
+        type: string
+      - description: Practitioner UUID (Required for Accountants)
+        in: query
+        name: practitioner_id
         type: string
       produces:
       - application/json

@@ -2068,6 +2068,12 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID (Required for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -5525,6 +5531,9 @@
                 "name": {
                     "type": "string"
                 },
+                "practitioner_id": {
+                    "type": "string"
+                },
                 "profile_picture": {
                     "type": "string"
                 }
@@ -5587,6 +5596,9 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "practitioner_id": {
                     "type": "string"
                 },
                 "profile_picture": {

@@ -12,6 +12,7 @@ const (
 	contextKeyPracticeID contextKey = "audit_practice_id"
 	contextKeyIPAddress  contextKey = "audit_ip_address"
 	contextKeyUserAgent  contextKey = "audit_user_agent"
+	contextKeyUserType   contextKey = "audit_user_type"
 )
 
 // WithUserID adds user ID to context
@@ -74,12 +75,27 @@ func GetUserAgent(ctx context.Context) *string {
 	return nil
 }
 
+// WithUserType adds user type/role to context
+func WithUserType(ctx context.Context, userType string) context.Context {
+	return context.WithValue(ctx, contextKeyUserType, userType)
+}
+
+func GetUserType(ctx context.Context) *string {
+	if v := ctx.Value(contextKeyUserType); v != nil {
+		if ut, ok := v.(string); ok {
+			return &ut
+		}
+	}
+	return nil
+}
+
 // Metadata holds all audit context information
 type Metadata struct {
 	UserID     *string
 	PracticeID *string
 	IPAddress  *string
 	UserAgent  *string
+	UserType   *string
 }
 
 // GetMetadata extracts all audit metadata from context
@@ -89,6 +105,7 @@ func GetMetadata(ctx context.Context) *Metadata {
 		PracticeID: GetPracticeID(ctx),
 		IPAddress:  GetIPAddress(ctx),
 		UserAgent:  GetUserAgent(ctx),
+		UserType:   GetUserType(ctx),
 	}
 }
 
@@ -106,5 +123,10 @@ func WithMetadata(ctx context.Context, meta *Metadata) context.Context {
 	if meta.UserAgent != nil {
 		ctx = WithUserAgent(ctx, *meta.UserAgent)
 	}
+
+	if meta.UserType != nil {
+		ctx = WithUserType(ctx, *meta.UserType)
+	}
+
 	return ctx
 }
