@@ -203,7 +203,7 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 		filters["date_to"] = *f.DateTo
 		operators["date_to"] = common.OpLt
 	}
-	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset)
+	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset, f.SortBy, f.OrderBy)
 }
 
 func (f *Filter) MapToFilter() common.Filter {
@@ -216,7 +216,7 @@ func (f *Filter) MapToFilter() common.Filter {
 		filters["clinic_id"] = id
 	}
 
-	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset)
+	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset, f.SortBy, f.OrderBy)
 
 	return cf
 }

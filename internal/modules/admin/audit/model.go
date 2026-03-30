@@ -109,7 +109,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["created_at_lte"] = *filter.EndDate
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	return f
 }

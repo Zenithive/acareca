@@ -2071,6 +2071,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID (Required for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -5528,6 +5534,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "practitioner_id": {
+                    "type": "string"
+                },
                 "profile_picture": {
                     "type": "string"
                 }
@@ -5590,6 +5599,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "practitioner_id": {
                     "type": "string"
                 },
                 "profile_picture": {
@@ -5903,8 +5915,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
+                        "PUBLISHED"
                     ]
                 },
                 "super_component": {
@@ -5980,8 +5991,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
+                        "PUBLISHED"
                     ]
                 },
                 "super_component": {

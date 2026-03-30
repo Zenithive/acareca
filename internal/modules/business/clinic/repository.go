@@ -23,6 +23,7 @@ type Repository interface {
 	GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error)
 
 	DeleteClinic(ctx context.Context, id uuid.UUID) error
+	DeleteClinicTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) error
 
 	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
@@ -133,6 +134,18 @@ func (r *repository) DeleteClinic(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (r *repository) DeleteClinicTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+	query := `UPDATE tbl_clinic SET deleted_at = NOW() WHERE id = $1`
+
+	// If tx is provided, use it. Otherwise, use the standard DB pool.
+	if tx != nil {
+		_, err := tx.ExecContext(ctx, query, id)
+		return err
+	}
+
+	_, err := r.db.ExecContext(ctx, query, id)
+	return err
+}
 func (r *repository) GetPractitionerIDByUserID(ctx context.Context, userID string) (*uuid.UUID, error) {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {

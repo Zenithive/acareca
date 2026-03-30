@@ -111,7 +111,7 @@ func (filter *Filter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
 		filters["status"] = *filter.Status
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	// Only add the "Not Equal" condition if the user DID NOT provide a status filter
 	if filter.Status == nil {

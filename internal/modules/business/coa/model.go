@@ -146,7 +146,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["account_type_id"] = *filter.AccountTypeID
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	return f
 }
