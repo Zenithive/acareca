@@ -93,7 +93,6 @@ var invitationColumns = map[string]string{
 var invitationSearchCols = []string{"email"}
 
 type Filter struct {
-	Email  *string `form:"email"`
 	Status *string `form:"status"`
 	common.Filter
 }
@@ -108,14 +107,11 @@ func (filter *Filter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
 		filters["entity_id"] = *aID
 	}
 
-	if filter.Email != nil {
-		filters["email"] = *filter.Email
-	}
 	if filter.Status != nil {
 		filters["status"] = *filter.Status
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	// Only add the "Not Equal" condition if the user DID NOT provide a status filter
 	if filter.Status == nil {

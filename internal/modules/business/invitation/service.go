@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"golang.org/x/text/cases"
@@ -26,6 +28,7 @@ type Service interface {
 	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
 	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
+	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 }
 
 const (
@@ -37,13 +40,15 @@ type service struct {
 	repo         Repository
 	cfg          *config.Config
 	notification notification.Service
+	auditSvc     audit.Service
 }
 
-func NewService(repo Repository, cfg *config.Config, notification notification.Service) Service {
+func NewService(repo Repository, cfg *config.Config, notification notification.Service, auditSvc audit.Service) Service {
 	return &service{
 		repo:         repo,
 		cfg:          cfg,
 		notification: notification,
+		auditSvc:     auditSvc,
 	}
 }
 
@@ -112,6 +117,24 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 			}
 		}
 	}
+
+	// Audit log: invitation sent
+	meta := auditctx.GetMetadata(ctx)
+	entityID := invite.ID.String()
+	pIDStr := practitionerID.String()
+	entityType := auditctx.EntityInvitation
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionInviteSent,
+		EntityType:  &entityType,
+		EntityID:    &entityID,
+		BeforeState: nil,
+		AfterState:  invite,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
 
 	return &RsInvitation{
 		ID:         invite.ID,
@@ -223,6 +246,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		return nil, errors.New("invitation not found")
 	}
 
+	beforeState := inv // Capture state before processing
 	if time.Now().After(inv.ExpiresAt) {
 		return nil, errors.New("invitation expired")
 	}
@@ -241,6 +265,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		if err := s.repo.UpdateStatus(ctx, inv.ID, StatusRejected, nil); err != nil {
 			return nil, err
 		}
+
 		res.Status = StatusRejected
 		res.IsFound = false
 		return res, nil
@@ -296,6 +321,31 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		return res, nil
 	}
 
+	updatedInv, err := s.repo.GetByID(ctx, inv.ID)
+	// Audit log for accept/reject
+	meta := auditctx.GetMetadata(ctx)
+	pIDStr := inv.PractitionerID.String()
+	entityID := inv.ID.String()
+	actionStr := auditctx.ActionInviteAccepted
+	if req.Action == ActionReject {
+		actionStr = auditctx.ActionInviteRejected
+	}
+	entityType := auditctx.EntityInvitation
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		//PracticeID: meta.PracticeID,
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      actionStr,
+		EntityType:  &entityType,
+		EntityID:    &entityID,
+		BeforeState: beforeState,
+		AfterState:  updatedInv,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	// Fallback for unexpected actions
 	return nil, errors.New("invalid action: must be ACCEPT or REJECT")
 }
 
@@ -313,7 +363,29 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string
 		return nil
 	}
 
-	return s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &entityID)
+	if err := s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &entityID); err != nil {
+		return err
+	}
+
+	// Audit log: invitation completed
+	meta := auditctx.GetMetadata(ctx)
+	pIDStr := inv.PractitionerID.String()
+	entityIDStr := inv.ID.String()
+	entityType := auditctx.EntityInvitation
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		//PracticeID: meta.PracticeID,
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionInviteCompleted,
+		EntityType:  &entityType,
+		EntityID:    &entityIDStr,
+		BeforeState: inv,
+		AfterState:  "COMPLETED",
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+	return nil
 }
 
 func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
@@ -361,7 +433,27 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return nil, fmt.Errorf("failed to invalidate old invitation: %w", err)
 	}
 
-	return s.SendInvite(ctx, practitionerID, &RqSendInvitation{Email: oldInv.Email})
+	// Resend invitation - log after successful resend
+	newInvite, err := s.SendInvite(ctx, practitionerID, &RqSendInvitation{
+		Email: oldInv.Email,
+	})
+	if err == nil {
+		// Audit log for resend (use new invite ID)
+		meta := auditctx.GetMetadata(ctx)
+		newEntityID := newInvite.ID.String()
+		entityType := auditctx.EntityInvitation
+		s.auditSvc.LogAsync(&audit.LogEntry{
+			PracticeID: meta.PracticeID,
+			UserID:     meta.UserID,
+			Module:     auditctx.ModuleBusiness,
+			Action:     auditctx.ActionInviteSent,
+			EntityType: &entityType,
+			EntityID:   &newEntityID,
+			IPAddress:  meta.IPAddress,
+			UserAgent:  meta.UserAgent,
+		})
+	}
+	return newInvite, err
 }
 
 func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email string) error {
@@ -374,4 +466,8 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 		return errors.New("daily invitation limit reached for this email (max 5 per 24h)")
 	}
 	return nil
+}
+
+func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error) {
+	return s.repo.GetByEmail(ctx, email)
 }

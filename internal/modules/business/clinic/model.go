@@ -56,6 +56,7 @@ type FinancialSettings struct {
 
 // Request models
 type RqCreateClinic struct {
+	PractitionerID uuid.UUID         `json:"practitioner_id"`
 	ProfilePicture *string           `json:"profile_picture"`
 	Name           string            `json:"name" validate:"required"`
 	ABN            *string           `json:"abn" validate:"omitempty,len=11"`
@@ -87,6 +88,7 @@ type RqFinancialSettings struct {
 
 type RqUpdateClinic struct {
 	ID              *uuid.UUID        `json:"id"`
+	PractitionerID  uuid.UUID         `json:"practitioner_id"`
 	Name            *string           `json:"name"`
 	ProfilePicture  *string           `json:"profile_picture"`
 	ABN             *string           `json:"abn" validate:"omitempty,len=11"`
@@ -185,7 +187,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["is_active"] = *filter.IsActive
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	return f
 }

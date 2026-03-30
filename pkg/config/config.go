@@ -21,6 +21,7 @@ type Config struct {
 	Env                string
 	DevUrl             string
 	LocalUrl           string
+	AllowedOrigins     string
 }
 
 func getEnv(key, fallback string) string {
@@ -49,5 +50,6 @@ func NewConfig() *Config {
 		Env:                getEnv("ENV", "local"),
 		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
 		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
+		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
 	}
 }

@@ -23,6 +23,7 @@ type IRepository interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) error
 	UpdateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (*FormDetail, error)
 	DeleteTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error
+	UpdateFormStatusTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID, status string) error
 }
 
 type Repository struct {
@@ -78,10 +79,12 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 	args := []any{practitionerID}
 
 	allowedColumns := map[string]string{
+		"name":        "f.name",
 		"status":      "f.status",
 		"method":      "f.method",
 		"clinic_id":   "f.clinic_id",
 		"created_at":  "f.created_at",
+		"updated_at":  "f.updated_at",
 		"clinic_name": "f.name",
 	}
 
@@ -223,6 +226,25 @@ func (r *Repository) DeleteTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID
 	if err != nil {
 		return fmt.Errorf("delete form in transaction: %w", err)
 	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateFormStatusTx updates only the status of the form.
+func (r *Repository) UpdateFormStatusTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID, status string) error {
+	query := `
+		UPDATE tbl_form 
+		SET status = $1, updated_at = now() 
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	res, err := tx.ExecContext(ctx, query, status, formID)
+	if err != nil {
+		return fmt.Errorf("update form status: %w", err)
+	}
+
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound

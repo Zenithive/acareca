@@ -8,12 +8,11 @@ import (
 const (
 	StatusDraft     = "DRAFT"
 	StatusPublished = "PUBLISHED"
-	StatusArchived  = "ARCHIVED"
 )
 
 type Filter struct {
 	ClinicID *string `form:"clinic_id"`
-	FormName *string `form:"form_name"`
+	FormName *string `form:"name"`
 	Method   *string `form:"method"`
 	Status   *string `form:"status"`
 	common.Filter
@@ -36,7 +35,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.FormName != nil {
 		filters["form_name"] = *filter.FormName
 	}
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	return f
 }
@@ -44,7 +43,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 type RqFormDetail struct {
 	Name           string   `json:"name" validate:"required"`
 	Description    *string  `json:"description" validate:"omitempty"`
-	Status         string   `json:"status" validate:"required,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Status         string   `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
 	Method         string   `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	OwnerShare     int      `json:"owner_share" validate:"required,min=0,max=100"`
 	ClinicShare    int      `json:"clinic_share" validate:"required,min=0,max=100"`
@@ -55,7 +54,7 @@ type RqUpdateFormDetail struct {
 	ID             uuid.UUID `json:"id" validate:"required"`
 	Name           *string   `json:"name" validate:"omitempty"`
 	Description    *string   `json:"description" validate:"omitempty"`
-	Status         *string   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Status         *string   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
 	Method         *string   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
 	OwnerShare     *int      `json:"owner_share" validate:"omitempty,min=0,max=100"`
 	ClinicShare    *int      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
@@ -147,4 +146,9 @@ type RsFormDetail struct {
 	ActiveVersionID *uuid.UUID `json:"active_version_id,omitempty"`
 	CreatedAt       string     `json:"created_at"`
 	UpdatedAt       string     `json:"updated_at"`
+}
+
+type RqUpdateFormStatus struct {
+	ID     uuid.UUID `json:"id" validate:"required"`
+	Status string    `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
 }

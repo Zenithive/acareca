@@ -17,12 +17,14 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
+	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
@@ -76,11 +78,17 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// invitation
 	invitationRepo := invitation.NewRepository(dbConn)
-	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc)
+	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc)
 	invitationHandler := invitation.NewHandler(invitationSvc)
 	invitation.RegisterRoutes(v1, invitationHandler, cfg)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, invitationRepo)
+	//admin auth
+	adminRepo := admin.NewRepository(dbConn)
+	adminSvc := admin.NewService(adminRepo, dbConn)
+	adminHandler := admin.NewHandler(adminSvc)
+	admin.RegisterRoutes(v1, adminHandler, cfg)
+
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
@@ -115,9 +123,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	auditHandler := audit.NewHandler(auditSvc)
 	audit.RegisterRoutes(auditGroup, auditHandler)
 
+	// Initialize events service first
+	eventsRepo := events.NewRepository(dbConn)
+	eventsSvc := events.NewService(eventsRepo, notificationSvc, auditSvc)
+
 	// clinic
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, auditSvc)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountantRepo, authRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 

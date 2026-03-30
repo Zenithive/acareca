@@ -23,6 +23,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  admin.RqCreateAdmin:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
   auth.RqChangePassword:
     properties:
       new_password:
@@ -308,6 +327,8 @@ definitions:
         type: boolean
       name:
         type: string
+      practitioner_id:
+        type: string
       profile_picture:
         type: string
     required:
@@ -351,6 +372,8 @@ definitions:
       lock_date:
         type: string
       name:
+        type: string
+      practitioner_id:
         type: string
       profile_picture:
         type: string
@@ -565,7 +588,6 @@ definitions:
         enum:
         - DRAFT
         - PUBLISHED
-        - ARCHIVED
         type: string
       super_component:
         maximum: 100
@@ -577,6 +599,16 @@ definitions:
     - method
     - name
     - owner_share
+    type: object
+  form.RqUpdateFormStatus:
+    properties:
+      status:
+        enum:
+        - DRAFT
+        - PUBLISHED
+        type: string
+    required:
+    - status
     type: object
   form.RqUpdateFormWithFields:
     properties:
@@ -613,7 +645,6 @@ definitions:
         enum:
         - DRAFT
         - PUBLISHED
-        - ARCHIVED
         type: string
       super_component:
         maximum: 100
@@ -1066,6 +1097,64 @@ paths:
       summary: Fetch all users
       tags:
       - accountant
+  /admin:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new entry in tbl_user with Role=ADMIN and a corresponding
+        entry in tbl_admin within a single transaction.
+      parameters:
+      - description: Admin and User details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/admin.RqCreateAdmin'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create admin profile and user
+      tags:
+      - admin
+  /admin/{id}:
+    get:
+      description: Get nested Admin and User information by Admin ID
+      parameters:
+      - description: Admin ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Admin Detail
+      tags:
+      - admin
   /admin/audit:
     get:
       consumes:
@@ -1848,7 +1937,7 @@ paths:
       summary: Update user profile
       tags:
       - auth
-  /auth/verify-email:
+  /auth/verify:
     get:
       description: Validates the UUID token sent via email. If valid, marks the user
         as verified and the token as used.
@@ -2214,6 +2303,10 @@ paths:
         in: path
         name: id
         required: true
+        type: string
+      - description: Practitioner UUID (Required for Accountants)
+        in: query
+        name: practitioner_id
         type: string
       produces:
       - application/json
@@ -3201,6 +3294,33 @@ paths:
       security:
       - BearerToken: []
       summary: Update form with fields
+      tags:
+      - form
+  /form/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle form status between DRAFT and PUBLISHED
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateFormStatus'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      summary: Update form status
       tags:
       - form
   /invite:

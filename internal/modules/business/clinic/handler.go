@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -41,7 +43,7 @@ func NewHandler(svc Service) IHandler {
 // @Security BearerToken
 // @Router /clinic [post]
 func (h *handler) Create(c *gin.Context) {
-	PractID, ok := util.GetPractitionerID(c)
+	actorID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -51,7 +53,20 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	clinic, err := h.svc.CreateClinic(c.Request.Context(), PractID, &req)
+	targetPractitionerID := actorID
+
+	// Check role from metadata/context
+	meta := auditctx.GetMetadata(c.Request.Context())
+	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
+
+		if req.PractitionerID == uuid.Nil {
+			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required in body for accountants"))
+			return
+		}
+		targetPractitionerID = req.PractitionerID
+	}
+
+	clinic, err := h.svc.CreateClinic(c.Request.Context(), targetPractitionerID, &req)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -154,7 +169,7 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Router /clinic/{id} [put]
 func (h *handler) Update(c *gin.Context) {
 	// Get user ID from JWT token context
-	PractID, ok := util.GetPractitionerID(c)
+	actorID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -172,7 +187,20 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	clinic, err := h.svc.UpdateClinic(c.Request.Context(), PractID, id, &req)
+	targetPractitionerID := actorID
+
+	// Check role from metadata/context
+	meta := auditctx.GetMetadata(c.Request.Context())
+	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
+
+		if req.PractitionerID == uuid.Nil {
+			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required in body for accountants"))
+			return
+		}
+		targetPractitionerID = req.PractitionerID
+	}
+
+	clinic, err := h.svc.UpdateClinic(c.Request.Context(), targetPractitionerID, id, &req)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -189,6 +217,7 @@ func (h *handler) Update(c *gin.Context) {
 // @Tags clinic
 // @Produce json
 // @Param id path string true "Clinic UUID"
+// @Param practitioner_id query string false "Practitioner UUID (Required for Accountants)"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
@@ -196,8 +225,8 @@ func (h *handler) Update(c *gin.Context) {
 // @Security BearerToken
 // @Router /clinic/{id} [delete]
 func (h *handler) Delete(c *gin.Context) {
-	// Get user ID from JWT token context
-	PractID, ok := util.GetPractitionerID(c)
+	// 1. Get actor ID from JWT token (could be Accountant or Practitioner)
+	actorID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -209,7 +238,28 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.DeleteClinic(c.Request.Context(), PractID, id); err != nil {
+	// 2. Default target to the actor
+	targetPractitionerID := actorID
+
+	// 3. Handle Accountant logic via Query Parameter
+	meta := auditctx.GetMetadata(c.Request.Context())
+	if meta.UserType != nil && strings.ToUpper(*meta.UserType) == "ACCOUNTANT" {
+		queryPractID := c.Query("practitioner_id")
+		if queryPractID == "" {
+			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id query parameter is required for accountants"))
+			return
+		}
+
+		parsedPractID, err := uuid.Parse(queryPractID)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner_id format"))
+			return
+		}
+		targetPractitionerID = parsedPractID
+	}
+
+	// 4. Call Service
+	if err := h.svc.DeleteClinic(c.Request.Context(), targetPractitionerID, id); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return

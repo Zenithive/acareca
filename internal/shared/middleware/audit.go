@@ -20,6 +20,14 @@ func AuditContext() gin.HandlerFunc {
 			}
 		}
 
+		// 2. ADD THIS: Extract Role and set it as UserType
+		if role, exists := c.Get("role"); exists {
+			if r, ok := role.(string); ok && r != "" {
+				// This is the missing link!
+				ctx = audit.WithUserType(ctx, r)
+			}
+		}
+
 		// Extract practitioner ID (used as practice_id)
 		if practitionerID, exists := c.Get(util.EntityIDKey); exists {
 			if id, ok := practitionerID.(uuid.UUID); ok && id != uuid.Nil {
