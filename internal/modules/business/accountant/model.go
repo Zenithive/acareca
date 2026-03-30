@@ -1,6 +1,7 @@
 package accountant
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,12 +30,24 @@ type RsAccountant struct {
 }
 
 type RsAccountantUser struct {
-	ID           uuid.UUID `json:"id"            db:"id"`
-	Email        string    `json:"email"         db:"email"`
-	FirstName    string    `json:"first_name"    db:"first_name"`
-	LastName     string    `json:"last_name"     db:"last_name"`
-	Phone        string    `json:"phone"         db:"phone"`
-	IsSuperadmin bool      `json:"is_superadmin" db:"is_superadmin"`
-	CreatedAt    time.Time `json:"created_at"    db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"    db:"updated_at"`
+	ID        uuid.UUID `json:"id"            db:"id"`
+	Email     string    `json:"email"         db:"email"`
+	FirstName string    `json:"first_name"    db:"first_name"`
+	LastName  string    `json:"last_name"     db:"last_name"`
+	Phone     string    `json:"phone"         db:"phone"`
+
+	Clinics          json.RawMessage `json:"clinics"        db:"clinics" swaggertype:"array,object"`
+	InvitationStatus *string         `json:"invitation_status" db:"invitation_status"`
+
+	CreatedAt time.Time `json:"created_at"    db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"    db:"updated_at"`
+}
+
+type ClinicDetail struct {
+	Name     string `json:"name"`
+	ABN      string `json:"abn"`
+	Address  string `json:"address"`
+	City     string `json:"city"`
+	Postcode string `json:"postcode"`
+	Contacts any    `json:"contacts"`
 }

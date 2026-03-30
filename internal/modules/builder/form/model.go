@@ -1,11 +1,10 @@
 package form
 
 import (
-	"errors"
-
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 const (
@@ -71,21 +70,9 @@ type RsFormWithFields struct {
 }
 
 type Filter struct {
-	ClinicID  *string `form:"clinic_id"`
-	FormName  *string `form:"form_name"`
-	Method    *string `form:"method"`
-	Status    *string `form:"status"`
-	Search    *string `form:"search"`
-	SortBy    *string `form:"sort_by"`
-	SortOrder *string `form:"sort_order"`
-	Limit     *int    `form:"limit"`
-	Offset    *int    `form:"offset"`
-}
-
-// Custom validation for sort pair
-func (f Filter) Validate() error {
-	if (f.SortBy != nil) != (f.SortOrder != nil) {
-		return errors.New("both sort_by and sort_order must be provided together")
-	}
-	return nil
+	ClinicID *string `form:"clinic_id"`
+	FormName *string `form:"form_name"`
+	Method   *string `form:"method"`
+	Status   *string `form:"status"`
+	common.Filter
 }

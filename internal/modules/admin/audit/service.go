@@ -91,7 +91,7 @@ func (s *service) Query(ctx context.Context, f *Filter) (*util.RsList, error) {
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 
 	return &rsList, nil
 }

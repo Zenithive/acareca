@@ -285,7 +285,8 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter) ([]*
 		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
 		WHERE e.deleted_at IS NULL AND ev.updated_at IS NULL`
 
-	q, args := common.BuildQuery(base, f, allowedTransactionColumns, nil, false)
+	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
+	q, args := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, false)
 	q = sqlx.Rebind(sqlx.DOLLAR, q)
 
 	var rows []*transactionFlatRow
@@ -330,7 +331,8 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter) (in
 		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
 		WHERE e.deleted_at IS NULL`
 
-	q, args := common.BuildQuery(base, f, allowedTransactionColumns, nil, true)
+	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
+	q, args := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, true)
 	q = sqlx.Rebind(sqlx.DOLLAR, q)
 
 	var total int

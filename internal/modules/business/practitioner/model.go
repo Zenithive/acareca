@@ -83,11 +83,7 @@ type Filter struct {
 	LastName  *string    `form:"last_name"`
 	Phone     *string    `form:"phone"`
 	ABN       *string    `form:"abn"`
-	Search    *string    `form:"search"`
-	Limit     *int       `form:"limit"`
-	Offset    *int       `form:"offset"`
-	SortBy    *string    `form:"sort_by"`
-	OrderBy   *string    `form:"order_by"`
+	common.Filter
 }
 
 func (filter *Filter) MapToFilter() common.Filter {
@@ -113,18 +109,5 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
-
-	if filter.SortBy != nil {
-		f.SortBy = *filter.SortBy
-	} else {
-		f.SortBy = "created_at"
-	}
-
-	if filter.OrderBy != nil {
-		f.OrderBy = *filter.OrderBy
-	} else {
-		f.OrderBy = "DESC"
-	}
-
 	return f
 }

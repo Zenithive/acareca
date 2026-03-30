@@ -37,7 +37,11 @@ type Repository interface {
 	CreateVerificationToken(ctx context.Context, tx *sqlx.Tx, token *VerificationToken) error
 	DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)
-	MarkUserVerified(ctx context.Context, userID uuid.UUID, tokenID uuid.UUID) error
+	MarkUserVerified(ctx context.Context, token *VerificationToken) error
+
+	// password reset
+	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
+	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 }
 
 type repository struct {
@@ -303,16 +307,40 @@ func (r *repository) GetToken(ctx context.Context, tokenID uuid.UUID) (*Verifica
 	return &t, nil
 }
 
-func (r *repository) MarkUserVerified(ctx context.Context, userID uuid.UUID, tokenID uuid.UUID) error {
+func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationToken) error {
 	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Mark user as verified (There is no such column in tbl_user yet)
-		// if _, err := tx.ExecContext(ctx, "UPDATE tbl_user SET verified = true WHERE id = $1", userID); err != nil {
-		// 	return err
-		// }
+		// Identify the target table based on the role stored in the token
+		var table string
+		if token.Role == nil {
+			return errors.New("token role is missing")
+		}
 
-		// Mark token as used
-		if _, err := tx.ExecContext(ctx, "UPDATE tbl_verification_token SET status = 'USED' WHERE id = $1", tokenID); err != nil {
-			return err
+		switch *token.Role {
+		case util.RolePractitioner:
+			table = "tbl_practitioner"
+		case util.RoleAccountant:
+			table = "tbl_accountant"
+		default:
+			return fmt.Errorf("unsupported role for verification: %s", *token.Role)
+		}
+
+		// Update the role-specific table's verified status
+		verifyQuery := fmt.Sprintf("UPDATE %s SET verified = true, updated_at = NOW() WHERE id = $1", table)
+		res, err := tx.ExecContext(ctx, verifyQuery, token.EntityID)
+		if err != nil {
+			return fmt.Errorf("failed to update %s verification: %w", table, err)
+		}
+
+		// Check if the row actually existed
+		rows, _ := res.RowsAffected()
+		if rows == 0 {
+			return fmt.Errorf("Entity %s not found in %s", token.EntityID, table)
+		}
+
+		// Mark the verification token as USED so it can't be reused
+		tokenUpdateQuery := `UPDATE tbl_verification_token SET status = 'USED' WHERE id = $1`
+		if _, err := tx.ExecContext(ctx, tokenUpdateQuery, token.ID); err != nil {
+			return fmt.Errorf("failed to update token status: %w", err)
 		}
 		return nil
 	})
@@ -329,5 +357,44 @@ func (r *repository) UpdatePassword(ctx context.Context, userID uuid.UUID, hashe
 	if rows == 0 {
 		return ErrNotFound
 	}
+	return nil
+}
+
+func (r *repository) SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error {
+	query := `INSERT INTO tbl_password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`
+	_, err := r.db.ExecContext(ctx, query, userID, tokenHash, expiresAt)
+	return err
+}
+
+func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error {
+
+	query := `
+    WITH updated_token AS (
+        UPDATE tbl_password_resets 
+        SET status = CASE 
+            WHEN expires_at < NOW() THEN 'EXPIRED' 
+            ELSE 'USED' 
+        END
+        WHERE token_hash = $1 
+          AND status = 'PENDING'
+        RETURNING user_id, status
+    )
+    UPDATE tbl_user 
+    SET password = $2, updated_at = NOW() 
+    FROM updated_token
+    WHERE tbl_user.id = updated_token.user_id 
+      AND updated_token.status = 'USED'`
+
+	result, err := r.db.ExecContext(ctx, query, tokenHash, newPasswordHash)
+	if err != nil {
+		return err
+	}
+
+	// Check if any rows were actually updated
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return errors.New("invalid or expired reset link")
+	}
+
 	return nil
 }

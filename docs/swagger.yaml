@@ -2,6 +2,10 @@ basePath: /api/v1
 definitions:
   accountant.RsAccountantUser:
     properties:
+      clinics:
+        items:
+          type: object
+        type: array
       created_at:
         type: string
       email:
@@ -10,8 +14,8 @@ definitions:
         type: string
       id:
         type: string
-      is_superadmin:
-        type: boolean
+      invitation_status:
+        type: string
       last_name:
         type: string
       phone:
@@ -46,6 +50,13 @@ definitions:
     required:
     - new_password
     type: object
+  auth.RqForgotPassword:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
   auth.RqLogin:
     properties:
       email:
@@ -62,6 +73,17 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  auth.RqResetPassword:
+    properties:
+      new_password:
+        minLength: 8
+        type: string
+      token:
+        type: string
+    required:
+    - new_password
+    - token
     type: object
   auth.RqUpdateUser:
     properties:
@@ -575,6 +597,16 @@ definitions:
     - name
     - owner_share
     type: object
+  form.RqUpdateFormStatus:
+    properties:
+      status:
+        enum:
+        - DRAFT
+        - PUBLISHED
+        type: string
+    required:
+    - status
+    type: object
   form.RqUpdateFormWithFields:
     properties:
       clinic_id:
@@ -642,18 +674,19 @@ definitions:
       label:
         type: string
     type: object
-  invitation.InvitationStatus:
-    enum:
-    - SENT
-    - ACCEPTED
-    - COMPLETED
-    - REJECTED
-    type: string
-    x-enum-varnames:
-    - StatusSent
-    - StatusAccepted
-    - StatusCompleted
-    - StatusRejected
+  invitation.RqProcessAction:
+    properties:
+      action:
+        enum:
+        - ACCEPT
+        - REJECT
+        type: string
+      token_id:
+        type: string
+    required:
+    - action
+    - token_id
+    type: object
   invitation.RqSendInvitation:
     properties:
       email:
@@ -661,28 +694,102 @@ definitions:
     required:
     - email
     type: object
-  invitation.RsInvitation:
+  notification.ActorType:
+    enum:
+    - PRACTITIONER
+    - ACCOUNTANT
+    - SYSTEM
+    type: string
+    x-enum-varnames:
+    - ActorPractitioner
+    - ActorAccountant
+    - ActorSystem
+  notification.EntityType:
+    enum:
+    - clinic
+    - form
+    - transaction
+    - document
+    - invite
+    type: string
+    x-enum-varnames:
+    - EntityClinic
+    - EntityForm
+    - EntityTransaction
+    - EntityDocument
+    - EntityInvite
+  notification.EventType:
+    enum:
+    - invite.sent
+    - invite.accepted
+    - invite.declined
+    - clinic.updated
+    - form.submitted
+    - form.updated
+    - transaction.created
+    - transaction.status_changed
+    - document.uploaded
+    type: string
+    x-enum-varnames:
+    - EventInviteSent
+    - EventInviteAccepted
+    - EventInviteDeclined
+    - EventClinicUpdated
+    - EventFormSubmitted
+    - EventFormUpdated
+    - EventTransactionCreated
+    - EventTransactionUpdated
+    - EventDocumentUploaded
+  notification.Notification:
     properties:
-      email:
+      createdAt:
         type: string
-      expires_at:
+      entityID:
         type: string
+      entityType:
+        $ref: '#/definitions/notification.EntityType'
+      eventType:
+        $ref: '#/definitions/notification.EventType'
       id:
         type: string
-      invite_link:
+      payload:
+        items:
+          type: integer
+        type: array
+      readedAt:
         type: string
+      recipientID:
+        type: string
+      recipientType:
+        $ref: '#/definitions/notification.ActorType'
+      senderID:
+        type: string
+      senderType:
+        $ref: '#/definitions/notification.ActorType'
       status:
-        $ref: '#/definitions/invitation.InvitationStatus'
+        $ref: '#/definitions/notification.Status'
     type: object
-  invitation.RsInviteProcess:
+  notification.RsListNotification:
     properties:
-      invitation_id:
-        type: string
-      is_found:
-        type: boolean
-      status:
-        $ref: '#/definitions/invitation.InvitationStatus'
+      notifications:
+        items:
+          $ref: '#/definitions/notification.Notification'
+        type: array
+      total:
+        type: integer
+      unread_count:
+        type: integer
     type: object
+  notification.Status:
+    enum:
+    - UNREAD
+    - READ
+    - DISMISSED
+    type: string
+    x-enum-varnames:
+    - StatusUnread
+    - StatusRead
+    - StatusDismissed
   pl.RsPLAccount:
     properties:
       account_code:
@@ -963,6 +1070,8 @@ info:
 paths:
   /accountant/:
     get:
+      consumes:
+      - application/json
       description: Retrieves a list of all registered users for the accountant view.
       produces:
       - application/json
@@ -973,10 +1082,16 @@ paths:
             items:
               $ref: '#/definitions/accountant.RsAccountantUser'
             type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Fetch all users
       tags:
       - accountant
@@ -1532,6 +1647,24 @@ paths:
       summary: Update the label of a financial year
       tags:
       - fy
+  /auth/forgot-password:
+    post:
+      description: Sends a reset link to the user's email if they exist.
+      parameters:
+      - description: Email
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqForgotPassword'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      summary: Initiate password reset
+      tags:
+      - auth
   /auth/google:
     get:
       description: get Google OAuth consent-screen URL
@@ -1651,6 +1784,24 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Register a new user
+      tags:
+      - auth
+  /auth/reset-password:
+    post:
+      description: Updates the user's password using the token received via email.
+      parameters:
+      - description: Token and New Password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqResetPassword'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      summary: Reset password using token
       tags:
       - auth
   /auth/user:
@@ -1784,7 +1935,7 @@ paths:
       summary: Update user profile
       tags:
       - auth
-  /auth/verify-email:
+  /auth/verify:
     get:
       description: Validates the UUID token sent via email. If valid, marks the user
         as verified and the token as used.
@@ -3139,6 +3290,94 @@ paths:
       summary: Update form with fields
       tags:
       - form
+  /form/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle form status between DRAFT and PUBLISHED
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateFormStatus'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      summary: Update form status
+      tags:
+      - form
+  /invite:
+    get:
+      description: Retrieve a paginated list of invitations. If logged in as a Practitioner,
+        it shows sent invites. If an Accountant, it shows received invites.
+      parameters:
+      - description: Filter by exact email address
+        in: query
+        name: email
+        type: string
+      - description: Filter by status (SENT, ACCEPTED, COMPLETED, REJECTED)
+        in: query
+        name: status
+        type: string
+      - description: Fuzzy search by email
+        in: query
+        name: search
+        type: string
+      - description: Number of records to return (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Number of records to skip
+        in: query
+        name: offset
+        type: integer
+      - description: Field to sort by (e.g., created_at, email)
+        in: query
+        name: sort_by
+        type: string
+      - description: Order of sorting (ASC or DESC)
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List invitations
+      tags:
+      - invitation
   /invite/:
     post:
       consumes:
@@ -3157,7 +3396,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/invitation.RsInvitation'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3173,16 +3412,12 @@ paths:
       - invitation
   /invite/{id}:
     get:
-      description: Processes the invitation link.
+      description: Check if an invitation exists and if the user is already registered.
       parameters:
       - description: Invitation UUID
         in: path
         name: id
         required: true
-        type: string
-      - description: Set to 'reject' to decline the invitation
-        in: query
-        name: action
         type: string
       produces:
       - application/json
@@ -3190,7 +3425,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/invitation.RsInviteProcess'
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
           schema:
@@ -3199,9 +3434,180 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
-      summary: Process invitation
+      summary: Get invitation details
       tags:
       - invitation
+  /invite/{id}/resend:
+    post:
+      description: Invalidates the old invitation and sends a new one to the same
+        email.
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Resend an invitation
+      tags:
+      - invitation
+  /invite/process:
+    post:
+      consumes:
+      - application/json
+      description: Accept or Reject an invitation via POST.
+      parameters:
+      - description: Token ID and Action (accept/reject)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invitation.RqProcessAction'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Process invitation action
+      tags:
+      - invitation
+  /notification:
+    get:
+      description: Returns a paginated list of notifications for the authenticated
+        entity, along with unread count.
+      parameters:
+      - description: Filter by status (UNREAD, READ, DISMISSED)
+        in: query
+        name: status
+        type: string
+      - description: Number of records to return
+        in: query
+        name: limit
+        type: integer
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/notification.RsListNotification'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List notifications
+      tags:
+      - notification
+  /notification/{id}/dismissed:
+    patch:
+      description: Marks a specific notification as DISMISSED for the authenticated
+        entity.
+      parameters:
+      - description: Notification UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Dismiss a notification
+      tags:
+      - notification
+  /notification/{id}/read:
+    patch:
+      description: Marks a specific notification as READ for the authenticated entity.
+      parameters:
+      - description: Notification UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Mark notification as read
+      tags:
+      - notification
   /pl/by-account:
     get:
       description: Returns monthly totals broken down per Chart of Accounts entry,

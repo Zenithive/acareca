@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -48,17 +47,17 @@ func RequireSuperadmin(check SuperadminChecker) gin.HandlerFunc {
 
 func Auth(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
-		fmt.Println("error")
-
+		var tokenStr string
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		} else if q := c.Query("token"); q != "" {
+			tokenStr = q
+		} else {
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
 			c.Abort()
 			return
 		}
-
-		tokenStr := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 
 		claims := &util.CustomClaims{}
 
@@ -70,9 +69,6 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		})
 
 		if err != nil || !token.Valid {
-			//fmt.Println(err.Error())
-			fmt.Println(token.Valid)
-			fmt.Println(err.Error())
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
 			c.Abort()
 			return
@@ -84,18 +80,16 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		practitionerUUID, err := util.ParseUUID(claims.ID)
-		fmt.Println(practitionerUUID)
+		entityUUID, err := util.ParseUUID(claims.ID)
 
 		if err != nil {
-			fmt.Println(err.Error())
 			response.Error(c, http.StatusUnauthorized, errUnauthorized)
 			c.Abort()
 			return
 		}
 
 		c.Set(util.UserIDKey, claims.Subject)
-		c.Set(util.PractitionerIDKey, practitionerUUID)
+		c.Set(util.EntityIDKey, entityUUID)
 		c.Set("role", claims.Role)
 
 		c.Next()

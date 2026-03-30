@@ -20,7 +20,7 @@ import (
 )
 
 const UserIDKey = "userID"
-const PractitionerIDKey = "practitionerID"
+const EntityIDKey = "EntityID"
 
 var validate = validator.New()
 
@@ -47,11 +47,34 @@ func BindAndValidate(c *gin.Context, v any) error {
 		}
 	}
 
+	// Sanitize query parameters - remove or replace invalid values like NaN, Infinity
+	sanitizeQueryParams(c)
+
 	if err := c.ShouldBindQuery(v); err != nil {
 		return err
 	}
 
 	return validate.Struct(v)
+}
+
+// sanitizeQueryParams removes or replaces invalid numeric values in query parameters
+func sanitizeQueryParams(c *gin.Context) {
+	query := c.Request.URL.Query()
+	modified := false
+
+	for _, values := range query {
+		for i, value := range values {
+			// Replace NaN and Infinity with 0 to prevent parsing errors
+			if value == "NaN" || value == "Infinity" || value == "-Infinity" {
+				values[i] = "0"
+				modified = true
+			}
+		}
+	}
+
+	if modified {
+		c.Request.URL.RawQuery = query.Encode()
+	}
 }
 
 type CustomClaims struct {
@@ -93,7 +116,7 @@ func ParseUUID(s string) (uuid.UUID, error) {
 }
 
 func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
-	idVal, exists := c.Get(PractitionerIDKey)
+	idVal, exists := c.Get(EntityIDKey)
 	if !exists {
 		response.Error(c, http.StatusBadRequest, errors.New("practitioner id not in context"))
 		return uuid.Nil, false
@@ -101,6 +124,20 @@ func GetPractitionerID(c *gin.Context) (uuid.UUID, bool) {
 	id, ok := idVal.(uuid.UUID)
 	if !ok {
 		response.Error(c, http.StatusInternalServerError, errors.New("invalid practitioner id type"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func GetAccountantID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(EntityIDKey)
+	if !exists {
+		response.Error(c, http.StatusBadRequest, errors.New("accountant id not in context"))
+		return uuid.Nil, false
+	}
+	id, ok := idVal.(uuid.UUID)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("invalid accountant id type"))
 		return uuid.Nil, false
 	}
 	return id, true
@@ -201,5 +238,19 @@ func GetUserID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 
+	return id, true
+}
+
+func GetEntityID(c *gin.Context) (uuid.UUID, bool) {
+	idVal, exists := c.Get(EntityIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return uuid.Nil, false
+	}
+	id, ok := idVal.(uuid.UUID)
+	if !ok || id == uuid.Nil {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return uuid.Nil, false
+	}
 	return id, true
 }

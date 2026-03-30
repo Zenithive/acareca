@@ -18,6 +18,10 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURL  string
 	ResendAPIKey       string
+	Env                string
+	DevUrl             string
+	LocalUrl           string
+	AllowedOrigins     string
 }
 
 func getEnv(key, fallback string) string {
@@ -43,7 +47,9 @@ func NewConfig() *Config {
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/oauth"),
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
+		Env:                getEnv("ENV", "local"),
+		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
+		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
+		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
 	}
 }
-
-

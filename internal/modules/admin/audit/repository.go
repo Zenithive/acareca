@@ -75,7 +75,8 @@ var allowedCols = map[string]string{
 func (r *repository) List(ctx context.Context, f common.Filter) ([]*AuditLog, error) {
 	query := `SELECT * FROM tbl_audit_log WHERE 1=1`
 
-	query, args := common.BuildQuery(query, f, allowedCols, nil, false)
+	searchCols := []string{"module", "action"}
+	query, args := common.BuildQuery(query, f, allowedCols, searchCols, false)
 	query = r.db.Rebind(query)
 
 	var logs []*AuditLog
@@ -107,7 +108,8 @@ func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
 	base := `FROM tbl_audit_log WHERE 1=1`
 
 	// Pass 'true' as the last argument to generate a COUNT(*) query
-	query, args := common.BuildQuery(base, f, allowedCols, nil, true)
+	searchCols := []string{"module", "action"}
+	query, args := common.BuildQuery(base, f, allowedCols, searchCols, true)
 	query = r.db.Rebind(query)
 
 	var count int

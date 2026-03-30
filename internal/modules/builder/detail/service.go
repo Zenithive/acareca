@@ -2,7 +2,6 @@ package detail
 
 import (
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
@@ -18,6 +17,7 @@ type IService interface {
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error)
+	UpdateFormStatus(ctx context.Context, d *RqUpdateFormStatus) error
 }
 
 type Service struct {
@@ -83,15 +83,12 @@ func (s *Service) List(ctx context.Context, filter Filter, practitionerID uuid.U
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(items, total, ft.Offset, ft.Limit)
+	rsList.MapToList(items, total, *ft.Offset, *ft.Limit)
 
 	return &rsList, nil
 }
 
 func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {
-	if existing.Status == StatusArchived {
-		return errors.New("form is archived")
-	}
 	if d.Name != nil {
 		existing.Name = *d.Name
 	}
@@ -182,4 +179,23 @@ func (s *Service) GetByID(ctx context.Context, formID uuid.UUID) (*RsFormDetail,
 		return nil, err
 	}
 	return formDetail.ToRs(), nil
+}
+
+// UpdateFormStatus toggles the form status between DRAFT and PUBLISHED.
+func (s *Service) UpdateFormStatus(ctx context.Context, d *RqUpdateFormStatus) error {
+	// Fetch existing to check current state
+	existing, err := s.repo.GetByID(ctx, d.ID)
+	if err != nil {
+		return err
+	}
+
+	// If the status is the same, just return
+	if existing.Status == d.Status {
+		return nil
+	}
+
+	// Execute update in a transaction
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		return s.repo.UpdateFormStatusTx(ctx, tx, d.ID, d.Status)
+	})
 }

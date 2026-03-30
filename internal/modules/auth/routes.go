@@ -18,6 +18,9 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 
 	auth.GET("/verify", h.VerifyEmail)
 
+	auth.POST("/forgot-password", h.ForgotPassword)
+	auth.POST("/reset-password", h.ResetPassword)
+
 	// Protected Routes
 	protected := auth.Group("/user", authMiddleware, middleware.AuditContext())
 	{

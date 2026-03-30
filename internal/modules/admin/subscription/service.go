@@ -85,7 +85,7 @@ func (s *service) ListSubscriptions(ctx context.Context, f *Filter) (*util.RsLis
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(data, total, ft.Offset, ft.Limit)
+	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
 }
 

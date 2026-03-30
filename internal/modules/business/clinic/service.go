@@ -260,7 +260,7 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 	}
 
 	rsList := &util.RsList{}
-	rsList.MapToList(result, total, f.Offset, f.Limit)
+	rsList.MapToList(result, total, *f.Offset, *f.Limit)
 
 	return rsList, nil
 }

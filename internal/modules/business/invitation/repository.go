@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -16,7 +17,14 @@ type Repository interface {
 	GetByEmail(ctx context.Context, email string) (*Invitation, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
 	GetPractitionerName(ctx context.Context, practitionerID uuid.UUID) (string, error)
+
+	GetAccountantIDByEmail(ctx context.Context, email string) (*uuid.UUID, error)
 	GetUserIDByEmail(ctx context.Context, email string) (*uuid.UUID, error)
+	List(ctx context.Context, f common.Filter) ([]*Invitation, error)
+	Count(ctx context.Context, f common.Filter) (int, error)
+	GetInvitationByID(ctx context.Context, id uuid.UUID) (*InvitationExtended, error)
+	GetUserDetailsByEmail(ctx context.Context, email string) (*UserDetails, error)
+	CountDailyInvitesByEmail(ctx context.Context, practitionerID uuid.UUID, email string) (int, error)
 }
 
 type repository struct {
@@ -90,16 +98,109 @@ func (r *repository) GetPractitionerName(ctx context.Context, practitionerID uui
 	return fmt.Sprintf("%s %s", name.FirstName, name.LastName), nil
 }
 
+func (r *repository) GetAccountantIDByEmail(ctx context.Context, email string) (*uuid.UUID, error) {
+	var accountantID uuid.UUID
+	query := `
+        SELECT a.id 
+        FROM tbl_accountant a
+        JOIN tbl_user u ON a.user_id = u.id
+        WHERE u.email = $1 
+        LIMIT 1`
+
+	err := r.db.GetContext(ctx, &accountantID, query, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &accountantID, nil
+}
+
 func (r *repository) GetUserIDByEmail(ctx context.Context, email string) (*uuid.UUID, error) {
 	var userID uuid.UUID
 	query := `SELECT id FROM tbl_user WHERE email = $1 LIMIT 1`
-
 	err := r.db.GetContext(ctx, &userID, query, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // User does not exist
+			return nil, nil
 		}
 		return nil, err
 	}
 	return &userID, nil
+}
+
+func (r *repository) List(ctx context.Context, f common.Filter) ([]*Invitation, error) {
+	base := `SELECT id, practitioner_id, entity_id, email, status, created_at, expires_at FROM tbl_invitation`
+
+	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
+
+	var list []*Invitation
+	if err := r.db.SelectContext(ctx, &list, r.db.Rebind(query), filterArgs...); err != nil {
+		return nil, fmt.Errorf("list invitations repo: %w", err)
+	}
+	return list, nil
+}
+
+func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
+	base := `FROM tbl_invitation`
+	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, true)
+
+	var total int
+	if err := r.db.GetContext(ctx, &total, r.db.Rebind(query), filterArgs...); err != nil {
+		return 0, fmt.Errorf("count invitations repo: %w", err)
+	}
+	return total, nil
+}
+
+func (r *repository) GetInvitationByID(ctx context.Context, id uuid.UUID) (*InvitationExtended, error) {
+	inv := &InvitationExtended{}
+	query := `
+		SELECT 
+			i.*, 
+			u.first_name AS sender_first_name, 
+			u.last_name AS sender_last_name, 
+			u.email AS sender_email
+		FROM tbl_invitation i
+		JOIN tbl_practitioner p ON i.practitioner_id = p.id
+		JOIN tbl_user u ON p.user_id = u.id
+		WHERE i.id = $1`
+
+	err := r.db.GetContext(ctx, inv, query, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return inv, nil
+}
+
+func (r *repository) GetUserDetailsByEmail(ctx context.Context, email string) (*UserDetails, error) {
+	var details UserDetails
+	query := `SELECT first_name, last_name, email FROM tbl_user WHERE email = $1 AND deleted_at IS NULL LIMIT 1`
+	err := r.db.GetContext(ctx, &details, query, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // Return nil so the service knows it's not found
+		}
+		return nil, err
+	}
+	return &details, nil
+}
+
+func (r *repository) CountDailyInvitesByEmail(ctx context.Context, practitionerID uuid.UUID, email string) (int, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) 
+		FROM tbl_invitation 
+		WHERE practitioner_id = $1 
+		  AND email = $2 
+		  AND created_at > NOW() - INTERVAL '24 hours'`
+
+	err := r.db.GetContext(ctx, &count, query, practitionerID, email)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
