@@ -5900,8 +5900,7 @@
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
+                        "PUBLISHED"
                     ]
                 },
                 "super_component": {
@@ -5977,8 +5976,7 @@
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED",
-                        "ARCHIVED"
+                        "PUBLISHED"
                     ]
                 },
                 "super_component": {

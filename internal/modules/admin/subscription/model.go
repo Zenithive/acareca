@@ -134,7 +134,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["name"] = *filter.Name
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	return f
 }

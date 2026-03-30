@@ -141,7 +141,7 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 	return query, args
 }
 
-func NewFilter(search *string, filters map[string]interface{}, operators map[string]Operator, limit, offset *int) Filter {
+func NewFilter(search *string, filters map[string]interface{}, operators map[string]Operator, limit, offset *int, sortBy, orderBy *string) Filter {
 
 	var where []Condition
 
@@ -202,7 +202,7 @@ func NewFilter(search *string, filters map[string]interface{}, operators map[str
 		Where:   where,
 		Limit:   &l,
 		Offset:  &o,
-		SortBy:  nil,
-		OrderBy: nil,
+		SortBy:  sortBy,
+		OrderBy: orderBy,
 	}
 }

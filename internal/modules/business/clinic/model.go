@@ -185,7 +185,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["is_active"] = *filter.IsActive
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset)
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
 	return f
 }

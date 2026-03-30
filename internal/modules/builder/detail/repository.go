@@ -79,10 +79,12 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 	args := []any{practitionerID}
 
 	allowedColumns := map[string]string{
+		"name":        "f.name",
 		"status":      "f.status",
 		"method":      "f.method",
 		"clinic_id":   "f.clinic_id",
 		"created_at":  "f.created_at",
+		"updated_at":  "f.updated_at",
 		"clinic_name": "f.name",
 	}
 
