@@ -126,28 +126,32 @@ func (r *Repository) Update(ctx context.Context, e *FormEntry, values []*FormEnt
 		return fmt.Errorf("update form entry: %w", err)
 	}
 
-	// Mark previous values as "updated"
-	markOldQuery := `
+	// Only handle field values if new values were provided
+	// If 'values' is nil or empty, we skip this to avoid duplicating existing IDs
+	if len(values) > 0 {
+		// Mark previous values as "updated"
+		markOldQuery := `
         UPDATE tbl_form_entry_value 
         SET updated_at = now() 
         WHERE entry_id = $1 AND updated_at IS NULL
     `
-	if _, err := tx.ExecContext(ctx, markOldQuery, e.ID); err != nil {
-		return fmt.Errorf("old entry values: %w", err)
-	}
+		if _, err := tx.ExecContext(ctx, markOldQuery, e.ID); err != nil {
+			return fmt.Errorf("old entry values: %w", err)
+		}
 
-	for _, v := range values {
-		v.EntryID = e.ID
-		valQuery := `
+		for _, v := range values {
+			v.EntryID = e.ID
+			valQuery := `
 			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, NULL)
 			RETURNING created_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
-			Scan(&v.CreatedAt); err != nil {
-			return fmt.Errorf("insert entry value: %w", err)
+			if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
+				Scan(&v.CreatedAt); err != nil {
+				return fmt.Errorf("insert entry value: %w", err)
+			}
+			v.UpdatedAt = nil // Set to nil so the API response shows it as null for the new record
 		}
-		v.UpdatedAt = nil // Set to nil so the API response shows it as null for the new record
 	}
 
 	return tx.Commit()

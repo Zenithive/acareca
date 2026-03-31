@@ -3,13 +3,18 @@ package entry
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
@@ -29,22 +34,36 @@ type IService interface {
 }
 
 type Service struct {
-	repo       IRepository
-	fieldRepo  field.IRepository
-	methodSvc  method.IService
-	limitsSvc  limits.Service
-	detailSvc  detail.IService
-	versionSvc version.IService
-	auditSvc   audit.Service
+	repo           IRepository
+	fieldRepo      field.IRepository
+	methodSvc      method.IService
+	limitsSvc      limits.Service
+	detailSvc      detail.IService
+	versionSvc     version.IService
+	auditSvc       audit.Service
+	eventsSvc      events.Service
+	accountantRepo accountant.Repository
+	authRepo       auth.Repository
+	clinicRepo     clinic.Repository
+	formClinic     clinic.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc}
 }
 
 // Create implements [IService].
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error) {
-	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyTransactionCreate); err != nil {
+	meta := auditctx.GetMetadata(ctx)
+	// Resolve the REAL owner at the start of THIS function
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
+	if err != nil {
+		return nil, err
+	}
+
+	realOwnerID := clinic.PractitionerID
+
+	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 		return nil, err
 	}
 
@@ -80,8 +99,22 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	result := created.ToRs(vals)
 	s.attachICCalculation(ctx, result)
 
+	// Record Shared Event
+	fmt.Printf("Shared Event Record Started\n")
+	metaMap := events.JSONBMap{
+		"entry_id":        result.ID.String(),
+		"form_version_id": formVersionID.String(),
+		"clinic_id":       req.ClinicID.String(),
+		"status":          result.Status,
+	}
+
+	s.recordSharedEvent(ctx, req.ClinicID, formVersionID, auditctx.ActionEntryCreated, result.ID,
+		"Accountant %s created a new entry for form: %s",
+		metaMap,
+	)
+	fmt.Printf("Shared Event Recorded\n")
+
 	// Audit log: entry created
-	meta := auditctx.GetMetadata(ctx)
 	idStr := created.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
@@ -116,6 +149,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		return nil, err
 	}
 	beforeState := existing.ToRs(values)
+
 	if req.Status != nil {
 		existing.Status = *req.Status
 		if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {
@@ -124,14 +158,18 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		}
 		existing.SubmittedBy = submittedBy
 	}
-	newValues := values
+
+	// Start as nil. Only calculate if the request actually contains new values.
+	var valuesToUpdate []*FormEntryValue = nil
 	if len(req.Values) > 0 {
-		newValues, err = s.CalculateValues(ctx, existing.ID, req.Values)
+		valuesToUpdate, err = s.CalculateValues(ctx, existing.ID, req.Values)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if err := s.repo.Update(ctx, existing, newValues); err != nil {
+
+	// If valuesToUpdate is nil, the repo only updates the status.
+	if err := s.repo.Update(ctx, existing, valuesToUpdate); err != nil {
 		return nil, err
 	}
 	updated, vals, err := s.repo.GetByID(ctx, id)
@@ -141,6 +179,19 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 
 	result := updated.ToRs(vals)
 	s.attachICCalculation(ctx, result)
+
+	// Record Shared Event
+	metaMap := events.JSONBMap{
+		"entry_id":        result.ID.String(),
+		"form_version_id": existing.FormVersionID.String(),
+		"clinic_id":       existing.ClinicID.String(),
+		"status":          result.Status,
+	}
+
+	s.recordSharedEvent(ctx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryUpdated, id,
+		"Accountant %s updated entry for form: %s",
+		metaMap,
+	)
 
 	// Audit log: entry updated
 	meta := auditctx.GetMetadata(ctx)
@@ -169,6 +220,17 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	beforeState := existing.ToRs(values)
+
+	// Record Shared Event
+	metaMap := events.JSONBMap{
+		"entry_id":  existing.ID.String(),
+		"clinic_id": existing.ClinicID.String(),
+	}
+
+	s.recordSharedEvent(ctx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, id,
+		"Accountant %s deleted an entry for form: %s",
+		metaMap,
+	)
 
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
@@ -409,3 +471,63 @@ func roundEntry(v float64) float64 {
 }
 
 func strPtr(s string) *string { return &s }
+
+// Helper to record shared events
+func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// Only act if the user is an Accountant
+	if meta.UserType == nil || !strings.EqualFold(*meta.UserType, util.RoleAccountant) || meta.UserID == nil {
+		return
+	}
+
+	actorUserID, _ := uuid.Parse(*meta.UserID)
+
+	// Resolve Form Name
+	formName := "Form"
+	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
+	if err == nil {
+		form, err := s.detailSvc.GetByID(ctx, ver.FormId)
+		if err == nil {
+			formName = form.Name
+		}
+	}
+
+	// Resolve PractitionerID from Clinic
+	clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
+	if err != nil {
+		return
+	}
+
+	// Resolve Accountant Id & Full Name
+	var accountantID uuid.UUID
+	var fullName string
+
+	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+	if err == nil {
+		accountantID = accProfile.ID
+	} else {
+		accountantID = actorUserID
+	}
+
+	user, err := s.authRepo.FindByID(ctx, actorUserID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	// Record Event
+	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+		ID:             uuid.New(),
+		PractitionerID: clinic.PractitionerID,
+		AccountantID:   accountantID,
+		ActorID:        actorUserID,
+		ActorName:      &fullName,
+		ActorType:      util.RoleAccountant,
+		EventType:      action,
+		EntityType:     "FORM",
+		EntityID:       entryID,
+		Description:    fmt.Sprintf(descriptionTemplate, fullName, formName),
+		Metadata:       metadata,
+		CreatedAt:      time.Now(),
+	})
+}
