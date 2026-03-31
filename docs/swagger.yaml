@@ -23,6 +23,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  admin.RqCreateAdmin:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
   auth.RqChangePassword:
     properties:
       new_password:
@@ -90,18 +109,11 @@ definitions:
         type: string
       phone:
         type: string
-      role:
-        enum:
-        - ADMIN
-        - PRACTITIONER
-        - ACCOUNTANT
-        type: string
     required:
     - email
     - first_name
     - last_name
     - password
-    - role
     type: object
   auth.RsGoogleAuthURL:
     properties:
@@ -239,6 +251,84 @@ definitions:
     - entries
     - form_id
     type: object
+  calculation.RqLiveCalculate:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/calculation.RqLiveCalculateEntry'
+        minItems: 1
+        type: array
+      form_version_id:
+        type: string
+    required:
+    - entries
+    - form_version_id
+    type: object
+  calculation.RqLiveCalculateEntry:
+    properties:
+      form_field_id:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      net_amount:
+        type: number
+    required:
+    - form_field_id
+    type: object
+  calculation.RsComputedFieldValue:
+    properties:
+      coa_id:
+        description: Chart of Account ID
+        type: string
+      field_id:
+        type: string
+      field_key:
+        type: string
+      form_field_id:
+        description: UUID as string for consistency with request
+        type: string
+      gross_amount:
+        description: gross amount (including GST), null when no tax
+        type: number
+      gst_amount:
+        description: GST amount, null when no tax
+        type: number
+      is_computed:
+        type: boolean
+      label:
+        type: string
+      net_amount:
+        description: net amount (ex-GST when tax applies)
+        type: number
+      section_type:
+        description: COLLECTION, COST, OTHER_COST
+        type: string
+      sort_order:
+        type: integer
+      tax_type:
+        description: INCLUSIVE, EXCLUSIVE, MANUAL, ZERO
+        type: string
+    type: object
+  calculation.RsFormulaCalculate:
+    properties:
+      computed_fields:
+        items:
+          $ref: '#/definitions/calculation.RsComputedFieldValue'
+        type: array
+      form_id:
+        type: string
+    type: object
+  calculation.RsLiveCalculate:
+    properties:
+      computed_fields:
+        items:
+          $ref: '#/definitions/calculation.RsComputedFieldValue'
+        type: array
+      form_version_id:
+        type: string
+    type: object
   clinic.RqBulkDeleteClinic:
     properties:
       clinic_ids:
@@ -308,6 +398,8 @@ definitions:
         type: boolean
       name:
         type: string
+      practitioner_id:
+        type: string
       profile_picture:
         type: string
     required:
@@ -351,6 +443,8 @@ definitions:
       lock_date:
         type: string
       name:
+        type: string
+      practitioner_id:
         type: string
       profile_picture:
         type: string
@@ -445,6 +539,8 @@ definitions:
     properties:
       clinic_id:
         type: string
+      date:
+        type: string
       status:
         enum:
         - DRAFT
@@ -459,6 +555,8 @@ definitions:
     type: object
   entry.RqUpdateFormEntry:
     properties:
+      date:
+        type: string
       status:
         enum:
         - DRAFT
@@ -471,18 +569,34 @@ definitions:
     type: object
   entry.RsEntryValue:
     properties:
+      amount:
+        description: Amount is used when there is no GST (net == gross).
+        type: number
+      field_key:
+        type: string
       form_field_id:
         type: string
       gross_amount:
         type: number
       gst_amount:
         type: number
+      is_computed:
+        type: boolean
+      label:
+        type: string
       net_amount:
+        description: NetAmount, GstAmount, GrossAmount are used when a GST breakdown
+          exists.
         type: number
     type: object
-  field.RqFormField:
+  field.RqCreateField:
     properties:
       coa_id:
+        type: string
+      is_computed:
+        type: boolean
+      key:
+        maxLength: 5
         type: string
       label:
         maxLength: 255
@@ -498,15 +612,17 @@ definitions:
         - COST
         - OTHER_COST
         type: string
+      slug:
+        maxLength: 100
+        type: string
       sort_order:
         minimum: 0
         type: integer
       tax_type:
         type: string
     required:
-    - coa_id
+    - key
     - label
-    - section_type
     type: object
   field.RqUpdateFormField:
     properties:
@@ -548,7 +664,11 @@ definitions:
         type: string
       fields:
         items:
-          $ref: '#/definitions/field.RqFormField'
+          $ref: '#/definitions/field.RqCreateField'
+        type: array
+      formulas:
+        items:
+          $ref: '#/definitions/formula.RqFormula'
         type: array
       method:
         enum:
@@ -565,6 +685,7 @@ definitions:
         enum:
         - DRAFT
         - PUBLISHED
+        - ARCHIVED
         type: string
       super_component:
         maximum: 100
@@ -576,6 +697,21 @@ definitions:
     - method
     - name
     - owner_share
+    type: object
+  form.RqFieldsSync:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/field.RqCreateField'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
+      update:
+        items:
+          $ref: '#/definitions/field.RqUpdateFormField'
+        type: array
     type: object
   form.RqUpdateFormStatus:
     properties:
@@ -595,18 +731,16 @@ definitions:
         maximum: 100
         minimum: 0
         type: integer
-      create:
-        items:
-          $ref: '#/definitions/field.RqFormField'
-        type: array
-      delete:
-        items:
-          type: string
-        type: array
       description:
         type: string
-      id:
+      fields:
+        $ref: '#/definitions/form.RqFieldsSync'
+      form_id:
         type: string
+      formulas:
+        items:
+          $ref: '#/definitions/formula.RqFormula'
+        type: array
       method:
         enum:
         - INDEPENDENT_CONTRACTOR
@@ -622,17 +756,46 @@ definitions:
         enum:
         - DRAFT
         - PUBLISHED
+        - ARCHIVED
         type: string
       super_component:
-        maximum: 100
-        minimum: 0
         type: number
-      update:
-        items:
-          $ref: '#/definitions/field.RqUpdateFormField'
-        type: array
     required:
     - clinic_id
+    type: object
+  formula.ExprNode:
+    properties:
+      key:
+        description: field key e.g. "A" — only for field
+        type: string
+      left:
+        $ref: '#/definitions/formula.ExprNode'
+      op:
+        description: '"+", "-", "*", "/" — only for operator'
+        type: string
+      right:
+        $ref: '#/definitions/formula.ExprNode'
+      type:
+        description: '"operator" | "field" | "constant"'
+        type: string
+      value:
+        description: numeric value — only for constant
+        type: number
+    type: object
+  formula.RqFormula:
+    properties:
+      expression:
+        $ref: '#/definitions/formula.ExprNode'
+      field_key:
+        maxLength: 5
+        type: string
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - expression
+    - field_key
+    - name
     type: object
   fy.RqCreateFY:
     properties:
@@ -732,9 +895,7 @@ definitions:
       id:
         type: string
       payload:
-        items:
-          type: integer
-        type: array
+        type: object
       readedAt:
         type: string
       recipientID:
@@ -1074,6 +1235,64 @@ paths:
       summary: Fetch all users
       tags:
       - accountant
+  /admin:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new entry in tbl_user with Role=ADMIN and a corresponding
+        entry in tbl_admin within a single transaction.
+      parameters:
+      - description: Admin and User details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/admin.RqCreateAdmin'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Create admin profile and user
+      tags:
+      - admin
+  /admin/{id}:
+    get:
+      description: Get nested Admin and User information by Admin ID
+      parameters:
+      - description: Admin ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Admin Detail
+      tags:
+      - admin
   /admin/audit:
     get:
       consumes:
@@ -2130,6 +2349,89 @@ paths:
       summary: Run calculation for a form
       tags:
       - calculation
+  /calculate/formula/{form_id}:
+    get:
+      description: |-
+        Evaluates all is_computed=true fields using manual field key→amount query params.
+        Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
+        Pass each non-computed field key as a query param, e.g. ?A=5000&B=300&C=55&D=20
+      parameters:
+      - description: Form ID
+        in: path
+        name: form_id
+        required: true
+        type: string
+      - description: Value for field A
+        in: query
+        name: A
+        type: number
+      - description: Value for field B
+        in: query
+        name: B
+        type: number
+      - description: Value for field C
+        in: query
+        name: C
+        type: number
+      - description: Value for field D
+        in: query
+        name: D
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.RsFormulaCalculate'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Calculate computed fields for a form
+      tags:
+      - calculation
+  /calculate/live:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Evaluates all is_computed=true fields for a form version using provided field entries.
+        Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
+        Pass form_field_id with net_amount, gst_amount, and gross_amount for each field.
+      parameters:
+      - description: Form version ID and field entries
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.RqLiveCalculate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.RsLiveCalculate'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Live calculation based on form version ID
+      tags:
+      - calculation
   /clinic:
     get:
       parameters:
@@ -2222,6 +2524,10 @@ paths:
         in: path
         name: id
         required: true
+        type: string
+      - description: Practitioner UUID (Required for Accountants)
+        in: query
+        name: practitioner_id
         type: string
       produces:
       - application/json

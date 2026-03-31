@@ -21,11 +21,13 @@ type RqEntryValue struct {
 type RqFormEntry struct {
 	ClinicID uuid.UUID      `json:"clinic_id" validate:"required,uuid"`
 	Status   string         `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Date     *string        `json:"date" validate:"omitempty"`
 	Values   []RqEntryValue `json:"values,omitempty"`
 }
 
 type RqUpdateFormEntry struct {
 	Status *string        `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Date   *string        `json:"date" validate:"omitempty"`
 	Values []RqEntryValue `json:"values,omitempty"`
 }
 
@@ -35,6 +37,7 @@ type FormEntry struct {
 	ClinicID      uuid.UUID  `db:"clinic_id" json:"clinic_id"`
 	SubmittedBy   *uuid.UUID `db:"submitted_by" json:"submitted_by,omitempty"`
 	SubmittedAt   *string    `db:"submitted_at" json:"submitted_at,omitempty"`
+	Date          *string    `db:"date" json:"date,omitempty"`
 	Status        string     `db:"status" json:"status"`
 	CreatedAt     string     `db:"created_at" json:"created_at"`
 	UpdatedAt     *string    `db:"updated_at" json:"updated_at,omitempty"`
@@ -56,6 +59,7 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 		ID:            d.ID,
 		FormVersionID: d.FormVersionID,
 		ClinicID:      d.ClinicID,
+		Date:          d.Date,
 		Status:        d.Status,
 		CreatedAt:     d.CreatedAt,
 		UpdatedAt:     d.UpdatedAt,
@@ -66,12 +70,17 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 	}
 	rs.Values = make([]RsEntryValue, 0, len(values))
 	for _, v := range values {
-		rs.Values = append(rs.Values, RsEntryValue{
+		ev := RsEntryValue{
 			FormFieldID: v.FormFieldID,
-			NetAmount:   v.NetAmount,
-			GstAmount:   v.GstAmount,
-			GrossAmount: v.GrossAmount,
-		})
+		}
+		if v.GstAmount != nil {
+			ev.NetAmount = v.NetAmount
+			ev.GstAmount = v.GstAmount
+			ev.GrossAmount = v.GrossAmount
+		} else {
+			ev.Amount = v.NetAmount
+		}
+		rs.Values = append(rs.Values, ev)
 	}
 	return rs
 }
@@ -82,6 +91,7 @@ type RsFormEntry struct {
 	ClinicID      uuid.UUID      `json:"clinic_id"`
 	SubmittedBy   *uuid.UUID     `json:"submitted_by,omitempty"`
 	SubmittedAt   string         `json:"submitted_at,omitempty"`
+	Date          *string        `json:"date,omitempty"`
 	Status        string         `json:"status"`
 	Values        []RsEntryValue `json:"values,omitempty"`
 	CreatedAt     string         `json:"created_at"`
@@ -95,9 +105,15 @@ type RsFormEntry struct {
 
 type RsEntryValue struct {
 	FormFieldID uuid.UUID `json:"form_field_id"`
-	NetAmount   *float64  `json:"net_amount,omitempty"`
-	GstAmount   *float64  `json:"gst_amount,omitempty"`
-	GrossAmount *float64  `json:"gross_amount,omitempty"`
+	FieldKey    string    `json:"field_key,omitempty"`
+	Label       string    `json:"label,omitempty"`
+	IsComputed  bool      `json:"is_computed"`
+	// Amount is used when there is no GST (net == gross).
+	Amount *float64 `json:"amount,omitempty"`
+	// NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.
+	NetAmount   *float64 `json:"net_amount,omitempty"`
+	GstAmount   *float64 `json:"gst_amount,omitempty"`
+	GrossAmount *float64 `json:"gross_amount,omitempty"`
 }
 
 type Filter struct {

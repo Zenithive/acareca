@@ -3,9 +3,14 @@ package clinic
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/auth"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -27,23 +32,32 @@ type Service interface {
 }
 
 type service struct {
-	db        *sqlx.DB
-	repo      Repository
-	auditSvc  audit.Service
-	limitsSvc limits.Service
+	db             *sqlx.DB
+	repo           Repository
+	accountantRepo accountant.Repository
+	authRepo       auth.Repository
+	auditSvc       audit.Service
+	limitsSvc      limits.Service
+	eventsSvc      events.Service
 }
 
-func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
-	return &service{db: db, repo: repo, auditSvc: auditSvc, limitsSvc: limits.NewService(db)}
+func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, auditSvc audit.Service, eventsSvc events.Service) Service {
+	return &service{db: db, repo: repo, accountantRepo: accRepo, authRepo: authRepo, auditSvc: auditSvc, limitsSvc: limits.NewService(db), eventsSvc: eventsSvc}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
-	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyClinicCreate); err != nil {
+	meta := auditctx.GetMetadata(ctx)
+
+	limitCheckID := practitionerID
+
+	// 2. Perform the limit check
+	if err := s.limitsSvc.Check(ctx, limitCheckID, limits.KeyClinicCreate); err != nil {
 		return nil, err
 	}
 
 	var result *RsClinic
 
+	// 3. Start Transaction
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Get active financial year
 		activeFinancialYearID, err := s.repo.GetActiveFinancialYearTx(ctx, tx)
@@ -68,11 +82,11 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			return fmt.Errorf("create clinic: %w", err)
 		}
 
-		// Create financial settings with active financial year
+		// Create financial settings
 		financialSettings := &FinancialSettings{
 			ClinicID:        created.ID,
 			FinancialYearID: *activeFinancialYearID,
-			LockDate:        nil, // Keep empty as requested
+			LockDate:        nil,
 		}
 
 		createdFS, err := s.repo.CreateFinancialSettingsTx(ctx, tx, financialSettings)
@@ -80,6 +94,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			return fmt.Errorf("create financial settings: %w", err)
 		}
 
+		// Create Addresses
 		var addresses []RsClinicAddress
 		for _, addr := range req.Addresses {
 			isPrimary := false
@@ -111,6 +126,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			})
 		}
 
+		// Create Contacts
 		var contacts []RsClinicContact
 		for _, cont := range req.Contacts {
 			isPrimary := false
@@ -140,6 +156,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			})
 		}
 
+		// Map to result struct for use in event/audit
 		result = &RsClinic{
 			ID:             created.ID,
 			PractitionerID: created.PractitionerID,
@@ -159,15 +176,62 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			UpdatedAt: created.UpdatedAt,
 		}
 
+		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+			fmt.Println(">>> DEBUG: Accountant detected. Recording Shared Event...")
+
+			actorUserID, err := uuid.Parse(*meta.UserID)
+			if err != nil {
+				fmt.Printf(">>> DEBUG ERROR: Failed to parse Actor UUID: %v\n", err)
+			} else {
+
+				var finalAccountantID uuid.UUID
+				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+				if err == nil {
+					finalAccountantID = accProfile.ID
+				} else {
+
+					finalAccountantID = actorUserID
+				}
+
+				user, err := s.authRepo.FindByID(ctx, actorUserID)
+				if err == nil {
+					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+
+					// 3. Record the Event
+					err = s.eventsSvc.Record(ctx, events.SharedEvent{
+						ID:             uuid.New(),
+						PractitionerID: practitionerID,
+						AccountantID:   finalAccountantID,
+						ActorID:        actorUserID,
+						ActorName:      &fullName,
+						ActorType:      "ACCOUNTANT",
+						EventType:      "clinic.created",
+						EntityType:     "CLINIC",
+						EntityID:       result.ID,
+						Description:    fmt.Sprintf("Accountant %s created a new clinic: %s", fullName, result.Name),
+						Metadata:       events.JSONBMap{"clinic_name": result.Name},
+						CreatedAt:      time.Now(),
+					})
+
+					if err != nil {
+						fmt.Printf(">>> DEBUG [!] Event Record Failed: %v\n", err)
+					} else {
+						fmt.Println(">>> DEBUG [!] Shared Event successfully recorded.")
+					}
+				}
+			}
+		}
+
 		return nil
 	})
 
+	// 4. Handle Transaction Error
 	if err != nil {
 		return nil, fmt.Errorf("create clinic transaction failed: %w", err)
 	}
 
-	// Audit log: clinic created
-	meta := auditctx.GetMetadata(ctx)
+	// 5. Audit Logging (Async - for both Practitioner and Accountant)
 	idStr := result.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
@@ -340,32 +404,85 @@ func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, i
 }
 
 func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) error {
-	existing, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
-	if err != nil {
-		return err
-	}
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-	if err := s.repo.DeleteClinic(ctx, id); err != nil {
-		return err
-	}
+		existing, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, practitionerID)
+		if err != nil {
+			fmt.Printf(">>> DEBUG ERROR: Clinic not found for deletion: %v\n", err)
+			return err
+		}
 
-	// Audit log: clinic deleted
-	meta := auditctx.GetMetadata(ctx)
-	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
-		Action:      auditctx.ActionClinicDeleted,
-		Module:      auditctx.ModuleClinic,
-		EntityType:  strPtr(auditctx.EntityClinic),
-		EntityID:    &idStr,
-		BeforeState: existing,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
+		// 2. Perform the actual deletion
+		if err := s.repo.DeleteClinicTx(ctx, tx, id); err != nil {
+			return fmt.Errorf("delete clinic: %w", err)
+		}
+
+		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+		meta := auditctx.GetMetadata(ctx)
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+			fmt.Println(">>> DEBUG: Accountant detected. Recording Shared Event for deletion...")
+
+			actorUserID, err := uuid.Parse(*meta.UserID)
+			if err == nil {
+
+				var finalAccountantID uuid.UUID
+				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+				if err == nil {
+					finalAccountantID = accProfile.ID
+					fmt.Printf(">>> DEBUG: Resolved Accountant Profile ID: %s\n", finalAccountantID)
+				} else {
+					finalAccountantID = actorUserID
+				}
+
+				user, err := s.authRepo.FindByID(ctx, actorUserID)
+				if err == nil {
+					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+
+					// 3. Record the Event
+					err = s.eventsSvc.Record(ctx, events.SharedEvent{
+						ID:             uuid.New(),
+						PractitionerID: practitionerID,
+						AccountantID:   finalAccountantID,
+						ActorID:        actorUserID,
+						ActorName:      &fullName,
+						ActorType:      "ACCOUNTANT",
+						EventType:      "clinic.deleted",
+						EntityType:     "CLINIC",
+						EntityID:       id,
+						Description:    fmt.Sprintf("Accountant %s deleted clinic: %s", fullName, existing.Name),
+						Metadata:       events.JSONBMap{"clinic_name": existing.Name},
+						CreatedAt:      time.Now(),
+					})
+
+					if err != nil {
+						fmt.Printf(">>> DEBUG ERROR: Shared Event Record failed: %v\n", err)
+					} else {
+						fmt.Println(">>> DEBUG SUCCESS: Shared Event recorded for deletion.")
+					}
+				}
+			}
+		} else {
+			fmt.Println(">>> DEBUG: Action by Practitioner. Skipping Shared Event record.")
+		}
+
+		// 3. Original Audit Log (Async - captures all users)
+		idStr := id.String()
+		s.auditSvc.LogAsync(&audit.LogEntry{
+			PracticeID:  meta.PracticeID,
+			UserID:      meta.UserID,
+			Action:      auditctx.ActionClinicDeleted,
+			Module:      auditctx.ModuleClinic,
+			EntityType:  strPtr(auditctx.EntityClinic),
+			EntityID:    &idStr,
+			BeforeState: existing,
+			IPAddress:   meta.IPAddress,
+			UserAgent:   meta.UserAgent,
+		})
+
+		return nil
 	})
-
-	return nil
 }
+
 func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
 	var result *RsClinic
 
@@ -400,18 +517,15 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		// Update addresses
 		for _, addr := range req.Addresses {
 			if addr.ID != nil {
-				// Get existing address to update only provided fields
 				existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *addr.ID)
 				if err != nil {
 					return fmt.Errorf("get address by id: %w", err)
 				}
 
-				// Validate that the address belongs to this clinic
 				if existingAddr.ClinicID != clinic.ID {
 					return fmt.Errorf("address %s does not belong to clinic %s", addr.ID.String(), clinic.ID.String())
 				}
 
-				// Update only provided fields
 				if addr.Address != nil {
 					existingAddr.Address = addr.Address
 				}
@@ -426,7 +540,6 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 				}
 				if addr.IsPrimary != nil {
 					existingAddr.IsPrimary = *addr.IsPrimary
-					// If setting as primary, unset other primary addresses for this clinic
 					if *addr.IsPrimary {
 						if err := s.repo.UnsetPrimaryAddressTx(ctx, tx, clinic.ID, *addr.ID); err != nil {
 							return fmt.Errorf("unset primary address: %w", err)
@@ -443,18 +556,15 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		// Update contacts
 		for _, cont := range req.Contacts {
 			if cont.ID != nil {
-				// Get existing contact to update only provided fields
 				existingContact, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
 				if err != nil {
 					return fmt.Errorf("get contact by id: %w", err)
 				}
 
-				// Validate that the contact belongs to this clinic
 				if existingContact.ClinicID != clinic.ID {
 					return fmt.Errorf("contact %s does not belong to clinic %s", cont.ID.String(), clinic.ID.String())
 				}
 
-				// Update only provided fields
 				if cont.ContactType != nil {
 					existingContact.ContactType = *cont.ContactType
 				}
@@ -466,7 +576,6 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 				}
 				if cont.IsPrimary != nil {
 					existingContact.IsPrimary = *cont.IsPrimary
-					// If setting as primary, unset other primary contacts for this clinic
 					if *cont.IsPrimary {
 						if err := s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID); err != nil {
 							return fmt.Errorf("unset primary contact: %w", err)
@@ -506,8 +615,44 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		if err != nil {
 			return fmt.Errorf("get updated clinic: %w", err)
 		}
-
 		result = updatedClinic
+
+		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+		meta := auditctx.GetMetadata(ctx)
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+			actorUserID, err := uuid.Parse(*meta.UserID)
+			if err == nil {
+
+				var finalAccountantID uuid.UUID
+				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+				if err == nil {
+					finalAccountantID = accProfile.ID
+				} else {
+					finalAccountantID = actorUserID
+				}
+
+				user, err := s.authRepo.FindByID(ctx, actorUserID)
+				if err == nil {
+					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+
+					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+						ID:             uuid.New(),
+						PractitionerID: practitionerID,
+						AccountantID:   finalAccountantID,
+						ActorID:        actorUserID,
+						ActorName:      &fullName,
+						ActorType:      "ACCOUNTANT",
+						EventType:      "clinic.updated",
+						EntityType:     "CLINIC",
+						EntityID:       result.ID,
+						Description:    fmt.Sprintf("Accountant %s updated clinic: %s", fullName, result.Name),
+						Metadata:       events.JSONBMap{"clinic_name": result.Name},
+						CreatedAt:      time.Now(),
+					})
+				}
+			}
+		}
+
 		return nil
 	})
 
@@ -515,7 +660,7 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		return nil, fmt.Errorf("update clinic transaction failed: %w", err)
 	}
 
-	// Audit log: clinic updated
+	// Audit log: clinic updated (Async - for both Practitioner and Accountant)
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{

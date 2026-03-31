@@ -167,16 +167,16 @@ func (h *Hub) unregister(cl *client) {
 // ── stored notifications ──────────────────────────────────────────────────────
 
 type storedNotification struct {
-	ID          uuid.UUID  `db:"id"`
-	RecipientID uuid.UUID  `db:"recipient_id"`
-	SenderID    *uuid.UUID `db:"sender_id"`
-	EventType   string     `db:"event_type"`
-	EntityType  string     `db:"entity_type"`
-	EntityID    uuid.UUID  `db:"entity_id"`
-	Status      string     `db:"status"`
-	Payload     []byte     `db:"payload"`
-	CreatedAt   time.Time  `db:"created_at"`
-	ReadedAt    *time.Time `db:"readed_at"`
+	ID          uuid.UUID       `db:"id"`
+	RecipientID uuid.UUID       `db:"recipient_id"`
+	SenderID    *uuid.UUID      `db:"sender_id"`
+	EventType   string          `db:"event_type"`
+	EntityType  string          `db:"entity_type"`
+	EntityID    uuid.UUID       `db:"entity_id"`
+	Status      string          `db:"status"`
+	Payload     json.RawMessage `db:"payload"`
+	CreatedAt   time.Time       `db:"created_at"`
+	ReadedAt    *time.Time      `db:"readed_at"`
 }
 
 func (h *Hub) sendStored(ctx context.Context, cl *client) error {

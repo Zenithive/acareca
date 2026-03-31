@@ -6,11 +6,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	"github.com/iamarpitzala/acareca/docs"
@@ -84,39 +82,7 @@ func main() {
 		log.Print(" - using code:  gin.SetMode(gin.ReleaseMode)\n\n")
 	}
 
-	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-	var origins []string
-	allowCredentials := true
-
-	if allowedOrigins == "" {
-		origins = []string{cfg.LocalUrl}
-		log.Printf("[WARN] ALLOWED_ORIGINS not set — using cfg.LocalUrl=%q for CORS\n", cfg.LocalUrl)
-	} else {
-		splitOrigins := strings.Split(allowedOrigins, ",")
-		origins = make([]string, 0, len(splitOrigins))
-		containsWildcard := false
-		for _, o := range splitOrigins {
-			trimmed := strings.TrimSpace(o)
-			if trimmed != "" {
-				origins = append(origins, trimmed)
-				if trimmed == "*" {
-					containsWildcard = true
-				}
-			}
-		}
-		if containsWildcard {
-			allowCredentials = false
-		}
-	}
-
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     origins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
-		ExposeHeaders:    []string{"Authorization", "token"},
-		AllowCredentials: allowCredentials,
-		MaxAge:           12 * time.Hour,
-	}))
+	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
 	auditSvc, notifier, notificationRepo := route.RegisterRoutes(r, cfg)
 

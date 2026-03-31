@@ -49,7 +49,6 @@ type RqUser struct {
 	FirstName string  `json:"first_name" validate:"required"`
 	LastName  string  `json:"last_name"  validate:"required"`
 	Phone     *string `json:"phone"      validate:"omitempty,e164"`
-	Role      string  `json:"role"       validate:"required,oneof=ADMIN PRACTITIONER ACCOUNTANT"`
 }
 
 type RqUpdateUser struct {
@@ -65,7 +64,6 @@ func (r *RqUser) ToDBModel() *User {
 		FirstName: r.FirstName,
 		LastName:  r.LastName,
 		Phone:     r.Phone,
-		Role:      r.Role,
 	}
 }
 

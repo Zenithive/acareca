@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -64,10 +65,11 @@ type service struct {
 	invitationSvc    invitation.Service
 	practitionerRepo practitioner.Repository
 	accountantSvc    accountant.IService
+	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, inviteRepo invitation.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -88,32 +90,30 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		invitationSvc:    invitationSvc,
 		practitionerRepo: practitionerRepo,
 		accountantSvc:    accountantSvc,
+		adminSvc:         adminSvc,
 		inviteRepo:       inviteRepo}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	existing, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil && existing != nil {
-		// Check if existing user is already verified
 		isVerified, _ := s.isUserVerified(ctx, existing)
 		if isVerified {
 			return nil, ErrEmailTaken
 		}
-		// If they exist but aren't verified, redirect them to verify
 		return nil, errors.New("this email is registered but not verified. Please check your email to verify your account")
 	}
 
-	// Role Check: Check if email is in tbl_invitation
 	invite, err := s.invitationSvc.GetInvitationByEmailInternal(ctx, req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify invitation status: %w", err)
 	}
 
-	// Determine Role: If invitation exists, role is accountant.
+	var assignedRole string
 	if invite != nil {
-		req.Role = util.RoleAccountant
-	} else { // Default role if no invitation is found.
-		req.Role = util.RolePractitioner
+		assignedRole = util.RoleAccountant
+	} else {
+		assignedRole = util.RolePractitioner
 	}
 
 	hashedPassword, err := util.GenerateHash(req.Password)
@@ -123,7 +123,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	u := req.ToDBModel()
 	u.Password = &hashedPassword
-	u.Role = req.Role
+	u.Role = assignedRole
 
 	var created *User
 	var entityID uuid.UUID
@@ -157,7 +157,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			return fmt.Errorf("create role: %w", txErr)
 		}
 
-		// Generate Verification Token
 		tokenID = uuid.New()
 		vToken := &VerificationToken{
 			ID:        tokenID,
@@ -175,7 +174,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			if a == nil {
 				return errors.New("failed to retrieve accountant profile for invitation finalization")
 			}
-			// This function looks for an invitation by email and links it to the accountant id
 			err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, a.ID)
 			if err != nil {
 				return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
@@ -189,14 +187,12 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		return nil, err
 	}
 
-	// Send Email Asynchronously
 	go func() {
 		if err := s.sendVerificationEmail(created.Email, created.FirstName, tokenID); err != nil {
 			fmt.Printf("[AUTH ERROR] Failed to send verification email: %v\n", err)
 		}
 	}()
 
-	// Audit log: user registration
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
 	entityIDStr := entityID.String()
@@ -218,7 +214,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	user, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		// Run a dummy hash comparison to prevent timing-based user enumeration
 		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
 		return nil, ErrInvalidPassword
 	}
@@ -232,13 +227,17 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, ErrInvalidPassword
 	}
 
-	// User Verification Check
-	isVerified, err := s.isUserVerified(ctx, user)
-	if err != nil {
-		return nil, fmt.Errorf("verification check: %w", err)
-	}
-	if !isVerified {
-		return nil, errors.New("account not verified. Please check your email to verify your account")
+	// Check if the user is an Admin to bypass verification
+	isAdmin := user.Role == util.RoleAdmin
+	// User Verification Check (only for non-admins)
+	if !isAdmin {
+		isVerified, err := s.isUserVerified(ctx, user)
+		if err != nil {
+			return nil, fmt.Errorf("verification check: %w", err)
+		}
+		if !isVerified {
+			return nil, errors.New("account not verified. Please check your email to verify your account")
+		}
 	}
 
 	// Resolve the specific Entity ID for the JWT
@@ -760,6 +759,12 @@ func (s *service) resolveEntityID(ctx context.Context, user *User) (string, erro
 			return "", err
 		}
 		return acc.ID.String(), nil
+	case util.RoleAdmin:
+		a, err := s.adminSvc.GetAdminByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return a.ID.String(), nil
 	default:
 		return user.ID.String(), nil
 	}
