@@ -95,6 +95,7 @@ func SeedDefaultsForPractitioner(ctx context.Context, repo Repository, practitio
 			AccountTaxID:   row.AccountTaxID,
 			Code:           row.Code,
 			Name:           row.Name,
+			Key:            GenerateKeyFromName(row.Name),
 			IsSystem:       row.IsSystem,
 		}
 	}

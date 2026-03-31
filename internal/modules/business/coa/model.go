@@ -2,11 +2,33 @@ package coa
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
+
+// GenerateKeyFromName converts a name to a key format (e.g., "Commission Fee" -> "commission_fee")
+func GenerateKeyFromName(name string) string {
+	// Remove special characters except spaces
+	reg := regexp.MustCompile(`[^a-zA-Z0-9\s]`)
+	cleaned := reg.ReplaceAllString(name, "")
+
+	// Replace multiple spaces with single space
+	spaceReg := regexp.MustCompile(`\s+`)
+	cleaned = spaceReg.ReplaceAllString(cleaned, " ")
+
+	// Trim and convert to lowercase
+	cleaned = strings.TrimSpace(cleaned)
+	cleaned = strings.ToLower(cleaned)
+
+	// Replace spaces with underscores
+	key := strings.ReplaceAll(cleaned, " ", "_")
+
+	return key
+}
 
 type AccountType struct {
 	ID        int16     `db:"id"`
@@ -50,6 +72,7 @@ type ChartOfAccount struct {
 	AccountTaxID   int16      `db:"account_tax_id"`
 	Code           int16      `db:"code"`
 	Name           string     `db:"name"`
+	Key            string     `db:"key"`
 	IsSystem       bool       `db:"is_system"`
 	IsTaxable      bool       `db:"is_taxable"`
 	CreatedAt      time.Time  `db:"created_at"`
@@ -64,10 +87,11 @@ type RsChartOfAccount struct {
 	AccountTaxID   int16     `json:"account_tax_id"`
 	Code           int16     `json:"code"`
 	Name           string    `json:"name"`
-	IsSystem       bool      `json:"is_system"`
-	IsTaxable      bool      `json:"is_taxable"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+
+	IsSystem  bool      `json:"is_system"`
+	IsTaxable bool      `json:"is_taxable"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {

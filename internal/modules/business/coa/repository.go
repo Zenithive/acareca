@@ -27,6 +27,7 @@ type Repository interface {
 	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error)
 	CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
+	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
 	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error)
 	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
@@ -119,6 +120,7 @@ var chartOfAccountColumns = map[string]string{
 	"account_tax_id":  "coa.account_tax_id",
 	"code":            "coa.code",
 	"name":            "coa.name",
+	"key":             "coa.key",
 	"is_system":       "coa.is_system",
 	"created_at":      "coa.created_at",
 }
@@ -129,7 +131,7 @@ func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid
 	base := `
 		SELECT 
 			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
-			coa.code, coa.name, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
+			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.practitioner_id = ?
@@ -169,7 +171,7 @@ func (r *repository) CountChartOfAccount(ctx context.Context, practitionerID uui
 
 func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name,
+		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
 		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
@@ -185,9 +187,27 @@ func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practi
 	return &c, nil
 }
 
+func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
+	query := `
+		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
+		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		FROM tbl_chart_of_accounts coa
+		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+		WHERE coa.key = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
+	`
+	var c ChartOfAccount
+	if err := r.db.QueryRowxContext(ctx, query, key, practitionerID).StructScan(&c); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get chart by key and practitioner_id: %w", err)
+	}
+	return &c, nil
+}
+
 func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name,
+		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
 		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
@@ -211,13 +231,13 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 
 func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error) {
 	query := `
-		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
 	`
 	var id uuid.UUID
 	err := tx.QueryRowxContext(ctx, query,
-		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem,
+		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.IsSystem,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
@@ -231,15 +251,15 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 		return nil
 	}
 
-	query := `INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system) VALUES `
-	args := make([]interface{}, 0, len(rows)*6)
+	query := `INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system) VALUES `
+	args := make([]interface{}, 0, len(rows)*7)
 	for i, row := range rows {
 		if i > 0 {
 			query += ", "
 		}
-		base := i * 6
-		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6)
-		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.IsSystem)
+		base := i * 7
+		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7)
+		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.Key, row.IsSystem)
 	}
 
 	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
@@ -251,13 +271,13 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
 	query := `
 		UPDATE tbl_chart_of_accounts
-		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, updated_at = now()
+		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, key = $6, updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id
 	`
 	var id uuid.UUID
 	err := r.db.QueryRowxContext(ctx, query,
-		c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name,
+		c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key,
 	).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -274,7 +294,7 @@ func (r *repository) getChartByID(ctx context.Context, querier interface {
 	QueryRowxContext(ctx context.Context, query string, args ...interface{}) *sqlx.Row
 }, id uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name,
+		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
 		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
