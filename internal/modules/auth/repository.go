@@ -84,7 +84,7 @@ func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*
 }
 
 func (r *repository) UpdateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
-	const returning = `RETURNING id, email, password, first_name, last_name, phone, is_superadmin, created_at, updated_at`
+	const returning = `RETURNING id, email, password, first_name, last_name, phone, role, created_at, updated_at`
 
 	query := `
         UPDATE tbl_user 

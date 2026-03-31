@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -332,12 +333,18 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter) (in
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE e.deleted_at IS NULL`
+		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL`
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
 	q, args := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, true)
-	q = sqlx.Rebind(sqlx.DOLLAR, q)
+	// Inject the "active record" check manually before rebinding
+    if strings.Contains(strings.ToUpper(q), "WHERE") {
+        q += " AND ev.updated_at IS NULL"
+    } else {
+        q += " WHERE ev.updated_at IS NULL"
+    }
+
+    q = sqlx.Rebind(sqlx.DOLLAR, q)
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
