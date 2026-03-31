@@ -60,6 +60,93 @@ const docTemplate = `{
                 }
             }
         },
+        "/accountant/clinics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieves all clinics belonging to practitioners who have a completed invitation with this accountant.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accountant"
+                ],
+                "summary": "Fetch assigned clinics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/accountant.ClinicDetail"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/accountant/forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieves all forms belonging to clinics that this accountant has access to via completed invitations.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accountant"
+                ],
+                "summary": "Fetch assigned forms",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin": {
             "post": {
                 "description": "Creates a new entry in tbl_user with Role=ADMIN and a corresponding entry in tbl_admin within a single transaction.",
@@ -5161,6 +5248,35 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "accountant.ClinicDetail": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "postcode": {
+                    "type": "string"
+                }
+            }
+        },
         "accountant.RsAccountantUser": {
             "type": "object",
             "properties": {

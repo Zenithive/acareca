@@ -1,5 +1,24 @@
 basePath: /api/v1
 definitions:
+  accountant.ClinicDetail:
+    properties:
+      abn:
+        type: string
+      address:
+        type: string
+      city:
+        type: string
+      contacts:
+        items:
+          type: object
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+      postcode:
+        type: string
+    type: object
   accountant.RsAccountantUser:
     properties:
       clinics:
@@ -1086,6 +1105,63 @@ paths:
       security:
       - BearerToken: []
       summary: Fetch all users
+      tags:
+      - accountant
+  /accountant/clinics:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all clinics belonging to practitioners who have a completed
+        invitation with this accountant.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/accountant.ClinicDetail'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Fetch assigned clinics
+      tags:
+      - accountant
+  /accountant/forms:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all forms belonging to clinics that this accountant has
+        access to via completed invitations.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Fetch assigned forms
       tags:
       - accountant
   /admin:

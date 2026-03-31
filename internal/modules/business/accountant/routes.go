@@ -8,5 +8,7 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler, authMiddleware gin.HandlerFu
 		accountant.Use(authMiddleware)
 
 		accountant.GET("/", h.ListUsers)
+		accountant.GET("/clinics", h.ListClinics)
+		accountant.GET("/forms", h.ListForms)
 	}
 }

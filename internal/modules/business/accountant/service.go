@@ -13,6 +13,9 @@ type IService interface {
 	CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error)
 	GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error)
 	ListUsers(ctx context.Context) ([]RsAccountantUser, error)
+	ListClinics(ctx context.Context) ([]ClinicDetail, error)
+	ListForms(ctx context.Context) ([]RsAccountantForm, error)
+	getAccountantID(ctx context.Context) (string, error)
 }
 
 type service struct {
@@ -49,20 +52,8 @@ func (s *service) GetAccountantByUserID(ctx context.Context, userID string) (*Rs
 	return nil, fmt.Errorf("accountant not found for user ID: %s", userID)
 }
 
-/*
-	func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {
-		userIDInterface := ctx.Value(util.UserIDKey)
-		userID, ok := userIDInterface.(string)
-		if !ok {
-			fmt.Printf("Context Keys: %+v\n", ctx)
-			return nil, fmt.Errorf("userID not found in context")
-		}
-		return s.repo.GetAllUsers(ctx, userID)
-	}
-*/
 func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {
-	// 1. Grab the ID from the context (The ID starting with 9559fd60...)
-	// This value is the Accountant's unique ID from the token
+
 	userIDInterface := ctx.Value(util.EntityIDKey)
 
 	var accountantID string
@@ -72,18 +63,43 @@ func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {
 	case uuid.UUID:
 		accountantID = v.String()
 	default:
-		// If this prints, ensure the Handler is passing 'c' and not 'c.Request.Context()'
+
 		fmt.Printf("DEBUG: Context Value is %v, Type is %T\n", userIDInterface, userIDInterface)
 		return nil, fmt.Errorf("authentication failed: accountant identity not found")
 	}
 
-	// 2. Direct Repository Call
-	// We bypass GetAccountantByUserID because the ID in the context is the
-	// Accountant ID itself, which the repository needs for the JOIN query.
 	users, err := s.repo.GetAllUsers(ctx, accountantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch clinics: %v", err)
 	}
 
 	return users, nil
+}
+
+func (s *service) ListClinics(ctx context.Context) ([]ClinicDetail, error) {
+	accID, err := s.getAccountantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetClinicsForAccountant(ctx, accID)
+}
+
+func (s *service) ListForms(ctx context.Context) ([]RsAccountantForm, error) {
+	accID, err := s.getAccountantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetFormsForAccountant(ctx, accID)
+}
+
+func (s *service) getAccountantID(ctx context.Context) (string, error) {
+	val := ctx.Value(util.EntityIDKey)
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case uuid.UUID:
+		return v.String(), nil
+	default:
+		return "", fmt.Errorf("invalid accountant identity in context")
+	}
 }
