@@ -21,6 +21,7 @@ type Service interface {
 	Calculate(ctx context.Context, formId uuid.UUID, filter *NetFilter) (interface{}, error)
 	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error)
 	FormulaCalculate(ctx context.Context, formID uuid.UUID, req *RqFormulaCalculate) (*RsFormulaCalculate, error)
+	LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error)
 }
 
 type service struct {
@@ -300,12 +301,9 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 			continue
 		}
 
-		item := RsComputedFieldValue{
-			FieldID:  fieldID,
-			FieldKey: f.FieldKey,
-			Label:    f.Label,
-			Amount:   util.Round(val, 2),
-		}
+		netAmount := util.Round(val, 2)
+		var gstAmount *float64
+		var grossAmount *float64
 
 		// Apply tax treatment when the computed field has a tax_type.
 		if f.TaxType != nil && *f.TaxType != "" {
@@ -316,9 +314,24 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 			net := util.Round(taxResult.Amount, 2)
 			gst := util.Round(taxResult.GstAmount, 2)
 			gross := util.Round(taxResult.TotalAmount, 2)
-			item.Amount = net
-			item.GstAmount = &gst
-			item.Gross = &gross
+			netAmount = net
+			gstAmount = &gst
+			grossAmount = &gross
+		}
+
+		item := RsComputedFieldValue{
+			FieldID:     fieldID,
+			FormFieldID: fieldID.String(),
+			FieldKey:    f.FieldKey,
+			Label:       f.Label,
+			IsComputed:  f.IsComputed,
+			NetAmount:   netAmount,
+			GstAmount:   gstAmount,
+			GrossAmount: grossAmount,
+			SectionType: f.SectionType,
+			TaxType:     f.TaxType,
+			CoaID:       f.CoaID,
+			SortOrder:   f.SortOrder,
 		}
 
 		results = append(results, item)
@@ -326,6 +339,93 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 
 	return &RsFormulaCalculate{
 		FormID:         formID,
+		ComputedFields: results,
+	}, nil
+}
+
+func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error) {
+	formVersionID, err := uuid.Parse(req.FormVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid form_version_id: %w", err)
+	}
+
+	fieldMap, err := s.fieldSvc.GetFieldMap(ctx, formVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("get field map: %w", err)
+	}
+
+	keyValues := make(map[string]float64)
+	for _, f := range fieldMap {
+		if !f.IsComputed {
+			keyValues[f.FieldKey] = 0
+		}
+	}
+
+	for _, entry := range req.Entries {
+		fieldID, err := uuid.Parse(entry.FormFieldID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid form_field_id %s: %w", entry.FormFieldID, err)
+		}
+
+		f, ok := fieldMap[fieldID]
+		if !ok {
+			return nil, fmt.Errorf("field %s not found in form version", entry.FormFieldID)
+		}
+
+		if !f.IsComputed {
+			keyValues[f.FieldKey] = entry.NetAmount
+		}
+	}
+
+	computed, err := s.formulaSvc.EvalFormulas(ctx, formVersionID, keyValues)
+	if err != nil {
+		return nil, fmt.Errorf("eval formulas: %w", err)
+	}
+
+	results := make([]RsComputedFieldValue, 0, len(computed))
+	for fieldID, val := range computed {
+		f, ok := fieldMap[fieldID]
+		if !ok || !f.IsComputed {
+			continue
+		}
+
+		netAmount := util.Round(val, 2)
+		var gstAmount *float64
+		var grossAmount *float64
+
+		if f.TaxType != nil && *f.TaxType != "" {
+			taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
+			if err != nil {
+				return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+			}
+			net := util.Round(taxResult.Amount, 2)
+			gst := util.Round(taxResult.GstAmount, 2)
+			gross := util.Round(taxResult.TotalAmount, 2)
+			netAmount = net
+			gstAmount = &gst
+			grossAmount = &gross
+		}
+
+		item := RsComputedFieldValue{
+			FieldID:     fieldID,
+			FormFieldID: fieldID.String(),
+			FieldKey:    f.FieldKey,
+			Label:       f.Label,
+			IsComputed:  f.IsComputed,
+			NetAmount:   netAmount,
+			GstAmount:   gstAmount,
+			GrossAmount: grossAmount,
+			SectionType: f.SectionType,
+			TaxType:     f.TaxType,
+			CoaID:       f.CoaID,
+			SortOrder:   f.SortOrder,
+		}
+
+		results = append(results, item)
+	}
+
+	return &RsLiveCalculate{
+		FormVersionID:  formVersionID,
 		ComputedFields: results,
 	}, nil
 }
