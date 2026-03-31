@@ -100,24 +100,8 @@ func (s *service) ListByFormVersionID(ctx context.Context, formVersionID uuid.UU
 			CreatedAt:     fw.formula.CreatedAt,
 		}
 
-		rootPos := int16(0)
-		for _, n := range fw.nodes {
-			pos := n.Position
-			if n.ParentID == nil {
-				pos = &rootPos
-			}
-			node := RsFormulaNode{
-				ID:            n.ID,
-				ParentID:      n.ParentID,
-				NodeType:      n.NodeType,
-				Operator:      n.Operator,
-				FieldID:       n.FieldID,
-				FieldKey:      n.FieldKey,
-				ConstantValue: n.ConstantValue,
-				Position:      pos,
-			}
-			rs.Nodes = append(rs.Nodes, node)
-		}
+		rs.Expression = buildExpressionTree(fw.nodes)
+
 		items = append(items, rsItem{rs, fw.formula.FieldID})
 	}
 
@@ -147,26 +131,95 @@ func (s *service) ListByFormVersionID(ctx context.Context, formVersionID uuid.UU
 }
 
 func topoSort(n int, deps [][]int) []int {
-	visited := make([]bool, n)
-	var order []int
-	var visit func(i int)
-	visit = func(i int) {
-		if visited[i] {
-			return
-		}
-		visited[i] = true
-		for _, dep := range deps[i] {
-			visit(dep)
-		}
-		order = append(order, i)
-	}
+	inDegree := make([]int, n)
 	for i := 0; i < n; i++ {
-		visit(i)
+		inDegree[i] = len(deps[i])
 	}
+
+	var queue []int
+	for i := 0; i < n; i++ {
+		if inDegree[i] == 0 {
+			queue = append(queue, i)
+		}
+	}
+
+	var order []int
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		order = append(order, curr)
+
+		for i := 0; i < n; i++ {
+			for _, dep := range deps[i] {
+				if dep == curr {
+					inDegree[i]--
+					if inDegree[i] == 0 {
+						queue = append(queue, i)
+					}
+					break
+				}
+			}
+		}
+	}
+
 	return order
 }
 
-// insertNodes recursively walks the expression tree and inserts rows into tbl_formula_node.
+func buildExpressionTree(nodes []*FormulaNodeWithKey) *ExprNode {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	nodeMap := make(map[uuid.UUID]*FormulaNodeWithKey)
+	var root *FormulaNodeWithKey
+	for _, n := range nodes {
+		nodeMap[n.ID] = n
+		if n.ParentID == nil {
+			root = n
+		}
+	}
+
+	if root == nil {
+		return nil
+	}
+
+	return buildExprNode(root, nodeMap)
+}
+
+func buildExprNode(node *FormulaNodeWithKey, nodeMap map[uuid.UUID]*FormulaNodeWithKey) *ExprNode {
+	expr := &ExprNode{}
+
+	switch node.NodeType {
+	case "OPERATOR":
+		expr.Type = "operator"
+		if node.Operator != nil {
+			expr.Op = *node.Operator
+		}
+
+		for _, n := range nodeMap {
+			if n.ParentID != nil && *n.ParentID == node.ID {
+				if n.Position != nil && *n.Position == 0 {
+					expr.Left = buildExprNode(n, nodeMap)
+				} else if n.Position != nil && *n.Position == 1 {
+					expr.Right = buildExprNode(n, nodeMap)
+				}
+			}
+		}
+
+	case "FIELD":
+		expr.Type = "field"
+		if node.FieldKey != nil {
+			expr.Key = *node.FieldKey
+		}
+
+	case "CONSTANT":
+		expr.Type = "constant"
+		expr.Value = node.ConstantValue
+	}
+
+	return expr
+}
+
 func insertNodes(ctx context.Context, tx *sqlx.Tx, repo IRepository, formulaID uuid.UUID, node *ExprNode, parentID *uuid.UUID, position *int16, keyToFieldID map[string]uuid.UUID) error {
 	n := &FormulaNode{
 		ID:        uuid.New(),
