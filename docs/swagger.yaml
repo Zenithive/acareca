@@ -251,6 +251,33 @@ definitions:
     - entries
     - form_id
     type: object
+  calculation.RsComputedFieldValue:
+    properties:
+      amount:
+        description: net amount (ex-GST when tax applies)
+        type: number
+      field_id:
+        type: string
+      field_key:
+        type: string
+      gross:
+        description: only present when field has a tax_type
+        type: number
+      gst_amount:
+        description: only present when field has a tax_type
+        type: number
+      label:
+        type: string
+    type: object
+  calculation.RsFormulaCalculate:
+    properties:
+      computed_fields:
+        items:
+          $ref: '#/definitions/calculation.RsComputedFieldValue'
+        type: array
+      form_id:
+        type: string
+    type: object
   clinic.RqBulkDeleteClinic:
     properties:
       clinic_ids:
@@ -461,6 +488,8 @@ definitions:
     properties:
       clinic_id:
         type: string
+      date:
+        type: string
       status:
         enum:
         - DRAFT
@@ -475,6 +504,8 @@ definitions:
     type: object
   entry.RqUpdateFormEntry:
     properties:
+      date:
+        type: string
       status:
         enum:
         - DRAFT
@@ -487,18 +518,34 @@ definitions:
     type: object
   entry.RsEntryValue:
     properties:
+      amount:
+        description: Amount is used when there is no GST (net == gross).
+        type: number
+      field_key:
+        type: string
       form_field_id:
         type: string
       gross_amount:
         type: number
       gst_amount:
         type: number
+      is_computed:
+        type: boolean
+      label:
+        type: string
       net_amount:
+        description: NetAmount, GstAmount, GrossAmount are used when a GST breakdown
+          exists.
         type: number
     type: object
-  field.RqFormField:
+  field.RqCreateField:
     properties:
       coa_id:
+        type: string
+      is_computed:
+        type: boolean
+      key:
+        maxLength: 5
         type: string
       label:
         maxLength: 255
@@ -514,15 +561,17 @@ definitions:
         - COST
         - OTHER_COST
         type: string
+      slug:
+        maxLength: 100
+        type: string
       sort_order:
         minimum: 0
         type: integer
       tax_type:
         type: string
     required:
-    - coa_id
+    - key
     - label
-    - section_type
     type: object
   field.RqUpdateFormField:
     properties:
@@ -564,7 +613,11 @@ definitions:
         type: string
       fields:
         items:
-          $ref: '#/definitions/field.RqFormField'
+          $ref: '#/definitions/field.RqCreateField'
+        type: array
+      formulas:
+        items:
+          $ref: '#/definitions/formula.RqFormula'
         type: array
       method:
         enum:
@@ -581,6 +634,7 @@ definitions:
         enum:
         - DRAFT
         - PUBLISHED
+        - ARCHIVED
         type: string
       super_component:
         maximum: 100
@@ -592,6 +646,21 @@ definitions:
     - method
     - name
     - owner_share
+    type: object
+  form.RqFieldsSync:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/field.RqCreateField'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
+      update:
+        items:
+          $ref: '#/definitions/field.RqUpdateFormField'
+        type: array
     type: object
   form.RqUpdateFormStatus:
     properties:
@@ -611,18 +680,16 @@ definitions:
         maximum: 100
         minimum: 0
         type: integer
-      create:
-        items:
-          $ref: '#/definitions/field.RqFormField'
-        type: array
-      delete:
-        items:
-          type: string
-        type: array
       description:
         type: string
-      id:
+      fields:
+        $ref: '#/definitions/form.RqFieldsSync'
+      form_id:
         type: string
+      formulas:
+        items:
+          $ref: '#/definitions/formula.RqFormula'
+        type: array
       method:
         enum:
         - INDEPENDENT_CONTRACTOR
@@ -638,17 +705,46 @@ definitions:
         enum:
         - DRAFT
         - PUBLISHED
+        - ARCHIVED
         type: string
       super_component:
-        maximum: 100
-        minimum: 0
         type: number
-      update:
-        items:
-          $ref: '#/definitions/field.RqUpdateFormField'
-        type: array
     required:
     - clinic_id
+    type: object
+  formula.ExprNode:
+    properties:
+      key:
+        description: field key e.g. "A" — only for field
+        type: string
+      left:
+        $ref: '#/definitions/formula.ExprNode'
+      op:
+        description: '"+", "-", "*", "/" — only for operator'
+        type: string
+      right:
+        $ref: '#/definitions/formula.ExprNode'
+      type:
+        description: '"operator" | "field" | "constant"'
+        type: string
+      value:
+        description: numeric value — only for constant
+        type: number
+    type: object
+  formula.RqFormula:
+    properties:
+      expression:
+        $ref: '#/definitions/formula.ExprNode'
+      field_key:
+        maxLength: 5
+        type: string
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - expression
+    - field_key
+    - name
     type: object
   fy.RqCreateFY:
     properties:
@@ -2202,6 +2298,54 @@ paths:
       security:
       - BearerToken: []
       summary: Run calculation for a form
+      tags:
+      - calculation
+  /calculate/formula/{form_id}:
+    get:
+      description: |-
+        Evaluates all is_computed=true fields using manual field key→amount query params.
+        Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
+        Pass each non-computed field key as a query param, e.g. ?A=5000&B=300&C=55&D=20
+      parameters:
+      - description: Form ID
+        in: path
+        name: form_id
+        required: true
+        type: string
+      - description: Value for field A
+        in: query
+        name: A
+        type: number
+      - description: Value for field B
+        in: query
+        name: B
+        type: number
+      - description: Value for field C
+        in: query
+        name: C
+        type: number
+      - description: Value for field D
+        in: query
+        name: D
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.RsFormulaCalculate'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Calculate computed fields for a form
       tags:
       - calculation
   /clinic:
