@@ -6455,10 +6455,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "payload": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
+                    "type": "object"
                 },
                 "readedAt": {
                     "type": "string"

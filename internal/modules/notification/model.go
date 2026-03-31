@@ -71,34 +71,34 @@ const (
 )
 
 type RqNotification struct {
-	ID            uuid.UUID  `json:"id"`
-	RecipientID   uuid.UUID  `json:"recipient_id"`
-	RecipientType ActorType  `json:"recipient_type"`
-	SenderID      *uuid.UUID `json:"sender_id"`
-	SenderType    *ActorType `json:"sender_type"`
-	EventType     EventType  `json:"event_type"`
-	EntityType    EntityType `json:"entity_type"`
-	EntityID      uuid.UUID  `json:"entity_id"`
-	Status        Status     `json:"status"`
-	Payload       []byte     `json:"payload"`
-	Channels      []Channel  `json:"channels"`
-	CreatedAt     time.Time  `json:"created_at"`
-	ReadedAt      *time.Time `json:"readed_at"`
+	ID            uuid.UUID       `json:"id"`
+	RecipientID   uuid.UUID       `json:"recipient_id"`
+	RecipientType ActorType       `json:"recipient_type"`
+	SenderID      *uuid.UUID      `json:"sender_id"`
+	SenderType    *ActorType      `json:"sender_type"`
+	EventType     EventType       `json:"event_type"`
+	EntityType    EntityType      `json:"entity_type"`
+	EntityID      uuid.UUID       `json:"entity_id"`
+	Status        Status          `json:"status"`
+	Payload       json.RawMessage `json:"payload"`
+	Channels      []Channel       `json:"channels"`
+	CreatedAt     time.Time       `json:"created_at"`
+	ReadedAt      *time.Time      `json:"readed_at"`
 }
 
 type Notification struct {
-	ID            uuid.UUID  `db:"id"`
-	RecipientID   uuid.UUID  `db:"recipient_id"`
-	RecipientType ActorType  `db:"recipient_type"`
-	SenderID      *uuid.UUID `db:"sender_id"`
-	SenderType    *ActorType `db:"sender_type"`
-	EventType     EventType  `db:"event_type"`
-	EntityType    EntityType `db:"entity_type"`
-	EntityID      uuid.UUID  `db:"entity_id"`
-	Status        Status     `db:"status"`
-	Payload       []byte     `db:"payload"`
-	CreatedAt     time.Time  `db:"created_at"`
-	ReadedAt      *time.Time `db:"readed_at"`
+	ID            uuid.UUID       `db:"id"`
+	RecipientID   uuid.UUID       `db:"recipient_id"`
+	RecipientType ActorType       `db:"recipient_type"`
+	SenderID      *uuid.UUID      `db:"sender_id"`
+	SenderType    *ActorType      `db:"sender_type"`
+	EventType     EventType       `db:"event_type"`
+	EntityType    EntityType      `db:"entity_type"`
+	EntityID      uuid.UUID       `db:"entity_id"`
+	Status        Status          `db:"status"`
+	Payload       json.RawMessage `db:"payload" swaggertype:"object"`
+	CreatedAt     time.Time       `db:"created_at"`
+	ReadedAt      *time.Time      `db:"readed_at"`
 }
 
 // Delivery tracks the send state for a single channel of a notification.
@@ -115,14 +115,14 @@ type Delivery struct {
 
 // FailedDelivery is used by the retry worker — joins delivery + notification data.
 type FailedDelivery struct {
-	NotificationID uuid.UUID `db:"notification_id"`
-	RecipientID    uuid.UUID `db:"recipient_id"`
-	RetryCount     int       `db:"retry_count"`
-	EventType      EventType `db:"event_type"`
-	EntityType     EntityType `db:"entity_type"`
-	EntityID       uuid.UUID `db:"entity_id"`
-	Payload        []byte    `db:"payload"`
-	CreatedAt      time.Time `db:"created_at"`
+	NotificationID uuid.UUID       `db:"notification_id"`
+	RecipientID    uuid.UUID       `db:"recipient_id"`
+	RetryCount     int             `db:"retry_count"`
+	EventType      EventType       `db:"event_type"`
+	EntityType     EntityType      `db:"entity_type"`
+	EntityID       uuid.UUID       `db:"entity_id"`
+	Payload        json.RawMessage `db:"payload"`
+	CreatedAt      time.Time       `db:"created_at"`
 }
 
 func (n *RqNotification) MapToDB() Notification {

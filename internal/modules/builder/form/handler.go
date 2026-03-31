@@ -287,11 +287,11 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 		return
 	}
 
-	err := h.svc.UpdateFormStatus(c.Request.Context(), formID, req.Status)
+	form, err := h.svc.UpdateFormStatus(c.Request.Context(), formID, req.Status)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	response.JSON(c, http.StatusOK, nil, "Form status updated successfully")
+	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Form status updated successfully")
 }

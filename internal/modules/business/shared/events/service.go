@@ -2,7 +2,11 @@ package events
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
@@ -29,9 +33,21 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 		return err
 	}
 
-	// 2. TRIGGER NOTIFICATION (User Alert)
 	if s.notification != nil {
-		// TODO: Implement notification publishing using e.Description, e.Metadata
+
+		notificationReq := s.mapToNotificationRequest(e)
+
+		// Use a goroutine to publish so it doesn't slow down the main request
+		go func() {
+			// Create a background context for the async task
+			asyncCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := s.notification.Publish(asyncCtx, notificationReq); err != nil {
+
+				fmt.Printf(">>> ERROR: Failed to publish notification: %v\n", err)
+			}
+		}()
 	}
 
 	if s.auditSvc != nil {
@@ -56,4 +72,34 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func (s *service) mapToNotificationRequest(e SharedEvent) notification.RqNotification {
+
+	payloadObj := notification.BuildNotificationPayload(
+		"Accountant Activity Alert",
+		json.RawMessage(fmt.Sprintf(`"%s"`, e.Description)),
+		e.ActorName, // senderName
+		nil,
+		nil,
+	)
+
+	payloadBytes, _ := json.Marshal(payloadObj)
+
+	// 2. Map SharedEvent to RqNotification
+	senderType := notification.ActorAccountant
+
+	return notification.RqNotification{
+		ID:            uuid.New(),
+		RecipientID:   e.PractitionerID,
+		RecipientType: notification.ActorPractitioner,
+		SenderID:      &e.AccountantID,
+		SenderType:    &senderType,
+		EventType:     notification.EventType(e.EventType),
+		EntityType:    notification.EntityType(e.EntityType),
+		EntityID:      e.EntityID,
+		Payload:       payloadBytes,
+		Channels:      []notification.Channel{notification.ChannelInApp},
+		CreatedAt:     time.Now(),
+	}
 }

@@ -123,7 +123,7 @@ var chartOfAccountColumns = map[string]string{
 	"created_at":      "coa.created_at",
 }
 
-var coaSearchColumns = []string{"name"}
+var coaSearchColumns = []string{"coa.name", "CAST(coa.code AS TEXT)"}
 
 func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error) {
 	base := `

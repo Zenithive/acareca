@@ -164,15 +164,18 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.
 		if err != nil {
 			return nil, err
 		}
-		if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
-			return nil, err
-		}
+		/*
+			if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
+				return nil, err
+			}*/
+
 		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
 			if errors.Is(err, coa.ErrNotFound) {
 				return nil, errors.New("coa not found")
 			}
 			return nil, err
 		}
+
 	}
 
 	if err := s.repo.CreateTx(ctx, tx, f); err != nil {
@@ -186,9 +189,11 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clini
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
-		return nil, err
-	}
+	/*
+		if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
+			return nil, err
+		}*/
+
 	if req.CoaID != nil {
 		parsed, err := uuid.Parse(*req.CoaID)
 		if err != nil {

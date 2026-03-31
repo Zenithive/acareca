@@ -2,9 +2,13 @@ package detail
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
+	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -25,35 +29,61 @@ type Service struct {
 	repo       IRepository
 	versionSvc version.IService
 	limitsSvc  limits.Service
+	clinicRepo clinic.Repository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService) IService {
-	return &Service{db: db, repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db)}
+func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService, clinicRepo clinic.Repository) IService {
+	return &Service{db: db, repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db), clinicRepo: clinicRepo}
 }
 
 // Create implements [IService].
 func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
+
+	if isAccountant || practitionerID == uuid.Nil {
+
+		clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
+		if err != nil {
+
+			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+		}
+
+		// Overwrite the ID so we check the OWNER'S subscription, not the accountant's
+		practitionerID = clinic.PractitionerID
+
+	}
+
+	// 3. Now the limit check runs against the correct person (The Subscriber)
+
 	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
+
 		return nil, err
 	}
 
 	formDetail := d.ToDB(clinicID)
 	var result *RsFormDetail
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+
 		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
+
 			return err
 		}
+
 		_, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
 			Version:  1,
 			IsActive: true,
 		}, practitionerID)
 		if err != nil {
+
 			return err
 		}
 		result = formDetail.ToRs()
 		return nil
 	})
 	if err != nil {
+
 		return nil, err
 	}
 	return result, nil

@@ -844,9 +844,7 @@ definitions:
       id:
         type: string
       payload:
-        items:
-          type: integer
-        type: array
+        type: object
       readedAt:
         type: string
       recipientID:
