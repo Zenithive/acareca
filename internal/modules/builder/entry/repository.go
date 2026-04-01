@@ -282,8 +282,8 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter) ([]*
 			ev.updated_at
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_computed = FALSE
-		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
+		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL
+		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
@@ -328,8 +328,8 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter) (in
 	base := `
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_computed = FALSE
-		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
+		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL
+		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
@@ -338,13 +338,13 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter) (in
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
 	q, args := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, true)
 	// Inject the "active record" check manually before rebinding
-    if strings.Contains(strings.ToUpper(q), "WHERE") {
-        q += " AND ev.updated_at IS NULL"
-    } else {
-        q += " WHERE ev.updated_at IS NULL"
-    }
+	if strings.Contains(strings.ToUpper(q), "WHERE") {
+		q += " AND ev.updated_at IS NULL"
+	} else {
+		q += " WHERE ev.updated_at IS NULL"
+	}
 
-    q = sqlx.Rebind(sqlx.DOLLAR, q)
+	q = sqlx.Rebind(sqlx.DOLLAR, q)
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
