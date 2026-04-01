@@ -28,6 +28,7 @@ import (
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
@@ -155,19 +156,21 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
 
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
-	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc)
+	formulaRepo := formula.NewRepository(dbConn)
+	formulaSvc := formula.NewService(formulaRepo)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc)
 	formHandler := form.NewHandler(formSvc)
 	form.RegisterRoutes(formGroup, formHandler)
 
 	entryGroup := v1.Group("/entry")
 	entryGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc)
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entry.RegisterRoutes(entryGroup, entriesHandler)
 
-	calculationSvc := calculation.NewService(formSvc, versionSvc, fieldSvc, entriesSvc)
+	calculationSvc := calculation.NewServiceWithFormula(formSvc, versionSvc, fieldSvc, entriesSvc, formulaSvc)
 	calculationHandler := calculation.NewHandler(calculationSvc)
 	calculation.RegisterRoutes(v1, calculationHandler)
 

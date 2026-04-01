@@ -1808,6 +1808,127 @@ const docTemplate = `{
                 }
             }
         },
+        "/calculate/formula/{form_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Evaluates all is_computed=true fields using manual field key→amount query params.\nReturns net amount for each computed field; net/gst/gross when the field has a tax_type.\nPass each non-computed field key as a query param, e.g. ?A=5000\u0026B=300\u0026C=55\u0026D=20",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calculation"
+                ],
+                "summary": "Calculate computed fields for a form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "form_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Value for field A",
+                        "name": "A",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Value for field B",
+                        "name": "B",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Value for field C",
+                        "name": "C",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Value for field D",
+                        "name": "D",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/calculation.RsFormulaCalculate"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/calculate/live": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Evaluates all is_computed=true fields for a form version using provided field entries.\nReturns net amount for each computed field; net/gst/gross when the field has a tax_type.\nPass form_field_id with net_amount, gst_amount, and gross_amount for each field.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calculation"
+                ],
+                "summary": "Live calculation based on form version ID",
+                "parameters": [
+                    {
+                        "description": "Form version ID and field entries",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/calculation.RqLiveCalculate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/calculation.RsLiveCalculate"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/calculate/{id}": {
             "get": {
                 "security": [
@@ -5651,6 +5772,121 @@ const docTemplate = `{
                 }
             }
         },
+        "calculation.RqLiveCalculate": {
+            "type": "object",
+            "required": [
+                "entries",
+                "form_version_id"
+            ],
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/calculation.RqLiveCalculateEntry"
+                    }
+                },
+                "form_version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RqLiveCalculateEntry": {
+            "type": "object",
+            "required": [
+                "form_field_id"
+            ],
+            "properties": {
+                "form_field_id": {
+                    "type": "string"
+                },
+                "gross_amount": {
+                    "type": "number"
+                },
+                "gst_amount": {
+                    "type": "number"
+                },
+                "net_amount": {
+                    "type": "number"
+                }
+            }
+        },
+        "calculation.RsComputedFieldValue": {
+            "type": "object",
+            "properties": {
+                "coa_id": {
+                    "description": "Chart of Account ID",
+                    "type": "string"
+                },
+                "field_id": {
+                    "type": "string"
+                },
+                "field_key": {
+                    "type": "string"
+                },
+                "form_field_id": {
+                    "description": "UUID as string for consistency with request",
+                    "type": "string"
+                },
+                "gross_amount": {
+                    "description": "gross amount (including GST), null when no tax",
+                    "type": "number"
+                },
+                "gst_amount": {
+                    "description": "GST amount, null when no tax",
+                    "type": "number"
+                },
+                "is_computed": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "net_amount": {
+                    "description": "net amount (ex-GST when tax applies)",
+                    "type": "number"
+                },
+                "section_type": {
+                    "description": "COLLECTION, COST, OTHER_COST",
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "tax_type": {
+                    "description": "INCLUSIVE, EXCLUSIVE, MANUAL, ZERO",
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RsFormulaCalculate": {
+            "type": "object",
+            "properties": {
+                "computed_fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RsComputedFieldValue"
+                    }
+                },
+                "form_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RsLiveCalculate": {
+            "type": "object",
+            "properties": {
+                "computed_fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RsComputedFieldValue"
+                    }
+                },
+                "form_version_id": {
+                    "type": "string"
+                }
+            }
+        },
         "clinic.RqBulkDeleteClinic": {
             "type": "object",
             "required": [
@@ -5963,6 +6199,9 @@ const docTemplate = `{
                 "clinic_id": {
                     "type": "string"
                 },
+                "date": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -5981,6 +6220,9 @@ const docTemplate = `{
         "entry.RqUpdateFormEntry": {
             "type": "object",
             "properties": {
+                "date": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -5999,6 +6241,13 @@ const docTemplate = `{
         "entry.RsEntryValue": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "description": "Amount is used when there is no GST (net == gross).",
+                    "type": "number"
+                },
+                "field_key": {
+                    "type": "string"
+                },
                 "form_field_id": {
                     "type": "string"
                 },
@@ -6008,21 +6257,34 @@ const docTemplate = `{
                 "gst_amount": {
                     "type": "number"
                 },
+                "is_computed": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
                 "net_amount": {
+                    "description": "NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.",
                     "type": "number"
                 }
             }
         },
-        "field.RqFormField": {
+        "field.RqCreateField": {
             "type": "object",
             "required": [
-                "coa_id",
-                "label",
-                "section_type"
+                "key",
+                "label"
             ],
             "properties": {
                 "coa_id": {
                     "type": "string"
+                },
+                "is_computed": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string",
+                    "maxLength": 5
                 },
                 "label": {
                     "type": "string",
@@ -6042,6 +6304,10 @@ const docTemplate = `{
                         "COST",
                         "OTHER_COST"
                     ]
+                },
+                "slug": {
+                    "type": "string",
+                    "maxLength": 100
                 },
                 "sort_order": {
                     "type": "integer",
@@ -6116,7 +6382,13 @@ const docTemplate = `{
                 "fields": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/field.RqFormField"
+                        "$ref": "#/definitions/field.RqCreateField"
+                    }
+                },
+                "formulas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/formula.RqFormula"
                     }
                 },
                 "method": {
@@ -6138,13 +6410,37 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED"
+                        "PUBLISHED",
+                        "ARCHIVED"
                     ]
                 },
                 "super_component": {
                     "type": "number",
                     "maximum": 100,
                     "minimum": 0
+                }
+            }
+        },
+        "form.RqFieldsSync": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field.RqCreateField"
+                    }
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field.RqUpdateFormField"
+                    }
                 }
             }
         },
@@ -6177,23 +6473,20 @@ const docTemplate = `{
                     "maximum": 100,
                     "minimum": 0
                 },
-                "create": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RqFormField"
-                    }
-                },
-                "delete": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
                 "description": {
                     "type": "string"
                 },
-                "id": {
+                "fields": {
+                    "$ref": "#/definitions/form.RqFieldsSync"
+                },
+                "form_id": {
                     "type": "string"
+                },
+                "formulas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/formula.RqFormula"
+                    }
                 },
                 "method": {
                     "type": "string",
@@ -6214,19 +6507,60 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "DRAFT",
-                        "PUBLISHED"
+                        "PUBLISHED",
+                        "ARCHIVED"
                     ]
                 },
                 "super_component": {
-                    "type": "number",
-                    "maximum": 100,
-                    "minimum": 0
+                    "type": "number"
+                }
+            }
+        },
+        "formula.ExprNode": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "description": "field key e.g. \"A\" — only for field",
+                    "type": "string"
                 },
-                "update": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/field.RqUpdateFormField"
-                    }
+                "left": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "op": {
+                    "description": "\"+\", \"-\", \"*\", \"/\" — only for operator",
+                    "type": "string"
+                },
+                "right": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "type": {
+                    "description": "\"operator\" | \"field\" | \"constant\"",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "numeric value — only for constant",
+                    "type": "number"
+                }
+            }
+        },
+        "formula.RqFormula": {
+            "type": "object",
+            "required": [
+                "expression",
+                "field_key",
+                "name"
+            ],
+            "properties": {
+                "expression": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "field_key": {
+                    "type": "string",
+                    "maxLength": 5
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
                 }
             }
         },

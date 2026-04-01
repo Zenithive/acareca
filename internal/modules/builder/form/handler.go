@@ -104,13 +104,17 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 
 	var req RqCreateFormWithFields
 	if err := util.BindAndValidate(c, &req); err != nil {
-
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
 	if req.Status == "" {
 		req.Status = StatusDraft
+	}
+
+	if err := req.ValidateShares(); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
 	}
 	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, practitionerID)
 
@@ -159,6 +163,11 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 	req.ID = &formID
+
+	if err := req.ValidateShares(); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
 	form, syncResult, err := h.svc.UpdateWithFields(c.Request.Context(), &req, practitionerID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)

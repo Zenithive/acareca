@@ -18,6 +18,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -39,18 +40,19 @@ type service struct {
 	detailSvc      detail.IService
 	versionSvc     version.IService
 	fieldSvc       field.IService
+	formulaSvc     formula.IService
 	entryRepo      entry.IRepository
 	coaSvc         coa.Service
 	auditSvc       audit.Service
-	clinicSvc      interface{} // Will be clinic.Service but avoiding circular import
+	clinicSvc      interface{}
 	eventsSvc      events.Service
 	accountantRepo accountant.Repository
 	authRepo       auth.Repository
 	formClinic     clinic.Service
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
@@ -63,6 +65,10 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	}
 	// This is the 8dd760ab... ID you saw in the logs
 	realOwnerID := clinic.PractitionerID
+	if err := d.ValidateShares(); err != nil {
+		return nil, nil, err
+	}
+
 	formReq := &detail.RqFormDetail{
 		Name:           d.Name,
 		Description:    d.Description,
@@ -76,7 +82,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		formReq.Status = StatusDraft
 	}
 
-	// Create form via detail service (handles its own transaction)
 	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, realOwnerID)
 	if err != nil {
 		return nil, nil, err
@@ -88,7 +93,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		return created, syncResult, nil
 	}
 
-	// Get active version
 	versions, err := s.versionSvc.List(ctx, created.ID, d.ClinicID)
 	if err != nil {
 		return nil, nil, err
@@ -104,22 +108,27 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		return created, syncResult, nil
 	}
 
-	// Create fields within transaction (atomic operation)
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+
+		keyToFieldID := make(map[string]uuid.UUID, len(d.Fields))
 
 		for _, f := range d.Fields {
 			f.Sanitize()
-			_, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, realOwnerID, &field.RqFormField{
-				Label:                 f.Label,
-				SectionType:           f.SectionType,
-				PaymentResponsibility: f.PaymentResponsibility,
-				TaxType:               f.TaxType,
-				CoaID:                 f.CoaID,
-			})
+			if err := f.Validate(); err != nil {
+				return err
+			}
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, realOwnerID, f.ToRqFormField())
 			if err != nil {
 				return err
 			}
+			keyToFieldID[f.FieldKey] = created.ID
 			syncResult.CreatedCount++
+		}
+
+		if len(d.Formulas) > 0 {
+			if err := s.formulaSvc.SyncTx(ctx, tx, activeVersionID, d.Formulas, keyToFieldID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -165,7 +174,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			}
 		}
 	}
-	// Audit log: form created
 
 	idStr := created.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -185,11 +193,17 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 
 func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
+
+	req.Normalize()
+
+	if err := req.ValidateShares(); err != nil {
+		return nil, nil, err
+	}
+
 	existing, err := s.detailSvc.GetByID(ctx, *req.ID)
 	if err != nil {
 		return nil, nil, err
 	}
-	// Clone to prevent shared memory pointer updates
 	beforeState := *existing
 
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, existing.ClinicID)
@@ -201,9 +215,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
 
-	// Apply all form and field changes atomically within a transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Form Metadata
 		updateReq := &detail.RqUpdateFormDetail{
 			ID:             *req.ID,
 			Name:           req.Name,
@@ -215,7 +227,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			SuperComponent: req.SuperComponent,
 		}
 
-		// Update form metadata via detail service
 		upd, err := s.detailSvc.UpdateMetadata(ctx, updateReq)
 		if err != nil {
 			return err
@@ -223,12 +234,10 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		updated = upd
 		syncResult = &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
 
-		// Get Active Version
 		versions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
 		if err != nil {
 			return err
 		}
-
 		var activeVersionID uuid.UUID
 		for _, v := range versions {
 			if v.IsActive {
@@ -236,63 +245,99 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 				break
 			}
 		}
-
 		if activeVersionID == uuid.Nil {
 			return errors.New("cannot update fields: no active version found")
 		}
 
 		// Delete fields
-		for _, idStr := range req.Delete {
-			id, err := uuid.Parse(idStr)
+		forceDelete := req.ForceDelete != nil && *req.ForceDelete
+		for _, id := range req.Fields.Delete {
+			existingField, err := s.fieldSvc.GetByID(ctx, id)
 			if err != nil {
-				return err
+				return fmt.Errorf("field %s not found for deletion: %w", id, err)
 			}
-			if s.entryRepo != nil {
+
+			if s.entryRepo != nil && !forceDelete {
 				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
 				if err != nil {
 					return err
 				}
 				if has {
-					return errors.New("field has submitted entries")
+					return fmt.Errorf("cannot delete field %q (key: %s): field has submitted entries. Use force_delete=true to override (warning: this will orphan entry data)", existingField.Label, existingField.FieldKey)
 				}
 			}
+
 			if err := s.fieldSvc.DeleteTx(ctx, tx, id); err != nil {
-				return err
+				return fmt.Errorf("failed to delete field %s: %w", id, err)
 			}
 			syncResult.DeletedCount++
 		}
 
+		// Build key→UUID map for formula resolution
+		keyToFieldID := make(map[string]uuid.UUID)
+
+		// Create a set of deleted field IDs for quick lookup
+		deletedFieldIDs := make(map[uuid.UUID]bool, len(req.Fields.Delete))
+		for _, id := range req.Fields.Delete {
+			deletedFieldIDs[id] = true
+		}
+
+		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
+		// Note: If multiple fields have the same key, the last one wins (map behavior)
+		existingFields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
+		if err != nil {
+			return err
+		}
+		for _, f := range existingFields {
+			// Skip fields that are being deleted in this transaction
+			if !deletedFieldIDs[f.ID] {
+				keyToFieldID[f.FieldKey] = f.ID
+			}
+		}
+
 		// Update fields
-		for _, item := range req.Update {
+		for _, item := range req.Fields.Update {
 			item.Sanitize()
-			_, err = s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &field.RqUpdateFormField{
-				ID:                    item.ID,
-				CoaID:                 item.CoaID,
-				Label:                 item.Label,
-				SectionType:           item.SectionType,
-				PaymentResponsibility: item.PaymentResponsibility,
-				TaxType:               item.TaxType,
-			})
+
+			// Verify the field exists before updating
+			existingField, err := s.fieldSvc.GetByID(ctx, item.ID)
+			if err != nil {
+				return fmt.Errorf("field %s not found for update: %w", item.ID, err)
+			}
+
+			updated, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
 			if err != nil {
 				return err
 			}
+			// Use the existing field key (field_key is immutable)
+			// If duplicate keys exist, the last one wins
+			keyToFieldID[existingField.FieldKey] = updated.ID
 			syncResult.UpdatedCount++
 		}
 
 		// Create fields
-		for _, item := range req.Create {
+		for _, item := range req.Fields.Create {
 			item.Sanitize()
-			_, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, &field.RqFormField{
-				CoaID:                 item.CoaID,
-				Label:                 item.Label,
-				SectionType:           item.SectionType,
-				PaymentResponsibility: item.PaymentResponsibility,
-				TaxType:               item.TaxType,
-			})
+			if err := item.Validate(); err != nil {
+				return fmt.Errorf("validation failed for field %s: %w", item.FieldKey, err)
+			}
+
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, item.ToRqFormField())
 			if err != nil {
+				return fmt.Errorf("failed to create field %s: %w", item.FieldKey, err)
+			}
+			// If duplicate keys exist, the last one wins
+			keyToFieldID[item.FieldKey] = created.ID
+			syncResult.CreatedCount++
+		}
+
+		// Sync formulas (full replace)
+		// At this point, keyToFieldID contains all fields: existing (not deleted), updated, and newly created
+		// This ensures formulas can reference any field, including newly created calculated fields
+		if len(req.Formulas) > 0 {
+			if err := s.formulaSvc.SyncTx(ctx, tx, activeVersionID, req.Formulas, keyToFieldID); err != nil {
 				return err
 			}
-			syncResult.CreatedCount++
 		}
 
 		return nil
@@ -343,7 +388,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		}
 	}
 
-	// Audit log: form updated
 	//meta := auditctx.GetMetadata(ctx)
 	idStr := updated.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -363,7 +407,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 }
 
 func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error) {
-	// Get form details
 	form, err := s.detailSvc.GetByID(ctx, req.FormID)
 	if err != nil {
 		return nil, err
@@ -376,7 +419,6 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 		Deleted:  []uuid.UUID{},
 	}
 
-	// Get versions to find active version
 	versions, err := s.versionSvc.List(ctx, form.ID, req.ClinicID)
 	if err != nil {
 		return nil, err
@@ -389,9 +431,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 		}
 	}
 
-	// Apply all field changes atomically within a transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Delete fields
 		for _, fieldID := range req.Delete {
 			if s.entryRepo != nil {
 				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, fieldID)
@@ -408,7 +448,6 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			result.Deleted = append(result.Deleted, fieldID)
 		}
 
-		// Update fields
 		for _, updateItem := range req.Update {
 			updateItem.Sanitize()
 			updated, err := s.fieldSvc.UpdateTx(ctx, tx, updateItem.ID, req.ClinicID, practitionerID, &updateItem)
@@ -418,10 +457,12 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			result.Updated = append(result.Updated, *updated)
 		}
 
-		// Create fields
 		for _, createItem := range req.Create {
 			createItem.Sanitize()
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, &createItem)
+			if err := createItem.Validate(); err != nil {
+				return err
+			}
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, createItem.ToRqFormField())
 			if err != nil {
 				return err
 			}
@@ -443,8 +484,9 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 		return nil, err
 	}
 	out := &RsFormWithFields{
-		Form:   *formDetail,
-		Fields: []field.RsFormField{},
+		Form:     *formDetail,
+		Fields:   []field.RsFormField{},
+		Formulas: []formula.RsFormula{},
 	}
 	versions, err := s.versionSvc.List(ctx, formDetail.ID, formDetail.ClinicID)
 	if err != nil {
@@ -466,6 +508,11 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 		for _, f := range fields {
 			out.Fields = append(out.Fields, *f)
 		}
+		formulas, err := s.formulaSvc.ListByFormVersionID(ctx, activeVersionID)
+		if err != nil {
+			return nil, err
+		}
+		out.Formulas = formulas
 	}
 	return out, nil
 }

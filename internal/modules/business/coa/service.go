@@ -18,6 +18,7 @@ type Service interface {
 
 	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
+	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
@@ -123,6 +124,15 @@ func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitio
 	return &rs, nil
 }
 
+func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*RsChartOfAccount, error) {
+	c, err := s.repo.GetChartOfAccountByKey(ctx, key, practitionerID)
+	if err != nil {
+		return nil, err
+	}
+	rs := c.ToRs()
+	return &rs, nil
+}
+
 func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error) {
 	// (code, practitionerID) must be unique per user
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, req.Code, practitionerID, nil)
@@ -139,12 +149,17 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	if req.IsSystem != nil {
 		isSystem = *req.IsSystem
 	}
+	
+	// Auto-generate key from name
+	key := GenerateKeyFromName(req.Name)
+	
 	chart := &ChartOfAccount{
 		PractitionerID: practitionerID,
 		AccountTypeID:  req.AccountTypeID,
 		AccountTaxID:   req.AccountTaxID,
 		Code:           req.Code,
 		Name:           req.Name,
+		Key:            key,
 		IsSystem:       isSystem,
 	}
 	var err error
@@ -207,6 +222,8 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	}
 	if req.Name != nil {
 		existing.Name = *req.Name
+		// Auto-regenerate key when name changes
+		existing.Key = GenerateKeyFromName(*req.Name)
 	}
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
 	if err != nil {

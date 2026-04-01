@@ -16,6 +16,8 @@ import (
 type IHandler interface {
 	Calculation(c *gin.Context)
 	CalculateFromEntries(c *gin.Context)
+	FormulaCalculate(c *gin.Context)
+	LiveCalculate(c *gin.Context)
 }
 
 type handler struct {
@@ -111,4 +113,87 @@ func (h *handler) CalculateFromEntries(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "Calculation completed successfully")
+}
+
+// FormulaCalculate godoc
+// @Summary Calculate computed fields for a form
+// @Description Evaluates all is_computed=true fields using manual field key→amount query params.
+// @Description Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
+// @Description Pass each non-computed field key as a query param, e.g. ?A=5000&B=300&C=55&D=20
+// @Tags calculation
+// @Produce json
+// @Param form_id path string true "Form ID"
+// @Param A query number false "Value for field A"
+// @Param B query number false "Value for field B"
+// @Param C query number false "Value for field C"
+// @Param D query number false "Value for field D"
+// @Success 200 {object} RsFormulaCalculate
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate/formula/{form_id} [get]
+func (h *handler) FormulaCalculate(c *gin.Context) {
+	formID, ok := util.ParseUuidID(c, "form_id")
+	if !ok {
+		return
+	}
+
+	// Parse all query params as field key → float64 amount.
+	values := make(map[string]float64)
+	for key, vals := range c.Request.URL.Query() {
+		if len(vals) == 0 {
+			continue
+		}
+		v, err := strconv.ParseFloat(vals[0], 64)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid value for field %q: must be a number", key))
+			return
+		}
+		values[key] = v
+	}
+
+	if len(values) == 0 {
+		response.Error(c, http.StatusBadRequest, fmt.Errorf("at least one field value is required as a query param (e.g. ?A=5000&B=300)"))
+		return
+	}
+
+	req := &RqFormulaCalculate{Values: values}
+
+	result, err := h.svc.FormulaCalculate(c.Request.Context(), formID, req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "Formula calculation completed successfully")
+}
+
+// LiveCalculate godoc
+// @Summary Live calculation based on form version ID
+// @Description Evaluates all is_computed=true fields for a form version using provided field entries.
+// @Description Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
+// @Description Pass form_field_id with net_amount, gst_amount, and gross_amount for each field.
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body RqLiveCalculate true "Form version ID and field entries"
+// @Success 200 {object} RsLiveCalculate
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate/live [post]
+func (h *handler) LiveCalculate(c *gin.Context) {
+	var req RqLiveCalculate
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.LiveCalculate(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "Live calculation completed successfully")
 }

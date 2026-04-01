@@ -15,6 +15,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
@@ -46,10 +47,11 @@ type Service struct {
 	authRepo       auth.Repository
 	clinicRepo     clinic.Repository
 	formClinic     clinic.Service
+	formulaSvc     formula.IService
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc}
 }
 
 // Create implements [IService].
@@ -82,6 +84,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		ClinicID:      req.ClinicID,
 		SubmittedBy:   submittedBy,
 		SubmittedAt:   submittedAt,
+		Date:          req.Date,
 		Status:        status,
 	}
 	values, err := s.CalculateValues(ctx, e.ID, req.Values)
@@ -97,6 +100,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	}
 
 	result := created.ToRs(vals)
+	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
 
 	// Record Shared Event
@@ -138,6 +142,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 		return nil, err
 	}
 	rs := e.ToRs(values)
+	s.attachFieldMetadata(ctx, rs)
 	s.attachICCalculation(ctx, rs)
 	return rs, nil
 }
@@ -157,6 +162,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			existing.SubmittedAt = &now
 		}
 		existing.SubmittedBy = submittedBy
+	}
+	if req.Date != nil {
+		existing.Date = req.Date
 	}
 
 	// Start as nil. Only calculate if the request actually contains new values.
@@ -178,6 +186,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	}
 
 	result := updated.ToRs(vals)
+	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
 
 	// Record Shared Event
@@ -307,23 +316,29 @@ func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter
 func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {
 	out := make([]*FormEntryValue, 0, len(rq))
 
+	keyValues := make(map[string]float64, len(rq))
+
 	for _, v := range rq {
 		fieldID, err := uuid.Parse(v.FormFieldID)
 		if err != nil {
 			return nil, err
 		}
 
-		field, err := s.fieldRepo.GetByID(ctx, fieldID)
+		f, err := s.fieldRepo.GetByID(ctx, fieldID)
 		if err != nil {
 			return nil, err
+		}
+
+		if f.IsComputed {
+			continue
 		}
 
 		var gstAmount *float64
 		netBase := v.Amount
 		grossTotal := v.Amount
 
-		// nil tax_type means no GST — treat as zero-rated
-		if field.TaxType == nil {
+		if f.TaxType == nil {
+			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
@@ -335,7 +350,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			continue
 		}
 
-		taxType := method.TaxTreatment(*field.TaxType)
+		taxType := method.TaxTreatment(*f.TaxType)
 		switch taxType {
 
 		case method.TaxTreatmentInclusive:
@@ -344,8 +359,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = result.Amount         // ex-GST base  (e.g. 100 when input is 110)
-			grossTotal = result.TotalAmount // = v.Amount  (e.g. 110)
+			netBase = result.Amount
+			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentExclusive:
 			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
@@ -353,8 +368,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = v.Amount              // ex-GST base  (e.g. 100)
-			grossTotal = result.TotalAmount // base + GST (e.g. 110)
+			netBase = v.Amount
+			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
@@ -372,24 +387,99 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
-		formValue := &FormEntryValue{
+		keyValues[f.FieldKey] = netBase
+		out = append(out, &FormEntryValue{
 			ID:          uuid.New(),
 			EntryID:     entryID,
 			FormFieldID: fieldID,
 			NetAmount:   &netBase,
 			GstAmount:   gstAmount,
 			GrossAmount: &grossTotal,
+		})
+	}
+
+	if s.formulaSvc != nil && len(rq) > 0 {
+		firstFieldID, err := uuid.Parse(rq[0].FormFieldID)
+		if err != nil {
+			return nil, err
+		}
+		firstField, err := s.fieldRepo.GetByID(ctx, firstFieldID)
+		if err != nil {
+			return nil, err
 		}
 
-		out = append(out, formValue)
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate formulas: %w", err)
+		}
+
+		allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
+		if err != nil {
+			return nil, err
+		}
+		fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
+		for _, af := range allFields {
+			fieldByID[af.ID] = af
+		}
+
+		for fieldID, val := range computed {
+			f, ok := fieldByID[fieldID]
+			if !ok {
+				continue
+			}
+
+			netBase := val
+			grossTotal := val
+			var gstAmount *float64
+
+			if f.TaxType != nil {
+				taxType := method.TaxTreatment(*f.TaxType)
+				switch taxType {
+				case method.TaxTreatmentInclusive:
+					result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: val})
+					if err != nil {
+						return nil, err
+					}
+					gstAmount = &result.GstAmount
+					netBase = result.Amount
+					grossTotal = result.TotalAmount
+				case method.TaxTreatmentExclusive:
+					result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: val})
+					if err != nil {
+						return nil, err
+					}
+					gstAmount = &result.GstAmount
+					grossTotal = result.TotalAmount
+				}
+			}
+
+			out = append(out, &FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: fieldID,
+				NetAmount:   &netBase,
+				GstAmount:   gstAmount,
+				GrossAmount: &grossTotal,
+			})
+		}
 	}
 
 	return out, nil
 }
 
-// attachICCalculation fetches the form detail for the given version and, if the
-// form method is INDEPENDENT_CONTRACTOR, computes commission, GST on commission,
-// and payment received, then attaches them to the response.
+// attachFieldMetadata enriches each value in the response with field_key, label, and is_computed.
+func (s *Service) attachFieldMetadata(ctx context.Context, rs *RsFormEntry) {
+	for i, v := range rs.Values {
+		f, err := s.fieldRepo.GetByID(ctx, v.FormFieldID)
+		if err != nil {
+			continue
+		}
+		rs.Values[i].FieldKey = f.FieldKey
+		rs.Values[i].Label = f.Label
+		rs.Values[i].IsComputed = f.IsComputed
+	}
+}
+
 func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 	if s.detailSvc == nil || s.versionSvc == nil {
 		return
@@ -405,7 +495,6 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 		return
 	}
 
-	// Build fieldMap from the entry values.
 	fieldMap := make(map[uuid.UUID]*field.FormField, len(rs.Values))
 	for _, v := range rs.Values {
 		f, err := s.fieldRepo.GetByID(ctx, v.FormFieldID)
@@ -415,14 +504,13 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 		fieldMap[v.FormFieldID] = f
 	}
 
-	// Compute net totals per section.
 	var incomeSum, expenseSum, otherCostSum float64
 	for _, v := range rs.Values {
 		f, ok := fieldMap[v.FormFieldID]
-		if !ok {
+		if !ok || f.SectionType == nil {
 			continue
 		}
-		switch f.SectionType {
+		switch *f.SectionType {
 		case field.SectionTypeCollection:
 			if v.NetAmount != nil {
 				incomeSum += *v.NetAmount
@@ -444,7 +532,6 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 	gstOnCommission := commission * 0.10
 	paymentReceived := commission + gstOnCommission
 
-	// Apply super component if set on the form.
 	if form.SuperComponent != nil && *form.SuperComponent > 0 {
 		superAmount := commission * (*form.SuperComponent / 100)
 		paymentReceived += superAmount
@@ -460,7 +547,6 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 }
 
 func roundEntry(v float64) float64 {
-	// Round to 2 decimal places.
 	shifted := v * 100
 	if shifted < 0 {
 		shifted -= 0.5

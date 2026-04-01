@@ -97,27 +97,22 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	existing, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil && existing != nil {
-		// Check if existing user is already verified
 		isVerified, _ := s.isUserVerified(ctx, existing)
 		if isVerified {
 			return nil, ErrEmailTaken
 		}
-		// If they exist but aren't verified, redirect them to verify
 		return nil, errors.New("this email is registered but not verified. Please check your email to verify your account")
 	}
 
-	var assignedRole string
-
-	// Role Check: Check if email is in tbl_invitation
 	invite, err := s.invitationSvc.GetInvitationByEmailInternal(ctx, req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify invitation status: %w", err)
 	}
 
-	// Determine Role: If invitation exists, role is accountant.
+	var assignedRole string
 	if invite != nil {
 		assignedRole = util.RoleAccountant
-	} else { // Default role if no invitation is found.
+	} else {
 		assignedRole = util.RolePractitioner
 	}
 
@@ -162,7 +157,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			return fmt.Errorf("create role: %w", txErr)
 		}
 
-		// Generate Verification Token
 		tokenID = uuid.New()
 		vToken := &VerificationToken{
 			ID:        tokenID,
@@ -180,7 +174,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			if a == nil {
 				return errors.New("failed to retrieve accountant profile for invitation finalization")
 			}
-			// This function looks for an invitation by email and links it to the accountant id
 			err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, a.ID)
 			if err != nil {
 				return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
@@ -194,14 +187,12 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		return nil, err
 	}
 
-	// Send Email Asynchronously
 	go func() {
 		if err := s.sendVerificationEmail(created.Email, created.FirstName, tokenID); err != nil {
 			fmt.Printf("[AUTH ERROR] Failed to send verification email: %v\n", err)
 		}
 	}()
 
-	// Audit log: user registration
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
 	entityIDStr := entityID.String()
@@ -223,7 +214,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	user, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		// Run a dummy hash comparison to prevent timing-based user enumeration
 		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
 		return nil, ErrInvalidPassword
 	}

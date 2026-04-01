@@ -1,21 +1,32 @@
 package form
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 const (
 	StatusDraft     = "DRAFT"
 	StatusPublished = "PUBLISHED"
+	StatusArchived  = "ARCHIVED"
 )
+
+// RqFieldsSync groups field create/update/delete in a nested object.
+type RqFieldsSync struct {
+	Create []field.RqCreateField     `json:"create" validate:"omitempty,dive"`
+	Update []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
+	Delete []uuid.UUID               `json:"delete" validate:"omitempty,dive"`
+}
 
 type RqBulkSyncFields struct {
 	FormID   uuid.UUID                 `json:"form_id" validate:"omitempty,uuid"`
 	ClinicID uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
-	Create   []field.RqFormField       `json:"create" validate:"omitempty,dive"`
+	Create   []field.RqCreateField     `json:"create" validate:"omitempty,dive"`
 	Update   []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
 	Delete   []uuid.UUID               `json:"delete" validate:"omitempty,dive"`
 }
@@ -36,36 +47,67 @@ type RsFormWithFieldsSyncResult struct {
 }
 
 type RqCreateFormWithFields struct {
-	Name           string              `json:"name" validate:"required"`
-	Description    *string             `json:"description" validate:"omitempty"`
-	Status         string              `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
-	Method         string              `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	OwnerShare     int                 `json:"owner_share" validate:"required,min=0,max=100"`
-	ClinicShare    int                 `json:"clinic_share" validate:"required,min=0,max=100"`
-	SuperComponent *float64            `json:"super_component" validate:"omitempty,min=0,max=100"`
-	ClinicID       uuid.UUID           `json:"clinic_id" validate:"required,uuid"`
-	Fields         []field.RqFormField `json:"fields" validate:"omitempty,dive"`
+	Name           string                `json:"name" validate:"required"`
+	Description    *string               `json:"description" validate:"omitempty"`
+	Status         string                `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Method         string                `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	OwnerShare     int                   `json:"owner_share" validate:"required,min=0,max=100"`
+	ClinicShare    int                   `json:"clinic_share" validate:"required,min=0,max=100"`
+	SuperComponent *float64              `json:"super_component" validate:"omitempty,min=0,max=100"`
+	ClinicID       uuid.UUID             `json:"clinic_id" validate:"required,uuid"`
+	Fields         []field.RqCreateField `json:"fields" validate:"omitempty,dive"`
+	Formulas       []formula.RqFormula   `json:"formulas" validate:"omitempty,dive"`
+}
+
+func (r *RqCreateFormWithFields) ValidateShares() error {
+	if r.OwnerShare+r.ClinicShare != 100 {
+		return errors.New("owner_share + clinic_share must equal 100")
+	}
+	return nil
 }
 
 type RqUpdateFormWithFields struct {
-	ID             *uuid.UUID                `json:"id" validate:"omitempty,uuid"`
-	Name           *string                   `json:"name" validate:"omitempty"`
-	Description    *string                   `json:"description" validate:"omitempty"`
-	Status         *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
-	Method         *string                   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	OwnerShare     *int                      `json:"owner_share" validate:"omitempty,min=0,max=100"`
-	ClinicShare    *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
-	SuperComponent *float64                  `json:"super_component" validate:"omitempty,min=0,max=100"`
-	ClinicID       uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
-	Update         []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
-	Create         []field.RqFormField       `json:"create" validate:"omitempty,dive"`
-	Delete         []string                  `json:"delete" validate:"omitempty,dive"`
+	ID             *uuid.UUID          `json:"form_id" validate:"omitempty,uuid"`
+	ClinicID       uuid.UUID           `json:"clinic_id" validate:"required,uuid"`
+	Name           *string             `json:"name" validate:"omitempty"`
+	Description    *string             `json:"description" validate:"omitempty"`
+	Status         *string             `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Method         *string             `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	OwnerShare     *int                `json:"owner_share" validate:"omitempty,min=0,max=100"`
+	ClinicShare    *int                `json:"clinic_share" validate:"omitempty,min=0,max=100"`
+	SuperComponent *float64            `json:"super_component" validate:"omitempty"`
+	Fields         RqFieldsSync        `json:"fields"`
+	Create       []field.RqCreateField     `json:"create" validate:"omitempty,dive"`
+	Update       []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
+	Delete       []uuid.UUID               `json:"delete" validate:"omitempty,dive"`
+	ForceDelete  *bool                     `json:"force_delete"` // If true, delete fields even if they have submitted entries
+	Formulas     []formula.RqFormula       `json:"formulas" validate:"omitempty,dive"`
+}
+
+func (r *RqUpdateFormWithFields) ValidateShares() error {
+	if r.OwnerShare != nil && r.ClinicShare != nil {
+		if *r.OwnerShare+*r.ClinicShare != 100 {
+			return errors.New("owner_share + clinic_share must equal 100")
+		}
+	}
+	return nil
+}
+
+func (r *RqUpdateFormWithFields) Normalize() {
+	if len(r.Create) > 0 || len(r.Update) > 0 || len(r.Delete) > 0 {
+		if len(r.Fields.Create) == 0 && len(r.Fields.Update) == 0 && len(r.Fields.Delete) == 0 {
+			r.Fields.Create = r.Create
+			r.Fields.Update = r.Update
+			r.Fields.Delete = r.Delete
+		}
+	}
 }
 
 type RsFormWithFields struct {
 	Form            detail.RsFormDetail `json:"form"`
 	ActiveVersionID uuid.UUID           `json:"active_version_id"`
 	Fields          []field.RsFormField `json:"fields"`
+	Formulas        []formula.RsFormula `json:"formulas"`
 }
 
 type Filter struct {
