@@ -317,6 +317,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	out := make([]*FormEntryValue, 0, len(rq))
 
 	keyValues := make(map[string]float64, len(rq))
+	taxTypeByKey := make(map[string]string, len(rq))
 
 	for _, v := range rq {
 		fieldID, err := uuid.Parse(v.FormFieldID)
@@ -388,6 +389,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		}
 
 		keyValues[f.FieldKey] = netBase
+		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
 			ID:          uuid.New(),
 			EntryID:     entryID,
@@ -408,7 +410,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, err
 		}
 
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues)
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate formulas: %w", err)
 		}

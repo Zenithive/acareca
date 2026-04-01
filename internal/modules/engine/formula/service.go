@@ -12,7 +12,7 @@ import (
 type IService interface {
 	SyncTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, formulas []RqFormula, keyToFieldID map[string]uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]RsFormula, error)
-	EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64) (map[uuid.UUID]float64, error)
+	EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64, taxTypeByKey map[string]string) (map[uuid.UUID]float64, error)
 }
 
 type service struct {
@@ -269,7 +269,7 @@ func insertNodes(ctx context.Context, tx *sqlx.Tx, repo IRepository, formulaID u
 	return nil
 }
 
-func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64) (map[uuid.UUID]float64, error) {
+func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64, taxTypeByKey map[string]string) (map[uuid.UUID]float64, error) {
 	formulas, err := s.ListByFormVersionID(ctx, formVersionID)
 	if err != nil {
 		return nil, err
@@ -286,7 +286,14 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 			return nil, fmt.Errorf("formula %q: %w", f.Name, err)
 		}
 		result[f.FieldID] = val
-		vals[f.FieldKey] = val
+
+		feedbackVal := val
+		if taxTypeByKey != nil {
+			if taxType, ok := taxTypeByKey[f.FieldKey]; ok && taxType != "" {
+				feedbackVal = val * 1.1
+			}
+		}
+		vals[f.FieldKey] = feedbackVal
 	}
 
 	return result, nil

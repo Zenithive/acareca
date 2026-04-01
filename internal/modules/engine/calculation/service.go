@@ -282,16 +282,24 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 		return nil, fmt.Errorf("get version: %w", err)
 	}
 
-	// Evaluate all formulas in topological order.
-	computed, err := s.formulaSvc.EvalFormulas(ctx, ver.Id, req.Values)
-	if err != nil {
-		return nil, fmt.Errorf("eval formulas: %w", err)
-	}
-
 	// Fetch all fields so we can look up label, tax_type, is_computed, and key.
 	fieldMap, err := s.fieldSvc.GetFieldMap(ctx, ver.Id)
 	if err != nil {
 		return nil, fmt.Errorf("get field map: %w", err)
+	}
+
+	// Build tax type map so computed fields with GST feed gross into downstream formulas.
+	taxTypeByKey := make(map[string]string, len(fieldMap))
+	for _, f := range fieldMap {
+		if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+			taxTypeByKey[f.FieldKey] = *f.TaxType
+		}
+	}
+
+	// Evaluate all formulas in topological order.
+	computed, err := s.formulaSvc.EvalFormulas(ctx, ver.Id, req.Values, taxTypeByKey)
+	if err != nil {
+		return nil, fmt.Errorf("eval formulas: %w", err)
 	}
 
 	results := make([]RsComputedFieldValue, 0, len(computed))
@@ -373,11 +381,24 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 		}
 
 		if !f.IsComputed {
-			keyValues[f.FieldKey] = entry.NetAmount
+			// Use gross amount when the field has GST (tax_type set), otherwise net.
+			if f.TaxType != nil && *f.TaxType != "" && entry.GrossAmount != nil {
+				keyValues[f.FieldKey] = *entry.GrossAmount
+			} else {
+				keyValues[f.FieldKey] = entry.NetAmount
+			}
 		}
 	}
 
-	computed, err := s.formulaSvc.EvalFormulas(ctx, formVersionID, keyValues)
+	// Build tax type map so computed fields with GST feed gross into downstream formulas.
+	taxTypeByKey := make(map[string]string, len(fieldMap))
+	for _, f := range fieldMap {
+		if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+			taxTypeByKey[f.FieldKey] = *f.TaxType
+		}
+	}
+
+	computed, err := s.formulaSvc.EvalFormulas(ctx, formVersionID, keyValues, taxTypeByKey)
 	if err != nil {
 		return nil, fmt.Errorf("eval formulas: %w", err)
 	}
