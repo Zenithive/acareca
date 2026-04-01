@@ -191,7 +191,7 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
 		SELECT
-			COALESCE(SUM(total_sales_net), 0)            AS g1_total_sales_net,
+			COALESCE(SUM(g1_total_sales_gross), 0)       AS g1_total_sales_gross,
 			COALESCE(SUM(label_1a_gst_on_sales), 0)      AS label_1a_gst_on_sales,
 			COALESCE(SUM(G11_total_purchases_gross), 0)         AS g11_total_purchases_net,
 			COALESCE(SUM(label_1b_gst_on_purchases), 0)   AS label_1b_gst_on_purchases

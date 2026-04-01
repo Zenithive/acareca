@@ -86,7 +86,7 @@ type BASFilter struct {
 
 // BASReportFilter is used by the /bas/report endpoint.
 type BASReportFilter struct {
-	PractitionerID string  `form:"-"` // set from JWT
+	PractitionerID string  `form:"-"`          // set from JWT
 	QuarterID      *string `form:"quarter_id"` // UUID of tbl_financial_quarter
 	Month          *string `form:"month"`      // e.g. "January"
 }
@@ -102,10 +102,10 @@ type RsBASReport struct {
 // BASReportRow is the DB scan target for the report query.
 // G1/G11 are net (ex-GST) amounts; 1A/1B are the GST collected/paid.
 type BASReportRow struct {
-	G1TotalSalesNet       float64 `db:"g1_total_sales_net"`
-	Label1AGSTOnSales     float64 `db:"label_1a_gst_on_sales"`
-	G11TotalPurchasesNet  float64 `db:"g11_total_purchases_net"`
-	Label1BGSTOnPurchases float64 `db:"label_1b_gst_on_purchases"`
+	G1TotalSalesGross      float64 `db:"g1_total_sales_gross"`
+	Label1AGSTOnSales      float64 `db:"label_1a_gst_on_sales"`
+	G11TotalPurchasesGross float64 `db:"g11_total_purchases_gross"`
+	Label1BGSTOnPurchases  float64 `db:"label_1b_gst_on_purchases"`
 }
 
 type RsBASSummary struct {
