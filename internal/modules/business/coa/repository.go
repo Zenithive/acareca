@@ -271,13 +271,14 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
 	query := `
 		UPDATE tbl_chart_of_accounts
-		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, key = $6, updated_at = now()
+		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5,  updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id
 	`
 	var id uuid.UUID
+	fmt.Println("name--------->", c.Name)
 	err := r.db.QueryRowxContext(ctx, query,
-		c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key,
+		c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name,
 	).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
