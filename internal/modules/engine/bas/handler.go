@@ -16,6 +16,7 @@ type IHandler interface {
 	GetByAccount(c *gin.Context)
 	GetMonthly(c *gin.Context)
 	GetReport(c *gin.Context)
+	GetBASPreparation(c *gin.Context)
 }
 
 type handler struct {
@@ -181,4 +182,38 @@ func (h *handler) GetReport(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "BAS report fetched successfully")
+}
+
+// GetBASPreparation godoc
+// @Summary      Full BAS Preparation Report
+// @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.
+// @Tags         engine/bas
+// @Produce      json
+// @Param        clinic_id         path   string  true  "Clinic UUID"
+// @Param        quarter_ids       query  []string true "Array of Quarter UUIDs" collectionFormat(multi)
+// @Param        financial_year_id query  string  true "Restrict to a financial year by UUID"
+// @Success      200  {object}  RsBASPreparation
+// @Failure      400  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /bas/clinic/{clinic_id}/bas-preparation [get]
+func (h *handler) GetBASPreparation(c *gin.Context) {
+	clinicID, ok := parseClinicID(c)
+	if !ok {
+		return
+	}
+
+	var f BASFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.GetBASPreparation(c.Request.Context(), clinicID, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "BAS preparation data fetched")
 }

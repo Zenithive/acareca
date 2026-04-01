@@ -16,4 +16,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	clinic.GET("/summary", h.GetQuarterlySummary)
 	clinic.GET("/by-account", h.GetByAccount)
 	clinic.GET("/monthly", h.GetMonthly)
+	clinic.GET("/bas-preparation", h.GetBASPreparation)
 }

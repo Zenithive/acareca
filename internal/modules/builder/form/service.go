@@ -63,55 +63,61 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	if err != nil {
 		return nil, nil, err
 	}
-	// This is the 8dd760ab... ID you saw in the logs
 	realOwnerID := clinic.PractitionerID
 	if err := d.ValidateShares(); err != nil {
 		return nil, nil, err
 	}
 
-	formReq := &detail.RqFormDetail{
-		Name:           d.Name,
-		Description:    d.Description,
-		Status:         d.Status,
-		Method:         d.Method,
-		OwnerShare:     d.OwnerShare,
-		ClinicShare:    d.ClinicShare,
-		SuperComponent: d.SuperComponent,
-	}
-	if formReq.Status == "" {
-		formReq.Status = StatusDraft
-	}
+	var created *detail.RsFormDetail
+	syncResult := &RsFormWithFieldsSyncResult{ClinicID: d.ClinicID}
 
-	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, realOwnerID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	syncResult := &RsFormWithFieldsSyncResult{ClinicID: created.ClinicID}
-
-	if len(d.Fields) == 0 {
-		return created, syncResult, nil
-	}
-
-	versions, err := s.versionSvc.List(ctx, created.ID, d.ClinicID)
-	if err != nil {
-		return nil, nil, err
-	}
-	var activeVersionID uuid.UUID
-	for _, v := range versions {
-		if v.IsActive {
-			activeVersionID = v.Id
-			break
-		}
-	}
-	if activeVersionID == uuid.Nil {
-		return created, syncResult, nil
-	}
-
+	// Create form and fields within transaction (atomic operation)
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		keyToFieldID := make(map[string]uuid.UUID, len(d.Fields))
+		// Create form and Version
+		formReq := &detail.RqFormDetail{
+			Name:           d.Name,
+			Description:    d.Description,
+			Status:         d.Status,
+			Method:         d.Method,
+			OwnerShare:     d.OwnerShare,
+			ClinicShare:    d.ClinicShare,
+			SuperComponent: d.SuperComponent,
+		}
+		if formReq.Status == "" {
+			formReq.Status = StatusDraft
+		}
 
+		var createErr error
+		// Create form via detail service
+		created, createErr = s.detailSvc.CreateTx(ctx, tx, formReq, d.ClinicID, realOwnerID)
+		if createErr != nil {
+			return createErr
+		}
+
+		if len(d.Fields) == 0 {
+			return nil
+		}
+
+		// Get active version
+		versions, err := s.versionSvc.ListTx(ctx, tx, created.ID, d.ClinicID)
+		if err != nil {
+			return err
+		}
+		var activeVersionID uuid.UUID
+		for _, v := range versions {
+			if v.IsActive {
+				activeVersionID = v.Id
+				break
+			}
+		}
+		if activeVersionID == uuid.Nil {
+			// If we just created the form, we expect a version. If not found, fail the TX.
+			return fmt.Errorf("active version not found for form %s", created.ID)
+		}
+
+		// Create form fields
+		keyToFieldID := make(map[string]uuid.UUID, len(d.Fields))
 		for _, f := range d.Fields {
 			f.Sanitize()
 			if err := f.Validate(); err != nil {
@@ -119,7 +125,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			}
 			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, realOwnerID, f.ToRqFormField())
 			if err != nil {
-				return err
+				return err // Rollback everything including the Form
 			}
 			keyToFieldID[f.FieldKey] = created.ID
 			syncResult.CreatedCount++
@@ -132,10 +138,11 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		}
 		return nil
 	})
+	// If transaction failed, exit before touching 'created'
 	if err != nil {
 		return nil, nil, err
 	}
-
+	// --- EVERYTHING BELOW ONLY RUNS ON SUCCESS ---
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
 
 		actorUserID, err := uuid.Parse(*meta.UserID)

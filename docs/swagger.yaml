@@ -158,6 +158,58 @@ definitions:
       updated_at:
         type: string
     type: object
+  bas.BASAmount:
+    properties:
+      gross:
+        type: number
+      gst:
+        type: number
+      net:
+        type: number
+    type: object
+  bas.BASColumn:
+    properties:
+      net_gst_payable:
+        type: number
+      quarter:
+        $ref: '#/definitions/bas.BASQuarterInfo'
+      sections:
+        properties:
+          expenses:
+            $ref: '#/definitions/bas.BASSection'
+          income:
+            $ref: '#/definitions/bas.BASSection'
+          net_profit_loss:
+            $ref: '#/definitions/bas.BASSection'
+        type: object
+    type: object
+  bas.BASLineItem:
+    properties:
+      amounts:
+        $ref: '#/definitions/bas.BASAmount'
+      name:
+        type: string
+    type: object
+  bas.BASQuarterInfo:
+    properties:
+      displayRange:
+        type: string
+      endDate:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      startDate:
+        type: string
+    type: object
+  bas.BASSection:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/bas.BASLineItem'
+        type: array
+    type: object
   bas.RsBASByAccount:
     properties:
       account_code:
@@ -207,6 +259,15 @@ definitions:
         type: number
       total_sales_net:
         type: number
+    type: object
+  bas.RsBASPreparation:
+    properties:
+      columns:
+        items:
+          $ref: '#/definitions/bas.BASColumn'
+        type: array
+      grand_total:
+        $ref: '#/definitions/bas.BASColumn'
     type: object
   bas.RsBASReport:
     properties:
@@ -750,10 +811,21 @@ definitions:
         maximum: 100
         minimum: 0
         type: integer
+      create:
+        items:
+          $ref: '#/definitions/field.RqCreateField'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
       description:
         type: string
       fields:
         $ref: '#/definitions/form.RqFieldsSync'
+      force_delete:
+        description: If true, delete fields even if they have submitted entries
+        type: boolean
       form_id:
         type: string
       formulas:
@@ -779,6 +851,10 @@ definitions:
         type: string
       super_component:
         type: number
+      update:
+        items:
+          $ref: '#/definitions/field.RqUpdateFormField'
+        type: array
     required:
     - clinic_id
     type: object
@@ -2183,6 +2259,49 @@ paths:
       summary: Verify user email address
       tags:
       - auth
+  /bas/clinic/{clinic_id}/bas-preparation:
+    get:
+      description: Returns a side-by-side comparison of BAS figures across selected
+        quarters/months, plus a calculated Grand Total column.
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: clinic_id
+        required: true
+        type: string
+      - collectionFormat: multi
+        description: Array of Quarter UUIDs
+        in: query
+        items:
+          type: string
+        name: quarter_ids
+        required: true
+        type: array
+      - description: Restrict to a financial year by UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bas.RsBASPreparation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Full BAS Preparation Report
+      tags:
+      - engine/bas
   /bas/clinic/{clinic_id}/by-account:
     get:
       description: Returns quarterly GST totals broken down per Chart of Accounts
@@ -3106,6 +3225,38 @@ paths:
       security:
       - BearerToken: []
       summary: Update an existing chart of account
+      tags:
+      - coa
+  /coa/chart-of-account/by-key/{key}:
+    get:
+      parameters:
+      - description: Chart of Account Key (e.g., patient_fee_account)
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get chart of account by key
       tags:
       - coa
   /coa/chart-of-account/check-code:
