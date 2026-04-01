@@ -422,9 +422,18 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			fieldByID[af.ID] = af
 		}
 
+		// Track which field IDs already have a value in out to prevent duplicates.
+		alreadyAdded := make(map[uuid.UUID]bool, len(out))
+		for _, v := range out {
+			alreadyAdded[v.FormFieldID] = true
+		}
+
 		for fieldID, val := range computed {
 			f, ok := fieldByID[fieldID]
 			if !ok {
+				continue
+			}
+			if alreadyAdded[fieldID] {
 				continue
 			}
 
