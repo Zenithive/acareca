@@ -1504,6 +1504,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/bas/clinic/{clinic_id}/bas-preparation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Full BAS Preparation Report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Array of Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to a financial year by UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bas.RsBASPreparation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/bas/clinic/{clinic_id}/by-account": {
             "get": {
                 "security": [
@@ -2742,6 +2806,57 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/chart-of-account/by-key/{key}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "coa"
+                ],
+                "summary": "Get chart of account by key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Chart of Account Key (e.g., patient_fee_account)",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -5606,6 +5721,87 @@ const docTemplate = `{
                 }
             }
         },
+        "bas.BASAmount": {
+            "type": "object",
+            "properties": {
+                "gross": {
+                    "type": "number"
+                },
+                "gst": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.BASColumn": {
+            "type": "object",
+            "properties": {
+                "net_gst_payable": {
+                    "type": "number"
+                },
+                "quarter": {
+                    "$ref": "#/definitions/bas.BASQuarterInfo"
+                },
+                "sections": {
+                    "type": "object",
+                    "properties": {
+                        "expenses": {
+                            "$ref": "#/definitions/bas.BASSection"
+                        },
+                        "income": {
+                            "$ref": "#/definitions/bas.BASSection"
+                        },
+                        "net_profit_loss": {
+                            "$ref": "#/definitions/bas.BASSection"
+                        }
+                    }
+                }
+            }
+        },
+        "bas.BASLineItem": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/bas.BASAmount"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "bas.BASQuarterInfo": {
+            "type": "object",
+            "properties": {
+                "displayRange": {
+                    "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                }
+            }
+        },
+        "bas.BASSection": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASLineItem"
+                    }
+                }
+            }
+        },
         "bas.RsBASByAccount": {
             "type": "object",
             "properties": {
@@ -5679,6 +5875,20 @@ const docTemplate = `{
                 },
                 "total_sales_net": {
                     "type": "number"
+                }
+            }
+        },
+        "bas.RsBASPreparation": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASColumn"
+                    }
+                },
+                "grand_total": {
+                    "$ref": "#/definitions/bas.BASColumn"
                 }
             }
         },
@@ -6473,11 +6683,27 @@ const docTemplate = `{
                     "maximum": 100,
                     "minimum": 0
                 },
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field.RqCreateField"
+                    }
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "description": {
                     "type": "string"
                 },
                 "fields": {
                     "$ref": "#/definitions/form.RqFieldsSync"
+                },
+                "force_delete": {
+                    "description": "If true, delete fields even if they have submitted entries",
+                    "type": "boolean"
                 },
                 "form_id": {
                     "type": "string"
@@ -6513,6 +6739,12 @@ const docTemplate = `{
                 },
                 "super_component": {
                     "type": "number"
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field.RqUpdateFormField"
+                    }
                 }
             }
         },

@@ -16,6 +16,7 @@ import (
 
 type IService interface {
 	Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
+	CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
 	GetByID(ctx context.Context, formID uuid.UUID) (*RsFormDetail, error)
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
@@ -87,6 +88,56 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
+	meta := auditctx.GetMetadata(ctx)
+	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
+
+	if isAccountant || practitionerID == uuid.Nil {
+		clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+		}
+		practitionerID = clinic.PractitionerID
+	}
+
+	// Subscription limit check
+	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
+		return nil, err
+	}
+
+	formDetail := d.ToDB(clinicID)
+
+	// Internal function to execute logic
+	execLogic := func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
+			return err
+		}
+
+		_, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
+			Version:  1,
+			IsActive: true,
+		}, practitionerID)
+		return err
+	}
+
+	// If tx is provided by the caller (CreateWithFields), use it.
+	// Otherwise, start a new one (original Create behavior).
+	if tx != nil {
+		if err := execLogic(ctx, tx); err != nil {
+			return nil, err
+		}
+	} else {
+		err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+			return execLogic(ctx, tx)
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return formDetail.ToRs(), nil
 }
 
 // Delete implements [IService].

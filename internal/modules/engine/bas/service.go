@@ -3,6 +3,9 @@ package bas
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -14,6 +17,7 @@ type Service interface {
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
+	GetBASPreparation(ctx context.Context, clinicID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
 }
 
 type service struct {
@@ -141,4 +145,167 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 		G11: row.G11TotalPurchasesGross,
 		B1:  row.Label1BGSTOnPurchases,
 	}, nil
+}
+
+func (s *service) GetBASPreparation(ctx context.Context, clinicID uuid.UUID, f *BASFilter) (*RsBASPreparation, error) {
+	rows, err := s.repo.GetBASLineItems(ctx, clinicID, f)
+	if err != nil {
+		return nil, err
+	}
+
+	quarterGroups := make(map[string][]*BASLineItemRow)
+	for _, r := range rows {
+		k := r.PeriodQuarter.Format("2006-01-02")
+		quarterGroups[k] = append(quarterGroups[k], r)
+	}
+
+	resp := &RsBASPreparation{Columns: []BASColumn{}}
+
+	// --- Iterate over SELECTED Quarters first ---
+	if len(f.QuarterIDs) > 0 {
+		for _, qID := range f.QuarterIDs {
+			if qID == nil {
+				continue
+			}
+
+			// Get metadata by ID (Always works even if no transactions)
+			qInfo, err := s.repo.GetQuarterInfoByID(ctx, *qID)
+			if err != nil {
+				continue
+			}
+
+			// Get data from our map (might be nil/empty)
+			qRows := quarterGroups[qInfo.StartDate]
+
+			// Map to column (mapToBASColumn handles nil/empty rows by returning $0)
+			col := s.mapToBASColumn(qRows)
+			col.Quarter = *qInfo
+			resp.Columns = append(resp.Columns, col)
+		}
+	} else {
+		// Fallback for when no specific quarters are selected (Show what exists)
+		for key, qRows := range quarterGroups {
+			col := s.mapToBASColumn(qRows)
+			quarterDate, _ := time.Parse("2006-01-02", key)
+			qInfo, _ := s.repo.GetQuarterInfoByDate(ctx, quarterDate)
+			if qInfo != nil {
+				col.Quarter = *qInfo
+			}
+			resp.Columns = append(resp.Columns, col)
+		}
+	}
+
+	// --- CRITICAL SORTING STEP ---
+	// This ensures Q1 comes before Q2, even if Q3 is missing.
+	sort.Slice(resp.Columns, func(i, j int) bool {
+		return resp.Columns[i].Quarter.StartDate < resp.Columns[j].Quarter.StartDate
+	})
+
+	// Build Grand Total last
+	resp.GrandTotal = s.mapToBASColumn(rows)
+	resp.GrandTotal.Quarter.Name = "Total"
+
+	return resp, nil
+}
+
+func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
+	var col BASColumn
+	col.Sections.Income.Items = make([]BASLineItem, 0)
+	col.Sections.Expenses.Items = make([]BASLineItem, 0)
+
+	var g3, g8, a1, b1 BASAmount
+	var mgtFee, labWork, otherExp BASAmount
+
+	for _, r := range rows {
+		if r.BasCategory == "BAS_EXCLUDED" {
+			continue
+		}
+
+		if r.SectionType == "COLLECTION" {
+			if r.GstAmount > 0 || r.BasCategory == "TAXABLE" {
+				g8.Gross += r.GrossAmount
+				g8.GST += r.GstAmount
+				g8.Net += r.NetAmount
+				a1.Gross += r.GstAmount
+			} else {
+				g3.Gross += r.GrossAmount
+				g3.GST += r.GstAmount
+				g3.Net += r.NetAmount
+			}
+		} else if r.SectionType == "COST" {
+			// Track 1B for all taxable costs
+			if r.GstAmount > 0 || r.BasCategory == "TAXABLE" {
+				b1.Gross += r.GstAmount
+			}
+
+			switch {
+			case strings.Contains(strings.ToLower(r.BasCategory), "management"):
+				mgtFee.Gross += r.GrossAmount
+				mgtFee.GST += r.GstAmount
+				mgtFee.Net += r.NetAmount
+			case strings.Contains(strings.ToLower(r.BasCategory), "laboratory"):
+				labWork.Gross += r.GrossAmount
+				labWork.GST += r.GstAmount
+				labWork.Net += r.NetAmount
+			default:
+				otherExp.Gross += r.GrossAmount
+				otherExp.GST += r.GstAmount
+				otherExp.Net += r.NetAmount
+			}
+		}
+	}
+
+	// Income Section
+	totalIncome := BASAmount{
+		Gross: g3.Gross + g8.Gross,
+		GST:   g3.GST + g8.GST,
+		Net:   g3.Net + g8.Net,
+	}
+	col.Sections.Income.Items = []BASLineItem{
+		{Name: "Income – GST Free (G3)", Amounts: g3},
+		{Name: "Income – GST", Amounts: g8},
+		{Name: "Total Income (G1)", Amounts: totalIncome},
+		// {Name: "1A GST on Sales", Amounts: BASAmount{Gross: a1.Gross}},
+		{
+			Name: "1A GST on Sales",
+			Amounts: BASAmount{
+				Gross: totalIncome.GST,
+			},
+		},
+	}
+
+	// Expenses Section
+	subtotalExpenses := BASAmount{
+		Gross: mgtFee.Gross + labWork.Gross + otherExp.Gross,
+		GST:   mgtFee.GST + labWork.GST + otherExp.GST,
+		Net:   mgtFee.Net + labWork.Net + otherExp.Net,
+	}
+	col.Sections.Expenses.Items = []BASLineItem{
+		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
+		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
+		{Name: "Other Expenses (GST)", Amounts: otherExp},
+		{Name: "Subtotal (non capital purchase)", Amounts: subtotalExpenses},
+		{
+			Name: "G11/1B GST on Purchases",
+			Amounts: BASAmount{
+				Gross: subtotalExpenses.Gross, //Total Spent
+				GST:   subtotalExpenses.GST,   // GST to claim
+			},
+		},
+	}
+
+	// Net Profit/Loss
+	col.Sections.NetProfitLoss.Items = []BASLineItem{
+		{
+			Name: "Net Profit/Loss",
+			Amounts: BASAmount{
+				Net: totalIncome.Net - subtotalExpenses.Net,
+			},
+		},
+	}
+
+	// Totals
+	col.NetGSTPayable = a1.Gross - b1.Gross
+
+	return col
 }

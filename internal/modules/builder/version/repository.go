@@ -19,6 +19,7 @@ type IRepository interface {
 	Update(ctx context.Context, v *FormVersion) (*FormVersion, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormID(ctx context.Context, formID uuid.UUID) ([]*FormVersion, error)
+	ListByFormIDTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) ([]*FormVersion, error)
 	ListVersionByFormID(ctx context.Context, formID uuid.UUID) (*FormVersion, error)
 	DeactivateByFormID(ctx context.Context, formID uuid.UUID) error
 	CreateTx(ctx context.Context, tx *sqlx.Tx, v *FormVersion) error
@@ -129,6 +130,15 @@ func (r *repository) ListByFormID(ctx context.Context, formID uuid.UUID) ([]*For
 		return nil, fmt.Errorf("list form versions: %w", err)
 	}
 	return list, nil
+}
+
+func (r *repository) ListByFormIDTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) ([]*FormVersion, error) {
+	var list []*FormVersion
+	query := `SELECT id, form_id, version, is_active, practitioner_id, created_at, updated_at
+		FROM tbl_custom_form_version WHERE form_id = $1 AND deleted_at IS NULL
+		ORDER BY version ASC`
+	err := tx.SelectContext(ctx, &list, query, formID)
+	return list, err
 }
 
 // ListVersionByFormID implements [IRepository].
