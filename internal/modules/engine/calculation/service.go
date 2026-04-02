@@ -3,6 +3,7 @@ package calculation
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -311,9 +312,7 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 	}
 
 	// Merge section totals into req.Values
-	for key, val := range sectionTotals {
-		req.Values[key] = val
-	}
+	maps.Copy(req.Values, sectionTotals)
 
 	// Evaluate all formulas in topological order.
 	computed, err := s.formulaSvc.EvalFormulas(ctx, ver.Id, req.Values, taxTypeByKey)
@@ -341,9 +340,11 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 			net := util.Round(taxResult.Amount, 2)
 			gst := util.Round(taxResult.GstAmount, 2)
 			gross := util.Round(taxResult.TotalAmount, 2)
+
 			netAmount = net
 			gstAmount = &gst
 			grossAmount = &gross
+
 		}
 
 		item := RsComputedFieldValue{
@@ -425,9 +426,10 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 				actualNetAmount = entry.NetAmount
 
 			case method.TaxTreatmentManual:
-				// User provided both net and GST explicitly
-				if entry.GstAmount != nil {
-					actualNetAmount = entry.NetAmount - *entry.GstAmount
+				if (f.SectionType) != nil && *f.SectionType == "COLLECTION" {
+					if entry.GstAmount != nil {
+						actualNetAmount = entry.NetAmount - *entry.GstAmount
+					}
 				} else {
 					actualNetAmount = entry.NetAmount
 				}
