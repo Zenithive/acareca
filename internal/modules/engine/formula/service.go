@@ -301,9 +301,23 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 		}
 		result[fw.formula.FieldID] = val
 
-		// Feedback value: computed fields feed NET result back for dependent formulas
-		// All formulas work with NET amounts for consistency
-		vals[fw.formula.FieldKey] = val
+		// Feedback value: computed fields with tax type feed GROSS amount back for dependent formulas
+		// Non-tax computed fields feed NET amount
+		feedbackVal := val
+		if taxType, hasTax := taxTypeByKey[fw.formula.FieldKey]; hasTax {
+			// Calculate gross amount: for exclusive tax, gross = net * 1.1
+			// For inclusive, the formula already returns gross, so use as-is
+			switch taxType {
+			case "EXCLUSIVE":
+				feedbackVal = val * 1.1 // Add 10% GST
+			case "INCLUSIVE":
+				feedbackVal = val // Already gross
+			case "ZERO":
+				feedbackVal = val // No GST
+			}
+			fmt.Printf("Formula feedback for %s: net=%.2f, gross=%.2f (tax=%s)\n", fw.formula.FieldKey, val, feedbackVal, taxType)
+		}
+		vals[fw.formula.FieldKey] = feedbackVal
 	}
 
 	return result, nil
