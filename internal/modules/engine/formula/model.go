@@ -85,23 +85,11 @@ func (r *RqFormula) Validate() error {
 }
 
 type RsFormula struct {
-	ID            uuid.UUID       `json:"id,omitempty"`
-	FormVersionID uuid.UUID       `json:"form_version_id,omitempty"`
-	FieldID       uuid.UUID       `json:"field_id,omitempty"`
-	FieldKey      string          `json:"field_key"`
-	Name          string          `json:"name"`
-	Expression    *ExprNode       `json:"expression,omitempty"`
-	Nodes         []RsFormulaNode `json:"nodes,omitempty"`
-	CreatedAt     string          `json:"created_at,omitempty"`
-}
-
-type RsFormulaNode struct {
-	ID            uuid.UUID  `json:"id"`
-	ParentID      *uuid.UUID `json:"parent_id"`
-	NodeType      string     `json:"node_type"`
-	Operator      *string    `json:"operator"`
-	FieldID       *uuid.UUID `json:"field_id"`
-	FieldKey      *string    `json:"field_key"`
-	ConstantValue *float64   `json:"constant_value"`
-	Position      *int16     `json:"position"`
+	ID            uuid.UUID `json:"id,omitempty"`
+	FormVersionID uuid.UUID `json:"form_version_id,omitempty"`
+	FieldID       uuid.UUID `json:"field_id,omitempty"`
+	FieldKey      string    `json:"field_key"`
+	Name          string    `json:"name"`
+	Expression    *ExprNode `json:"expression,omitempty"`
+	CreatedAt     string    `json:"created_at,omitempty"`
 }
