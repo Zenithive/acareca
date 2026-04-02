@@ -339,7 +339,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		grossTotal := v.Amount
 
 		if f.TaxType == nil {
-			keyValues[f.FieldKey] = netBase
+			keyValues[f.FieldKey] = grossTotal
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
@@ -388,7 +388,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
-		keyValues[f.FieldKey] = netBase
+		keyValues[f.FieldKey] = grossTotal
 		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
 			ID:          uuid.New(),
