@@ -3,6 +3,7 @@ package entry
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -48,10 +49,11 @@ type Service struct {
 	clinicRepo     clinic.Repository
 	formClinic     clinic.Service
 	formulaSvc     formula.IService
+	fieldSvc       field.IService
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc}
 }
 
 // Create implements [IService].
@@ -339,6 +341,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		grossTotal := v.Amount
 
 		if f.TaxType == nil {
+			// No tax type: net = gross, use netBase for formulas
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
@@ -373,10 +376,23 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
-			gstAmount = v.GstAmount
-			netBase = v.Amount
-			if gstAmount != nil {
-				grossTotal = v.Amount + *gstAmount
+			fm, err := s.fieldSvc.GetByID(ctx, f.ID)
+			if err != nil {
+				return nil, fmt.Errorf("get form for field %s: %w", f.FieldKey, err)
+			}
+
+			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
+				gstAmount = v.GstAmount
+				grossTotal = v.Amount
+				if v.GstAmount != nil {
+					netBase = v.Amount - *v.GstAmount
+				}
+			} else {
+				gstAmount = v.GstAmount
+				netBase = v.Amount
+				if gstAmount != nil {
+					grossTotal = v.Amount + *gstAmount
+				}
 			}
 
 		case method.TaxTreatmentZero:
@@ -388,6 +404,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
+		// CRITICAL: Always use NET amount for formulas
+		// This ensures COLLECTION - COST uses net values consistently
 		keyValues[f.FieldKey] = netBase
 		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
@@ -410,18 +428,33 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, err
 		}
 
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
-		if err != nil {
-			return nil, fmt.Errorf("evaluate formulas: %w", err)
-		}
-
+		// Get all fields to compute section totals
 		allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
 		if err != nil {
 			return nil, err
 		}
+
 		fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
 		for _, af := range allFields {
 			fieldByID[af.ID] = af
+		}
+
+		// Compute section totals using NET amounts from out
+		sectionTotals := make(map[string]float64)
+		for _, entryVal := range out {
+			f, ok := fieldByID[entryVal.FormFieldID]
+			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
+				sectionKey := "SECTION:" + *f.SectionType
+				sectionTotals[sectionKey] += *entryVal.NetAmount
+			}
+		}
+
+		// Merge section totals into keyValues
+		maps.Copy(keyValues, sectionTotals)
+
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate formulas: %w", err)
 		}
 
 		// Track which field IDs already have a value in out to prevent duplicates.

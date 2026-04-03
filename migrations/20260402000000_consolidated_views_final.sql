@@ -1,19 +1,51 @@
 -- +goose Up
 -- +goose StatementBegin
-DROP VIEW IF EXISTS vw_bas_monthly CASCADE;
-DROP VIEW IF EXISTS vw_bas_by_account CASCADE;
-DROP VIEW IF EXISTS vw_bas_summary CASCADE;
+-- ============================================================
+-- CONSOLIDATED VIEW MIGRATION - FINAL OPTIMIZED VERSION
+-- Created: 2026-04-02
+-- 
+-- This migration consolidates all SQL views from previous migrations
+-- into their latest, optimized versions. It includes:
+--   - BAS (Business Activity Statement) views
+--   - P&L (Profit & Loss) views
+--   - Supporting functions for date-range queries
+--
+-- Dependencies (in order):
+--   1. vw_bas_line_items (foundation view)
+--   2. vw_bas_summary, vw_bas_by_account, vw_bas_monthly
+--   3. vw_pl_line_items (depends on vw_bas_line_items)
+--   4. vw_pl_by_account, vw_pl_summary_monthly, etc.
+--   5. Functions: fn_pl_date_range, fn_pl_summary_date_range
+-- ============================================================
+
+-- Drop all existing views and functions in reverse dependency order
+DROP FUNCTION IF EXISTS fn_pl_summary_date_range(UUID, DATE, DATE);
+DROP FUNCTION IF EXISTS fn_pl_date_range(UUID, DATE, DATE);
 DROP VIEW IF EXISTS vw_pl_fy_summary CASCADE;
 DROP VIEW IF EXISTS vw_pl_by_financial_year CASCADE;
 DROP VIEW IF EXISTS vw_pl_by_responsibility CASCADE;
 DROP VIEW IF EXISTS vw_pl_summary_monthly CASCADE;
 DROP VIEW IF EXISTS vw_pl_by_account CASCADE;
 DROP VIEW IF EXISTS vw_pl_line_items CASCADE;
+DROP VIEW IF EXISTS vw_bas_monthly CASCADE;
+DROP VIEW IF EXISTS vw_bas_by_account CASCADE;
+DROP VIEW IF EXISTS vw_bas_summary CASCADE;
 DROP VIEW IF EXISTS vw_bas_line_items CASCADE;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
--- vw_bas_line_items: deduplicate entry values using DISTINCT ON
+-- ============================================================
+-- VIEW: vw_bas_line_items
+-- Foundation view for all BAS and P&L reporting
+--
+-- Purpose: Raw line items from submitted form entries with tax metadata
+-- Key Features:
+--   - Deduplicates entry values using DISTINCT ON
+--   - Categorizes transactions as TAXABLE, GST_FREE, or BAS_EXCLUDED
+--   - Includes period aggregations (month, quarter, year)
+--   - Preserves all amounts as positive values
+-- ============================================================
 CREATE OR REPLACE VIEW vw_bas_line_items AS
 SELECT
     fe.clinic_id,
@@ -62,53 +94,91 @@ WHERE fe.status      = 'SUBMITTED'
   AND fe.deleted_at  IS NULL
   AND ff.deleted_at  IS NULL
   AND coa.deleted_at IS NULL;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_bas_summary
+-- Quarterly BAS summary per clinic (mirrors ATO BAS form)
+--
+-- Purpose: Calculate GST obligations for Business Activity Statement
+-- Key Calculations:
+--   - G1: Total sales (gross revenue from patients)
+--   - 1A: GST collected on sales
+--   - 1B: GST credits on purchases (all costs and other costs)
+--   - G11: Total purchases (all costs and other costs)
+--   - Net GST: 1A - 1B (payable to ATO or refund)
+-- ============================================================
 CREATE VIEW vw_bas_summary AS
 WITH base AS (
-    SELECT l.clinic_id, l.practitioner_id, l.period_quarter, l.period_year,
-           l.section_type, l.bas_category, l.net_amount, l.gst_amount, l.gross_amount,
-           COALESCE(f.clinic_share::decimal / 100, 0.60) AS share_ratio
-    FROM vw_bas_line_items l
-    LEFT JOIN tbl_form f ON l.form_id = f.id
-    WHERE l.bas_category != 'BAS_EXCLUDED'
-),
-summary_stats AS (
-    SELECT clinic_id, practitioner_id, period_quarter, period_year,
-           COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)              AS a_gross_revenue,
-           COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST','OTHER_COST')), 0)    AS b_lab_fees,
-           COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST','OTHER_COST')), 0)    AS g_gst_on_labs,
-           COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0) AS label_1a,
-           MAX(share_ratio) AS share_ratio
-    FROM base
-    GROUP BY clinic_id, practitioner_id, period_quarter, period_year
+    SELECT
+        clinic_id,
+        practitioner_id,
+        period_quarter,
+        period_year,
+        section_type,
+        bas_category,
+        net_amount,
+        gst_amount,
+        gross_amount
+    FROM vw_bas_line_items
 )
-SELECT clinic_id, practitioner_id, period_quarter, period_year,
-    ROUND(a_gross_revenue::numeric, 2)                                                  AS g1_total_sales_gross,
-    ROUND(label_1a::numeric, 2)                                                         AS label_1a_gst_on_sales,
-    ROUND(((a_gross_revenue - b_lab_fees) * share_ratio * 0.10)::numeric, 2)            AS label_1b_gst_on_purchases,
-    ROUND(((a_gross_revenue - b_lab_fees) * share_ratio * 1.10)::numeric, 2)            AS g11_total_purchases_gross,
-    ROUND((label_1a - (((a_gross_revenue - b_lab_fees) * share_ratio * 0.10) + g_gst_on_labs))::numeric, 2) AS net_gst_payable,
-    ROUND((a_gross_revenue - b_lab_fees)::numeric, 2)                                   AS net_patient_fees,
-    ROUND(((a_gross_revenue - b_lab_fees) * share_ratio)::numeric, 2)                   AS service_fee_net
-FROM summary_stats;
+SELECT
+    clinic_id,
+    practitioner_id,
+    period_quarter,
+    period_year,
+    -- G1: TOTAL SALES
+    ROUND(COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)::numeric, 2) AS g1_total_sales_gross,
+    -- 1A: GST ON SALES
+    ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)::numeric, 2) AS label_1a_gst_on_sales,
+    -- 1B: GST ON PURCHASES
+    ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0)::numeric, 2) AS label_1b_gst_on_purchases,
+    -- G11: TOTAL PURCHASES
+    ROUND(COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0)::numeric, 2) AS g11_total_purchases_gross,
+    -- NET GST PAYABLE (1A - 1B)
+    ROUND((COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)
+        - COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0))::numeric, 2) AS net_gst_payable,
+    -- TOTALS FOR RECONCILIATION
+    ROUND(COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)::numeric, 2) AS total_sales_net,
+    ROUND(COALESCE(SUM(net_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0)::numeric, 2) AS total_purchases_net
+FROM base
+GROUP BY clinic_id, practitioner_id, period_quarter, period_year;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_bas_by_account
+-- BAS breakdown per COA account per quarter
+--
+-- Purpose: Detailed view showing which accounts drive GST figures
+-- Usage: Drill-down analysis for BAS reporting
+-- ============================================================
 CREATE OR REPLACE VIEW vw_bas_by_account AS
 SELECT clinic_id, practitioner_id, period_quarter, period_year,
        section_type, bas_category, account_code, account_name, tax_name, tax_rate,
        COUNT(DISTINCT entry_id) AS entry_count,
-       SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross
+       SUM(net_amount) AS total_net, 
+       SUM(gst_amount) AS total_gst, 
+       SUM(gross_amount) AS total_gross
 FROM vw_bas_line_items
 WHERE bas_category != 'BAS_EXCLUDED'
 GROUP BY clinic_id, practitioner_id, period_quarter, period_year,
          section_type, bas_category, account_code, account_name, tax_name, tax_rate
 ORDER BY clinic_id, period_year, period_quarter, section_type, account_code;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_bas_monthly
+-- Monthly BAS summary (same as quarterly but by month)
+--
+-- Purpose: Monthly accrual tracking and dashboard reporting
+-- Note: Uses traditional BAS calculation (not service fee model)
+-- ============================================================
 CREATE OR REPLACE VIEW vw_bas_monthly AS
 WITH base AS (
     SELECT clinic_id, practitioner_id, period_month, section_type, bas_category,
@@ -129,9 +199,21 @@ SELECT clinic_id, practitioner_id, period_month,
 FROM base
 GROUP BY clinic_id, practitioner_id, period_month
 ORDER BY clinic_id, period_month;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_pl_line_items
+-- Foundation view for Profit & Loss reporting
+--
+-- Purpose: Line items filtered for P&L (Revenue/Expense accounts only)
+-- Key Features:
+--   - Built on top of vw_bas_line_items for consistency
+--   - Adds signed amounts (positive for income, negative for expenses)
+--   - Categorizes into P&L sections (Income, COGS, Other Expenses)
+--   - Filters to Revenue and Expense account types only
+-- ============================================================
 CREATE OR REPLACE VIEW vw_pl_line_items AS
 SELECT
     bli.clinic_id, bli.practitioner_id, bli.form_id, bli.form_name,
@@ -152,27 +234,54 @@ FROM vw_bas_line_items bli
 JOIN tbl_chart_of_accounts coa ON coa.id = bli.coa_id AND coa.deleted_at IS NULL
 JOIN tbl_account_type      at  ON at.id  = coa.account_type_id
 WHERE at.name IN ('Revenue', 'Expense');
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_pl_by_account
+-- P&L totals per COA account grouped by month
+--
+-- Purpose: Detailed account-level P&L analysis
+-- Usage: Filter by practitioner_id and period_month in queries
+-- ============================================================
 CREATE OR REPLACE VIEW vw_pl_by_account AS
 SELECT practitioner_id, period_month, pl_section, section_type,
        account_code, account_name, account_type, tax_name, tax_rate,
-       SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross,
-       SUM(signed_net_amount) AS signed_net, SUM(signed_gross_amount) AS signed_gross,
+       SUM(net_amount) AS total_net, 
+       SUM(gst_amount) AS total_gst, 
+       SUM(gross_amount) AS total_gross,
+       SUM(signed_net_amount) AS signed_net, 
+       SUM(signed_gross_amount) AS signed_gross,
        COUNT(DISTINCT entry_id) AS entry_count
 FROM vw_pl_line_items
 GROUP BY practitioner_id, period_month, pl_section, section_type,
          account_code, account_name, account_type, tax_name, tax_rate
 ORDER BY period_month, pl_section, account_code;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_pl_summary_monthly
+-- Monthly P&L summary (Income → COGS → Gross Profit → Net Profit)
+--
+-- Purpose: High-level monthly P&L statement
+-- Key Metrics:
+--   - Income (net, gst, gross)
+--   - COGS (net, gst, gross)
+--   - Gross Profit = Income - COGS
+--   - Other Expenses (net, gst, gross)
+--   - Net Profit = Income - COGS - Other Expenses
+-- ============================================================
 CREATE OR REPLACE VIEW vw_pl_summary_monthly AS
 WITH s AS (
     SELECT practitioner_id, period_month, section_type,
-           SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross
-    FROM vw_pl_line_items GROUP BY practitioner_id, period_month, section_type
+           SUM(net_amount) AS total_net, 
+           SUM(gst_amount) AS total_gst, 
+           SUM(gross_amount) AS total_gross
+    FROM vw_pl_line_items 
+    GROUP BY practitioner_id, period_month, section_type
 )
 SELECT practitioner_id, period_month,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type='COLLECTION'),  0) AS income_net,
@@ -181,46 +290,85 @@ SELECT practitioner_id, period_month,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type='COST'),        0) AS cogs_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type='COST'),        0) AS cogs_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type='COST'),        0) AS cogs_gross,
-    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) AS gross_profit_net,
+    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) 
+        - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) AS gross_profit_net,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type='OTHER_COST'),  0) AS other_expenses_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type='OTHER_COST'),  0) AS other_expenses_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type='OTHER_COST'),  0) AS other_expenses_gross,
-    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) - COALESCE(SUM(total_net) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_net,
-    COALESCE(SUM(total_gross) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type='COST'),0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_gross
-FROM s GROUP BY practitioner_id, period_month ORDER BY period_month;
+    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) 
+        - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) 
+        - COALESCE(SUM(total_net) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_net,
+    COALESCE(SUM(total_gross) FILTER (WHERE section_type='COLLECTION'),0) 
+        - COALESCE(SUM(total_gross) FILTER (WHERE section_type='COST'),0) 
+        - COALESCE(SUM(total_gross) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_gross
+FROM s 
+GROUP BY practitioner_id, period_month 
+ORDER BY period_month;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_pl_by_responsibility
+-- P&L split by payment_responsibility (OWNER vs CLINIC)
+--
+-- Purpose: Track who is responsible for each expense/income
+-- Usage: Filter by practitioner_id and period_month in queries
+-- ============================================================
 CREATE OR REPLACE VIEW vw_pl_by_responsibility AS
 SELECT practitioner_id, period_month, payment_responsibility, section_type, pl_section,
        account_code, account_name,
-       SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross,
+       SUM(net_amount) AS total_net, 
+       SUM(gst_amount) AS total_gst, 
+       SUM(gross_amount) AS total_gross,
        COUNT(DISTINCT entry_id) AS entry_count
 FROM vw_pl_line_items
 GROUP BY practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name
 ORDER BY period_month, payment_responsibility, pl_section, account_code;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_pl_by_financial_year
+-- P&L totals by financial year and quarter
+--
+-- Purpose: Align P&L reporting with financial year structure
+-- Dependencies: tbl_financial_year, tbl_financial_quarter
+-- ============================================================
 CREATE OR REPLACE VIEW vw_pl_by_financial_year AS
-SELECT li.practitioner_id, fy.id AS financial_year_id, fy.label AS financial_year,
+SELECT li.practitioner_id, 
+       fy.id AS financial_year_id, fy.label AS financial_year,
        fq.id AS financial_quarter_id, fq.label AS quarter,
        li.pl_section, li.section_type, li.account_code, li.account_name, li.account_type,
-       SUM(li.net_amount) AS total_net, SUM(li.gst_amount) AS total_gst, SUM(li.gross_amount) AS total_gross,
+       SUM(li.net_amount) AS total_net, 
+       SUM(li.gst_amount) AS total_gst, 
+       SUM(li.gross_amount) AS total_gross,
        COUNT(DISTINCT li.entry_id) AS entry_count
 FROM vw_pl_line_items li
 JOIN tbl_financial_year    fy ON li.submitted_at::DATE BETWEEN fy.start_date AND fy.end_date
-JOIN tbl_financial_quarter fq ON li.submitted_at::DATE BETWEEN fq.start_date AND fq.end_date AND fq.financial_year_id = fy.id
+JOIN tbl_financial_quarter fq ON li.submitted_at::DATE BETWEEN fq.start_date AND fq.end_date 
+                              AND fq.financial_year_id = fy.id
 GROUP BY li.practitioner_id, fy.id, fy.label, fq.id, fq.label,
          li.pl_section, li.section_type, li.account_code, li.account_name, li.account_type
 ORDER BY financial_year, quarter, li.pl_section, li.account_code;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
+-- ============================================================
+-- VIEW: vw_pl_fy_summary
+-- Financial year P&L summary (one row per FY per quarter)
+--
+-- Purpose: High-level P&L by financial year and quarter
+-- Usage: Filter by practitioner_id, financial_year_id, or quarter
+-- ============================================================
 CREATE OR REPLACE VIEW vw_pl_fy_summary AS
 WITH t AS (
     SELECT practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter, section_type,
-           SUM(total_net) AS total_net, SUM(total_gst) AS total_gst, SUM(total_gross) AS total_gross
+           SUM(total_net) AS total_net, 
+           SUM(total_gst) AS total_gst, 
+           SUM(total_gross) AS total_gross
     FROM vw_pl_by_financial_year
     GROUP BY practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter, section_type
 )
@@ -231,38 +379,92 @@ SELECT practitioner_id, financial_year_id, financial_year, financial_quarter_id,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type='COST'),        0) AS cogs_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type='COST'),        0) AS cogs_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type='COST'),        0) AS cogs_gross,
-    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) AS gross_profit_net,
+    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) 
+        - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) AS gross_profit_net,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type='OTHER_COST'),  0) AS other_expenses_net,
-    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) - COALESCE(SUM(total_net) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_net,
-    COALESCE(SUM(total_gross) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type='COST'),0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_gross
+    COALESCE(SUM(total_net) FILTER (WHERE section_type='COLLECTION'),0) 
+        - COALESCE(SUM(total_net) FILTER (WHERE section_type='COST'),0) 
+        - COALESCE(SUM(total_net) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_net,
+    COALESCE(SUM(total_gross) FILTER (WHERE section_type='COLLECTION'),0) 
+        - COALESCE(SUM(total_gross) FILTER (WHERE section_type='COST'),0) 
+        - COALESCE(SUM(total_gross) FILTER (WHERE section_type='OTHER_COST'),0) AS net_profit_gross
 FROM t
 GROUP BY practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter
 ORDER BY financial_year, quarter;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION fn_pl_date_range(p_clinic_id UUID, p_from_date DATE, p_to_date DATE)
-RETURNS TABLE (pl_section TEXT, account_code SMALLINT, account_name VARCHAR, account_type VARCHAR,
-               payment_resp payment_responsibility, tax_name VARCHAR, tax_rate NUMERIC,
-               total_net NUMERIC, total_gst NUMERIC, total_gross NUMERIC, entry_count BIGINT)
+-- ============================================================
+-- FUNCTION: fn_pl_date_range
+-- Parameterized P&L for any date window, filtered by clinic_id
+--
+-- Purpose: Flexible P&L query for custom date ranges
+-- Usage:
+--   SELECT * FROM fn_pl_date_range(
+--       '<clinic-uuid>', '2026-01-01', '2026-03-31'
+--   );
+-- ============================================================
+CREATE OR REPLACE FUNCTION fn_pl_date_range(
+    p_clinic_id UUID, 
+    p_from_date DATE, 
+    p_to_date DATE
+)
+RETURNS TABLE (
+    pl_section TEXT, 
+    account_code SMALLINT, 
+    account_name VARCHAR, 
+    account_type VARCHAR,
+    payment_resp payment_responsibility, 
+    tax_name VARCHAR, 
+    tax_rate NUMERIC,
+    total_net NUMERIC, 
+    total_gst NUMERIC, 
+    total_gross NUMERIC, 
+    entry_count BIGINT
+)
 LANGUAGE SQL STABLE AS $fn$
     SELECT li.pl_section, li.account_code, li.account_name, li.account_type, li.payment_responsibility,
            li.tax_name, li.tax_rate,
            SUM(li.net_amount), SUM(li.gst_amount), SUM(li.gross_amount), COUNT(DISTINCT li.entry_id)
     FROM vw_pl_line_items li
-    WHERE li.clinic_id = p_clinic_id AND li.submitted_at::DATE BETWEEN p_from_date AND p_to_date
+    WHERE li.clinic_id = p_clinic_id 
+      AND li.submitted_at::DATE BETWEEN p_from_date AND p_to_date
     GROUP BY li.pl_section, li.account_code, li.account_name, li.account_type,
              li.payment_responsibility, li.tax_name, li.tax_rate
     ORDER BY li.pl_section, li.account_code;
 $fn$;
+
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION fn_pl_summary_date_range(p_clinic_id UUID, p_from_date DATE, p_to_date DATE)
-RETURNS TABLE (income_net NUMERIC, income_gst NUMERIC, income_gross NUMERIC,
-               cogs_net NUMERIC, cogs_gst NUMERIC, cogs_gross NUMERIC,
-               gross_profit_net NUMERIC, other_expenses_net NUMERIC,
-               net_profit_net NUMERIC, net_profit_gross NUMERIC)
+-- ============================================================
+-- FUNCTION: fn_pl_summary_date_range
+-- Single-row P&L summary filtered by clinic_id + date range
+--
+-- Purpose: Quick P&L summary for custom date ranges
+-- Usage:
+--   SELECT * FROM fn_pl_summary_date_range(
+--       '<clinic-uuid>', '2026-01-01', '2026-03-31'
+--   );
+-- ============================================================
+CREATE OR REPLACE FUNCTION fn_pl_summary_date_range(
+    p_clinic_id UUID, 
+    p_from_date DATE, 
+    p_to_date DATE
+)
+RETURNS TABLE (
+    income_net NUMERIC, 
+    income_gst NUMERIC, 
+    income_gross NUMERIC,
+    cogs_net NUMERIC, 
+    cogs_gst NUMERIC, 
+    cogs_gross NUMERIC,
+    gross_profit_net NUMERIC, 
+    other_expenses_net NUMERIC,
+    net_profit_net NUMERIC, 
+    net_profit_gross NUMERIC
+)
 LANGUAGE SQL STABLE AS $fn$
     SELECT
         COALESCE(SUM(net_amount)   FILTER (WHERE section_type='COLLECTION'),  0),
@@ -271,13 +473,20 @@ LANGUAGE SQL STABLE AS $fn$
         COALESCE(SUM(net_amount)   FILTER (WHERE section_type='COST'),        0),
         COALESCE(SUM(gst_amount)   FILTER (WHERE section_type='COST'),        0),
         COALESCE(SUM(gross_amount) FILTER (WHERE section_type='COST'),        0),
-        COALESCE(SUM(net_amount) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type='COST'),0),
+        COALESCE(SUM(net_amount) FILTER (WHERE section_type='COLLECTION'),0) 
+            - COALESCE(SUM(net_amount) FILTER (WHERE section_type='COST'),0),
         COALESCE(SUM(net_amount) FILTER (WHERE section_type='OTHER_COST'),0),
-        COALESCE(SUM(net_amount) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type='COST'),0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type='OTHER_COST'),0),
-        COALESCE(SUM(gross_amount) FILTER (WHERE section_type='COLLECTION'),0) - COALESCE(SUM(gross_amount) FILTER (WHERE section_type='COST'),0) - COALESCE(SUM(gross_amount) FILTER (WHERE section_type='OTHER_COST'),0)
+        COALESCE(SUM(net_amount) FILTER (WHERE section_type='COLLECTION'),0) 
+            - COALESCE(SUM(net_amount) FILTER (WHERE section_type='COST'),0) 
+            - COALESCE(SUM(net_amount) FILTER (WHERE section_type='OTHER_COST'),0),
+        COALESCE(SUM(gross_amount) FILTER (WHERE section_type='COLLECTION'),0) 
+            - COALESCE(SUM(gross_amount) FILTER (WHERE section_type='COST'),0) 
+            - COALESCE(SUM(gross_amount) FILTER (WHERE section_type='OTHER_COST'),0)
     FROM vw_pl_line_items
-    WHERE clinic_id = p_clinic_id AND submitted_at::DATE BETWEEN p_from_date AND p_to_date;
+    WHERE clinic_id = p_clinic_id 
+      AND submitted_at::DATE BETWEEN p_from_date AND p_to_date;
 $fn$;
+
 -- +goose StatementEnd
 
 -- +goose Down

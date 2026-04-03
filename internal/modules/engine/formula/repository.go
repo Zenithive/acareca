@@ -13,7 +13,6 @@ type IRepository interface {
 	CreateNodeTx(ctx context.Context, tx *sqlx.Tx, n *FormulaNode) error
 	DeleteByFormVersionIDTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*Formula, error)
-	ListNodesByFormulaID(ctx context.Context, formulaID uuid.UUID) ([]*FormulaNode, error)
 	ListNodesWithKeyByFormulaID(ctx context.Context, formulaID uuid.UUID) ([]*FormulaNodeWithKey, error)
 	GetFieldKeyByFieldID(ctx context.Context, fieldID uuid.UUID) (string, error)
 }
@@ -72,18 +71,6 @@ func (r *repository) ListByFormVersionID(ctx context.Context, formVersionID uuid
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list formulas: %w", err)
-	}
-	return rows, nil
-}
-
-func (r *repository) ListNodesByFormulaID(ctx context.Context, formulaID uuid.UUID) ([]*FormulaNode, error) {
-	var rows []*FormulaNode
-	err := r.db.SelectContext(ctx, &rows,
-		`SELECT id, formula_id, parent_id, node_type, operator, field_id, constant_value, position, created_at
-		 FROM tbl_formula_node WHERE formula_id = $1`, formulaID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list formula nodes: %w", err)
 	}
 	return rows, nil
 }
