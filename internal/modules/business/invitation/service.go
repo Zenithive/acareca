@@ -389,13 +389,35 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string
 }
 
 func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
-	ft := f.MapToFilter(pID, aID)
+	// Accountant path: query by email so SENT/REJECTED (entity_id = NULL) are also visible
+	if aID != nil {
+		email, err := s.repo.GetEmailByAccountantID(ctx, *aID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve accountant email: %w", err)
+		}
 
+		ft := f.MapToFilterAccountant()
+
+		list, err := s.repo.ListByEmail(ctx, email, ft)
+		if err != nil {
+			return nil, err
+		}
+		total, err := s.repo.CountByEmail(ctx, email, ft)
+		if err != nil {
+			return nil, err
+		}
+
+		var rsList util.RsList
+		rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
+		return &rsList, nil
+	}
+
+	// Practitioner path: unchanged
+	ft := f.MapToFilter(pID, nil)
 	list, err := s.repo.List(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-
 	total, err := s.repo.Count(ctx, ft)
 	if err != nil {
 		return nil, err
@@ -403,7 +425,6 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 
 	var rsList util.RsList
 	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
-
 	return &rsList, nil
 }
 
