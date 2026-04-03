@@ -130,7 +130,7 @@ SELECT
     period_quarter,
     period_year,
     -- G1: TOTAL SALES
-    ROUND(COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)::numeric, 2) AS g1_total_sales_gross,
+    ROUND(COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)::numeric, 2) AS g1_total_sales_gross,
     -- 1A: GST ON SALES
     ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)::numeric, 2) AS label_1a_gst_on_sales,
     -- 1B: GST ON PURCHASES
