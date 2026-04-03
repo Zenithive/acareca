@@ -28,6 +28,7 @@ type Service interface {
 	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
 	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
+	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 }
 
@@ -486,6 +487,50 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 	if count >= 5 {
 		return errors.New("daily invitation limit reached for this email (max 5 per 24h)")
 	}
+	return nil
+}
+
+func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error {
+	inv, err := s.repo.GetByID(ctx, inviteID)
+	if err != nil || inv == nil {
+		return errors.New("invitation not found")
+	}
+
+	if inv.PractitionerID != practitionerID {
+		return errors.New("unauthorized: you did not send this invitation")
+	}
+
+	if inv.Status == StatusRevoked {
+		return errors.New("invitation is already revoked")
+	}
+
+	// Only allow revoking invitations that have been accepted or completed
+	if inv.Status != StatusAccepted && inv.Status != StatusCompleted {
+		return fmt.Errorf("cannot revoke an invitation with status: %s", inv.Status)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, inviteID, StatusRevoked, inv.EntityID); err != nil {
+		return fmt.Errorf("revoke invitation: %w", err)
+	}
+
+	// Audit log
+	meta := auditctx.GetMetadata(ctx)
+	pIDStr := practitionerID.String()
+	entityIDStr := inviteID.String()
+	entityType := auditctx.EntityInvitation
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionInviteRevoked,
+		EntityType:  &entityType,
+		EntityID:    &entityIDStr,
+		BeforeState: inv,
+		AfterState:  map[string]interface{}{"status": StatusRevoked},
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
 	return nil
 }
 

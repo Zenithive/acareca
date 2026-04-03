@@ -93,4 +93,5 @@ const (
 	ActionInviteSent      = "accountant.invite_sent"
 	ActionInviteExpired   = "accountant.invite_expired"
 	ActionInviteCompleted = "accountant.invite_completed"
+	ActionInviteRevoked   = "accountant.invite_revoked"
 )

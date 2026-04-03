@@ -16,6 +16,7 @@ const (
 	StatusCompleted InvitationStatus = "COMPLETED"
 	StatusRejected  InvitationStatus = "REJECTED"
 	StatusResent    InvitationStatus = "RESENT"
+	StatusRevoked   InvitationStatus = "REVOKED"
 )
 
 // Invitation represents the tbl_invitation schema
