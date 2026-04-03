@@ -21,6 +21,7 @@ type Repository interface {
 	CountPractitioners(ctx context.Context, f common.Filter) (int, error)
 
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
+	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
 }
 
 type repository struct {
@@ -129,6 +130,12 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 		return 0, err
 	}
 	return count, nil
+}
+
+func (r *repository) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error {
+	query := `UPDATE tbl_practitioner SET abn = $1, updated_at = NOW() WHERE user_id = $2 AND deleted_at IS NULL`
+	_, err := r.db.ExecContext(ctx, query, abn, userID)
+	return err
 }
 
 /*
