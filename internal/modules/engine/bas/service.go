@@ -222,7 +222,12 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			continue
 		}
 
-		if r.SectionType == "COLLECTION" {
+		// Skip rows with NULL section_type
+		if r.SectionType == nil {
+			continue
+		}
+
+		if *r.SectionType == "COLLECTION" {
 			if r.GstAmount > 0 || BASCategory(r.BasCategory) == BASCategoryTaxable {
 				g8.Gross += r.GrossAmount
 				g8.GST += r.GstAmount
@@ -233,7 +238,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 				g3.GST += r.GstAmount
 				g3.Net += r.NetAmount
 			}
-		} else if r.SectionType == "COST" || r.SectionType == "OTHER_COST" {
+		} else if *r.SectionType == "COST" || *r.SectionType == "OTHER_COST" {
 			// Track 1B for all taxable costs
 			if BASCategory(r.BasCategory) == BASCategoryTaxable {
 				b1.Gross += r.GstAmount

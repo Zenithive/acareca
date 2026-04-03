@@ -264,7 +264,7 @@ type BASQuarterInfo struct {
 
 type BASLineItemRow struct {
 	PeriodQuarter time.Time `db:"period_quarter"`
-	SectionType   string    `db:"section_type"`
+	SectionType   *string   `db:"section_type"`
 	BasCategory   string    `db:"bas_category"`
 	AccountName   string    `db:"account_name"`
 	NetAmount     float64   `db:"net_amount"`
