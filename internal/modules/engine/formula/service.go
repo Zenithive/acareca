@@ -315,7 +315,6 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 			case "ZERO":
 				feedbackVal = val // No GST
 			}
-			fmt.Printf("Formula feedback for %s: net=%.2f, gross=%.2f (tax=%s)\n", fw.formula.FieldKey, val, feedbackVal, taxType)
 		}
 		vals[fw.formula.FieldKey] = feedbackVal
 	}
