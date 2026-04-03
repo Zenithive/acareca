@@ -48,6 +48,7 @@ type Service interface {
 	VerifyEmail(ctx context.Context, tokenStr string) error
 	ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error
 
+	GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
 
@@ -652,6 +653,30 @@ func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqC
 	return nil
 }
 
+func (s *service) GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, error) {
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	rs := user.ToRsUser()
+
+	switch user.Role {
+	case util.RolePractitioner:
+		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
+		if err == nil {
+			rs.ABN = p.ABN
+		}
+	case util.RoleAccountant:
+		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, userID.String())
+		if err == nil {
+			rs.LicenseNo = acc.LicenseNo
+		}
+	}
+
+	return rs, nil
+}
+
 func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error) {
 	// 1. Fetch existing user
 	user, err := s.repo.FindByID(ctx, userID)
@@ -686,6 +711,22 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		return nil, fmt.Errorf("update profile: %w", err)
 	}
 
+	// Update ABN if user is a practitioner and abn was provided
+	if user.Role == util.RolePractitioner && req.ABN != nil {
+		if err := s.practitionerSvc.UpdateABN(ctx, userID, req.ABN); err != nil {
+			return nil, fmt.Errorf("update abn: %w", err)
+		}
+		updated.Role = user.Role // keep role intact for response
+	}
+
+	rs := updated.ToRsUser()
+	if user.Role == util.RolePractitioner {
+		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
+		if err == nil {
+			rs.ABN = p.ABN
+		}
+	}
+
 	// 4. Audit log: Profile Update
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := updated.ID.String()
@@ -702,7 +743,7 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		UserAgent:   meta.UserAgent,
 	})
 
-	return updated.ToRsUser(), nil
+	return rs, nil
 }
 
 func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {

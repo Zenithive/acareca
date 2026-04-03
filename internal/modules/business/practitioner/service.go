@@ -19,6 +19,7 @@ type IService interface {
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
+	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
 }
 
 type service struct {
@@ -79,6 +80,11 @@ func (s *service) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractit
 // GetPractitionerByUserID implements [IService].
 func (s *service) GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error) {
 	return s.repo.GetPractitionerByUserID(ctx, userID)
+}
+
+// UpdateABN implements [IService].
+func (s *service) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error {
+	return s.repo.UpdateABN(ctx, userID, abn)
 }
 
 // ListPractitioners implements [IService].

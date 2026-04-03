@@ -24,11 +24,11 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	// Protected Routes
 	protected := auth.Group("/user", authMiddleware, middleware.AuditContext())
 	{
-		protected.PUT("/change-password", h.ChangePassword)
+		protected.GET("/profile", h.GetProfile)
 		protected.PUT("/profile", h.UpdateProfile)
+		protected.PUT("/change-password", h.ChangePassword)
 		protected.POST("/logout", h.Logout)
 		protected.DELETE("", h.DeleteUser)
-
 	}
 
 }

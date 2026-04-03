@@ -20,6 +20,7 @@ type IHandler interface {
 
 	VerifyEmail(c *gin.Context)
 	ChangePassword(c *gin.Context)
+	GetProfile(c *gin.Context)
 	UpdateProfile(c *gin.Context)
 	DeleteUser(c *gin.Context)
 	ForgotPassword(c *gin.Context)
@@ -96,6 +97,38 @@ func (h *handler) Login(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, token, "User logged in successfully")
+}
+
+// GetProfile godoc
+// @Summary Get current user profile
+// @Description Returns the profile of the authenticated user including role-specific fields (abn for practitioners, license_no for accountants)
+// @Tags auth
+// @Produce json
+// @Security BearerToken
+// @Success 200 {object} RsUser
+// @Failure 401 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/user/profile [get]
+func (h *handler) GetProfile(c *gin.Context) {
+	userIDPtr := auditctx.GetUserID(c.Request.Context())
+	if userIDPtr == nil {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
+		return
+	}
+
+	userID, err := uuid.Parse(*userIDPtr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+		return
+	}
+
+	user, err := h.svc.GetProfile(c.Request.Context(), userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, user, "Profile fetched successfully")
 }
 
 // UpdateProfile godoc
