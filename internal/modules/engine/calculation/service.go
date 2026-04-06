@@ -3,7 +3,6 @@ package calculation
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -312,7 +311,9 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 	}
 
 	// Merge section totals into req.Values
-	maps.Copy(req.Values, sectionTotals)
+	for k, v := range sectionTotals {
+		req.Values[k] = v
+	}
 
 	// Evaluate all formulas in topological order.
 	// Note: FormulaCalculate doesn't have access to manually entered GST amounts,
@@ -344,10 +345,9 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 			gst := util.Round(taxResult.GstAmount, 2)
 			gross := util.Round(taxResult.TotalAmount, 2)
 
-				netAmount = net
-				gstAmount = &gst
-				grossAmount = &gross
-			}
+			netAmount = net
+			gstAmount = &gst
+			grossAmount = &gross
 		}
 
 		item := RsComputedFieldValue{
