@@ -134,9 +134,9 @@ SELECT
     -- 1A: GST ON SALES
     ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)::numeric, 2) AS label_1a_gst_on_sales,
     -- 1B: GST ON PURCHASES
-    ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0)::numeric, 2) AS label_1b_gst_on_purchases,
+    ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST') or section_type is NULL), 0)::numeric, 2) AS label_1b_gst_on_purchases,
     -- G11: TOTAL PURCHASES
-    ROUND(COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0)::numeric, 2) AS g11_total_purchases_gross,
+    ROUND(COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')or section_type is NULL), 0)::numeric, 2) AS g11_total_purchases_gross,
     -- NET GST PAYABLE (1A - 1B)
     ROUND((COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)
         - COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST')), 0))::numeric, 2) AS net_gst_payable,
@@ -189,7 +189,7 @@ SELECT clinic_id, practitioner_id, period_month,
     COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)                                   AS g1_total_sales_gross,
     COALESCE(SUM(net_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'GST_FREE'), 0)     AS g3_gst_free_sales,
     COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)      AS label_1a_gst_on_sales,
-    COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST','OTHER_COST')), 0)                         AS g11_total_purchases_gross,
+    COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST','OTHER_COST') or section_type is NULL), 0)                         AS g11_total_purchases_gross,
     COALESCE(SUM(net_amount)   FILTER (WHERE section_type IN ('COST','OTHER_COST') AND bas_category = 'GST_FREE'), 0) AS g14_gst_free_purchases,
     COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST','OTHER_COST') AND bas_category = 'TAXABLE'), 0)  AS label_1b_gst_on_purchases,
     COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)
