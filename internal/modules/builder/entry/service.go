@@ -334,9 +334,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			continue
 		}
 
+		// Handle both old format (amount) and new format (net_amount/gross_amount)
+		var inputAmount float64
+		if v.NetAmount != nil {
+			// New format: use net_amount
+			inputAmount = *v.NetAmount
+		} else if v.GrossAmount != nil {
+			// New format: use gross_amount
+			inputAmount = *v.GrossAmount
+		} else {
+			// Old format: use amount
+			inputAmount = v.Amount
+		}
+
 		var gstAmount *float64
-		netBase := v.Amount
-		grossTotal := v.Amount
+		netBase := inputAmount
+		grossTotal := inputAmount
 
 		if f.TaxType == nil {
 			// No tax type: net = gross, use netBase for formulas
@@ -357,7 +370,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		switch taxType {
 
 		case method.TaxTreatmentInclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
 			if err != nil {
 				return nil, err
 			}
@@ -366,12 +379,12 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentExclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
 			if err != nil {
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = v.Amount
+			netBase = inputAmount
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
@@ -382,22 +395,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
 				gstAmount = v.GstAmount
-				grossTotal = v.Amount
+				grossTotal = inputAmount
 				if v.GstAmount != nil {
-					netBase = v.Amount - *v.GstAmount
+					netBase = inputAmount - *v.GstAmount
 				}
 			} else {
 				gstAmount = v.GstAmount
-				netBase = v.Amount
+				netBase = inputAmount
 				if gstAmount != nil {
-					grossTotal = v.Amount + *gstAmount
+					grossTotal = inputAmount + *gstAmount
 				}
 			}
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
-			netBase = v.Amount
-			grossTotal = v.Amount
+			netBase = inputAmount
+			grossTotal = inputAmount
 
 		default:
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
