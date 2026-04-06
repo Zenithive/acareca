@@ -184,11 +184,10 @@ func (r *repository) GetSummary(ctx context.Context, accountantID string, ft com
 	err := r.db.GetContext(ctx, &summary.TotalClinics,
 		`SELECT COUNT(DISTINCT c.id) 
 		FROM tbl_clinic c
-		WHERE c.id IN (
-			SELECT DISTINCT entity_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1 AND entity_type = 'CLINIC'
-		)`, accountantID)
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND c.deleted_at IS NULL`, accountantID)
 	if err != nil {
 		return nil, err
 	}
@@ -197,11 +196,12 @@ func (r *repository) GetSummary(ctx context.Context, accountantID string, ft com
 	err = r.db.GetContext(ctx, &summary.TotalForms,
 		`SELECT COUNT(DISTINCT f.id) 
 		FROM tbl_form f
-		WHERE f.clinic_id IN (
-			SELECT DISTINCT entity_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1 AND entity_type = 'CLINIC'
-		)`, accountantID)
+		INNER JOIN tbl_clinic c ON f.clinic_id = c.id
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND f.deleted_at IS NULL
+		  AND c.deleted_at IS NULL`, accountantID)
 	if err != nil {
 		return nil, err
 	}
@@ -209,12 +209,12 @@ func (r *repository) GetSummary(ctx context.Context, accountantID string, ft com
 	// Get total transactions (form entries) for this accountant's clinics
 	err = r.db.GetContext(ctx, &summary.TotalTransactions,
 		`SELECT COUNT(*) 
-		FROM tbl_form_field_entry e
-		WHERE e.clinic_id IN (
-			SELECT DISTINCT entity_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1 AND entity_type = 'CLINIC'
-		)`, accountantID)
+		FROM tbl_form_entry e
+		INNER JOIN tbl_clinic c ON e.clinic_id = c.id
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND c.deleted_at IS NULL`, accountantID)
 	if err != nil {
 		return nil, err
 	}
@@ -222,8 +222,9 @@ func (r *repository) GetSummary(ctx context.Context, accountantID string, ft com
 	// Get total practitioners associated with this accountant
 	err = r.db.GetContext(ctx, &summary.TotalPractitioners,
 		`SELECT COUNT(DISTINCT practitioner_id) 
-		FROM tbl_shared_events 
-		WHERE accountant_id = $1`, accountantID)
+		FROM tbl_invitation 
+		WHERE entity_id = $1 
+		  AND status = 'COMPLETED'`, accountantID)
 	if err != nil {
 		return nil, err
 	}
@@ -236,22 +237,21 @@ func (r *repository) GetRecentTransactions(ctx context.Context, accountantID str
 
 	query := `
 		SELECT 
-			e.id,
-			e.clinic_id,
+			fev.id,
+			fe.clinic_id,
 			c.name as clinic_name,
-			COALESCE(e.value::numeric, 0) as amount,
-			CASE WHEN e.value::numeric > 0 THEN 'credit' ELSE 'debit' END as type,
-			e.created_at as date,
-			'completed' as status
-		FROM tbl_form_field_entry e
-		JOIN tbl_clinic c ON e.clinic_id = c.id
-		WHERE e.value ~ '^[0-9]+\.?[0-9]*$'
-		AND e.clinic_id IN (
-			SELECT DISTINCT entity_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1 AND entity_type = 'CLINIC'
-		)
-		ORDER BY e.created_at DESC
+			COALESCE(fev.gross_amount, 0) as amount,
+			CASE WHEN fev.gross_amount > 0 THEN 'credit' ELSE 'debit' END as type,
+			fev.created_at as date,
+			CASE WHEN fe.status = 'SUBMITTED' THEN 'completed' ELSE 'draft' END as status
+		FROM tbl_form_entry_value fev
+		JOIN tbl_form_entry fe ON fev.entry_id = fe.id
+		JOIN tbl_clinic c ON fe.clinic_id = c.id
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND c.deleted_at IS NULL
+		ORDER BY fev.created_at DESC
 	`
 
 	// Apply limit if provided
@@ -273,19 +273,17 @@ func (r *repository) GetPractitioners(ctx context.Context, accountantID string, 
 	query := `
 		SELECT 
 			p.id,
-			u.name,
+			CONCAT(u.first_name, ' ', u.last_name) as name,
 			u.email,
 			COUNT(DISTINCT c.id) as clinic_count,
-			CASE WHEN u.is_active THEN 'active' ELSE 'inactive' END as status
+			CASE WHEN u.deleted_at IS NULL THEN 'active' ELSE 'inactive' END as status
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON p.user_id = u.id
 		LEFT JOIN tbl_clinic c ON c.practitioner_id = p.id
-		WHERE p.id IN (
-			SELECT DISTINCT practitioner_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1
-		)
-		GROUP BY p.id, u.name, u.email, u.is_active
+		INNER JOIN tbl_invitation i ON i.practitioner_id = p.id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		GROUP BY p.id, u.first_name, u.last_name, u.email, u.deleted_at
 		ORDER BY p.created_at DESC
 	`
 
@@ -312,12 +310,11 @@ func (r *repository) GetClinics(ctx context.Context, accountantID string, ft com
 			COALESCE(ca.city, '') as location,
 			c.created_at
 		FROM tbl_clinic c
-		LEFT JOIN tbl_clinic_address ca ON c.id = ca.clinic_id
-		WHERE c.id IN (
-			SELECT DISTINCT entity_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1 AND entity_type = 'CLINIC'
-		)
+		LEFT JOIN tbl_clinic_address ca ON c.id = ca.clinic_id AND ca.is_primary = true
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND c.deleted_at IS NULL
 		ORDER BY c.created_at DESC
 	`
 
@@ -342,15 +339,16 @@ func (r *repository) GetForms(ctx context.Context, accountantID string, ft commo
 			f.id,
 			f.name,
 			f.clinic_id,
-			COALESCE(cfv.version_number::text, 'v1') as version,
+			COALESCE('v' || cfv.version::text, 'v1') as version,
 			f.created_at
 		FROM tbl_form f
-		LEFT JOIN tbl_custom_form_version cfv ON f.id = cfv.form_id
-		WHERE f.clinic_id IN (
-			SELECT DISTINCT entity_id 
-			FROM tbl_shared_events 
-			WHERE accountant_id = $1 AND entity_type = 'CLINIC'
-		)
+		LEFT JOIN tbl_custom_form_version cfv ON f.id = cfv.form_id AND cfv.is_active = true
+		INNER JOIN tbl_clinic c ON f.clinic_id = c.id
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.entity_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND f.deleted_at IS NULL
+		  AND c.deleted_at IS NULL
 		ORDER BY f.created_at DESC
 	`
 

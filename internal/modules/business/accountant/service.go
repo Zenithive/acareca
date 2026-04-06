@@ -112,6 +112,7 @@ func (s *service) Analytics(ctx context.Context, filter *FilterAnalytics) (*RsAn
 	if err != nil {
 		return nil, err
 	}
+
 	summary, err := s.repo.GetSummary(ctx, accountantID, ft)
 	if err != nil {
 		return nil, err
