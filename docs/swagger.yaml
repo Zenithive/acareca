@@ -1,5 +1,16 @@
 basePath: /api/v1
 definitions:
+  accountant.Clinic:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      location:
+        type: string
+      name:
+        type: string
+    type: object
   accountant.ClinicDetail:
     properties:
       abn:
@@ -17,6 +28,76 @@ definitions:
       name:
         type: string
       postcode:
+        type: string
+    type: object
+  accountant.Form:
+    properties:
+      clinic_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      version:
+        type: string
+    type: object
+  accountant.Practitioner:
+    properties:
+      clinic_count:
+        type: integer
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  accountant.RecentTransaction:
+    properties:
+      amount:
+        type: number
+      clinic_id:
+        type: string
+      clinic_name:
+        type: string
+      date:
+        type: string
+      id:
+        type: string
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  accountant.RsAccountantForm:
+    properties:
+      clinic_id:
+        type: string
+      clinic_name:
+        type: string
+      clinic_share:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      method:
+        type: string
+      name:
+        type: string
+      owner_share:
+        type: integer
+      status:
+        type: string
+      super_component:
+        type: number
+      updated_at:
         type: string
     type: object
   accountant.RsAccountantUser:
@@ -41,6 +122,38 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  accountant.RsAnalytics:
+    properties:
+      clinics:
+        items:
+          $ref: '#/definitions/accountant.Clinic'
+        type: array
+      forms:
+        items:
+          $ref: '#/definitions/accountant.Form'
+        type: array
+      practitioners:
+        items:
+          $ref: '#/definitions/accountant.Practitioner'
+        type: array
+      recent_transactions:
+        items:
+          $ref: '#/definitions/accountant.RecentTransaction'
+        type: array
+      summary:
+        $ref: '#/definitions/accountant.Summary'
+    type: object
+  accountant.Summary:
+    properties:
+      total_clinics:
+        type: integer
+      total_forms:
+        type: integer
+      total_practitioners:
+        type: integer
+      total_transactions:
+        type: integer
     type: object
   admin.RqCreateAdmin:
     properties:
@@ -106,6 +219,8 @@ definitions:
     type: object
   auth.RqUpdateUser:
     properties:
+      abn:
+        type: string
       email:
         type: string
       first_name:
@@ -141,6 +256,9 @@ definitions:
     type: object
   auth.RsUser:
     properties:
+      abn:
+        description: Role-specific fields (populated based on role)
+        type: string
       created_at:
         type: string
       email:
@@ -150,6 +268,8 @@ definitions:
       id:
         type: string
       last_name:
+        type: string
+      license_no:
         type: string
       phone:
         type: string
@@ -1330,6 +1450,31 @@ paths:
       summary: Fetch all users
       tags:
       - accountant
+  /accountant/analytics:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves analytics for the accountant.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/accountant.RsAnalytics'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Fetch analytics
+      tags:
+      - accountant
   /accountant/clinics:
     get:
       consumes:
@@ -1371,8 +1516,7 @@ paths:
           description: OK
           schema:
             items:
-              additionalProperties: true
-              type: object
+              $ref: '#/definitions/accountant.RsAccountantForm'
             type: array
         "401":
           description: Unauthorized
@@ -2188,6 +2332,29 @@ paths:
       tags:
       - auth
   /auth/user/profile:
+    get:
+      description: Returns the profile of the authenticated user including role-specific
+        fields (abn for practitioners, license_no for accountants)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsUser'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get current user profile
+      tags:
+      - auth
     put:
       consumes:
       - application/json
@@ -3921,6 +4088,44 @@ paths:
       security:
       - BearerToken: []
       summary: Resend an invitation
+      tags:
+      - invitation
+  /invite/{id}/revoke:
+    delete:
+      description: Practitioner removes an accountant's access by revoking the invitation.
+        Only works on ACCEPTED or COMPLETED invitations.
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Revoke an accepted/completed invitation
       tags:
       - invitation
   /invite/process:
