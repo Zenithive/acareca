@@ -471,7 +471,26 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			}
 		}
 
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
+		// Collect manually entered GST amounts for computed fields with MANUAL tax type
+		manualGSTByKey := make(map[string]float64)
+		for _, v := range rq {
+			if v.GstAmount == nil {
+				continue
+			}
+			fieldID, err := uuid.Parse(v.FormFieldID)
+			if err != nil {
+				continue
+			}
+			f, ok := fieldByID[fieldID]
+			if !ok || !f.IsComputed {
+				continue
+			}
+			if f.TaxType != nil && *f.TaxType == "MANUAL" {
+				manualGSTByKey[f.FieldKey] = *v.GstAmount
+			}
+		}
+
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate formulas: %w", err)
 		}
