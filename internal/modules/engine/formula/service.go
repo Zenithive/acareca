@@ -12,7 +12,7 @@ import (
 type IService interface {
 	SyncTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, formulas []RqFormula, keyToFieldID map[string]uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]RsFormula, error)
-	EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64, taxTypeByKey map[string]string) (map[uuid.UUID]float64, error)
+	EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[uuid.UUID]float64, error)
 }
 
 type service struct {
@@ -250,7 +250,7 @@ func insertNodes(ctx context.Context, tx *sqlx.Tx, repo IRepository, formulaID u
 	return nil
 }
 
-func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64, taxTypeByKey map[string]string) (map[uuid.UUID]float64, error) {
+func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[uuid.UUID]float64, error) {
 	formulas, err := s.repo.ListByFormVersionID(ctx, formVersionID)
 	if err != nil {
 		return nil, err
@@ -314,6 +314,14 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 				feedbackVal = val // Already gross
 			case "ZERO":
 				feedbackVal = val // No GST
+			case "MANUAL":
+				// For MANUAL, val is NET amount (e.g., 60% of something)
+				// We need to add the manually entered GST to get the gross amount for dependent formulas
+				if gst, hasGST := manualGSTByKey[fw.formula.FieldKey]; hasGST {
+					feedbackVal = val + gst // NET + GST = GROSS
+				} else {
+					feedbackVal = val // No GST provided, use NET
+				}
 			}
 		}
 		vals[fw.formula.FieldKey] = feedbackVal
