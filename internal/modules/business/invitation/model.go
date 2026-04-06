@@ -16,6 +16,7 @@ const (
 	StatusCompleted InvitationStatus = "COMPLETED"
 	StatusRejected  InvitationStatus = "REJECTED"
 	StatusResent    InvitationStatus = "RESENT"
+	StatusRevoked   InvitationStatus = "REVOKED"
 )
 
 // Invitation represents the tbl_invitation schema
@@ -84,7 +85,7 @@ type RqProcessAction struct {
 // FILTERS
 var invitationColumns = map[string]string{
 	"email":           "email",
-	"status":          "status",
+	"status":          "status::text",
 	"created_at":      "created_at",
 	"practitioner_id": "practitioner_id",
 	"entity_id":       "entity_id",
@@ -120,5 +121,13 @@ func (filter *Filter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
 		})
 	}
 
+	return f
+}
+
+// MapToFilterAccountant builds a filter for the accountant path.
+// The email WHERE clause is handled separately in the repo, so we only
+// apply status and pagination here.
+func (filter *Filter) MapToFilterAccountant() common.Filter {
+	f := common.NewFilter(nil, nil, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 	return f
 }

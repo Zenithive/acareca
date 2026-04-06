@@ -220,6 +220,7 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
             period_quarter,
             section_type,
             bas_category,
+			account_name,
             SUM(net_amount) AS net_amount,
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
@@ -249,7 +250,7 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
 		args = append(args, *f.FinancialYearID, *f.FinancialYearID)
 	}
 
-	query += ` GROUP BY period_quarter, section_type, bas_category 
+	query += ` GROUP BY period_quarter, section_type, bas_category, account_name 
                ORDER BY period_quarter ASC`
 
 	// --- THE CRITICAL STEP ---

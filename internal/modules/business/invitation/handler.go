@@ -16,6 +16,7 @@ type IHandler interface {
 	ProcessInvitation(c *gin.Context)
 	ListInvitations(c *gin.Context)
 	ResendInvitation(c *gin.Context)
+	RevokeInvitation(c *gin.Context)
 }
 
 type Handler struct {
@@ -181,6 +182,46 @@ func (h *Handler) ResendInvitation(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, res, "Invitation resent successfully")
+}
+
+// @Summary      Revoke an accepted/completed invitation
+// @Description  Practitioner removes an accountant's access by revoking the invitation. Only works on ACCEPTED or COMPLETED invitations.
+// @Tags         invitation
+// @Produce      json
+// @Param        id   path   string  true  "Invitation ID"
+// @Success      200  {object}  response.RsBase
+// @Failure      400  {object}  response.RsError
+// @Failure      401  {object}  response.RsError
+// @Failure      403  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /invite/{id}/revoke [delete]
+func (h *Handler) RevokeInvitation(c *gin.Context) {
+	practID, ok := util.GetPractitionerID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	inviteID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	if err := h.svc.RevokeInvite(c.Request.Context(), practID, inviteID); err != nil {
+		switch err.Error() {
+		case "invitation not found":
+			response.Error(c, http.StatusNotFound, err)
+		case "unauthorized: you did not send this invitation":
+			response.Error(c, http.StatusForbidden, err)
+		default:
+			response.Error(c, http.StatusBadRequest, err)
+		}
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "Invitation revoked successfully")
 }
 
 // Helper function to return pointers to Practitioner or Accountant IDs based on the user's role.

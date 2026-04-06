@@ -3,6 +3,7 @@ package bas
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -217,12 +218,17 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	var mgtFee, labWork, otherExp BASAmount
 
 	for _, r := range rows {
-		if r.BasCategory == "BAS_EXCLUDED" {
+		if BASCategory(r.BasCategory) == BASCategoryBASExcluded {
 			continue
 		}
 
-		if r.SectionType == "COLLECTION" {
-			if r.GstAmount > 0 || r.BasCategory == "TAXABLE" {
+		// Skip rows with NULL section_type
+		if r.SectionType == nil {
+			continue
+		}
+
+		if *r.SectionType == "COLLECTION" {
+			if r.GstAmount > 0 || BASCategory(r.BasCategory) == BASCategoryTaxable {
 				g8.Gross += r.GrossAmount
 				g8.GST += r.GstAmount
 				g8.Net += r.NetAmount
@@ -232,22 +238,25 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 				g3.GST += r.GstAmount
 				g3.Net += r.NetAmount
 			}
-		} else if r.SectionType == "COST" {
+		} else if *r.SectionType == "COST" || *r.SectionType == "OTHER_COST" {
 			// Track 1B for all taxable costs
-			if r.GstAmount > 0 || r.BasCategory == "TAXABLE" {
+			if BASCategory(r.BasCategory) == BASCategoryTaxable {
 				b1.Gross += r.GstAmount
 			}
 
+			// Categorize by Account Name, not by BAS Category
+			accName := strings.ToLower(r.AccountName)
 			switch {
-			case strings.Contains(strings.ToLower(r.BasCategory), "management"):
+			case strings.Contains(accName, "management"):
 				mgtFee.Gross += r.GrossAmount
 				mgtFee.GST += r.GstAmount
 				mgtFee.Net += r.NetAmount
-			case strings.Contains(strings.ToLower(r.BasCategory), "laboratory"):
+			case strings.Contains(accName, "lab"): // Catch "Lab Fees" and "Laboratory"
 				labWork.Gross += r.GrossAmount
 				labWork.GST += r.GstAmount
 				labWork.Net += r.NetAmount
 			default:
+				// Captures Merchant Fees, Bank Fees, and other overheads
 				otherExp.Gross += r.GrossAmount
 				otherExp.GST += r.GstAmount
 				otherExp.Net += r.NetAmount
@@ -255,17 +264,28 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		}
 	}
 
+	// Helper to finalize a BASAmount with rounding
+	finalize := func(amt BASAmount) BASAmount {
+		return BASAmount{
+			Gross: roundToTwo(amt.Gross),
+			GST:   roundToTwo(amt.GST),
+			Net:   roundToTwo(amt.Net),
+		}
+	}
+
 	// Income Section
+	g3 = finalize(g3)
+	g8 = finalize(g8)
+
 	totalIncome := BASAmount{
-		Gross: g3.Gross + g8.Gross,
-		GST:   g3.GST + g8.GST,
-		Net:   g3.Net + g8.Net,
+		Gross: roundToTwo(g3.Gross + g8.Gross),
+		GST:   roundToTwo(g3.GST + g8.GST),
+		Net:   roundToTwo(g3.Net + g8.Net),
 	}
 	col.Sections.Income.Items = []BASLineItem{
 		{Name: "Income – GST Free (G3)", Amounts: g3},
 		{Name: "Income – GST", Amounts: g8},
 		{Name: "Total Income (G1)", Amounts: totalIncome},
-		// {Name: "1A GST on Sales", Amounts: BASAmount{Gross: a1.Gross}},
 		{
 			Name: "1A GST on Sales",
 			Amounts: BASAmount{
@@ -275,11 +295,16 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	}
 
 	// Expenses Section
+	mgtFee = finalize(mgtFee)
+	labWork = finalize(labWork)
+	otherExp = finalize(otherExp)
+
 	subtotalExpenses := BASAmount{
-		Gross: mgtFee.Gross + labWork.Gross + otherExp.Gross,
-		GST:   mgtFee.GST + labWork.GST + otherExp.GST,
-		Net:   mgtFee.Net + labWork.Net + otherExp.Net,
+		Gross: roundToTwo(mgtFee.Gross + labWork.Gross + otherExp.Gross),
+		GST:   roundToTwo(mgtFee.GST + labWork.GST + otherExp.GST),
+		Net:   roundToTwo(mgtFee.Net + labWork.Net + otherExp.Net),
 	}
+
 	col.Sections.Expenses.Items = []BASLineItem{
 		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
 		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
@@ -288,8 +313,8 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		{
 			Name: "G11/1B GST on Purchases",
 			Amounts: BASAmount{
-				Gross: subtotalExpenses.Gross, //Total Spent
-				GST:   subtotalExpenses.GST,   // GST to claim
+				Gross: subtotalExpenses.Gross, // (G11) Total Spent
+				GST:   b1.Gross,               // (1B) GST to claim
 			},
 		},
 	}
@@ -299,13 +324,19 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		{
 			Name: "Net Profit/Loss",
 			Amounts: BASAmount{
-				Net: totalIncome.Net - subtotalExpenses.Net,
+				Net: roundToTwo(totalIncome.Net - subtotalExpenses.Net),
 			},
 		},
 	}
 
 	// Totals
-	col.NetGSTPayable = a1.Gross - b1.Gross
+	// col.NetGSTPayable = roundToTwo(a1.Gross - b1.Gross)
+	col.NetGSTPayable = roundToTwo(totalIncome.GST - b1.Gross)
 
 	return col
+}
+
+// Helper to round values after calculation
+func roundToTwo(val float64) float64 {
+	return math.Round(val*100) / 100
 }

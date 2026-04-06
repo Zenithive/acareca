@@ -3,6 +3,7 @@ package entry
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -48,10 +49,11 @@ type Service struct {
 	clinicRepo     clinic.Repository
 	formClinic     clinic.Service
 	formulaSvc     formula.IService
+	fieldSvc       field.IService
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc}
 }
 
 // Create implements [IService].
@@ -104,7 +106,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	s.attachICCalculation(ctx, result)
 
 	// Record Shared Event
-	fmt.Printf("Shared Event Record Started\n")
 	metaMap := events.JSONBMap{
 		"entry_id":        result.ID.String(),
 		"form_version_id": formVersionID.String(),
@@ -116,7 +117,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		"Accountant %s created a new entry for form: %s",
 		metaMap,
 	)
-	fmt.Printf("Shared Event Recorded\n")
 
 	// Audit log: entry created
 	idStr := created.ID.String()
@@ -339,6 +339,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		grossTotal := v.Amount
 
 		if f.TaxType == nil {
+			// No tax type: net = gross, use netBase for formulas
+			// EXCEPTION: OTHER_COST always uses gross (which equals net here)
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
@@ -373,10 +375,23 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
-			gstAmount = v.GstAmount
-			netBase = v.Amount
-			if gstAmount != nil {
-				grossTotal = v.Amount + *gstAmount
+			fm, err := s.fieldSvc.GetByID(ctx, f.ID)
+			if err != nil {
+				return nil, fmt.Errorf("get form for field %s: %w", f.FieldKey, err)
+			}
+
+			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
+				gstAmount = v.GstAmount
+				grossTotal = v.Amount
+				if v.GstAmount != nil {
+					netBase = v.Amount - *v.GstAmount
+				}
+			} else {
+				gstAmount = v.GstAmount
+				netBase = v.Amount
+				if gstAmount != nil {
+					grossTotal = v.Amount + *gstAmount
+				}
 			}
 
 		case method.TaxTreatmentZero:
@@ -388,7 +403,13 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
-		keyValues[f.FieldKey] = netBase
+		// CRITICAL: Always use NET amount for formulas
+		// EXCEPTION: OTHER_COST fields use GROSS amount (to match live calculation)
+		valueForFormula := netBase
+		if f.SectionType != nil && *f.SectionType == "OTHER_COST" {
+			valueForFormula = grossTotal
+		}
+		keyValues[f.FieldKey] = valueForFormula
 		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
 			ID:          uuid.New(),
@@ -410,18 +431,49 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, err
 		}
 
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
-		if err != nil {
-			return nil, fmt.Errorf("evaluate formulas: %w", err)
-		}
-
+		// Get all fields to compute section totals
 		allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
 		if err != nil {
 			return nil, err
 		}
+
 		fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
 		for _, af := range allFields {
 			fieldByID[af.ID] = af
+		}
+
+		// Compute section totals using NET amounts from out
+		// EXCEPTION: OTHER_COST uses GROSS amounts (to match live calculation)
+		sectionTotals := make(map[string]float64)
+		for _, entryVal := range out {
+			f, ok := fieldByID[entryVal.FormFieldID]
+			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
+				sectionKey := "SECTION:" + *f.SectionType
+				
+				// For OTHER_COST, use GROSS amount instead of NET
+				amountToAdd := *entryVal.NetAmount
+				if *f.SectionType == "OTHER_COST" && entryVal.GrossAmount != nil {
+					amountToAdd = *entryVal.GrossAmount
+				}
+				
+				sectionTotals[sectionKey] += amountToAdd
+			}
+		}
+
+		// Merge section totals into keyValues
+		maps.Copy(keyValues, sectionTotals)
+		
+		// CRITICAL FIX: Add computed fields with tax types to taxTypeByKey
+		// This ensures the formula feedback mechanism uses GROSS values for dependent formulas
+		for _, f := range allFields {
+			if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+				taxTypeByKey[f.FieldKey] = *f.TaxType
+			}
+		}
+
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate formulas: %w", err)
 		}
 
 		// Track which field IDs already have a value in out to prevent duplicates.
@@ -439,28 +491,28 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				continue
 			}
 
+			// CRITICAL FIX: Formula already returns NET amount
+			// We should NOT re-extract net from it
 			netBase := val
 			grossTotal := val
 			var gstAmount *float64
 
 			if f.TaxType != nil {
 				taxType := method.TaxTreatment(*f.TaxType)
+				
 				switch taxType {
 				case method.TaxTreatmentInclusive:
-					result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: val})
-					if err != nil {
-						return nil, err
-					}
-					gstAmount = &result.GstAmount
-					netBase = result.Amount
-					grossTotal = result.TotalAmount
+					// Formula returns NET, calculate GST and GROSS from NET
+					gst := val * 0.10
+					gstAmount = &gst
+					netBase = val  // Keep as NET
+					grossTotal = val + gst  // NET + GST = GROSS
 				case method.TaxTreatmentExclusive:
-					result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: val})
-					if err != nil {
-						return nil, err
-					}
-					gstAmount = &result.GstAmount
-					grossTotal = result.TotalAmount
+					// Formula returns NET, calculate GST and GROSS from NET
+					gst := val * 0.10
+					gstAmount = &gst
+					netBase = val  // Keep as NET
+					grossTotal = val + gst  // NET + GST = GROSS
 				}
 			}
 

@@ -109,11 +109,17 @@ type RqUpdateFormField struct {
 
 // Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
 func (r *RqUpdateFormField) Sanitize() {
+	if r.SectionType != nil && *r.SectionType == "" {
+		r.SectionType = nil
+	}
 	if r.TaxType != nil && *r.TaxType == "" {
 		r.TaxType = nil
 	}
 	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
 		r.PaymentResponsibility = nil
+	}
+	if r.CoaID != nil && *r.CoaID == "" {
+		r.CoaID = nil
 	}
 }
 

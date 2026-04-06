@@ -158,10 +158,25 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 	var req RqUpdateFormWithFields
-	if err := util.BindAndValidate(c, &req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
+	for i := range req.Update {
+		req.Update[i].Sanitize()
+	}
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	if err := util.ValidateStruct(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
 	req.ID = &formID
 
 	if err := req.ValidateShares(); err != nil {

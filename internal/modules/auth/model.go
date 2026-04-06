@@ -56,6 +56,7 @@ type RqUpdateUser struct {
 	FirstName *string `json:"first_name" validate:"omitempty"`
 	LastName  *string `json:"last_name"  validate:"omitempty"`
 	Phone     *string `json:"phone"      validate:"omitempty,e164"`
+	ABN       *string `json:"abn"        validate:"omitempty"`
 }
 
 func (r *RqUser) ToDBModel() *User {
@@ -97,6 +98,10 @@ type RsUser struct {
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Role-specific fields (populated based on role)
+	ABN       *string `json:"abn,omitempty"`
+	LicenseNo *string `json:"license_no,omitempty"`
 }
 
 func (u *User) ToRsUser() *RsUser {

@@ -122,7 +122,7 @@ WITH base AS (
         net_amount,
         gst_amount,
         gross_amount
-    FROM vw_bas_line_items
+    FROM vw_bas_line_items WHERE bas_category != 'BAS_EXCLUDED'
 )
 SELECT
     clinic_id,
@@ -130,7 +130,7 @@ SELECT
     period_quarter,
     period_year,
     -- G1: TOTAL SALES
-    ROUND(COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)::numeric, 2) AS g1_total_sales_gross,
+    ROUND(COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)::numeric, 2) AS g1_total_sales_gross,
     -- 1A: GST ON SALES
     ROUND(COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)::numeric, 2) AS label_1a_gst_on_sales,
     -- 1B: GST ON PURCHASES
@@ -186,7 +186,7 @@ WITH base AS (
     FROM vw_bas_line_items WHERE bas_category != 'BAS_EXCLUDED'
 )
 SELECT clinic_id, practitioner_id, period_month,
-    COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)                                   AS g1_total_sales_gross,
+    COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0)                                   AS g1_total_sales_gross,
     COALESCE(SUM(net_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'GST_FREE'), 0)     AS g3_gst_free_sales,
     COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)      AS label_1a_gst_on_sales,
     COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST','OTHER_COST')), 0)                         AS g11_total_purchases_gross,
