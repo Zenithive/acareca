@@ -333,18 +333,25 @@ func (s *service) FormulaCalculate(ctx context.Context, formID uuid.UUID, req *R
 
 		// Apply tax treatment when the computed field has a tax_type.
 		if f.TaxType != nil && *f.TaxType != "" {
-			taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
-			if err != nil {
-				return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+			// For MANUAL tax type on computed fields, skip automatic GST calculation
+			// MANUAL requires explicit GST input which doesn't apply to computed fields
+			if method.TaxTreatment(*f.TaxType) == method.TaxTreatmentManual {
+				// Use the computed value as net amount, no GST calculation
+				netAmount = util.Round(val, 2)
+				// Don't set gstAmount or grossAmount - they remain nil
+			} else {
+				taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
+				if err != nil {
+					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+				}
+				net := util.Round(taxResult.Amount, 2)
+				gst := util.Round(taxResult.GstAmount, 2)
+				gross := util.Round(taxResult.TotalAmount, 2)
+
+				netAmount = net
+				gstAmount = &gst
+				grossAmount = &gross
 			}
-			net := util.Round(taxResult.Amount, 2)
-			gst := util.Round(taxResult.GstAmount, 2)
-			gross := util.Round(taxResult.TotalAmount, 2)
-
-			netAmount = net
-			gstAmount = &gst
-			grossAmount = &gross
-
 		}
 
 		item := RsComputedFieldValue{
@@ -510,16 +517,24 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 		var grossAmount *float64
 
 		if f.TaxType != nil && *f.TaxType != "" {
-			taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
-			if err != nil {
-				return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+			// For MANUAL tax type on computed fields, skip automatic GST calculation
+			// MANUAL requires explicit GST input which doesn't apply to computed fields
+			if method.TaxTreatment(*f.TaxType) == method.TaxTreatmentManual {
+				// Use the computed value as net amount, no GST calculation
+				netAmount = util.Round(val, 2)
+				// Don't set gstAmount or grossAmount - they remain nil
+			} else {
+				taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
+				if err != nil {
+					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+				}
+				net := util.Round(taxResult.Amount, 2)
+				gst := util.Round(taxResult.GstAmount, 2)
+				gross := util.Round(taxResult.TotalAmount, 2)
+				netAmount = net
+				gstAmount = &gst
+				grossAmount = &gross
 			}
-			net := util.Round(taxResult.Amount, 2)
-			gst := util.Round(taxResult.GstAmount, 2)
-			gross := util.Round(taxResult.TotalAmount, 2)
-			netAmount = net
-			gstAmount = &gst
-			grossAmount = &gross
 		}
 
 		item := RsComputedFieldValue{

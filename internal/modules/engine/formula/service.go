@@ -314,6 +314,10 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 				feedbackVal = val // Already gross
 			case "ZERO":
 				feedbackVal = val // No GST
+			case "MANUAL":
+				// For MANUAL tax on computed fields, we can't calculate GST automatically
+				// Use the computed NET value as-is for dependent formulas
+				feedbackVal = val
 			}
 		}
 		vals[fw.formula.FieldKey] = feedbackVal
