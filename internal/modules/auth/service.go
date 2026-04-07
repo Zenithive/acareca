@@ -344,6 +344,7 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 				Email:     googleUser.Email,
 				FirstName: googleUser.FirstName,
 				LastName:  googleUser.LastName,
+				Role:      util.RolePractitioner,
 			}, tx)
 			if createErr != nil {
 				return createErr

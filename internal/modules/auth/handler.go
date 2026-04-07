@@ -9,6 +9,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
 type IHandler interface {
@@ -29,10 +30,12 @@ type IHandler interface {
 
 type handler struct {
 	svc Service
+	cfg config.Config
 }
 
 func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+	cfg := config.NewConfig()
+	return &handler{svc: svc, cfg: *cfg}
 }
 
 // Register godoc
@@ -240,8 +243,6 @@ func (h *handler) GoogleLogin(c *gin.Context) {
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
-	// Store state in a short-lived, HttpOnly cookie so the callback can verify it
-	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
@@ -252,7 +253,6 @@ func (h *handler) GoogleAuthURL(c *gin.Context) {
 // @Tags auth
 // @Produce json
 // @Param code query string true "OAuth authorization code"
-// @Param state query string true "OAuth state (CSRF token)"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -263,16 +263,6 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
 		return
 	}
-
-	// Validate state to prevent CSRF
-	stateParam := c.Query("state")
-	stateCookie, err := c.Cookie("oauth_state")
-	if err != nil || stateParam == "" || stateParam != stateCookie {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid oauth state"))
-		return
-	}
-	// Consume the state cookie
-	c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 
 	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
 	if err != nil {
