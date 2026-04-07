@@ -6,8 +6,6 @@ ALTER TABLE tbl_chart_of_accounts
 ADD COLUMN key VARCHAR(255);
 
 -- Generate keys for existing records based on name
-UPDATE tbl_chart_of_accounts
-SET key = LOWER(REGEXP_REPLACE(REGEXP_REPLACE(name, '[^a-zA-Z0-9\s]', '', 'g'), '\s+', '_', 'g'));
 
 -- Make key NOT NULL after populating
 ALTER TABLE tbl_chart_of_accounts

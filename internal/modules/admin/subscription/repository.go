@@ -21,6 +21,9 @@ type Repository interface {
 	Update(ctx context.Context, s *Subscription) (*Subscription, error)
 	Delete(ctx context.Context, id int) error
 
+	// Stripe sync
+	UpdateStripeIDs(ctx context.Context, id int, productID, priceID string) error
+
 	// Permission management
 	ListPermissions(ctx context.Context, subscriptionID int) ([]*SubscriptionPermission, error)
 	UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*SubscriptionPermission, error)
@@ -38,7 +41,7 @@ func (r *repository) Create(ctx context.Context, s *Subscription) (*Subscription
 	query := `
 		INSERT INTO tbl_subscription (name, description, price, duration_days, is_active, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
+		RETURNING id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 	`
 	var out Subscription
 	if err := r.db.QueryRowxContext(ctx, query,
@@ -51,7 +54,7 @@ func (r *repository) Create(ctx context.Context, s *Subscription) (*Subscription
 
 func (r *repository) GetByID(ctx context.Context, id int) (*Subscription, error) {
 	query := `
-		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -67,7 +70,7 @@ func (r *repository) GetByID(ctx context.Context, id int) (*Subscription, error)
 
 func (r *repository) FindByName(ctx context.Context, name string) (*Subscription, error) {
 	query := `
-		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE name = $1 AND deleted_at IS NULL
 	`
@@ -92,7 +95,7 @@ var subscriptionSearchColumns = []string{"name", "description"}
 
 func (r *repository) List(ctx context.Context, f common.Filter) ([]*Subscription, error) {
 	base := `
-		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE deleted_at IS NULL
 	`
@@ -112,7 +115,7 @@ func (r *repository) Update(ctx context.Context, s *Subscription) (*Subscription
 		UPDATE tbl_subscription
 		SET name = $2, description = $3, price = $4, duration_days = $5, is_active = $6, updated_at = $7
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, name, description, price, duration_days, is_active, created_at, updated_at, deleted_at
+		RETURNING id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 	`
 	var out Subscription
 	if err := r.db.QueryRowxContext(ctx, query,
@@ -131,6 +134,19 @@ func (r *repository) Delete(ctx context.Context, id int) error {
 	res, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete subscription: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *repository) UpdateStripeIDs(ctx context.Context, id int, productID, priceID string) error {
+	const query = `UPDATE tbl_subscription SET stripe_product_id = $2, stripe_price_id = $3 WHERE id = $1`
+	res, err := r.db.ExecContext(ctx, query, id, productID, priceID)
+	if err != nil {
+		return fmt.Errorf("update stripe ids: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {

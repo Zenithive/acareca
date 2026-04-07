@@ -2,7 +2,9 @@ package entry
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
@@ -24,14 +27,14 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
-	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
-	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
+	GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
+	Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) error
+	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 
-	ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error)
+	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 }
 
 type Service struct {
@@ -48,14 +51,16 @@ type Service struct {
 	clinicRepo     clinic.Repository
 	formClinic     clinic.Service
 	formulaSvc     formula.IService
+	fieldSvc       field.IService
+	invitationSvc  invitation.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc}
 }
 
 // Create implements [IService].
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
 	// Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
@@ -67,6 +72,24 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 
 	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 		return nil, err
+	}
+
+	// Resolve the FormID to check permissions
+	version, err := s.versionSvc.GetByID(ctx, formVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid version: %w", err)
+	}
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, version.FormId)
+		if err != nil {
+			return nil, err
+		}
+		// Must have 'create' or 'all'
+		if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to create entries for this form")
+		}
 	}
 
 	status := EntryStatusDraft
@@ -104,7 +127,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	s.attachICCalculation(ctx, result)
 
 	// Record Shared Event
-	fmt.Printf("Shared Event Record Started\n")
 	metaMap := events.JSONBMap{
 		"entry_id":        result.ID.String(),
 		"form_version_id": formVersionID.String(),
@@ -116,7 +138,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		"Accountant %s created a new entry for form: %s",
 		metaMap,
 	)
-	fmt.Printf("Shared Event Recorded\n")
 
 	// Audit log: entry created
 	idStr := created.ID.String()
@@ -136,11 +157,43 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 }
 
 // GetByID implements [IService].
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
 	e, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	// Resolve the Form ID via Version ID
+	formVersion, err := s.versionSvc.GetByID(ctx, e.FormVersionID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// First, check if there's a specific permission for this ENTRY ID
+		entryPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+		if err != nil {
+			return nil, fmt.Errorf("auth error: %w", err)
+		}
+
+		// Fallback: If no entry perms, check the PARENT FORM permissions
+		if entryPerms == nil {
+			formPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formVersion.FormId)
+			if err != nil {
+				return nil, fmt.Errorf("auth error: %w", err)
+			}
+
+			// If no form perms either, block access entirely
+			if formPerms == nil || (!formPerms.HasAccess("read") && !formPerms.HasAccess("all")) {
+				return nil, errors.New("Access denied: no permission found for this entry or its parent form")
+			}
+			// SUCCESS: No specific entry perms, but has form-level read access. Allow read-only access.
+		} else {
+			// SUCCESS: Found specific Entry perms. Check for read access.
+			if !entryPerms.HasAccess("read") && !entryPerms.HasAccess("all") {
+				return nil, errors.New("Access denied: you do not have permission to view this entry")
+			}
+		}
+	}
+
 	rs := e.ToRs(values)
 	s.attachFieldMetadata(ctx, rs)
 	s.attachICCalculation(ctx, rs)
@@ -148,12 +201,22 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 }
 
 // Update implements [IService].
-func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	beforeState := existing.ToRs(values)
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+
+		// Must have 'update' OR 'all'
+		if entryPerms == nil || (!entryPerms.HasAccess("update") && !entryPerms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to update this entry")
+		}
+	}
 
 	if req.Status != nil {
 		existing.Status = *req.Status
@@ -222,13 +285,23 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 }
 
 // Delete implements [IService].
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Service) Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) error {
 	// Get entry details before deletion for audit log
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	beforeState := existing.ToRs(values)
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+
+		// Must have 'delete' OR 'all'
+		if entryPerms == nil || (!entryPerms.HasAccess("delete") && !entryPerms.HasAccess("all")) {
+			return errors.New("Access denied: you do not have permission to delete this entry")
+		}
+	}
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -264,14 +337,14 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error) {
+func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
-	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f)
+	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountByFormVersionID(ctx, formVersionID, f)
+	total, err := s.repo.CountByFormVersionID(ctx, formVersionID, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -296,14 +369,14 @@ func (s *Service) GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntr
 }
 
 // ListTransactions implements [IService].
-func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error) {
+func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	f := filter.ToCommonFilter()
 
-	items, err := s.repo.ListTransactions(ctx, f)
+	items, err := s.repo.ListTransactions(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountTransactions(ctx, f)
+	total, err := s.repo.CountTransactions(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -317,6 +390,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	out := make([]*FormEntryValue, 0, len(rq))
 
 	keyValues := make(map[string]float64, len(rq))
+	taxTypeByKey := make(map[string]string, len(rq))
 
 	for _, v := range rq {
 		fieldID, err := uuid.Parse(v.FormFieldID)
@@ -333,11 +407,26 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			continue
 		}
 
+		// Handle both old format (amount) and new format (net_amount/gross_amount)
+		var inputAmount float64
+		if v.NetAmount != nil {
+			// New format: use net_amount
+			inputAmount = *v.NetAmount
+		} else if v.GrossAmount != nil {
+			// New format: use gross_amount
+			inputAmount = *v.GrossAmount
+		} else {
+			// Old format: use amount
+			inputAmount = v.Amount
+		}
+
 		var gstAmount *float64
-		netBase := v.Amount
-		grossTotal := v.Amount
+		netBase := inputAmount
+		grossTotal := inputAmount
 
 		if f.TaxType == nil {
+			// No tax type: net = gross, use netBase for formulas
+			// EXCEPTION: OTHER_COST always uses gross (which equals net here)
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
@@ -354,7 +443,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		switch taxType {
 
 		case method.TaxTreatmentInclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
 			if err != nil {
 				return nil, err
 			}
@@ -363,31 +452,51 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentExclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
 			if err != nil {
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = v.Amount
+			netBase = inputAmount
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
-			gstAmount = v.GstAmount
-			netBase = v.Amount
-			if gstAmount != nil {
-				grossTotal = v.Amount + *gstAmount
+			fm, err := s.fieldSvc.GetByID(ctx, f.ID)
+			if err != nil {
+				return nil, fmt.Errorf("get form for field %s: %w", f.FieldKey, err)
+			}
+
+			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
+				gstAmount = v.GstAmount
+				grossTotal = inputAmount
+				if v.GstAmount != nil {
+					netBase = inputAmount - *v.GstAmount
+				}
+			} else {
+				gstAmount = v.GstAmount
+				netBase = inputAmount
+				if gstAmount != nil {
+					grossTotal = inputAmount + *gstAmount
+				}
 			}
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
-			netBase = v.Amount
-			grossTotal = v.Amount
+			netBase = inputAmount
+			grossTotal = inputAmount
 
 		default:
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
-		keyValues[f.FieldKey] = netBase
+		// CRITICAL: Always use NET amount for formulas
+		// EXCEPTION: OTHER_COST fields use GROSS amount (to match live calculation)
+		valueForFormula := netBase
+		if f.SectionType != nil && *f.SectionType == "OTHER_COST" {
+			valueForFormula = grossTotal
+		}
+		keyValues[f.FieldKey] = valueForFormula
+		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
 			ID:          uuid.New(),
 			EntryID:     entryID,
@@ -408,18 +517,67 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, err
 		}
 
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues)
-		if err != nil {
-			return nil, fmt.Errorf("evaluate formulas: %w", err)
-		}
-
+		// Get all fields to compute section totals
 		allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
 		if err != nil {
 			return nil, err
 		}
+
 		fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
 		for _, af := range allFields {
 			fieldByID[af.ID] = af
+		}
+
+		// Compute section totals using NET amounts from out
+		sectionTotals := make(map[string]float64)
+		for _, entryVal := range out {
+			f, ok := fieldByID[entryVal.FormFieldID]
+			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
+				sectionKey := "SECTION:" + *f.SectionType
+				// Always use NET amount for section totals (matching LiveCalculate logic)
+				sectionTotals[sectionKey] += *entryVal.NetAmount
+			}
+		}
+
+		// Merge section totals into keyValues
+		maps.Copy(keyValues, sectionTotals)
+
+		// CRITICAL FIX: Add computed fields with tax types to taxTypeByKey
+		// This ensures the formula feedback mechanism uses GROSS values for dependent formulas
+		for _, f := range allFields {
+			if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+				taxTypeByKey[f.FieldKey] = *f.TaxType
+			}
+		}
+
+		// Collect manually entered GST amounts for computed fields with MANUAL tax type
+		manualGSTByKey := make(map[string]float64)
+		for _, v := range rq {
+			if v.GstAmount == nil {
+				continue
+			}
+			fieldID, err := uuid.Parse(v.FormFieldID)
+			if err != nil {
+				continue
+			}
+			f, ok := fieldByID[fieldID]
+			if !ok || !f.IsComputed {
+				continue
+			}
+			if f.TaxType != nil && *f.TaxType == "MANUAL" {
+				manualGSTByKey[f.FieldKey] = *v.GstAmount
+			}
+		}
+
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate formulas: %w", err)
+		}
+
+		// Track which field IDs already have a value in out to prevent duplicates.
+		alreadyAdded := make(map[uuid.UUID]bool, len(out))
+		for _, v := range out {
+			alreadyAdded[v.FormFieldID] = true
 		}
 
 		for fieldID, val := range computed {
@@ -427,29 +585,59 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			if !ok {
 				continue
 			}
+			if alreadyAdded[fieldID] {
+				continue
+			}
 
+			// CRITICAL FIX: Formula already returns NET amount
+			// We should NOT re-extract net from it
 			netBase := val
 			grossTotal := val
 			var gstAmount *float64
 
 			if f.TaxType != nil {
 				taxType := method.TaxTreatment(*f.TaxType)
+
 				switch taxType {
 				case method.TaxTreatmentInclusive:
-					result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: val})
-					if err != nil {
-						return nil, err
-					}
-					gstAmount = &result.GstAmount
-					netBase = result.Amount
-					grossTotal = result.TotalAmount
+					// Formula returns NET, calculate GST and GROSS from NET
+					gst := val * 0.10
+					gstAmount = &gst
+					netBase = val          // Keep as NET
+					grossTotal = val + gst // NET + GST = GROSS
 				case method.TaxTreatmentExclusive:
-					result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: val})
-					if err != nil {
-						return nil, err
+					// Formula returns NET, calculate GST and GROSS from NET
+					gst := val * 0.10
+					gstAmount = &gst
+					netBase = val          // Keep as NET
+					grossTotal = val + gst // NET + GST = GROSS
+				case method.TaxTreatmentManual:
+					// For MANUAL tax type on computed fields, check if GST was provided in request
+					var entryGST *float64
+					for _, v := range rq {
+						entryFieldID, _ := uuid.Parse(v.FormFieldID)
+						if entryFieldID == fieldID && v.GstAmount != nil {
+							entryGST = v.GstAmount
+							break
+						}
 					}
-					gstAmount = &result.GstAmount
-					grossTotal = result.TotalAmount
+
+					// If GST amount is empty or zero, send net with gst=0, gross=net
+					if entryGST == nil {
+						gst := 0.0
+						gstAmount = &gst
+						netBase = val
+						grossTotal = val
+					} else {
+						// If GST provided, send net=net, gst=entry.gst, gross=net+gst
+						gstAmount = entryGST
+						netBase = val
+						grossTotal = val + *entryGST
+					}
+				case method.TaxTreatmentZero:
+					gstAmount = nil
+					netBase = val
+					grossTotal = val
 				}
 			}
 
@@ -485,12 +673,21 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 		return
 	}
 
+	meta := auditctx.GetMetadata(ctx)
+
+	// Only act if the user is an Accountant
+	if meta.UserType == nil || !strings.EqualFold(*meta.UserType, util.RoleAccountant) || meta.UserID == nil {
+		return
+	}
+
+	actorUserID, _ := uuid.Parse(*meta.UserID)
+
 	ver, err := s.versionSvc.GetByID(ctx, rs.FormVersionID)
 	if err != nil {
 		return
 	}
 
-	form, err := s.detailSvc.GetByID(ctx, ver.FormId)
+	form, err := s.detailSvc.GetByID(ctx, ver.FormId, actorUserID, *meta.UserType)
 	if err != nil || form.Method != "INDEPENDENT_CONTRACTOR" {
 		return
 	}
@@ -573,7 +770,7 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	formName := "Form"
 	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
 	if err == nil {
-		form, err := s.detailSvc.GetByID(ctx, ver.FormId)
+		form, err := s.detailSvc.GetByID(ctx, ver.FormId, actorUserID, *meta.UserType)
 		if err == nil {
 			formName = form.Name
 		}

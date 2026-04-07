@@ -14,8 +14,10 @@ const (
 
 type RqEntryValue struct {
 	FormFieldID string   `json:"form_field_id" validate:"required,uuid"`
-	Amount      float64  `json:"amount" validate:"required,min=0"`
+	Amount      float64  `json:"amount" validate:"omitempty,min=0"`
+	NetAmount   *float64 `json:"net_amount,omitempty"`
 	GstAmount   *float64 `json:"gst_amount,omitempty"`
+	GrossAmount *float64 `json:"gross_amount,omitempty"`
 }
 
 type RqFormEntry struct {

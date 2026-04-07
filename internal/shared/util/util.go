@@ -24,6 +24,10 @@ const EntityIDKey = "EntityID"
 
 var validate = validator.New()
 
+func ValidateStruct(v any) error {
+	return validate.Struct(v)
+}
+
 func NewUUID() string {
 	return uuid.New().String()
 }

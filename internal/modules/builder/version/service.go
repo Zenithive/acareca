@@ -16,6 +16,7 @@ type IService interface {
 	Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpdateFormVersion) (*RsFormVersion, error)
 	Delete(ctx context.Context, id, clinicID uuid.UUID) error
 	List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error)
+	ListTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID) ([]*RsFormVersion, error)
 	GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsFormVersion, error)
 	CreateTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID, req *RqFormVersion, practitionerID uuid.UUID) (*RsFormVersion, error)
 }
@@ -122,6 +123,28 @@ func (s *service) List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFo
 	if err != nil {
 		return nil, err
 	}
+	rs := make([]*RsFormVersion, 0, len(list))
+	for _, v := range list {
+		rs = append(rs, v.ToRs())
+	}
+	return rs, nil
+}
+
+func (s *service) ListTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID) ([]*RsFormVersion, error) {
+	var list []*FormVersion
+	var err error
+
+	// If tx is provided, query through the transaction to see uncommitted records
+	if tx != nil {
+		list, err = s.repo.ListByFormIDTx(ctx, tx, formID)
+	} else {
+		list, err = s.repo.ListByFormID(ctx, formID)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
 	rs := make([]*RsFormVersion, 0, len(list))
 	for _, v := range list {
 		rs = append(rs, v.ToRs())

@@ -26,12 +26,13 @@ type Condition struct {
 }
 
 type Filter struct {
-	Search  *string `form:"search"`
-	Where   []Condition
-	Limit   *int    `form:"limit"`
-	Offset  *int    `form:"offset"`
-	SortBy  *string `form:"sort_by"`
-	OrderBy *string `form:"order_by"`
+	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	Search         *string    `form:"search"`
+	Where          []Condition
+	Limit          *int    `form:"limit"`
+	Offset         *int    `form:"offset"`
+	SortBy         *string `form:"sort_by"`
+	OrderBy        *string `form:"order_by"`
 }
 
 func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchCols []string, count bool) (string, []interface{}) {

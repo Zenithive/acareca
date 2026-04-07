@@ -173,7 +173,7 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
-	pracID, ok := util.GetPractitionerID(c)
+	actorID, ok := util.GetUserID(c)
 	if !ok {
 		return
 	}
@@ -183,9 +183,9 @@ func (h *handler) GetReport(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	f.PractitionerID = pracID.String()
+	//f.PractitionerID = pracID.String()
 
-	result, err := h.svc.GetReport(c.Request.Context(), &f)
+	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

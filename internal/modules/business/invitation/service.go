@@ -17,6 +17,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -28,7 +29,13 @@ type Service interface {
 	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
 	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
+	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
+
+	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error
+	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
+	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 }
 
 const (
@@ -389,13 +396,35 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string
 }
 
 func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
-	ft := f.MapToFilter(pID, aID)
+	// Accountant path: query by email so SENT/REJECTED (entity_id = NULL) are also visible
+	if aID != nil {
+		email, err := s.repo.GetEmailByAccountantID(ctx, *aID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve accountant email: %w", err)
+		}
 
+		ft := f.MapToFilterAccountant()
+
+		list, err := s.repo.ListByEmail(ctx, email, ft)
+		if err != nil {
+			return nil, err
+		}
+		total, err := s.repo.CountByEmail(ctx, email, ft)
+		if err != nil {
+			return nil, err
+		}
+
+		var rsList util.RsList
+		rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
+		return &rsList, nil
+	}
+
+	// Practitioner path: unchanged
+	ft := f.MapToFilter(pID, nil)
 	list, err := s.repo.List(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
-
 	total, err := s.repo.Count(ctx, ft)
 	if err != nil {
 		return nil, err
@@ -403,7 +432,6 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 
 	var rsList util.RsList
 	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
-
 	return &rsList, nil
 }
 
@@ -468,6 +496,71 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 	return nil
 }
 
+func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error {
+	inv, err := s.repo.GetByID(ctx, inviteID)
+	if err != nil || inv == nil {
+		return errors.New("invitation not found")
+	}
+
+	if inv.PractitionerID != practitionerID {
+		return errors.New("unauthorized: you did not send this invitation")
+	}
+
+	if inv.Status == StatusRevoked {
+		return errors.New("invitation is already revoked")
+	}
+
+	// Only allow revoking invitations that have been accepted or completed
+	if inv.Status != StatusAccepted && inv.Status != StatusCompleted {
+		return fmt.Errorf("cannot revoke an invitation with status: %s", inv.Status)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, inviteID, StatusRevoked, inv.EntityID); err != nil {
+		return fmt.Errorf("revoke invitation: %w", err)
+	}
+
+	// Audit log
+	meta := auditctx.GetMetadata(ctx)
+	pIDStr := practitionerID.String()
+	entityIDStr := inviteID.String()
+	entityType := auditctx.EntityInvitation
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionInviteRevoked,
+		EntityType:  &entityType,
+		EntityID:    &entityIDStr,
+		BeforeState: inv,
+		AfterState:  map[string]interface{}{"status": StatusRevoked},
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
+}
+
 func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error) {
 	return s.repo.GetByEmail(ctx, email)
+}
+
+func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error) {
+	return s.repo.GetPermissions(ctx, accountantID, entityID)
+}
+
+func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error {
+	// Ensure they at least have "read" access even if the clinic didn't have it.
+	if !perms.All {
+		perms.Read = true
+	}
+
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, aID, eID, eType, perms)
+}
+
+func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
+	return s.repo.DeletePermissionsByEntityTx(ctx, tx, entityID)
+}
+
+func (s *service) GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
+	return s.repo.GetPractitionerLinkedToAccountant(ctx, accountantID)
 }

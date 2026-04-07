@@ -3,6 +3,7 @@ package bas
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -15,6 +16,10 @@ type Repository interface {
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error)
 	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
+
+	GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
+	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
+	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
 }
 
 type repository struct {
@@ -191,18 +196,115 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
 		SELECT
-			COALESCE(SUM(total_sales_net), 0)            AS g1_total_sales_net,
+			COALESCE(SUM(g1_total_sales_gross), 0)       AS g1_total_sales_gross,
 			COALESCE(SUM(label_1a_gst_on_sales), 0)      AS label_1a_gst_on_sales,
-			COALESCE(SUM(total_purchases_net), 0)         AS g11_total_purchases_net,
-			COALESCE(SUM(label_1b_gst_on_purchases), 0)   AS label_1b_gst_on_purchases
+			COALESCE(SUM(g11_total_purchases_gross), 0)  AS g11_total_purchases_gross,
+			COALESCE(SUM(label_1b_gst_on_purchases), 0)  AS label_1b_gst_on_purchases
 		FROM vw_bas_summary
 		WHERE practitioner_id = $1
 		  AND period_quarter >= DATE_TRUNC('quarter', $2::DATE)
 		  AND period_quarter <= DATE_TRUNC('quarter', $3::DATE)
 	`
 	var row BASReportRow
+
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
 		return nil, fmt.Errorf("get bas report: %w", err)
 	}
 	return &row, nil
+}
+
+func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
+	// 1. Use ? instead of $1
+	query := `
+        SELECT 
+            period_quarter,
+            section_type,
+            bas_category,
+			account_name,
+            SUM(net_amount) AS net_amount,
+            SUM(gst_amount) AS gst_amount,
+            SUM(gross_amount) AS gross_amount
+        FROM vw_bas_line_items
+        WHERE clinic_id = ?
+    `
+	args := []interface{}{clinicID}
+
+	// 2. Handle Quarter IDs
+	if len(f.QuarterIDs) > 0 {
+		// sqlx.In replaces (?) with (?, ?, ?)
+		subQuery, qArgs, err := sqlx.In(" AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))", f.QuarterIDs)
+		if err == nil {
+			query += subQuery
+			args = append(args, qArgs...)
+		}
+	}
+
+	// 3. Handle Financial Year (Fall-through logic)
+	if len(f.QuarterIDs) == 0 && f.FinancialYearID != nil {
+		query += ` AND period_quarter BETWEEN (
+                SELECT start_date FROM tbl_financial_year WHERE id = ?
+            ) AND (
+                SELECT end_date FROM tbl_financial_year WHERE id = ?
+            )`
+		// We add the ID twice because there are two '?' placeholders
+		args = append(args, *f.FinancialYearID, *f.FinancialYearID)
+	}
+
+	query += ` GROUP BY period_quarter, section_type, bas_category, account_name 
+               ORDER BY period_quarter ASC`
+
+	// --- THE CRITICAL STEP ---
+	// sqlx.In returns a query with '?' placeholders.
+	// Rebind(?) converts all '?' to '$1', '$2', '$3' automatically.
+	fullQuery, fullArgs, err := sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery := r.db.Rebind(fullQuery)
+
+	var rows []*BASLineItemRow
+	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// GetQuarterInfoByDate fetches metadata for the "quarter" object in your JSON
+func (r *repository) GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error) {
+	var info BASQuarterInfo
+	query := `
+        SELECT 
+            id::text, 
+            label as name, 
+            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
+            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+        FROM tbl_financial_quarter 
+		WHERE start_date = $1 
+   OR ($1 BETWEEN start_date AND end_date)
+        LIMIT 1
+    `
+	if err := r.db.GetContext(ctx, &info, query, date); err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
+func (r *repository) GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error) {
+	var info BASQuarterInfo
+	query := `
+        SELECT 
+            id::text, 
+            label as name, 
+            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
+            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+        FROM tbl_financial_quarter 
+        WHERE id = $1
+    `
+	if err := r.db.GetContext(ctx, &info, query, id); err != nil {
+		return nil, err
+	}
+	return &info, nil
 }

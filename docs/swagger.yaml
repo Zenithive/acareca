@@ -1,5 +1,105 @@
 basePath: /api/v1
 definitions:
+  accountant.Clinic:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      location:
+        type: string
+      name:
+        type: string
+    type: object
+  accountant.ClinicDetail:
+    properties:
+      abn:
+        type: string
+      address:
+        type: string
+      city:
+        type: string
+      contacts:
+        items:
+          type: object
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+      postcode:
+        type: string
+    type: object
+  accountant.Form:
+    properties:
+      clinic_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      version:
+        type: string
+    type: object
+  accountant.Practitioner:
+    properties:
+      clinic_count:
+        type: integer
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  accountant.RecentTransaction:
+    properties:
+      amount:
+        type: number
+      clinic_id:
+        type: string
+      clinic_name:
+        type: string
+      date:
+        type: string
+      id:
+        type: string
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  accountant.RsAccountantForm:
+    properties:
+      clinic_id:
+        type: string
+      clinic_name:
+        type: string
+      clinic_share:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      method:
+        type: string
+      name:
+        type: string
+      owner_share:
+        type: integer
+      status:
+        type: string
+      super_component:
+        type: number
+      updated_at:
+        type: string
+    type: object
   accountant.RsAccountantUser:
     properties:
       clinics:
@@ -22,6 +122,38 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  accountant.RsAnalytics:
+    properties:
+      clinics:
+        items:
+          $ref: '#/definitions/accountant.Clinic'
+        type: array
+      forms:
+        items:
+          $ref: '#/definitions/accountant.Form'
+        type: array
+      practitioners:
+        items:
+          $ref: '#/definitions/accountant.Practitioner'
+        type: array
+      recent_transactions:
+        items:
+          $ref: '#/definitions/accountant.RecentTransaction'
+        type: array
+      summary:
+        $ref: '#/definitions/accountant.Summary'
+    type: object
+  accountant.Summary:
+    properties:
+      total_clinics:
+        type: integer
+      total_forms:
+        type: integer
+      total_practitioners:
+        type: integer
+      total_transactions:
+        type: integer
     type: object
   admin.RqCreateAdmin:
     properties:
@@ -87,6 +219,8 @@ definitions:
     type: object
   auth.RqUpdateUser:
     properties:
+      abn:
+        type: string
       email:
         type: string
       first_name:
@@ -122,6 +256,9 @@ definitions:
     type: object
   auth.RsUser:
     properties:
+      abn:
+        description: Role-specific fields (populated based on role)
+        type: string
       created_at:
         type: string
       email:
@@ -132,12 +269,66 @@ definitions:
         type: string
       last_name:
         type: string
+      license_no:
+        type: string
       phone:
         type: string
       role:
         type: string
       updated_at:
         type: string
+    type: object
+  bas.BASAmount:
+    properties:
+      gross:
+        type: number
+      gst:
+        type: number
+      net:
+        type: number
+    type: object
+  bas.BASColumn:
+    properties:
+      net_gst_payable:
+        type: number
+      quarter:
+        $ref: '#/definitions/bas.BASQuarterInfo'
+      sections:
+        properties:
+          expenses:
+            $ref: '#/definitions/bas.BASSection'
+          income:
+            $ref: '#/definitions/bas.BASSection'
+          net_profit_loss:
+            $ref: '#/definitions/bas.BASSection'
+        type: object
+    type: object
+  bas.BASLineItem:
+    properties:
+      amounts:
+        $ref: '#/definitions/bas.BASAmount'
+      name:
+        type: string
+    type: object
+  bas.BASQuarterInfo:
+    properties:
+      displayRange:
+        type: string
+      endDate:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      startDate:
+        type: string
+    type: object
+  bas.BASSection:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/bas.BASLineItem'
+        type: array
     type: object
   bas.RsBASByAccount:
     properties:
@@ -188,6 +379,15 @@ definitions:
         type: number
       total_sales_net:
         type: number
+    type: object
+  bas.RsBASPreparation:
+    properties:
+      columns:
+        items:
+          $ref: '#/definitions/bas.BASColumn'
+        type: array
+      grand_total:
+        $ref: '#/definitions/bas.BASColumn'
     type: object
   bas.RsBASReport:
     properties:
@@ -529,10 +729,13 @@ definitions:
         type: number
       form_field_id:
         type: string
+      gross_amount:
+        type: number
       gst_amount:
         type: number
+      net_amount:
+        type: number
     required:
-    - amount
     - form_field_id
     type: object
   entry.RqFormEntry:
@@ -594,6 +797,8 @@ definitions:
       coa_id:
         type: string
       is_computed:
+        type: boolean
+      is_formula:
         type: boolean
       key:
         maxLength: 5
@@ -731,10 +936,21 @@ definitions:
         maximum: 100
         minimum: 0
         type: integer
+      create:
+        items:
+          $ref: '#/definitions/field.RqCreateField'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
       description:
         type: string
       fields:
         $ref: '#/definitions/form.RqFieldsSync'
+      force_delete:
+        description: If true, delete fields even if they have submitted entries
+        type: boolean
       form_id:
         type: string
       formulas:
@@ -760,6 +976,10 @@ definitions:
         type: string
       super_component:
         type: number
+      update:
+        items:
+          $ref: '#/definitions/field.RqUpdateFormField'
+        type: array
     required:
     - clinic_id
     type: object
@@ -1233,6 +1453,87 @@ paths:
       security:
       - BearerToken: []
       summary: Fetch all users
+      tags:
+      - accountant
+  /accountant/analytics:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves analytics for the accountant.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/accountant.RsAnalytics'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Fetch analytics
+      tags:
+      - accountant
+  /accountant/clinics:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all clinics belonging to practitioners who have a completed
+        invitation with this accountant.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/accountant.ClinicDetail'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Fetch assigned clinics
+      tags:
+      - accountant
+  /accountant/forms:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all forms belonging to clinics that this accountant has
+        access to via completed invitations.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/accountant.RsAccountantForm'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Fetch assigned forms
       tags:
       - accountant
   /admin:
@@ -2036,6 +2337,29 @@ paths:
       tags:
       - auth
   /auth/user/profile:
+    get:
+      description: Returns the profile of the authenticated user including role-specific
+        fields (abn for practitioners, license_no for accountants)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsUser'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get current user profile
+      tags:
+      - auth
     put:
       consumes:
       - application/json
@@ -2107,6 +2431,49 @@ paths:
       summary: Verify user email address
       tags:
       - auth
+  /bas/clinic/{clinic_id}/bas-preparation:
+    get:
+      description: Returns a side-by-side comparison of BAS figures across selected
+        quarters/months, plus a calculated Grand Total column.
+      parameters:
+      - description: Clinic UUID
+        in: path
+        name: clinic_id
+        required: true
+        type: string
+      - collectionFormat: multi
+        description: Array of Quarter UUIDs
+        in: query
+        items:
+          type: string
+        name: quarter_ids
+        required: true
+        type: array
+      - description: Restrict to a financial year by UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bas.RsBASPreparation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Full BAS Preparation Report
+      tags:
+      - engine/bas
   /bas/clinic/{clinic_id}/by-account:
     get:
       description: Returns quarterly GST totals broken down per Chart of Accounts
@@ -2484,7 +2851,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Get all clinics for practitioner
+      summary: Get all clinics for the logged-in user (Practitioner or Accountant)
       tags:
       - clinic
     post:
@@ -3032,6 +3399,38 @@ paths:
       summary: Update an existing chart of account
       tags:
       - coa
+  /coa/chart-of-account/by-key/{key}:
+    get:
+      parameters:
+      - description: Chart of Account Key (e.g., patient_fee_account)
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get chart of account by key
+      tags:
+      - coa
   /coa/chart-of-account/check-code:
     post:
       consumes:
@@ -3320,6 +3719,10 @@ paths:
         filter by clinic, method, or status. If clinic_id is omitted, all clinics
         are included.
       parameters:
+      - description: Filter by practitioner ID (UUID)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Filter by clinic ID (UUID)
         in: query
         name: clinic_id
@@ -3541,6 +3944,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+      security:
+      - BearerToken: []
       summary: Update form status
       tags:
       - form
@@ -3694,6 +4099,44 @@ paths:
       security:
       - BearerToken: []
       summary: Resend an invitation
+      tags:
+      - invitation
+  /invite/{id}/revoke:
+    delete:
+      description: Practitioner removes an accountant's access by revoking the invitation.
+        Only works on ACCEPTED or COMPLETED invitations.
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Revoke an accepted/completed invitation
       tags:
       - invitation
   /invite/process:

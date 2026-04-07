@@ -2,6 +2,7 @@ package coa
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -304,6 +305,7 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+	fmt.Println("name-22", *req.Name)
 	updated, err := h.svc.UpdateCharOfAccount(c.Request.Context(), id, practitionerID, &req)
 	if err != nil {
 		if errors.Is(err, ErrCodeExists) {

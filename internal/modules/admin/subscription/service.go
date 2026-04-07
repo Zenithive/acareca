@@ -3,10 +3,12 @@ package subscription
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -25,20 +27,50 @@ type Service interface {
 }
 
 type service struct {
-	db       *sqlx.DB
-	repo     Repository
-	auditSvc audit.Service
+	db           *sqlx.DB
+	repo         Repository
+	auditSvc     audit.Service
+	stripeClient sharedstripe.StripeClient
 }
 
-func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service) Service {
-	return &service{db: db, repo: repo, auditSvc: auditSvc}
+func NewService(db *sqlx.DB, repo Repository, auditSvc audit.Service, sc sharedstripe.StripeClient) Service {
+	return &service{db: db, repo: repo, auditSvc: auditSvc, stripeClient: sc}
 }
 
 func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscription) (*RsSubscription, error) {
 	sub := req.ToSubscription()
+
+	// Stripe-first: if paid plan, sync to Stripe before DB write
+	var productID, priceID string
+	if req.Price > 0 && s.stripeClient != nil {
+		var err error
+		desc := ""
+		if req.Description != nil {
+			desc = *req.Description
+		}
+		productID, err = s.stripeClient.CreateProduct(req.Name, desc)
+		if err != nil {
+			return nil, fmt.Errorf("stripe create product: %w", err)
+		}
+		priceID, err = s.stripeClient.CreatePrice(productID, int64(req.Price*100), "aud")
+		if err != nil {
+			return nil, fmt.Errorf("stripe create price: %w", err)
+		}
+	}
+
 	created, err := s.repo.Create(ctx, sub)
 	if err != nil {
 		return nil, err
+	}
+
+	// Persist Stripe IDs after successful DB insert
+	if productID != "" && priceID != "" {
+		if err := s.repo.UpdateStripeIDs(ctx, created.ID, productID, priceID); err != nil {
+			log.Printf("ALERT: stripe product created but db update failed: product=%s price=%s err=%v", productID, priceID, err)
+			return nil, err
+		}
+		created.StripeProductID = &productID
+		created.StripePriceID = &priceID
 	}
 
 	// Audit log: subscription created
@@ -98,6 +130,59 @@ func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateS
 	// Capture before state for audit
 	beforeState := *existing
 
+	// Sync changes to Stripe for paid plans
+	if existing.Price > 0 && s.stripeClient != nil && existing.StripeProductID != nil {
+		// Sync name/description changes to Stripe product
+		nameChanged := req.Name != nil && *req.Name != existing.Name
+		descChanged := req.Description != nil
+		if nameChanged || descChanged {
+			newName := existing.Name
+			if req.Name != nil {
+				newName = *req.Name
+			}
+			newDesc := ""
+			if req.Description != nil {
+				newDesc = *req.Description
+			} else if existing.Description != nil {
+				newDesc = *existing.Description
+			}
+			if err := s.stripeClient.UpdateProduct(*existing.StripeProductID, newName, newDesc); err != nil {
+				return nil, fmt.Errorf("stripe update product: %w", err)
+			}
+		}
+
+		// Sync price changes: create new price, set as default, archive old price, update DB
+		if req.Price != nil && *req.Price != existing.Price && *req.Price > 0 && existing.StripePriceID != nil {
+			newPriceID, err := s.stripeClient.CreatePrice(*existing.StripeProductID, int64(*req.Price*100), "aud")
+			if err != nil {
+				return nil, fmt.Errorf("stripe create price: %w", err)
+			}
+			// Set new price as default before archiving old one (Stripe requires this)
+			if err := s.stripeClient.SetDefaultPrice(*existing.StripeProductID, newPriceID); err != nil {
+				return nil, fmt.Errorf("stripe set default price: %w", err)
+			}
+			if err := s.stripeClient.ArchivePrice(*existing.StripePriceID); err != nil {
+				return nil, fmt.Errorf("stripe archive price: %w", err)
+			}
+			if err := s.repo.UpdateStripeIDs(ctx, id, *existing.StripeProductID, newPriceID); err != nil {
+				log.Printf("ALERT: stripe price updated but db update failed: product=%s price=%s err=%v", *existing.StripeProductID, newPriceID, err)
+				return nil, err
+			}
+		}
+
+		// Archive Stripe Product when deactivating, unarchive when reactivating
+		if req.IsActive != nil && !*req.IsActive && existing.IsActive {
+			if err := s.stripeClient.ArchiveProduct(*existing.StripeProductID); err != nil {
+				return nil, fmt.Errorf("stripe archive product: %w", err)
+			}
+		}
+		if req.IsActive != nil && *req.IsActive && !existing.IsActive {
+			if err := s.stripeClient.UnarchiveProduct(*existing.StripeProductID); err != nil {
+				return nil, fmt.Errorf("stripe unarchive product: %w", err)
+			}
+		}
+	}
+
 	applyUpdate(existing, req)
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
@@ -147,6 +232,13 @@ func (s *service) DeleteSubscription(ctx context.Context, id int) error {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
+	}
+
+	// Archive Stripe Product before deleting (Requirement 3.5)
+	if existing.StripeProductID != nil && s.stripeClient != nil {
+		if err := s.stripeClient.ArchiveProduct(*existing.StripeProductID); err != nil {
+			return fmt.Errorf("stripe archive product: %w", err)
+		}
 	}
 
 	err = s.repo.Delete(ctx, id)

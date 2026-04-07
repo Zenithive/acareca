@@ -9,6 +9,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
 type IHandler interface {
@@ -20,6 +21,7 @@ type IHandler interface {
 
 	VerifyEmail(c *gin.Context)
 	ChangePassword(c *gin.Context)
+	GetProfile(c *gin.Context)
 	UpdateProfile(c *gin.Context)
 	DeleteUser(c *gin.Context)
 	ForgotPassword(c *gin.Context)
@@ -28,10 +30,12 @@ type IHandler interface {
 
 type handler struct {
 	svc Service
+	cfg config.Config
 }
 
 func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+	cfg := config.NewConfig()
+	return &handler{svc: svc, cfg: *cfg}
 }
 
 // Register godoc
@@ -96,6 +100,38 @@ func (h *handler) Login(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, token, "User logged in successfully")
+}
+
+// GetProfile godoc
+// @Summary Get current user profile
+// @Description Returns the profile of the authenticated user including role-specific fields (abn for practitioners, license_no for accountants)
+// @Tags auth
+// @Produce json
+// @Security BearerToken
+// @Success 200 {object} RsUser
+// @Failure 401 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/user/profile [get]
+func (h *handler) GetProfile(c *gin.Context) {
+	userIDPtr := auditctx.GetUserID(c.Request.Context())
+	if userIDPtr == nil {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
+		return
+	}
+
+	userID, err := uuid.Parse(*userIDPtr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+		return
+	}
+
+	user, err := h.svc.GetProfile(c.Request.Context(), userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, user, "Profile fetched successfully")
 }
 
 // UpdateProfile godoc
@@ -207,8 +243,6 @@ func (h *handler) GoogleLogin(c *gin.Context) {
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
-	// Store state in a short-lived, HttpOnly cookie so the callback can verify it
-	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
@@ -219,7 +253,6 @@ func (h *handler) GoogleAuthURL(c *gin.Context) {
 // @Tags auth
 // @Produce json
 // @Param code query string true "OAuth authorization code"
-// @Param state query string true "OAuth state (CSRF token)"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -230,16 +263,6 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
 		return
 	}
-
-	// Validate state to prevent CSRF
-	stateParam := c.Query("state")
-	stateCookie, err := c.Cookie("oauth_state")
-	if err != nil || stateParam == "" || stateParam != stateCookie {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid oauth state"))
-		return
-	}
-	// Consume the state cookie
-	c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 
 	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
 	if err != nil {

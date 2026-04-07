@@ -67,21 +67,21 @@ func (r *RqCreateFormWithFields) ValidateShares() error {
 }
 
 type RqUpdateFormWithFields struct {
-	ID             *uuid.UUID          `json:"form_id" validate:"omitempty,uuid"`
-	ClinicID       uuid.UUID           `json:"clinic_id" validate:"required,uuid"`
-	Name           *string             `json:"name" validate:"omitempty"`
-	Description    *string             `json:"description" validate:"omitempty"`
-	Status         *string             `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
-	Method         *string             `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
-	OwnerShare     *int                `json:"owner_share" validate:"omitempty,min=0,max=100"`
-	ClinicShare    *int                `json:"clinic_share" validate:"omitempty,min=0,max=100"`
-	SuperComponent *float64            `json:"super_component" validate:"omitempty"`
-	Fields         RqFieldsSync        `json:"fields"`
-	Create       []field.RqCreateField     `json:"create" validate:"omitempty,dive"`
-	Update       []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
-	Delete       []uuid.UUID               `json:"delete" validate:"omitempty,dive"`
-	ForceDelete  *bool                     `json:"force_delete"` // If true, delete fields even if they have submitted entries
-	Formulas     []formula.RqFormula       `json:"formulas" validate:"omitempty,dive"`
+	ID             *uuid.UUID                `json:"form_id" validate:"omitempty,uuid"`
+	ClinicID       uuid.UUID                 `json:"clinic_id" validate:"required,uuid"`
+	Name           *string                   `json:"name" validate:"omitempty"`
+	Description    *string                   `json:"description" validate:"omitempty"`
+	Status         *string                   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED ARCHIVED"`
+	Method         *string                   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	OwnerShare     *int                      `json:"owner_share" validate:"omitempty,min=0,max=100"`
+	ClinicShare    *int                      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
+	SuperComponent *float64                  `json:"super_component" validate:"omitempty"`
+	Fields         RqFieldsSync              `json:"fields"`
+	Create         []field.RqCreateField     `json:"create" validate:"omitempty,dive"`
+	Update         []field.RqUpdateFormField `json:"update" validate:"omitempty,dive"`
+	Delete         []uuid.UUID               `json:"delete" validate:"omitempty,dive"`
+	ForceDelete    *bool                     `json:"force_delete"` // If true, delete fields even if they have submitted entries
+	Formulas       []formula.RqFormula       `json:"formulas" validate:"omitempty,dive"`
 }
 
 func (r *RqUpdateFormWithFields) ValidateShares() error {
@@ -111,9 +111,10 @@ type RsFormWithFields struct {
 }
 
 type Filter struct {
-	ClinicID *string `form:"clinic_id"`
-	FormName *string `form:"form_name"`
-	Method   *string `form:"method"`
-	Status   *string `form:"status"`
+	PractitionerID *string `form:"practitioner_id"`
+	ClinicID       *string `form:"clinic_id"`
+	FormName       *string `form:"form_name"`
+	Method         *string `form:"method"`
+	Status         *string `form:"status"`
 	common.Filter
 }

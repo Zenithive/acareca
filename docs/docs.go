@@ -60,6 +60,132 @@ const docTemplate = `{
                 }
             }
         },
+        "/accountant/analytics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieves analytics for the accountant.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accountant"
+                ],
+                "summary": "Fetch analytics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/accountant.RsAnalytics"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/accountant/clinics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieves all clinics belonging to practitioners who have a completed invitation with this accountant.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accountant"
+                ],
+                "summary": "Fetch assigned clinics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/accountant.ClinicDetail"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/accountant/forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieves all forms belonging to clinics that this accountant has access to via completed invitations.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accountant"
+                ],
+                "summary": "Fetch assigned forms",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/accountant.RsAccountantForm"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin": {
             "post": {
                 "description": "Creates a new entry in tbl_user with Role=ADMIN and a corresponding entry in tbl_admin within a single transaction.",
@@ -1308,6 +1434,41 @@ const docTemplate = `{
             }
         },
         "/auth/user/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the profile of the authenticated user including role-specific fields (abn for practitioners, license_no for accountants)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get current user profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.RsUser"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -1410,6 +1571,70 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/clinic/{clinic_id}/bas-preparation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Full BAS Preparation Report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Array of Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to a financial year by UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bas.RsBASPreparation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -1914,7 +2139,7 @@ const docTemplate = `{
                 "tags": [
                     "clinic"
                 ],
-                "summary": "Get all clinics for practitioner",
+                "summary": "Get all clinics for the logged-in user (Practitioner or Accountant)",
                 "parameters": [
                     {
                         "type": "string",
@@ -2668,6 +2893,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/coa/chart-of-account/by-key/{key}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "coa"
+                ],
+                "summary": "Get chart of account by key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Chart of Account Key (e.g., patient_fee_account)",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/coa/chart-of-account/check-code": {
             "post": {
                 "security": [
@@ -3307,6 +3583,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Filter by practitioner ID (UUID)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Filter by clinic ID (UUID)",
                         "name": "clinic_id",
                         "in": "query"
@@ -3601,6 +3883,11 @@ const docTemplate = `{
         },
         "/form/{id}/status": {
             "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Toggle form status between DRAFT and PUBLISHED",
                 "consumes": [
                     "application/json"
@@ -3907,6 +4194,64 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/{id}/revoke": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Practitioner removes an accountant's access by revoking the invitation. Only works on ACCEPTED or COMPLETED invitations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Revoke an accepted/completed invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -5282,6 +5627,159 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "accountant.Clinic": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "accountant.ClinicDetail": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "postcode": {
+                    "type": "string"
+                }
+            }
+        },
+        "accountant.Form": {
+            "type": "object",
+            "properties": {
+                "clinic_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "accountant.Practitioner": {
+            "type": "object",
+            "properties": {
+                "clinic_count": {
+                    "type": "integer"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "accountant.RecentTransaction": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "clinic_id": {
+                    "type": "string"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "accountant.RsAccountantForm": {
+            "type": "object",
+            "properties": {
+                "clinic_id": {
+                    "type": "string"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "clinic_share": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_share": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "super_component": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "accountant.RsAccountantUser": {
             "type": "object",
             "properties": {
@@ -5314,6 +5812,55 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "accountant.RsAnalytics": {
+            "type": "object",
+            "properties": {
+                "clinics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/accountant.Clinic"
+                    }
+                },
+                "forms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/accountant.Form"
+                    }
+                },
+                "practitioners": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/accountant.Practitioner"
+                    }
+                },
+                "recent_transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/accountant.RecentTransaction"
+                    }
+                },
+                "summary": {
+                    "$ref": "#/definitions/accountant.Summary"
+                }
+            }
+        },
+        "accountant.Summary": {
+            "type": "object",
+            "properties": {
+                "total_clinics": {
+                    "type": "integer"
+                },
+                "total_forms": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                },
+                "total_transactions": {
+                    "type": "integer"
                 }
             }
         },
@@ -5412,6 +5959,9 @@ const docTemplate = `{
         "auth.RqUpdateUser": {
             "type": "object",
             "properties": {
+                "abn": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -5464,6 +6014,10 @@ const docTemplate = `{
         "auth.RsUser": {
             "type": "object",
             "properties": {
+                "abn": {
+                    "description": "Role-specific fields (populated based on role)",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -5479,6 +6033,9 @@ const docTemplate = `{
                 "last_name": {
                     "type": "string"
                 },
+                "license_no": {
+                    "type": "string"
+                },
                 "phone": {
                     "type": "string"
                 },
@@ -5487,6 +6044,87 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "bas.BASAmount": {
+            "type": "object",
+            "properties": {
+                "gross": {
+                    "type": "number"
+                },
+                "gst": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.BASColumn": {
+            "type": "object",
+            "properties": {
+                "net_gst_payable": {
+                    "type": "number"
+                },
+                "quarter": {
+                    "$ref": "#/definitions/bas.BASQuarterInfo"
+                },
+                "sections": {
+                    "type": "object",
+                    "properties": {
+                        "expenses": {
+                            "$ref": "#/definitions/bas.BASSection"
+                        },
+                        "income": {
+                            "$ref": "#/definitions/bas.BASSection"
+                        },
+                        "net_profit_loss": {
+                            "$ref": "#/definitions/bas.BASSection"
+                        }
+                    }
+                }
+            }
+        },
+        "bas.BASLineItem": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/bas.BASAmount"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "bas.BASQuarterInfo": {
+            "type": "object",
+            "properties": {
+                "displayRange": {
+                    "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                }
+            }
+        },
+        "bas.BASSection": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASLineItem"
+                    }
                 }
             }
         },
@@ -5563,6 +6201,20 @@ const docTemplate = `{
                 },
                 "total_sales_net": {
                     "type": "number"
+                }
+            }
+        },
+        "bas.RsBASPreparation": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASColumn"
+                    }
+                },
+                "grand_total": {
+                    "$ref": "#/definitions/bas.BASColumn"
                 }
             }
         },
@@ -6058,7 +6710,6 @@ const docTemplate = `{
         "entry.RqEntryValue": {
             "type": "object",
             "required": [
-                "amount",
                 "form_field_id"
             ],
             "properties": {
@@ -6069,7 +6720,13 @@ const docTemplate = `{
                 "form_field_id": {
                     "type": "string"
                 },
+                "gross_amount": {
+                    "type": "number"
+                },
                 "gst_amount": {
+                    "type": "number"
+                },
+                "net_amount": {
                     "type": "number"
                 }
             }
@@ -6164,6 +6821,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "is_computed": {
+                    "type": "boolean"
+                },
+                "is_formula": {
                     "type": "boolean"
                 },
                 "key": {
@@ -6357,11 +7017,27 @@ const docTemplate = `{
                     "maximum": 100,
                     "minimum": 0
                 },
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field.RqCreateField"
+                    }
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "description": {
                     "type": "string"
                 },
                 "fields": {
                     "$ref": "#/definitions/form.RqFieldsSync"
+                },
+                "force_delete": {
+                    "description": "If true, delete fields even if they have submitted entries",
+                    "type": "boolean"
                 },
                 "form_id": {
                     "type": "string"
@@ -6397,6 +7073,12 @@ const docTemplate = `{
                 },
                 "super_component": {
                     "type": "number"
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field.RqUpdateFormField"
+                    }
                 }
             }
         },

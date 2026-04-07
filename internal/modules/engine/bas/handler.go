@@ -2,10 +2,12 @@ package bas
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -16,14 +18,16 @@ type IHandler interface {
 	GetByAccount(c *gin.Context)
 	GetMonthly(c *gin.Context)
 	GetReport(c *gin.Context)
+	GetBASPreparation(c *gin.Context)
 }
 
 type handler struct {
-	svc Service
+	svc           Service
+	invitationSvc invitation.Service
 }
 
-func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc}
 }
 
 // GetQuarterlySummary godoc
@@ -162,9 +166,31 @@ func parseClinicID(c *gin.Context) (uuid.UUID, bool) {
 // @Security     BearerToken
 // @Router       /bas/report [get]
 func (h *handler) GetReport(c *gin.Context) {
-	pracID, ok := util.GetPractitionerID(c)
-	if !ok {
-		return
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var pracID uuid.UUID
+	var ok bool
+
+	if role == util.RoleAccountant {
+		actorID, ok = util.GetAccountantID(c)
+		if !ok {
+			return
+		}
+
+		// Resolve which Practitioner this Accountant is working for
+		resolvedID, err := h.invitationSvc.GetPractitionerLinkedToAccountant(c.Request.Context(), actorID)
+		if err != nil {
+			response.Error(c, http.StatusForbidden, fmt.Errorf("accountant not linked to a practitioner: %w", err))
+			return
+		}
+		pracID = resolvedID
+	} else {
+		// If they are a Practitioner, the actorID IS the pracID
+		actorID, ok = util.GetPractitionerID(c)
+		if !ok {
+			return
+		}
+		pracID = actorID
 	}
 
 	var f BASReportFilter
@@ -172,6 +198,7 @@ func (h *handler) GetReport(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	f.PractitionerID = pracID.String()
 
 	result, err := h.svc.GetReport(c.Request.Context(), &f)
@@ -181,4 +208,43 @@ func (h *handler) GetReport(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "BAS report fetched successfully")
+}
+
+// GetBASPreparation godoc
+// @Summary      Full BAS Preparation Report
+// @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.
+// @Tags         engine/bas
+// @Produce      json
+// @Param        clinic_id         path   string  true  "Clinic UUID"
+// @Param        quarter_ids       query  []string true "Array of Quarter UUIDs" collectionFormat(multi)
+// @Param        financial_year_id query  string  true "Restrict to a financial year by UUID"
+// @Success      200  {object}  RsBASPreparation
+// @Failure      400  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /bas/clinic/{clinic_id}/bas-preparation [get]
+func (h *handler) GetBASPreparation(c *gin.Context) {
+	actorID, ok := util.GetUserID(c) // Accountant's User ID from JWT
+	if !ok {
+		return
+	}
+
+	clinicID, ok := parseClinicID(c)
+	if !ok {
+		return
+	}
+
+	var f BASFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, clinicID, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "BAS preparation data fetched")
 }

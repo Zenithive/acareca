@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -25,14 +26,14 @@ import (
 )
 
 type IService interface {
-	GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error)
-	CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
-	UpdateWithFields(ctx context.Context, d *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
-	BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error)
-	GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsFormWithFields, error)
-	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error)
-	Delete(ctx context.Context, formID uuid.UUID) error
-	UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error)
+	GetFormByID(ctx context.Context, formId uuid.UUID, actorID uuid.UUID, role string) (*detail.RsFormDetail, error)
+	CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, actorID uuid.UUID, role string) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
+	UpdateWithFields(ctx context.Context, d *RqUpdateFormWithFields, actorID uuid.UUID, role string) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error)
+	BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields, actorID uuid.UUID, role string) (*RsBulkSyncFields, error)
+	GetFormWithFields(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormWithFields, error)
+	List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
+	Delete(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) error
+	UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string, actorID uuid.UUID, role string) (*detail.RsFormDetail, error)
 }
 
 type service struct {
@@ -49,69 +50,100 @@ type service struct {
 	accountantRepo accountant.Repository
 	authRepo       auth.Repository
 	formClinic     clinic.Service
+	invitationSvc  invitation.Service
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc}
 }
 
-func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
+func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, actorID uuid.UUID, role string) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
+	var perms *invitation.Permissions
+	var err error
+	// PERMISSION CHECK
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// Here, entityID is the ClinicID because the accountant is creating a new form inside a clinic
+		perms, err = s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, d.ClinicID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Authentication error: %w", err)
+		}
+
+		// We check if this accountant has permission to 'create' for this SPECIFIC Clinic
+		if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
+			return nil, nil, errors.New("Access denied: you do not have permission to create forms for this clinic")
+		}
+	}
 
 	// 1. Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
 	if err != nil {
 		return nil, nil, err
 	}
-	// This is the 8dd760ab... ID you saw in the logs
 	realOwnerID := clinic.PractitionerID
 	if err := d.ValidateShares(); err != nil {
 		return nil, nil, err
 	}
 
-	formReq := &detail.RqFormDetail{
-		Name:           d.Name,
-		Description:    d.Description,
-		Status:         d.Status,
-		Method:         d.Method,
-		OwnerShare:     d.OwnerShare,
-		ClinicShare:    d.ClinicShare,
-		SuperComponent: d.SuperComponent,
-	}
-	if formReq.Status == "" {
-		formReq.Status = StatusDraft
-	}
+	var created *detail.RsFormDetail
+	syncResult := &RsFormWithFieldsSyncResult{ClinicID: d.ClinicID}
 
-	created, err := s.detailSvc.Create(ctx, formReq, d.ClinicID, realOwnerID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	syncResult := &RsFormWithFieldsSyncResult{ClinicID: created.ClinicID}
-
-	if len(d.Fields) == 0 {
-		return created, syncResult, nil
-	}
-
-	versions, err := s.versionSvc.List(ctx, created.ID, d.ClinicID)
-	if err != nil {
-		return nil, nil, err
-	}
-	var activeVersionID uuid.UUID
-	for _, v := range versions {
-		if v.IsActive {
-			activeVersionID = v.Id
-			break
-		}
-	}
-	if activeVersionID == uuid.Nil {
-		return created, syncResult, nil
-	}
-
+	// Create form and fields within transaction (atomic operation)
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		keyToFieldID := make(map[string]uuid.UUID, len(d.Fields))
+		// Create form and Version
+		formReq := &detail.RqFormDetail{
+			Name:           d.Name,
+			Description:    d.Description,
+			Status:         d.Status,
+			Method:         d.Method,
+			OwnerShare:     d.OwnerShare,
+			ClinicShare:    d.ClinicShare,
+			SuperComponent: d.SuperComponent,
+		}
+		if formReq.Status == "" {
+			formReq.Status = StatusDraft
+		}
 
+		var createErr error
+		// Create form via detail service
+		created, createErr = s.detailSvc.CreateTx(ctx, tx, formReq, d.ClinicID, realOwnerID)
+		if createErr != nil {
+			return createErr
+		}
+
+		// Grant the Accountant permission to the newly created form
+		if strings.EqualFold(role, util.RoleAccountant) {
+			// We give all clinic permissions to this form just made
+			err = s.invitationSvc.GrantEntityPermissionTx(ctx, tx, realOwnerID, actorID, created.ID, "FORM", *perms)
+			if err != nil {
+				return fmt.Errorf("failed to grant permissions for new form: %w", err)
+			}
+		}
+
+		if len(d.Fields) == 0 {
+			return nil
+		}
+
+		// Get active version
+		versions, err := s.versionSvc.ListTx(ctx, tx, created.ID, d.ClinicID)
+		if err != nil {
+			return err
+		}
+		var activeVersionID uuid.UUID
+		for _, v := range versions {
+			if v.IsActive {
+				activeVersionID = v.Id
+				break
+			}
+		}
+		if activeVersionID == uuid.Nil {
+			// If we just created the form, we expect a version. If not found, fail the TX.
+			return fmt.Errorf("active version not found for form %s", created.ID)
+		}
+
+		// Create form fields
+		keyToFieldID := make(map[string]uuid.UUID, len(d.Fields))
 		for _, f := range d.Fields {
 			f.Sanitize()
 			if err := f.Validate(); err != nil {
@@ -119,7 +151,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			}
 			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, realOwnerID, f.ToRqFormField())
 			if err != nil {
-				return err
+				return err // Rollback everything including the Form
 			}
 			keyToFieldID[f.FieldKey] = created.ID
 			syncResult.CreatedCount++
@@ -132,10 +164,11 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		}
 		return nil
 	})
+	// If transaction failed, exit before touching 'created'
 	if err != nil {
 		return nil, nil, err
 	}
-
+	// --- EVERYTHING BELOW ONLY RUNS ON SUCCESS ---
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
 
 		actorUserID, err := uuid.Parse(*meta.UserID)
@@ -191,8 +224,9 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	return created, syncResult, nil
 }
 
-func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, practitionerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
+func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, actorID uuid.UUID, role string) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
+	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
 	req.Normalize()
 
@@ -200,11 +234,25 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		return nil, nil, err
 	}
 
-	existing, err := s.detailSvc.GetByID(ctx, *req.ID)
+	existing, err := s.detailSvc.GetByID(ctx, *req.ID, actorID, role)
 	if err != nil {
 		return nil, nil, err
 	}
 	beforeState := *existing
+
+	// PERMISSION CHECK (Accountant Only)
+	if isAccountant {
+		// Check if they have 'update' or 'all' permission for this FORM
+		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Authentication error: %w", err)
+		}
+
+		// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
+		if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
+			return nil, nil, errors.New("Access denied: you do not have permission to update this form")
+		}
+	}
 
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, existing.ClinicID)
 	if err != nil {
@@ -322,7 +370,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 				return fmt.Errorf("validation failed for field %s: %w", item.FieldKey, err)
 			}
 
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, item.ToRqFormField())
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, actorID, item.ToRqFormField())
 			if err != nil {
 				return fmt.Errorf("failed to create field %s: %w", item.FieldKey, err)
 			}
@@ -406,8 +454,8 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	return updated, syncResult, nil
 }
 
-func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields) (*RsBulkSyncFields, error) {
-	form, err := s.detailSvc.GetByID(ctx, req.FormID)
+func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, req *RqBulkSyncFields, actorID uuid.UUID, role string) (*RsBulkSyncFields, error) {
+	form, err := s.detailSvc.GetByID(ctx, req.FormID, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -478,11 +526,12 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 	return result, nil
 }
 
-func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsFormWithFields, error) {
-	formDetail, err := s.detailSvc.GetByID(ctx, formID)
+func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormWithFields, error) {
+	formDetail, err := s.detailSvc.GetByID(ctx, formID, actorID, role)
 	if err != nil {
 		return nil, err
 	}
+
 	out := &RsFormWithFields{
 		Form:     *formDetail,
 		Fields:   []field.RsFormField{},
@@ -517,7 +566,7 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 	return out, nil
 }
 
-func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error) {
+func (s *service) List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	// Pass the request to the detail service and return the consolidated result
 	return s.detailSvc.List(ctx, detail.Filter{
 		ClinicID: filter.ClinicID,
@@ -525,23 +574,50 @@ func (s *service) List(ctx context.Context, filter Filter, practitionerID uuid.U
 		Status:   filter.Status,
 		Method:   filter.Method,
 		Filter:   filter.Filter, // Include the embedded common.Filter fields (Search, Limit, Offset, etc.)
-	}, practitionerID)
+	}, actorID, role)
 }
 
-func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
-	formDetail, err := s.detailSvc.GetByID(ctx, formID)
+func (s *service) Delete(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) error {
+	formDetail, err := s.detailSvc.GetByID(ctx, formID, actorID, role)
 	if err != nil {
 		return err
 	}
+	var perms *invitation.Permissions
+	// PERMISSION CHECK
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// Here, entityID is the ClinicID because the accountant is creating a new form inside a clinic
+		perms, err = s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formID)
+		if err != nil {
+			return fmt.Errorf("Authentication error: %w", err)
+		}
+
+		// We check if this accountant has permission to 'delete' for this form
+		if perms == nil || (!perms.HasAccess("delete") && !perms.HasAccess("all")) {
+			return errors.New("Access denied: you do not have permission to delete this form")
+		}
+	}
+
 	// 2. Resolve the REAL owner (Practitioner) from the Clinic
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, formDetail.ClinicID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve clinic owner: %w", err)
 	}
 	realOwnerID := clinic.PractitionerID
-	if err := s.detailSvc.Delete(ctx, formDetail.ID); err != nil {
-		return err
-	}
+
+	// TRANSACTIONAL DELETION
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Delete the Form
+		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
+			return err
+		}
+
+		// Delete associated permissions for this Form
+		if err := s.invitationSvc.DeletePermissionsByEntityTx(ctx, tx, formID); err != nil {
+			return err
+		}
+
+		return nil
+	})
 
 	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
 	meta := auditctx.GetMetadata(ctx)
@@ -597,21 +673,49 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 }
 
 // GetByID implements [IService].
-func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error) {
-
-	detail, err := s.detailSvc.GetByID(ctx, formId)
+func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID, actorID uuid.UUID, role string) (*detail.RsFormDetail, error) {
+	detail, err := s.detailSvc.GetByID(ctx, formId, actorID, role)
 	if err != nil {
 		return detail, err
+	}
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// We ONLY check if they have a direct mapping to this specific Form ID
+		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formId)
+		if err != nil {
+			return nil, fmt.Errorf("Authentication error: %w", err)
+		}
+
+		// Deny if no direct mapping exists OR if permissions don't allow 'read'/'all'
+		if perms == nil || (!perms.HasAccess("read") && !perms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to view this form")
+		}
 	}
 
 	return detail, err
 }
 
-func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error) {
+func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string, actorID uuid.UUID, role string) (*detail.RsFormDetail, error) {
 	// Fetch current state for audit log and validation
-	existing, err := s.detailSvc.GetByID(ctx, formID)
+	existing, err := s.detailSvc.GetByID(ctx, formID, actorID, role)
 	if err != nil {
 		return nil, err
+	}
+
+	// PERMISSION CHECK (Accountant Only)
+	isAccountant := strings.EqualFold(role, util.RoleAccountant)
+	if isAccountant {
+		// Check if they have 'update' or 'all' permission for this FORM
+		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
+		if err != nil {
+			return nil, fmt.Errorf("Authentication error: %w", err)
+		}
+
+		// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
+		if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to update this form")
+		}
 	}
 
 	// Call the detail service to perform the update
@@ -624,7 +728,7 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 	}
 
 	// Fetch updated form to return in response
-	updated, err := s.detailSvc.GetByID(ctx, formID)
+	updated, err := s.detailSvc.GetByID(ctx, formID, actorID, role)
 	if err != nil {
 		return nil, err
 	}

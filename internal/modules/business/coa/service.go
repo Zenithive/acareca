@@ -149,10 +149,10 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	if req.IsSystem != nil {
 		isSystem = *req.IsSystem
 	}
-	
+
 	// Auto-generate key from name
 	key := GenerateKeyFromName(req.Name)
-	
+
 	chart := &ChartOfAccount{
 		PractitionerID: practitionerID,
 		AccountTypeID:  req.AccountTypeID,
@@ -222,8 +222,6 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	}
 	if req.Name != nil {
 		existing.Name = *req.Name
-		// Auto-regenerate key when name changes
-		existing.Key = GenerateKeyFromName(*req.Name)
 	}
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
 	if err != nil {

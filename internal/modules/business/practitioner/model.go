@@ -8,24 +8,26 @@ import (
 )
 
 type Practitioner struct {
-	ID        uuid.UUID  `db:"id"`
-	UserID    uuid.UUID  `db:"user_id"`
-	ABN       *string    `db:"abn"`
-	Verified  bool       `db:"verified"`
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
+	ID               uuid.UUID  `db:"id"`
+	UserID           uuid.UUID  `db:"user_id"`
+	ABN              *string    `db:"abn"`
+	Verified         bool       `db:"verified"`
+	StripeCustomerID *string    `db:"stripe_customer_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	DeletedAt        *time.Time `db:"deleted_at"`
 }
 
 // PractitionerWithUser is used for JOIN queries
 type PractitionerWithUser struct {
-	ID        uuid.UUID  `db:"id"`
-	UserID    uuid.UUID  `db:"user_id"`
-	ABN       *string    `db:"abn"`
-	Verified  bool       `db:"verified"`
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
+	ID               uuid.UUID  `db:"id"`
+	UserID           uuid.UUID  `db:"user_id"`
+	ABN              *string    `db:"abn"`
+	Verified         bool       `db:"verified"`
+	StripeCustomerID *string    `db:"stripe_customer_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	DeletedAt        *time.Time `db:"deleted_at"`
 
 	// user fields
 	Email     string  `db:"email"`

@@ -29,6 +29,7 @@ type Service interface {
 
 	// Internal methods for service-to-service calls (no user validation)
 	GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsClinic, error)
+	ListClinicsForAccountant(ctx context.Context, accountantID uuid.UUID, filter Filter) (*util.RsList, error)
 }
 
 type service struct {
@@ -48,6 +49,23 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
 	meta := auditctx.GetMetadata(ctx)
 
+	// --- NEW PERMISSION CHECK ---
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+		// Resolve the Accountant Profile ID from the UserID in the token
+		actorUserID, _ := uuid.Parse(*meta.UserID)
+		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+		if err != nil {
+			return nil, fmt.Errorf("could not find accountant profile: %w", err)
+		}
+
+		// Check if this Accountant has permission to 'CLINIC' entities for this Practitioner
+		// You'll need a method like 'HasPermission' in your repo
+		hasAccess, err := s.repo.HasPermission(ctx, practitionerID, accProfile.ID, "CLINIC", nil, "write")
+		if err != nil || !hasAccess {
+			return nil, fmt.Errorf("permission denied: accountant does not have write access for this practice")
+		}
+	}
+
 	limitCheckID := practitionerID
 
 	// 2. Perform the limit check
@@ -65,8 +83,17 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			return fmt.Errorf("get active financial year: %w", err)
 		}
 
+		// --- NEW LOGIC: Resolve EntityID ---
+		// If an Accountant is creating this, they should pass the EntityID from
+		// the tbl_invite_permissions. If it's a Practitioner, it defaults to their ID.
+		finalEntityID := practitionerID
+		if req.EntityID != uuid.Nil {
+			finalEntityID = req.EntityID
+		}
+
 		clinic := &Clinic{
 			PractitionerID: practitionerID,
+			EntityID:       finalEntityID,
 			ProfilePicture: req.ProfilePicture,
 			Name:           req.Name,
 			ABN:            req.ABN,
@@ -159,7 +186,8 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 		// Map to result struct for use in event/audit
 		result = &RsClinic{
 			ID:             created.ID,
-			PractitionerID: created.PractitionerID,
+			PractitionerID: practitionerID,
+			EntityID:       created.EntityID,
 			ProfilePicture: created.ProfilePicture,
 			Name:           created.Name,
 			ABN:            created.ABN,
@@ -251,6 +279,13 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
+	// 1. CRITICAL STEP: Convert the Auth User ID to the Practitioner ID
+	// Based on your Beekeeper screenshot, the table stores Profile IDs, not Auth IDs.
+	/*prac, err := s.practitionerRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve practitioner profile: %w", err)
+	}*/
+
 	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
 	if err != nil {
 		return nil, err
@@ -304,6 +339,7 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 
 		result = append(result, RsClinic{
 			ID:                clinic.ID,
+			EntityID:          clinic.EntityID,
 			PractitionerID:    clinic.PractitionerID,
 			ProfilePicture:    clinic.ProfilePicture,
 			Name:              clinic.Name,
@@ -334,8 +370,33 @@ func (s *service) CountClinic(ctx context.Context, practitionerID uuid.UUID, fil
 	return s.repo.CountClinicByPractitioner(ctx, practitionerID, f)
 }
 
-func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
-	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, practitionerID)
+func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// 1. Basic Link Check: Does this Accountant work for this Practitioner?
+	// This call likely returns the Practitioner's ID (ownerID)
+	ownerID, err := s.CheckPermission(ctx, actorID, id)
+	if err != nil {
+		return nil, err // Returns 403 or 404
+	}
+
+	// 2. EXPLICIT ACCOUNTANT CHECK (The "Hard Gate")
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+		actorUserID, _ := uuid.Parse(*meta.UserID)
+		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+		if err != nil {
+			return nil, fmt.Errorf("accountant profile not found: %w", err)
+		}
+
+		// Check if the 'read' key is true in JSONB
+		hasRead, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "read")
+		if err != nil || !hasRead {
+			// This is the specific error message the accountant will see
+			return nil, fmt.Errorf("permission denied: you do not have read access for this clinic")
+		}
+	}
+
+	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -389,6 +450,7 @@ func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, i
 
 	return &RsClinic{
 		ID:                clinic.ID,
+		EntityID:          clinic.EntityID,
 		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
 		Name:              clinic.Name,
@@ -403,10 +465,31 @@ func (s *service) GetClinicByID(ctx context.Context, practitionerID uuid.UUID, i
 	}, nil
 }
 
-func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID) error {
+func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error {
+
+	meta := auditctx.GetMetadata(ctx)
+	ownerID, err := s.CheckPermission(ctx, actorID, id)
+	if err != nil {
+		return err
+	}
+
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		existing, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, practitionerID)
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+			actorUserID, _ := uuid.Parse(*meta.UserID)
+			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+			if err != nil {
+				return fmt.Errorf("could not find accountant profile: %w", err)
+			}
+
+			// Check if the permission array actually contains "delete"
+			hasDeleteAccess, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "delete")
+			if err != nil || !hasDeleteAccess {
+				return fmt.Errorf("permission denied: accountant does not have 'delete' access for this clinic")
+			}
+		}
+
+		existing, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
 		if err != nil {
 			fmt.Printf(">>> DEBUG ERROR: Clinic not found for deletion: %v\n", err)
 			return err
@@ -417,8 +500,12 @@ func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id
 			return fmt.Errorf("delete clinic: %w", err)
 		}
 
+		if err := s.repo.DeletePermissionsByEntity(ctx, id, "CLINIC"); err != nil {
+			// Log the error but don't fail the request since the clinic is already deleted
+			fmt.Printf("Alert: Clinic %s deleted but permissions cleanup failed: %v\n", id, err)
+		}
 		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
-		meta := auditctx.GetMetadata(ctx)
+
 		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
 			fmt.Println(">>> DEBUG: Accountant detected. Recording Shared Event for deletion...")
 
@@ -441,7 +528,7 @@ func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id
 					// 3. Record the Event
 					err = s.eventsSvc.Record(ctx, events.SharedEvent{
 						ID:             uuid.New(),
-						PractitionerID: practitionerID,
+						PractitionerID: ownerID,
 						AccountantID:   finalAccountantID,
 						ActorID:        actorUserID,
 						ActorName:      &fullName,
@@ -483,11 +570,34 @@ func (s *service) DeleteClinic(ctx context.Context, practitionerID uuid.UUID, id
 	})
 }
 
-func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
+func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
+	ownerID, err := s.CheckPermission(ctx, actorID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// --- EXPLICIT PERMISSION CHECK (Matches CreateClinic logic) ---
+	meta := auditctx.GetMetadata(ctx)
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+		// Resolve the Accountant Profile ID
+		actorUserID, _ := uuid.Parse(*meta.UserID)
+		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+		if err != nil {
+			return nil, fmt.Errorf("could not find accountant profile: %w", err)
+		}
+
+		// Check 'write' permission for this specific Clinic ID
+		// Note: Passing &id ensures the accountant has access to THIS clinic
+		hasAccess, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "update")
+		if err != nil || !hasAccess {
+			return nil, fmt.Errorf("permission denied: accountant does not have write access for this clinic")
+		}
+	}
+
 	var result *RsClinic
 
-	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, practitionerID)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
 		if err != nil {
 			return fmt.Errorf("get clinic: %w", err)
 		}
@@ -507,6 +617,13 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 		}
 		if req.IsActive != nil {
 			clinic.IsActive = *req.IsActive
+		}
+
+		clinic.PractitionerID = ownerID
+
+		// Update EntityID only if a new one is provided in the request
+		if req.EntityID != uuid.Nil {
+			clinic.EntityID = req.EntityID
 		}
 
 		_, err = s.repo.UpdateClinicTx(ctx, tx, clinic)
@@ -637,7 +754,7 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 
 					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 						ID:             uuid.New(),
-						PractitionerID: practitionerID,
+						PractitionerID: ownerID,
 						AccountantID:   finalAccountantID,
 						ActorID:        actorUserID,
 						ActorName:      &fullName,
@@ -661,7 +778,7 @@ func (s *service) UpdateClinic(ctx context.Context, practitionerID uuid.UUID, id
 	}
 
 	// Audit log: clinic updated (Async - for both Practitioner and Accountant)
-	meta := auditctx.GetMetadata(ctx)
+
 	idStr := id.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
@@ -842,6 +959,7 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 
 	return &RsClinic{
 		ID:                clinic.ID,
+		EntityID:          clinic.EntityID,
 		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
 		Name:              clinic.Name,
@@ -857,8 +975,13 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 }
 
 // Helper method to update clinic within a transaction (used by bulk update)
-func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
-	clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, practitionerID)
+func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
+	ownerID, err := s.verifyAccess(ctx, actorID, id)
+	if err != nil {
+		return nil, fmt.Errorf("access denied: %w", err)
+	}
+
+	clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("get clinic: %w", err)
 	}
@@ -994,3 +1117,146 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, practitione
 }
 
 func strPtr(s string) *string { return &s }
+
+func (s *service) verifyAccess(ctx context.Context, actorID uuid.UUID, clinicID uuid.UUID) (uuid.UUID, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// If Accountant, check permission bridge
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+		// This repo method should check tbl_invite_permissions
+		permission, err := s.CheckPermission(ctx, actorID, clinicID)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("access denied for accountant: %w", err)
+		}
+		return permission, nil
+	}
+
+	// If Practitioner, they are the owner
+	return actorID, nil
+}
+
+func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinicID uuid.UUID) (uuid.UUID, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// 1. Accountant Flow
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+		// --- STEP A: Resolve User ID to Accountant Profile ID ---
+		// actorID is the User UUID, we need the Profile UUID (e92e4fdb...)
+		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("accountant profile not found for user %s: %w", actorID, err)
+		}
+		// Query tbl_invite_permissions
+		permission, err := s.repo.GetAccountantPermission(ctx, accProfile.ID, clinicID)
+		if err != nil {
+			// Return a clear error for the handler to map to 403 Forbidden
+			return uuid.Nil, fmt.Errorf("accountant access denied for clinic %s: %w", clinicID, err)
+		}
+
+		// Return the Practitioner who owns the data
+		return permission.PractitionerID, nil
+	}
+	// 2. Practitioner Flow - check if they own the clinic
+	exists, err := s.repo.IsClinicOwner(ctx, actorID, clinicID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("database error checking ownership: %w", err)
+	}
+	if !exists {
+		return uuid.Nil, fmt.Errorf("practitioner %s does not own clinic %s", actorID, clinicID)
+	}
+
+	// Since they are the owner, the actorID IS the ownerID
+	return actorID, nil
+}
+func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uuid.UUID, filter Filter) (*util.RsList, error) {
+	f := filter.MapToFilter()
+
+	f.PractitionerID = filter.PractitionerID
+
+	// 1. Call a specific repository method for accountants
+	// This repo method should only return clinics the accountant is invited to
+	clinics, err := s.repo.ListClinicByAccountant(ctx, accountantID, f)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]RsClinic, 0, len(clinics))
+	for _, clinic := range clinics {
+		// --- The following logic remains identical to ListClinic ---
+
+		// Fetch Addresses
+		addresses, addrErr := s.repo.GetClinicAddresses(ctx, clinic.ID)
+		if addrErr != nil {
+			return nil, addrErr
+		}
+		rsAddresses := make([]RsClinicAddress, len(addresses))
+		for i, addr := range addresses {
+			rsAddresses[i] = RsClinicAddress{
+				ID:        addr.ID,
+				Address:   addr.Address,
+				City:      addr.City,
+				State:     addr.State,
+				Postcode:  addr.Postcode,
+				IsPrimary: addr.IsPrimary,
+			}
+		}
+
+		// Fetch Contacts
+		contacts, contErr := s.repo.GetClinicContacts(ctx, clinic.ID)
+		if contErr != nil {
+			return nil, contErr
+		}
+		rsContacts := make([]RsClinicContact, len(contacts))
+		for i, cont := range contacts {
+			rsContacts[i] = RsClinicContact{
+				ID:          cont.ID,
+				ContactType: cont.ContactType,
+				Value:       cont.Value,
+				Label:       cont.Label,
+				IsPrimary:   cont.IsPrimary,
+			}
+		}
+
+		// Fetch Financial Settings
+		financialSettings, fsErr := s.repo.GetFinancialSettings(ctx, clinic.ID)
+		if fsErr != nil {
+			return nil, fsErr
+		}
+		var rsFinancialSettings *RsFinancialSettings
+		if financialSettings != nil {
+			rsFinancialSettings = &RsFinancialSettings{
+				ID:              financialSettings.ID,
+				FinancialYearID: financialSettings.FinancialYearID,
+				LockDate:        financialSettings.LockDate,
+			}
+		}
+
+		// Append to result
+		result = append(result, RsClinic{
+			ID:                clinic.ID,
+			EntityID:          clinic.EntityID,
+			PractitionerID:    clinic.PractitionerID,
+			ProfilePicture:    clinic.ProfilePicture,
+			Name:              clinic.Name,
+			ABN:               clinic.ABN,
+			Description:       clinic.Description,
+			IsActive:          clinic.IsActive,
+			Addresses:         rsAddresses,
+			Contacts:          rsContacts,
+			FinancialSettings: rsFinancialSettings,
+			CreatedAt:         clinic.CreatedAt,
+			UpdatedAt:         clinic.UpdatedAt,
+		})
+	}
+
+	// 2. Count using the accountant-specific count method
+	total, err := s.repo.CountClinicByAccountant(ctx, accountantID, f)
+	if err != nil {
+		return nil, err
+	}
+
+	rsList := &util.RsList{}
+	rsList.MapToList(result, total, *f.Offset, *f.Limit)
+
+	return rsList, nil
+}

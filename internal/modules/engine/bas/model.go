@@ -79,14 +79,15 @@ type BASMonthlyRow struct {
 }
 
 type BASFilter struct {
-	FromDate        *string `form:"from_date"`         // YYYY-MM-DD
-	ToDate          *string `form:"to_date"`           // YYYY-MM-DD
-	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
+	FromDate        *string      `form:"from_date"`         // YYYY-MM-DD
+	ToDate          *string      `form:"to_date"`           // YYYY-MM-DD
+	FinancialYearID *string      `form:"financial_year_id"` // UUID — maps quarter to FY
+	QuarterIDs      []*uuid.UUID `form:"quarterIds"`
 }
 
 // BASReportFilter is used by the /bas/report endpoint.
 type BASReportFilter struct {
-	PractitionerID string  `form:"-"` // set from JWT
+	PractitionerID string  `form:"-"`          // set from JWT
 	QuarterID      *string `form:"quarter_id"` // UUID of tbl_financial_quarter
 	Month          *string `form:"month"`      // e.g. "January"
 }
@@ -102,10 +103,10 @@ type RsBASReport struct {
 // BASReportRow is the DB scan target for the report query.
 // G1/G11 are net (ex-GST) amounts; 1A/1B are the GST collected/paid.
 type BASReportRow struct {
-	G1TotalSalesNet       float64 `db:"g1_total_sales_net"`
-	Label1AGSTOnSales     float64 `db:"label_1a_gst_on_sales"`
-	G11TotalPurchasesNet  float64 `db:"g11_total_purchases_net"`
-	Label1BGSTOnPurchases float64 `db:"label_1b_gst_on_purchases"`
+	G1TotalSalesGross      float64 `db:"g1_total_sales_gross"`
+	Label1AGSTOnSales      float64 `db:"label_1a_gst_on_sales"`
+	G11TotalPurchasesGross float64 `db:"g11_total_purchases_gross"`
+	Label1BGSTOnPurchases  float64 `db:"label_1b_gst_on_purchases"`
 }
 
 type RsBASSummary struct {
@@ -230,4 +231,58 @@ func validateDateFilter(f *BASFilter) error {
 		return fmt.Errorf("from_date must not be after to_date")
 	}
 	return nil
+}
+
+// BAS Preparation
+type BASAmount struct {
+	Gross float64 `json:"gross"`
+	GST   float64 `json:"gst"`
+	Net   float64 `json:"net"`
+}
+
+type BASLineItem struct {
+	Name    string    `json:"name"`
+	Amounts BASAmount `json:"amounts"`
+}
+
+type BASGSTItem struct {
+	Name        string  `json:"name"`
+	GrossAmount float64 `json:"gross_amount"`
+}
+
+type BASSection struct {
+	Items []BASLineItem `json:"items"`
+}
+
+type BASQuarterInfo struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	StartDate    string `json:"startDate"`
+	EndDate      string `json:"endDate"`
+	DisplayRange string `json:"displayRange"`
+}
+
+type BASLineItemRow struct {
+	PeriodQuarter time.Time `db:"period_quarter"`
+	SectionType   *string   `db:"section_type"`
+	BasCategory   string    `db:"bas_category"`
+	AccountName   string    `db:"account_name"`
+	NetAmount     float64   `db:"net_amount"`
+	GstAmount     float64   `db:"gst_amount"`
+	GrossAmount   float64   `db:"gross_amount"`
+}
+
+type BASColumn struct {
+	Quarter  BASQuarterInfo `json:"quarter"`
+	Sections struct {
+		Income        BASSection `json:"income"`
+		Expenses      BASSection `json:"expenses"`
+		NetProfitLoss BASSection `json:"net_profit_loss"`
+	} `json:"sections"`
+	NetGSTPayable float64 `json:"net_gst_payable"`
+}
+
+type RsBASPreparation struct {
+	Columns    []BASColumn `json:"columns"`
+	GrandTotal BASColumn   `json:"grand_total"`
 }

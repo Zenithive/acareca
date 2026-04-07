@@ -3,6 +3,7 @@ package form
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -70,13 +71,29 @@ func NewHandler(svc IService) IHandler {
 // @Security BearerToken
 // @Router /form/{id} [get]
 func (h *handler) GetById(c *gin.Context) {
-	formId, ok := util.ParseUuidID(c, "id")
+	var actorID, formId uuid.UUID
+	var ok bool
+	formId, ok = util.ParseUuidID(c, "id")
 	if !ok {
 		response.Error(c, http.StatusBadRequest, errors.New("invaild form id"))
 		return
 	}
 
-	form, err := h.svc.GetFormByID(c.Request.Context(), formId)
+	// Get Role and appropriate ID
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	form, err := h.svc.GetFormByID(c.Request.Context(), formId, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -97,11 +114,26 @@ func (h *handler) GetById(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [post]
 func (h *handler) CreateFormWithFields(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
-		return
+	// practitionerID, ok := util.GetPractitionerID(c)
+	// if !ok {
+	// 	return
+	// }
+
+	// Get Role and appropriate ID
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
 	}
 
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
 	var req RqCreateFormWithFields
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -116,7 +148,7 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, practitionerID)
+	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, actorID, role)
 
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
@@ -143,7 +175,9 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/{id} [patch]
 func (h *handler) UpdateFormWithFields(c *gin.Context) {
-	formID, ok := util.ParseUuidID(c, "id")
+	var actorID, formID uuid.UUID
+	var ok bool
+	formID, ok = util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
@@ -153,22 +187,51 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 
-	practitionerID, ok := util.GetPractitionerID(c)
+	// practitionerID, ok := util.GetPractitionerID(c)
+	// if !ok {
+	// 	return
+	// }
+
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
 	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
+
 	var req RqUpdateFormWithFields
-	if err := util.BindAndValidate(c, &req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
+	for i := range req.Update {
+		req.Update[i].Sanitize()
+	}
+
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	if err := util.ValidateStruct(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
 	req.ID = &formID
 
 	if err := req.ValidateShares(); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	form, syncResult, err := h.svc.UpdateWithFields(c.Request.Context(), &req, practitionerID)
+	form, syncResult, err := h.svc.UpdateWithFields(c.Request.Context(), &req, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -188,12 +251,27 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/{id} [get]
 func (h *handler) GetFormWithFields(c *gin.Context) {
-	formID, ok := util.ParseUuidID(c, "id")
+	var actorID, formID uuid.UUID
+	var ok bool
+	formID, ok = util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
 
-	out, err := h.svc.GetFormWithFields(c.Request.Context(), formID)
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	out, err := h.svc.GetFormWithFields(c.Request.Context(), formID, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -205,6 +283,7 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Description List all forms belonging to the practitioner's clinics. Optionally filter by clinic, method, or status. If clinic_id is omitted, all clinics are included.
 // @Tags form
 // @Produce json
+// @Param practitioner_id  query string false "Filter by practitioner ID (UUID)"
 // @Param clinic_id  query string false "Filter by clinic ID (UUID)"
 // @Param form_name  query string false "Filter by form name (partial match)"
 // @Param method     query string false "Filter by method" Enums(INDEPENDENT_CONTRACTOR, SERVICE_FEE)
@@ -220,8 +299,17 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [get]
 func (h *handler) List(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+	if role == util.RoleAccountant {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
 	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
 
@@ -231,7 +319,7 @@ func (h *handler) List(c *gin.Context) {
 		return
 	}
 
-	list, err := h.svc.List(c.Request.Context(), filter, practitionerID)
+	list, err := h.svc.List(c.Request.Context(), filter, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -251,11 +339,22 @@ func (h *handler) List(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/{id} [delete]
 func (h *handler) Delete(c *gin.Context) {
-	formID, ok := util.ParseUuidID(c, "id")
+	var actorID, formID uuid.UUID
+	var ok bool
+	formID, ok = util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), formID); err != nil {
+
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if err := h.svc.Delete(c.Request.Context(), formID, actorID, role); err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -274,10 +373,31 @@ type RqUpdateFormStatus struct {
 // @Param id path string true "Form ID"
 // @Param request body RqUpdateFormStatus true "Status update request"
 // @Success 200 {object} response.RsBase
+// @Security BearerToken
 // @Router /form/{id}/status [patch]
 func (h *handler) UpdateFormStatus(c *gin.Context) {
-	formID, ok := util.ParseUuidID(c, "id")
+	var actorID, formID uuid.UUID
+	var ok bool
+	formID, ok = util.ParseUuidID(c, "id")
 	if !ok {
+		return
+	}
+
+	if formID == uuid.Nil {
+		response.Error(c, http.StatusBadRequest, errors.New("form id is required"))
+		return
+	}
+
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
 
@@ -287,7 +407,7 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 		return
 	}
 
-	form, err := h.svc.UpdateFormStatus(c.Request.Context(), formID, req.Status)
+	form, err := h.svc.UpdateFormStatus(c.Request.Context(), formID, req.Status, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

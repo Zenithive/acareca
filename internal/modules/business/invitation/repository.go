@@ -3,6 +3,7 @@ package invitation
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -25,6 +26,14 @@ type Repository interface {
 	GetInvitationByID(ctx context.Context, id uuid.UUID) (*InvitationExtended, error)
 	GetUserDetailsByEmail(ctx context.Context, email string) (*UserDetails, error)
 	CountDailyInvitesByEmail(ctx context.Context, practitionerID uuid.UUID, email string) (int, error)
+	GetEmailByAccountantID(ctx context.Context, accountantID uuid.UUID) (string, error)
+	ListByEmail(ctx context.Context, email string, f common.Filter) ([]*Invitation, error)
+	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
+
+	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID, entityID uuid.UUID, entityType string, perms Permissions) error
+	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
+	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 }
 
 type repository struct {
@@ -203,4 +212,123 @@ func (r *repository) CountDailyInvitesByEmail(ctx context.Context, practitionerI
 		return 0, err
 	}
 	return count, nil
+}
+
+func (r *repository) GetEmailByAccountantID(ctx context.Context, accountantID uuid.UUID) (string, error) {
+	var email string
+	query := `
+		SELECT u.email FROM tbl_accountant a
+		JOIN tbl_user u ON a.user_id = u.id
+		WHERE a.id = $1 AND a.deleted_at IS NULL`
+	if err := r.db.GetContext(ctx, &email, query, accountantID); err != nil {
+		return "", fmt.Errorf("get email by accountant id: %w", err)
+	}
+	return email, nil
+}
+
+func (r *repository) ListByEmail(ctx context.Context, email string, f common.Filter) ([]*Invitation, error) {
+	query := `SELECT id, practitioner_id, entity_id, email, status, created_at, expires_at 
+	          FROM tbl_invitation WHERE email = $1 AND status::text != $2`
+
+	args := []interface{}{email, string(StatusResent)}
+
+	if f.Limit != nil {
+		query += fmt.Sprintf(" LIMIT %d", *f.Limit)
+	}
+	if f.Offset != nil {
+		query += fmt.Sprintf(" OFFSET %d", *f.Offset)
+	}
+
+	var list []*Invitation
+	if err := r.db.SelectContext(ctx, &list, query, args...); err != nil {
+		return nil, fmt.Errorf("list invitations by email: %w", err)
+	}
+	return list, nil
+}
+
+func (r *repository) CountByEmail(ctx context.Context, email string, f common.Filter) (int, error) {
+	query := `SELECT COUNT(*) FROM tbl_invitation WHERE email = $1 AND status::text != $2`
+
+	var total int
+	if err := r.db.GetContext(ctx, &total, query, email, string(StatusResent)); err != nil {
+		return 0, fmt.Errorf("count invitations by email: %w", err)
+	}
+	return total, nil
+}
+
+// GetPermissions checks if an accountant has access to a specific entity (Clinic or Form)
+func (r *repository) GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error) {
+	var permissions Permissions
+	var raw json.RawMessage
+
+	// We check for a mapping where the accountant is linked to the entity
+	query := `
+        SELECT permissions
+        FROM tbl_invite_permissions
+        WHERE accountant_id = $1 AND entity_id = $2 AND deleted_at IS NULL LIMIT 1
+    `
+	// var raw []byte
+	err := r.db.GetContext(ctx, &raw, query, accountantID, entityID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // No mapping means no permission
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(raw, &permissions); err != nil {
+		return nil, err
+	}
+
+	return &permissions, nil
+}
+
+func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID, entityID uuid.UUID, entityType string, perms Permissions) error {
+	permJSON, err := json.Marshal(perms)
+	if err != nil {
+		return fmt.Errorf("failed to marshal permissions: %w", err)
+	}
+
+	query := `
+		INSERT INTO tbl_invite_permissions (
+			id, practitioner_id, accountant_id, entity_id, entity_type, permissions, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, NOW(), Now()
+		)
+	`
+
+	_, err = tx.ExecContext(ctx, query,
+		uuid.New(),
+		practitionerID,
+		accountantID,
+		entityID,
+		entityType,
+		permJSON, // This sends the JSON string to the DB
+	)
+
+	if err != nil {
+		return fmt.Errorf("grant entity permission repo: %w", err)
+	}
+
+	return nil
+}
+
+func (r *repository) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
+	query := `
+        UPDATE tbl_invite_permissions 
+        SET deleted_at = NOW(), updated_at = NOW() 
+        WHERE entity_id = $1 AND deleted_at IS NULL
+    `
+	_, err := tx.ExecContext(ctx, query, entityID)
+	if err != nil {
+		return fmt.Errorf("delete entity permissions: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
+	var practitionerID uuid.UUID
+	query := `SELECT practitioner_id FROM tbl_invitation WHERE entity_id = $1 AND status = 'COMPLETED' LIMIT 1`
+	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
+	return practitionerID, err
 }
