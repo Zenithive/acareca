@@ -23,6 +23,7 @@ type Config struct {
 	LocalUrl           string
 	AllowedOrigins     string
 	StripeSecretKey    string
+	FrontendURL        string
 }
 
 func getEnv(key, fallback string) string {
@@ -52,6 +53,7 @@ func NewConfig() *Config {
 		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
 		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
-		StripeSecretKey:    os.Getenv("STRIPE_SECRET_KEY"),
+		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
+		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
 	}
 }
