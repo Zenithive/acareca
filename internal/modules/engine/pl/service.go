@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -26,10 +27,12 @@ type service struct {
 	repo           Repository
 	clinicRepo     clinic.Repository
 	accountantRepo accountant.Repository
+
+	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository) Service {
-	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo}
+func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
+	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo, practitionerSvc: practitionerSvc}
 }
 
 func (s *service) GetMonthlySummary(ctx context.Context, f *PLFilter) ([]RsPLSummary, error) {
@@ -192,12 +195,21 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 			}
 		}
 	} else {
-		// Case C: User is a Practitioner (OUTSIDE the accountant block)
-		finalOwnerID = actorID
 
+		pracProfile, err := s.practitionerSvc.GetPractitionerByUserID(ctx, actorID.String())
+		if err != nil {
+			return nil, fmt.Errorf("access denied: practitioner profile not found")
+		}
+		finalOwnerID = pracProfile.ID
+
+		// Verify clinic ownership if a specific one is requested
 		if f.ClinicID != nil && *f.ClinicID != "" {
-			clinicUUID, _ := uuid.Parse(*f.ClinicID)
-			_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, finalOwnerID)
+			clinicUUID, err := uuid.Parse(*f.ClinicID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid clinic_id format")
+			}
+
+			_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, finalOwnerID)
 			if err != nil {
 				return nil, fmt.Errorf("access denied: clinic not found or ownership mismatch")
 			}
