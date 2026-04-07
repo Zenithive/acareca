@@ -11,6 +11,7 @@ server
 
 # IDE
 .idea/
+.vscode/
 *.swp
 *.swo
 
