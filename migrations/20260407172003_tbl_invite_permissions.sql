@@ -1,11 +1,17 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE TYPE invite_entity_type AS ENUM (
-    'CLINIC',
-    'FORM',
-    'ENTRY'
-);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'invite_entity_type') THEN
+        CREATE TYPE invite_entity_type AS ENUM (
+            'CLINIC',
+            'FORM',
+            'ENTRY'
+        );
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS tbl_invite_permissions (
     id            UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
@@ -23,11 +29,11 @@ CREATE TABLE IF NOT EXISTS tbl_invite_permissions (
 );
 
 -- Indexing for performance
-CREATE INDEX idx_invite_perms_prac ON tbl_invite_permissions (practitioner_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_invite_perms_acc ON tbl_invite_permissions (accountant_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_invite_perms_entity ON tbl_invite_permissions (entity_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_invite_perms_entity_type ON tbl_invite_permissions (entity_type) WHERE deleted_at IS NULL;
-CREATE INDEX idx_invite_permissions_lookup ON tbl_invite_permissions (practitioner_id, accountant_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invite_perms_prac ON tbl_invite_permissions (practitioner_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invite_perms_acc ON tbl_invite_permissions (accountant_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invite_perms_entity ON tbl_invite_permissions (entity_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invite_perms_entity_type ON tbl_invite_permissions (entity_type) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invite_permissions_lookup ON tbl_invite_permissions (practitioner_id, accountant_id) WHERE deleted_at IS NULL;
 
 -- +goose StatementEnd
 
