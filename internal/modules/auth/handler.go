@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -244,14 +243,6 @@ func (h *handler) GoogleLogin(c *gin.Context) {
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
-
-	c.SetSameSite(http.SameSiteLaxMode)
-	if h.cfg.Env == "local" {
-		c.SetCookie("oauth_state", state, 300, "/", "", false, true)
-	} else {
-		c.SetCookie("oauth_state", state, 300, "/", "", true, true)
-	}
-
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
@@ -262,7 +253,6 @@ func (h *handler) GoogleAuthURL(c *gin.Context) {
 // @Tags auth
 // @Produce json
 // @Param code query string true "OAuth authorization code"
-// @Param state query string true "OAuth state (CSRF token)"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -272,32 +262,6 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 	if code == "" {
 		response.Error(c, http.StatusBadRequest, errors.New("missing oauth code"))
 		return
-	}
-
-	c.SetSameSite(http.SameSiteLaxMode)
-
-	if h.cfg.Env == "local" {
-		// CSRF validation intentionally skipped in local env
-		fmt.Println("OAuth state validation skipped (local env)")
-		c.SetCookie("oauth_state", "", -1, "/", "", false, true)
-	} else {
-		stateParam := c.Query("state")
-		stateCookie, err := c.Cookie("oauth_state")
-		if err != nil {
-			response.Error(c, http.StatusBadRequest, errors.New("missing oauth state cookie"))
-			return
-		}
-		if stateParam == "" {
-			response.Error(c, http.StatusBadRequest, errors.New("oauth state parameter is empty"))
-			return
-		}
-		if stateParam != stateCookie {
-			response.Error(c, http.StatusBadRequest, errors.New("oauth state mismatch"))
-			return
-		}
-
-		// Consume the state cookie
-		c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 	}
 
 	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
