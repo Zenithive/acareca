@@ -9,6 +9,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
 type IHandler interface {
@@ -29,10 +30,12 @@ type IHandler interface {
 
 type handler struct {
 	svc Service
+	cfg config.Config
 }
 
 func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+	cfg := config.NewConfig()
+	return &handler{svc: svc, cfg: *cfg}
 }
 
 // Register godoc
@@ -240,8 +243,15 @@ func (h *handler) GoogleLogin(c *gin.Context) {
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
 	state := util.NewUUID()
-	// Store state in a short-lived, HttpOnly cookie so the callback can verify it
-	c.SetCookie("oauth_state", state, 300, "/", "", true, true)
+	// Store state in a short-lived cookie with SameSite=Lax for OAuth redirects
+	// SameSite=Lax allows the cookie to be sent on top-level navigation (OAuth callback)
+	c.SetSameSite(http.SameSiteLaxMode)
+	if h.cfg.Env == "local" {
+		c.SetCookie("oauth_state", state, 300, "/", "", false, true)
+	} else {
+		c.SetCookie("oauth_state", state, 300, "/", "", true, true)
+	}
+
 	result := h.svc.GoogleAuthURL(state)
 	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
 }
@@ -264,15 +274,33 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Validate state to prevent CSRF
-	stateParam := c.Query("state")
-	stateCookie, err := c.Cookie("oauth_state")
-	if err != nil || stateParam == "" || stateParam != stateCookie {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid oauth state"))
-		return
+	// In local env, skip state check (to allow easier dev/test)
+	if h.cfg.Env == "local" {
+		// optionally try to consume the cookie, if set
+		c.SetSameSite(http.SameSiteLaxMode)
+		c.SetCookie("oauth_state", "", -1, "/", "", false, true)
+	} else {
+		stateParam := c.Query("state")
+		stateCookie, err := c.Cookie("oauth_state")
+		if err != nil || stateParam == "" || stateParam != stateCookie {
+			response.Error(c, http.StatusBadRequest, errors.New("invaild oauth state"))
+			return
+		}
+		// Only enforce state validation if cookie was set (production flow)
+		if stateParam == "" {
+			response.Error(c, http.StatusBadRequest, errors.New("oauth state parameter is empty"))
+			return
+		}
+
+		if stateParam != stateCookie {
+			response.Error(c, http.StatusBadRequest, errors.New("oauth state mismatch"))
+			return
+		}
+
+		// Consume the state cookie
+		c.SetSameSite(http.SameSiteLaxMode)
+		c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 	}
-	// Consume the state cookie
-	c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 
 	token, err := h.svc.GoogleCallback(c.Request.Context(), code)
 	if err != nil {
