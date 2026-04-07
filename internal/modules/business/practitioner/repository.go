@@ -22,6 +22,7 @@ type Repository interface {
 
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
 }
 
 type repository struct {
@@ -37,7 +38,7 @@ func (r *repository) CreatePractitioner(ctx context.Context, req *RqCreatePracti
 	query := `
 		INSERT INTO tbl_practitioner (user_id)
 		VALUES ($1)
-		RETURNING id, user_id, abn, verified, created_at, updated_at, deleted_at
+		RETURNING id, user_id, abn, verified, stripe_customer_id, created_at, updated_at, deleted_at
 	`
 	var p Practitioner
 	if err := tx.QueryRowxContext(ctx, query, req.UserID).StructScan(&p); err != nil {
@@ -63,7 +64,7 @@ func (r *repository) DeletePractitioner(ctx context.Context, id uuid.UUID) error
 // GetPractitioner implements [Repository].
 func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
 	query := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
@@ -79,7 +80,7 @@ func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPrac
 // GetPractitionerByUserID implements [Repository].
 func (r *repository) GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error) {
 	query := `
-	SELECT id, user_id, abn, verified, created_at, updated_at, deleted_at FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL
+	SELECT id, user_id, abn, verified, stripe_customer_id, created_at, updated_at, deleted_at FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL
 	`
 	var p Practitioner
 	if err := r.db.QueryRowxContext(ctx, query, userID).StructScan(&p); err != nil {
@@ -102,7 +103,7 @@ var practitionerSearchCols = []string{"u.first_name", "u.last_name", "u.email", 
 // ListPractitioners implements [Repository].
 func (r *repository) ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error) {
 	base := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
@@ -135,6 +136,12 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 func (r *repository) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error {
 	query := `UPDATE tbl_practitioner SET abn = $1, updated_at = NOW() WHERE user_id = $2 AND deleted_at IS NULL`
 	_, err := r.db.ExecContext(ctx, query, abn, userID)
+	return err
+}
+
+func (r *repository) UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error {
+	query := `UPDATE tbl_practitioner SET stripe_customer_id = $2, updated_at = NOW() WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, practitionerID, customerID)
 	return err
 }
 

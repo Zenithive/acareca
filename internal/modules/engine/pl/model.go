@@ -26,7 +26,7 @@ type PLReportRow struct {
 	FormName    string  `db:"form_name"`
 	FormFieldID string  `db:"form_field_id"`
 	FieldLabel  string  `db:"field_label"`
-	SectionType string  `db:"section_type"`
+	SectionType *string `db:"section_type"`
 	CoaID       string  `db:"coa_id"`
 	AccountName string  `db:"account_name"`
 	TaxName     string  `db:"tax_name"`
@@ -42,8 +42,8 @@ type RsReportAccount struct {
 }
 
 type RsReportGroup struct {
-	GroupTotal float64            `json:"group_total"`
-	Accounts   []RsReportAccount  `json:"accounts"`
+	GroupTotal float64           `json:"group_total"`
+	Accounts   []RsReportAccount `json:"accounts"`
 }
 
 type RsReport struct {

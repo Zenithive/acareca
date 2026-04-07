@@ -20,15 +20,17 @@ const (
 
 // PractitionerSubscription matches tbl_practitioner_subscription.
 type PractitionerSubscription struct {
-	ID             int        `db:"id"`
-	PractitionerID uuid.UUID  `db:"practitioner_id"`
-	SubscriptionID int        `db:"subscription_id"`
-	StartDate      time.Time  `db:"start_date"`
-	EndDate        time.Time  `db:"end_date"`
-	Status         Status     `db:"status"`
-	CreatedAt      time.Time  `db:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
+	ID                   int        `db:"id"`
+	PractitionerID       uuid.UUID  `db:"practitioner_id"`
+	SubscriptionID       int        `db:"subscription_id"`
+	StartDate            time.Time  `db:"start_date"`
+	EndDate              time.Time  `db:"end_date"`
+	Status               Status     `db:"status"`
+	StripeSubscriptionID *string    `db:"stripe_subscription_id"`
+	StripeInvoiceID      *string    `db:"stripe_invoice_id"`
+	CreatedAt            time.Time  `db:"created_at"`
+	UpdatedAt            time.Time  `db:"updated_at"`
+	DeletedAt            *time.Time `db:"deleted_at"`
 }
 
 // RqCreatePractitionerSubscription request to create a practitioner subscription.
@@ -86,6 +88,17 @@ func (s *PractitionerSubscription) ToRs() *RsPractitionerSubscription {
 		CreatedAt:      s.CreatedAt,
 		UpdatedAt:      s.UpdatedAt,
 	}
+}
+
+// WebhookUpsert carries the data needed to upsert a practitioner subscription from a webhook event.
+type WebhookUpsert struct {
+	PractitionerID       uuid.UUID
+	SubscriptionID       int
+	StripeSubscriptionID string
+	StripeInvoiceID      *string
+	Status               Status
+	StartDate            time.Time
+	EndDate              time.Time
 }
 
 type Filter struct {

@@ -73,7 +73,7 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 		FROM vw_pl_by_account
 		WHERE clinic_id = $1
 	`
-	args := []interface{}{clinicID}
+	args := []any{clinicID}
 	idx := 2
 
 	if f.FromDate != nil {

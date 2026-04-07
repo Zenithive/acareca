@@ -34,6 +34,7 @@ type RqCreateField struct {
 	TaxType               *string `json:"tax_type" validate:"omitempty"`
 	CoaID                 *string `json:"coa_id" validate:"omitempty,uuid"`
 	SortOrder             int     `json:"sort_order" validate:"min=0"`
+	IsFormula             *bool   `json:"is_formula"`
 }
 
 func (r *RqCreateField) Validate() error {
@@ -73,6 +74,7 @@ func (r *RqCreateField) ToRqFormField() *RqFormField {
 		TaxType:               r.TaxType,
 		CoaID:                 coaID,
 		SortOrder:             r.SortOrder,
+		IsFormula:             r.IsFormula,
 	}
 }
 
@@ -86,6 +88,7 @@ type RqFormField struct {
 	TaxType               *string `json:"tax_type" validate:"omitempty"`
 	CoaID                 string  `json:"coa_id" validate:"omitempty,uuid"`
 	SortOrder             int     `json:"sort_order" validate:"min=0"`
+	IsFormula             *bool   `json:"is_formula"`
 }
 
 func (r *RqFormField) Sanitize() {
@@ -95,6 +98,10 @@ func (r *RqFormField) Sanitize() {
 	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
 		r.PaymentResponsibility = nil
 	}
+
+	// if r.IsFormula != nil {
+	// 	r.IsFormula = nil
+	// }
 }
 
 type RqUpdateFormField struct {
@@ -121,6 +128,7 @@ func (r *RqUpdateFormField) Sanitize() {
 	if r.CoaID != nil && *r.CoaID == "" {
 		r.CoaID = nil
 	}
+
 }
 
 type FormField struct {
@@ -130,6 +138,7 @@ type FormField struct {
 	Slug                  *string    `db:"slug"`
 	Label                 string     `db:"label"`
 	IsComputed            bool       `db:"is_computed"`
+	IsFormula             bool       `db:"is_formula"`
 	SectionType           *string    `db:"section_type"`
 	PaymentResponsibility *string    `db:"payment_responsibility"`
 	TaxType               *string    `db:"tax_type"`
@@ -155,6 +164,14 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 			coaID = &id
 		}
 	}
+
+	var formula bool
+	if r.IsFormula != nil {
+		formula = *r.IsFormula
+	} else {
+		formula = false
+	}
+
 	return &FormField{
 		ID:                    uuid.New(),
 		FormVersionID:         formVersionID,
@@ -167,6 +184,7 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		TaxType:               r.TaxType,
 		CoaID:                 coaID,
 		SortOrder:             r.SortOrder,
+		IsFormula:             formula,
 	}
 }
 
@@ -178,6 +196,7 @@ func (d *FormField) ToRs() *RsFormField {
 		Slug:                  d.Slug,
 		Label:                 d.Label,
 		IsComputed:            d.IsComputed,
+		IsFormula:             d.IsFormula,
 		SectionType:           d.SectionType,
 		PaymentResponsibility: d.PaymentResponsibility,
 		TaxType:               d.TaxType,
@@ -203,6 +222,7 @@ type RsFormField struct {
 	Slug                  *string      `json:"slug"`
 	Label                 string       `json:"label"`
 	IsComputed            bool         `json:"is_computed"`
+	IsFormula             bool         `json:"is_formula"`
 	SectionType           *string      `json:"section_type"`
 	PaymentResponsibility *string      `json:"payment_responsibility"`
 	TaxType               *string      `json:"tax_type"`

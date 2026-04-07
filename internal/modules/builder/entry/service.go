@@ -334,9 +334,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			continue
 		}
 
+		// Handle both old format (amount) and new format (net_amount/gross_amount)
+		var inputAmount float64
+		if v.NetAmount != nil {
+			// New format: use net_amount
+			inputAmount = *v.NetAmount
+		} else if v.GrossAmount != nil {
+			// New format: use gross_amount
+			inputAmount = *v.GrossAmount
+		} else {
+			// Old format: use amount
+			inputAmount = v.Amount
+		}
+
 		var gstAmount *float64
-		netBase := v.Amount
-		grossTotal := v.Amount
+		netBase := inputAmount
+		grossTotal := inputAmount
 
 		if f.TaxType == nil {
 			// No tax type: net = gross, use netBase for formulas
@@ -357,7 +370,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		switch taxType {
 
 		case method.TaxTreatmentInclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
 			if err != nil {
 				return nil, err
 			}
@@ -366,12 +379,12 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentExclusive:
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: v.Amount})
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
 			if err != nil {
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = v.Amount
+			netBase = inputAmount
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
@@ -382,22 +395,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
 				gstAmount = v.GstAmount
-				grossTotal = v.Amount
+				grossTotal = inputAmount
 				if v.GstAmount != nil {
-					netBase = v.Amount - *v.GstAmount
+					netBase = inputAmount - *v.GstAmount
 				}
 			} else {
 				gstAmount = v.GstAmount
-				netBase = v.Amount
+				netBase = inputAmount
 				if gstAmount != nil {
-					grossTotal = v.Amount + *gstAmount
+					grossTotal = inputAmount + *gstAmount
 				}
 			}
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
-			netBase = v.Amount
-			grossTotal = v.Amount
+			netBase = inputAmount
+			grossTotal = inputAmount
 
 		default:
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
@@ -443,20 +456,13 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		}
 
 		// Compute section totals using NET amounts from out
-		// EXCEPTION: OTHER_COST uses GROSS amounts (to match live calculation)
 		sectionTotals := make(map[string]float64)
 		for _, entryVal := range out {
 			f, ok := fieldByID[entryVal.FormFieldID]
 			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
 				sectionKey := "SECTION:" + *f.SectionType
-				
-				// For OTHER_COST, use GROSS amount instead of NET
-				amountToAdd := *entryVal.NetAmount
-				if *f.SectionType == "OTHER_COST" && entryVal.GrossAmount != nil {
-					amountToAdd = *entryVal.GrossAmount
-				}
-				
-				sectionTotals[sectionKey] += amountToAdd
+				// Always use NET amount for section totals (matching LiveCalculate logic)
+				sectionTotals[sectionKey] += *entryVal.NetAmount
 			}
 		}
 
@@ -471,7 +477,26 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			}
 		}
 
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey)
+		// Collect manually entered GST amounts for computed fields with MANUAL tax type
+		manualGSTByKey := make(map[string]float64)
+		for _, v := range rq {
+			if v.GstAmount == nil {
+				continue
+			}
+			fieldID, err := uuid.Parse(v.FormFieldID)
+			if err != nil {
+				continue
+			}
+			f, ok := fieldByID[fieldID]
+			if !ok || !f.IsComputed {
+				continue
+			}
+			if f.TaxType != nil && *f.TaxType == "MANUAL" {
+				manualGSTByKey[f.FieldKey] = *v.GstAmount
+			}
+		}
+
+		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate formulas: %w", err)
 		}
@@ -513,6 +538,33 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 					gstAmount = &gst
 					netBase = val  // Keep as NET
 					grossTotal = val + gst  // NET + GST = GROSS
+				case method.TaxTreatmentManual:
+					// For MANUAL tax type on computed fields, check if GST was provided in request
+					var entryGST *float64
+					for _, v := range rq {
+						entryFieldID, _ := uuid.Parse(v.FormFieldID)
+						if entryFieldID == fieldID && v.GstAmount != nil {
+							entryGST = v.GstAmount
+							break
+						}
+					}
+
+					// If GST amount is empty or zero, send net with gst=0, gross=net
+					if entryGST == nil {
+						gst := 0.0
+						gstAmount = &gst
+						netBase = val
+						grossTotal = val
+					} else {
+						// If GST provided, send net=net, gst=entry.gst, gross=net+gst
+						gstAmount = entryGST
+						netBase = val
+						grossTotal = val + *entryGST
+					}
+				case method.TaxTreatmentZero:
+					gstAmount = nil
+					netBase = val
+					grossTotal = val
 				}
 			}
 
