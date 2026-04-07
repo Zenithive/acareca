@@ -2,10 +2,12 @@ package bas
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -20,11 +22,12 @@ type IHandler interface {
 }
 
 type handler struct {
-	svc Service
+	svc           Service
+	invitationSvc invitation.Service
 }
 
-func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc}
 }
 
 // GetQuarterlySummary godoc
@@ -163,9 +166,31 @@ func parseClinicID(c *gin.Context) (uuid.UUID, bool) {
 // @Security     BearerToken
 // @Router       /bas/report [get]
 func (h *handler) GetReport(c *gin.Context) {
-	pracID, ok := util.GetPractitionerID(c)
-	if !ok {
-		return
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var pracID uuid.UUID
+	var ok bool
+
+	if role == util.RoleAccountant {
+		actorID, ok = util.GetAccountantID(c)
+		if !ok {
+			return
+		}
+
+		// Resolve which Practitioner this Accountant is working for
+		resolvedID, err := h.invitationSvc.GetPractitionerLinkedToAccountant(c.Request.Context(), actorID)
+		if err != nil {
+			response.Error(c, http.StatusForbidden, fmt.Errorf("accountant not linked to a practitioner: %w", err))
+			return
+		}
+		pracID = resolvedID
+	} else {
+		// If they are a Practitioner, the actorID IS the pracID
+		actorID, ok = util.GetPractitionerID(c)
+		if !ok {
+			return
+		}
+		pracID = actorID
 	}
 
 	var f BASReportFilter
@@ -173,6 +198,7 @@ func (h *handler) GetReport(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	f.PractitionerID = pracID.String()
 
 	result, err := h.svc.GetReport(c.Request.Context(), &f)

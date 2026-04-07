@@ -851,7 +851,7 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 
 	return &RsClinic{
 		ID:                clinic.ID,
-		EntityID:          clinic.EntityID,
+		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,

@@ -18,8 +18,8 @@ import (
 type Service interface {
 	GrossMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, fieldMap map[uuid.UUID]*field.RsFormField) (*GrossResult, error)
 	NetMethod(ctx context.Context, formDetail *detail.RsFormDetail, formValue []entry.RsEntryValue, fieldMap map[uuid.UUID]*field.RsFormField, filter *NetFilter) (*NetResult, error)
-	Calculate(ctx context.Context, formId uuid.UUID, filter *NetFilter) (interface{}, error)
-	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error)
+	Calculate(ctx context.Context, formId uuid.UUID, filter *NetFilter, actorID uuid.UUID, role string) (interface{}, error)
+	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries, actorID uuid.UUID, role string) (interface{}, error)
 	FormulaCalculate(ctx context.Context, formID uuid.UUID, req *RqFormulaCalculate) (*RsFormulaCalculate, error)
 	LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error)
 }
@@ -210,9 +210,9 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 }
 
 // Calculate implements [Service].
-func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFilter) (interface{}, error) {
+func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFilter, actorID uuid.UUID, role string) (interface{}, error) {
 
-	form, err := s.formSvc.GetFormByID(ctx, formID)
+	form, err := s.formSvc.GetFormByID(ctx, formID, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -239,13 +239,13 @@ func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFi
 }
 
 // CalculateFromEntries implements [Service].
-func (s *service) CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries) (interface{}, error) {
+func (s *service) CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries, actorID uuid.UUID, role string) (interface{}, error) {
 	formID, err := uuid.Parse(req.FormID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid form_id: %w", err)
 	}
 
-	form, err := s.formSvc.GetFormByID(ctx, formID)
+	form, err := s.formSvc.GetFormByID(ctx, formID, actorID, role)
 	if err != nil {
 		return nil, err
 	}

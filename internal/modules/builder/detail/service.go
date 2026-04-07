@@ -2,12 +2,14 @@ package detail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -17,24 +19,25 @@ import (
 type IService interface {
 	Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
 	CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
-	GetByID(ctx context.Context, formID uuid.UUID) (*RsFormDetail, error)
+	GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormDetail, error)
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
-	Delete(ctx context.Context, formID uuid.UUID) error
-	List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error)
+	Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error
+	List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	UpdateFormStatus(ctx context.Context, d *RqUpdateFormStatus) error
 }
 
 type Service struct {
-	db         *sqlx.DB
-	repo       IRepository
-	versionSvc version.IService
-	limitsSvc  limits.Service
-	clinicRepo clinic.Repository
+	db            *sqlx.DB
+	repo          IRepository
+	versionSvc    version.IService
+	limitsSvc     limits.Service
+	clinicRepo    clinic.Repository
+	invitationSvc invitation.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService, clinicRepo clinic.Repository) IService {
-	return &Service{db: db, repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db), clinicRepo: clinicRepo}
+func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService, clinicRepo clinic.Repository, invitationSvc invitation.Service) IService {
+	return &Service{db: db, repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db), clinicRepo: clinicRepo, invitationSvc: invitationSvc}
 }
 
 // Create implements [IService].
@@ -52,7 +55,7 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 		}
 
 		// Overwrite the ID so we check the OWNER'S subscription, not the accountant's
-		practitionerID = clinic.EntityID
+		practitionerID = clinic.PractitionerID
 
 	}
 
@@ -99,7 +102,7 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
 		}
-		practitionerID = clinic.EntityID
+		practitionerID = clinic.PractitionerID
 	}
 
 	// Subscription limit check
@@ -141,19 +144,19 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 }
 
 // Delete implements [IService].
-func (s *Service) Delete(ctx context.Context, formID uuid.UUID) error {
-	return s.repo.Delete(ctx, formID)
+func (s *Service) Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error {
+	return s.repo.DeleteTx(ctx, tx, formID)
 }
 
 // ListForm implements [IService].
-func (s *Service) List(ctx context.Context, filter Filter, practitionerID uuid.UUID) (*util.RsList, error) {
+func (s *Service) List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	ft := filter.MapToFilter()
-	formDetails, err := s.repo.ListForm(ctx, ft, practitionerID)
+	formDetails, err := s.repo.ListForm(ctx, ft, actorID, role)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := s.repo.CountForm(ctx, ft, practitionerID)
+	total, err := s.repo.CountForm(ctx, ft, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -254,11 +257,26 @@ func (s *Service) UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*R
 }
 
 // GetByID implements [IService].
-func (s *Service) GetByID(ctx context.Context, formID uuid.UUID) (*RsFormDetail, error) {
+func (s *Service) GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormDetail, error) {
 	formDetail, err := s.repo.GetByID(ctx, formID)
 	if err != nil {
 		return nil, err
 	}
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// We call the invitation service to check for a DIRECT mapping to this FORM ID
+		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formID)
+		if err != nil {
+			return nil, fmt.Errorf("Authentication failed: %w", err)
+		}
+
+		// Deny if no record exists OR if the JSON permissions don't allow 'read' or 'all'
+		if perms == nil || (!perms.HasAccess("read") && !perms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to view this form")
+		}
+	}
+
 	return formDetail.ToRs(), nil
 }
 

@@ -18,8 +18,8 @@ type IRepository interface {
 	Update(ctx context.Context, d *FormDetail) (*FormDetail, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error)
-	ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error)
-	CountForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) (int, error)
+	ListForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) ([]*FormDetail, error)
+	CountForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) (int, error)
 	CreateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) error
 	UpdateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (*FormDetail, error)
 	DeleteTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error
@@ -64,19 +64,31 @@ func (r *Repository) Delete(ctx context.Context, formID uuid.UUID) error {
 }
 
 // ListForm implements [IRepository].
-func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) ([]*FormDetail, error) {
+func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) ([]*FormDetail, error) {
+	var permissionClause string
+
+	if role == "ACCOUNTANT" {
+		// Filter by permissions table mapping
+		permissionClause = `
+        AND f.id IN (
+            SELECT entity_id FROM tbl_invite_permissions 
+            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+        )`
+	} else {
+		// Filter by practitioner's clinics
+		permissionClause = `
+        AND f.clinic_id IN (
+            SELECT id FROM tbl_clinic 
+            WHERE practitioner_id = ? AND deleted_at IS NULL
+        )`
+	}
 
 	base := `
-	FROM tbl_form f
-	LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
-	WHERE f.deleted_at IS NULL
-	AND f.clinic_id IN (
-		SELECT id FROM tbl_clinic 
-		WHERE practitioner_id = ? AND deleted_at IS NULL
-	)
-	`
+    FROM tbl_form f
+    LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
+    WHERE f.deleted_at IS NULL ` + permissionClause
 
-	args := []any{practitionerID}
+	args := []any{actorID}
 
 	allowedColumns := map[string]string{
 		"name":        "f.name",
@@ -118,16 +130,15 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, practit
 	return details, nil
 }
 
-func (r *Repository) CountForm(ctx context.Context, filter common.Filter, practitionerID uuid.UUID) (int, error) {
-	base := `
-    FROM tbl_form f
-    WHERE f.deleted_at IS NULL
-    AND f.clinic_id IN (
-        SELECT id FROM tbl_clinic 
-        WHERE practitioner_id = ? AND deleted_at IS NULL
-    )
-    `
-	args := []any{practitionerID}
+func (r *Repository) CountForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) (int, error) {
+	permissionClause := `AND f.clinic_id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)`
+	if role == "ACCOUNTANT" {
+		permissionClause = `AND f.id IN (SELECT entity_id FROM tbl_invite_permissions WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL)`
+	}
+
+	base := `FROM tbl_form f WHERE f.deleted_at IS NULL ` + permissionClause
+
+	args := []any{actorID}
 
 	// Use the same column mappings as ListForm
 	allowedColumns := map[string]string{
