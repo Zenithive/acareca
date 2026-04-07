@@ -138,7 +138,7 @@ type FormField struct {
 	Slug                  *string    `db:"slug"`
 	Label                 string     `db:"label"`
 	IsComputed            bool       `db:"is_computed"`
-	IsFormula             bool       `db:"id_formula"`
+	IsFormula             bool       `db:"is_formula"`
 	SectionType           *string    `db:"section_type"`
 	PaymentResponsibility *string    `db:"payment_responsibility"`
 	TaxType               *string    `db:"tax_type"`
@@ -167,6 +167,8 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 
 	var formula bool
 	if r.IsFormula != nil {
+		formula = *r.IsFormula
+	} else {
 		formula = false
 	}
 
