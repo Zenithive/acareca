@@ -184,7 +184,7 @@ var clinicSearchColumns = []string{"name", "abn", "description"}
 
 func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]*Clinic, error) {
 	base := `
-		SELECT id, entity_id,practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE practitioner_id = ? AND deleted_at IS NULL`
 
@@ -219,7 +219,7 @@ func (r *repository) CountClinicByPractitioner(ctx context.Context, practitioner
 
 func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, entity_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
@@ -254,9 +254,9 @@ func (r *repository) GetDB() *sqlx.DB {
 // Transaction-based methods
 func (r *repository) CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
 	query := `
-		INSERT INTO tbl_clinic (practitioner_id, entity_id, profile_picture, name, abn, description, is_active)
+		INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
 		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, TRUE))
-		RETURNING id, practitioner_id, entity_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 	`
 	var c Clinic
 	err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID,
@@ -333,7 +333,7 @@ func (r *repository) GetActiveFinancialYearTx(ctx context.Context, tx *sqlx.Tx) 
 
 func (r *repository) GetClinicByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, entity_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id,profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -349,7 +349,7 @@ func (r *repository) GetClinicByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.U
 
 func (r *repository) GetClinicByIDAndPractitionerTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, entity_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
@@ -442,14 +442,14 @@ func (r *repository) GetContactByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 func (r *repository) UpdateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
 	query := `
 		UPDATE tbl_clinic 
-		SET practitioner_id = $1, entity_id = $2, profile_picture = $3, name = $4, abn = $5, 
-		    description = $6, is_active = $7, updated_at = now()
-		WHERE id = $8 AND deleted_at IS NULL
-		RETURNING id, practitioner_id, entity_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SET practitioner_id = $1, profile_picture = $2, name = $3, abn = $4, 
+		    description = $5, is_active = $6, updated_at = now()
+		WHERE id = $7 AND deleted_at IS NULL
+		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
 	`
 	var c Clinic
 	err := tx.QueryRowxContext(ctx, query,
-		clinic.PractitionerID, clinic.EntityID, clinic.ProfilePicture, clinic.Name,
+		clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
 		clinic.ABN, clinic.Description, clinic.IsActive, clinic.ID,
 	).StructScan(&c)
 	if err != nil {

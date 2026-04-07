@@ -2139,7 +2139,7 @@ const docTemplate = `{
                 "tags": [
                     "clinic"
                 ],
-                "summary": "Get all clinics for practitioner",
+                "summary": "Get all clinics for the logged-in user (Practitioner or Accountant)",
                 "parameters": [
                     {
                         "type": "string",

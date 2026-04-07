@@ -2851,7 +2851,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Get all clinics for practitioner
+      summary: Get all clinics for the logged-in user (Practitioner or Accountant)
       tags:
       - clinic
     post:
