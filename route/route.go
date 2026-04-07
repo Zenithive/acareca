@@ -8,7 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	adminAccountant "github.com/iamarpitzala/acareca/internal/modules/admin/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	adminPractitioner "github.com/iamarpitzala/acareca/internal/modules/admin/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -136,6 +138,24 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	}))
 	auditHandler := audit.NewHandler(auditSvc)
 	audit.RegisterRoutes(auditGroup, auditHandler)
+
+	// Admin Practitioner routes
+	practitionerGroup := adminGroup.Group("/practitioner")
+	// //practitionerGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
+	// 	id, err := util.ParseUUID(userID)
+	// 	if err != nil {
+	// 		return false, err
+	// 	}
+	// 	return superadminCheck(ctx, id)
+	// }))
+	adminPractitionerRepo := adminPractitioner.NewRepository(dbConn)
+	adminPractitionerSvc := adminPractitioner.NewService(adminPractitionerRepo)
+	adminPractitionerHandler := adminPractitioner.NewHandler(adminPractitionerSvc)
+	adminPractitioner.RegisterRoutes(practitionerGroup, adminPractitionerHandler)
+
+	// Admin Accountant routes
+	accountantGroup := adminGroup.Group("/accountant")
+	adminAccountant.RegisterRoutes(accountantGroup, dbConn)
 
 	// Initialize events service first
 	eventsRepo := events.NewRepository(dbConn)
