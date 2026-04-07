@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -249,11 +250,11 @@ func (h *handler) GoogleAuthURL(c *gin.Context) {
 
 // GoogleCallback godoc
 // @Summary Handle Google OAuth callback
-// @Description handle Google OAuth callback and return tokens
+// @Description handle Google OAuth callback and redirect to frontend with tokens
 // @Tags auth
 // @Produce json
 // @Param code query string true "OAuth authorization code"
-// @Success 200 {object} response.RsBase
+// @Success 302 {string} string "Redirect to frontend"
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /auth/google/callback [get]
@@ -270,7 +271,18 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, token, "Google OAuth callback handled successfully")
+	// Redirect to frontend with tokens
+	frontendURL := h.cfg.LocalUrl
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	
+	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s", 
+		frontendURL, 
+		token.AccessToken, 
+		token.RefreshToken)
+	
+	c.Redirect(http.StatusFound, redirectURL)
 }
 
 // ChangePassword godoc
