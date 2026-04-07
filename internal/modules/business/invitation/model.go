@@ -1,6 +1,7 @@
 package invitation
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -130,4 +131,31 @@ func (filter *Filter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
 func (filter *Filter) MapToFilterAccountant() common.Filter {
 	f := common.NewFilter(nil, nil, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 	return f
+}
+
+type Permissions struct {
+	Read   bool `json:"read,omitempty"`
+	Create bool `json:"create,omitempty"`
+	Update bool `json:"update,omitempty"`
+	Delete bool `json:"delete,omitempty"`
+	All    bool `json:"all,omitempty"`
+}
+
+// Helper to check a specific action
+func (p *Permissions) HasAccess(action string) bool {
+	if p.All {
+		return true
+	}
+	switch strings.ToLower(action) {
+	case "create":
+		return p.Create
+	case "read":
+		return p.Read
+	case "update":
+		return p.Update
+	case "delete":
+		return p.Delete
+	default:
+		return false
+	}
 }

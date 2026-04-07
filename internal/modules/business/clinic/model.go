@@ -10,8 +10,8 @@ import (
 
 // Database models
 type Clinic struct {
-	ID uuid.UUID `db:"id"`
-	//PractitionerID uuid.UUID  `db:"practitioner_id"`
+	ID             uuid.UUID  `db:"id"`
+	PractitionerID uuid.UUID  `db:"practitioner_id"`
 	EntityID       uuid.UUID  `db:"entity_id"`
 	ProfilePicture *string    `db:"profile_picture"`
 	Name           string     `db:"name"`
@@ -57,8 +57,8 @@ type FinancialSettings struct {
 
 // Request models
 type RqCreateClinic struct {
-	//PractitionerID uuid.UUID         `json:"practitioner_id"`
-	EntityID       uuid.UUID         `json:"entity_id"`
+	PractitionerID uuid.UUID         `json:"practitioner_id"`
+	EntityID       uuid.UUID         `json:"-"`
 	ProfilePicture *string           `json:"profile_picture"`
 	Name           string            `json:"name" validate:"required"`
 	ABN            *string           `json:"abn" validate:"omitempty,len=11"`
@@ -89,9 +89,9 @@ type RqFinancialSettings struct {
 }
 
 type RqUpdateClinic struct {
-	ID *uuid.UUID `json:"id"`
-	//PractitionerID  uuid.UUID         `json:"practitioner_id"`
-	EntityID        uuid.UUID         `json:"entity_id"`
+	ID              *uuid.UUID        `json:"id"`
+	PractitionerID  uuid.UUID         `json:"practitioner_id"`
+	EntityID        uuid.UUID         `json:"-"`
 	Name            *string           `json:"name"`
 	ProfilePicture  *string           `json:"profile_picture"`
 	ABN             *string           `json:"abn" validate:"omitempty,len=11"`
@@ -130,9 +130,9 @@ type RqBulkDeleteClinic struct {
 
 // Response models
 type RsClinic struct {
-	ID uuid.UUID `json:"id"`
-	//PractitionerID    uuid.UUID            `json:"practitioner_id"`
-	EntityID          uuid.UUID            `json:"entity_id"`
+	ID                uuid.UUID            `json:"id"`
+	PractitionerID    uuid.UUID            `json:"practitioner_id"`
+	EntityID          uuid.UUID            `json:"-"`
 	ProfilePicture    *string              `json:"profile_picture,omitempty"`
 	Name              string               `json:"name"`
 	ABN               *string              `json:"abn,omitempty"`

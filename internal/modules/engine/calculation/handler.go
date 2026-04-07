@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
@@ -46,9 +48,25 @@ func NewHandler(svc Service) IHandler {
 // Calculation implements [IHandler].
 func (h *handler) Calculation(c *gin.Context) {
 	ctx := c.Request.Context()
+	var actorID, formID uuid.UUID
+	var ok bool
 
-	formID, ok := util.ParseUuidID(c, "id")
+	formID, ok = util.ParseUuidID(c, "id")
 	if !ok {
+		return
+	}
+
+	// Get Role and appropriate ID
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
 
@@ -67,7 +85,7 @@ func (h *handler) Calculation(c *gin.Context) {
 		filter.SuperComponent = &val
 	}
 
-	result, err := h.svc.Calculate(ctx, formID, &filter)
+	result, err := h.svc.Calculate(ctx, formID, &filter, actorID, role)
 	if err != nil {
 		if errors.Is(err, entry.ErrNotFound) || errors.Is(err, version.ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -96,13 +114,28 @@ func (h *handler) Calculation(c *gin.Context) {
 // @Security BearerToken
 // @Router /calculate [post]
 func (h *handler) CalculateFromEntries(c *gin.Context) {
+	// Get Role and appropriate ID
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
 	var req RqCalculateFromEntries
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	result, err := h.svc.CalculateFromEntries(c.Request.Context(), &req)
+	result, err := h.svc.CalculateFromEntries(c.Request.Context(), &req, actorID, role)
 	if err != nil {
 		if errors.Is(err, entry.ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)

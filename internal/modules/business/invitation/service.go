@@ -17,6 +17,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -30,6 +31,11 @@ type Service interface {
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
 	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
+
+	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error
+	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
+	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 }
 
 const (
@@ -536,4 +542,25 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 
 func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error) {
 	return s.repo.GetByEmail(ctx, email)
+}
+
+func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error) {
+	return s.repo.GetPermissions(ctx, accountantID, entityID)
+}
+
+func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error {
+	// Ensure they at least have "read" access even if the clinic didn't have it.
+	if !perms.All {
+		perms.Read = true
+	}
+
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, aID, eID, eType, perms)
+}
+
+func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
+	return s.repo.DeletePermissionsByEntityTx(ctx, tx, entityID)
+}
+
+func (s *service) GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
+	return s.repo.GetPractitionerLinkedToAccountant(ctx, accountantID)
 }

@@ -1395,6 +1395,41 @@ const docTemplate = `{
             }
         },
         "/auth/user/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the profile of the authenticated user including role-specific fields (abn for practitioners, license_no for accountants)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get current user profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.RsUser"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -3509,6 +3544,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Filter by practitioner ID (UUID)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Filter by clinic ID (UUID)",
                         "name": "clinic_id",
                         "in": "query"
@@ -3803,6 +3844,11 @@ const docTemplate = `{
         },
         "/form/{id}/status": {
             "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Toggle form status between DRAFT and PUBLISHED",
                 "consumes": [
                     "application/json"
@@ -4109,6 +4155,64 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/{id}/revoke": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Practitioner removes an accountant's access by revoking the invitation. Only works on ACCEPTED or COMPLETED invitations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Revoke an accepted/completed invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -5643,6 +5747,9 @@ const docTemplate = `{
         "auth.RqUpdateUser": {
             "type": "object",
             "properties": {
+                "abn": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -5695,6 +5802,10 @@ const docTemplate = `{
         "auth.RsUser": {
             "type": "object",
             "properties": {
+                "abn": {
+                    "description": "Role-specific fields (populated based on role)",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -5708,6 +5819,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "last_name": {
+                    "type": "string"
+                },
+                "license_no": {
                     "type": "string"
                 },
                 "phone": {
@@ -6384,7 +6498,6 @@ const docTemplate = `{
         "entry.RqEntryValue": {
             "type": "object",
             "required": [
-                "amount",
                 "form_field_id"
             ],
             "properties": {
@@ -6395,7 +6508,13 @@ const docTemplate = `{
                 "form_field_id": {
                     "type": "string"
                 },
+                "gross_amount": {
+                    "type": "number"
+                },
                 "gst_amount": {
+                    "type": "number"
+                },
+                "net_amount": {
                     "type": "number"
                 }
             }
@@ -6490,6 +6609,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "is_computed": {
+                    "type": "boolean"
+                },
+                "is_formula": {
                     "type": "boolean"
                 },
                 "key": {

@@ -2,6 +2,7 @@ package entry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
@@ -25,14 +27,14 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, practitionerID uuid.UUID) (*RsFormEntry, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
-	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
-	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
+	GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
+	Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) error
+	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 
-	ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error)
+	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 }
 
 type Service struct {
@@ -50,14 +52,15 @@ type Service struct {
 	formClinic     clinic.Service
 	formulaSvc     formula.IService
 	fieldSvc       field.IService
+	invitationSvc  invitation.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc}
 }
 
 // Create implements [IService].
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
 	// Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
@@ -65,10 +68,28 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		return nil, err
 	}
 
-	realOwnerID := clinic.EntityID
+	realOwnerID := clinic.PractitionerID
 
 	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 		return nil, err
+	}
+
+	// Resolve the FormID to check permissions
+	version, err := s.versionSvc.GetByID(ctx, formVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid version: %w", err)
+	}
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, version.FormId)
+		if err != nil {
+			return nil, err
+		}
+		// Must have 'create' or 'all'
+		if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to create entries for this form")
+		}
 	}
 
 	status := EntryStatusDraft
@@ -136,11 +157,43 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 }
 
 // GetByID implements [IService].
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
 	e, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	// Resolve the Form ID via Version ID
+	formVersion, err := s.versionSvc.GetByID(ctx, e.FormVersionID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// First, check if there's a specific permission for this ENTRY ID
+		entryPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+		if err != nil {
+			return nil, fmt.Errorf("auth error: %w", err)
+		}
+
+		// Fallback: If no entry perms, check the PARENT FORM permissions
+		if entryPerms == nil {
+			formPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formVersion.FormId)
+			if err != nil {
+				return nil, fmt.Errorf("auth error: %w", err)
+			}
+
+			// If no form perms either, block access entirely
+			if formPerms == nil || (!formPerms.HasAccess("read") && !formPerms.HasAccess("all")) {
+				return nil, errors.New("Access denied: no permission found for this entry or its parent form")
+			}
+			// SUCCESS: No specific entry perms, but has form-level read access. Allow read-only access.
+		} else {
+			// SUCCESS: Found specific Entry perms. Check for read access.
+			if !entryPerms.HasAccess("read") && !entryPerms.HasAccess("all") {
+				return nil, errors.New("Access denied: you do not have permission to view this entry")
+			}
+		}
+	}
+
 	rs := e.ToRs(values)
 	s.attachFieldMetadata(ctx, rs)
 	s.attachICCalculation(ctx, rs)
@@ -148,12 +201,22 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 }
 
 // Update implements [IService].
-func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	beforeState := existing.ToRs(values)
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+
+		// Must have 'update' OR 'all'
+		if entryPerms == nil || (!entryPerms.HasAccess("update") && !entryPerms.HasAccess("all")) {
+			return nil, errors.New("Access denied: you do not have permission to update this entry")
+		}
+	}
 
 	if req.Status != nil {
 		existing.Status = *req.Status
@@ -222,13 +285,23 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 }
 
 // Delete implements [IService].
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Service) Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) error {
 	// Get entry details before deletion for audit log
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	beforeState := existing.ToRs(values)
+
+	// PERMISSION CHECK (Accountant Only)
+	if strings.EqualFold(role, util.RoleAccountant) {
+		entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+
+		// Must have 'delete' OR 'all'
+		if entryPerms == nil || (!entryPerms.HasAccess("delete") && !entryPerms.HasAccess("all")) {
+			return errors.New("Access denied: you do not have permission to delete this entry")
+		}
+	}
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -264,14 +337,14 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter) (*util.RsList, error) {
+func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
-	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f)
+	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountByFormVersionID(ctx, formVersionID, f)
+	total, err := s.repo.CountByFormVersionID(ctx, formVersionID, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -296,14 +369,14 @@ func (s *Service) GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntr
 }
 
 // ListTransactions implements [IService].
-func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter) (*util.RsList, error) {
+func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	f := filter.ToCommonFilter()
 
-	items, err := s.repo.ListTransactions(ctx, f)
+	items, err := s.repo.ListTransactions(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountTransactions(ctx, f)
+	total, err := s.repo.CountTransactions(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -468,7 +541,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		// Merge section totals into keyValues
 		maps.Copy(keyValues, sectionTotals)
-		
+
 		// CRITICAL FIX: Add computed fields with tax types to taxTypeByKey
 		// This ensures the formula feedback mechanism uses GROSS values for dependent formulas
 		for _, f := range allFields {
@@ -524,20 +597,20 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 			if f.TaxType != nil {
 				taxType := method.TaxTreatment(*f.TaxType)
-				
+
 				switch taxType {
 				case method.TaxTreatmentInclusive:
 					// Formula returns NET, calculate GST and GROSS from NET
 					gst := val * 0.10
 					gstAmount = &gst
-					netBase = val  // Keep as NET
-					grossTotal = val + gst  // NET + GST = GROSS
+					netBase = val          // Keep as NET
+					grossTotal = val + gst // NET + GST = GROSS
 				case method.TaxTreatmentExclusive:
 					// Formula returns NET, calculate GST and GROSS from NET
 					gst := val * 0.10
 					gstAmount = &gst
-					netBase = val  // Keep as NET
-					grossTotal = val + gst  // NET + GST = GROSS
+					netBase = val          // Keep as NET
+					grossTotal = val + gst // NET + GST = GROSS
 				case method.TaxTreatmentManual:
 					// For MANUAL tax type on computed fields, check if GST was provided in request
 					var entryGST *float64
@@ -600,12 +673,21 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 		return
 	}
 
+	meta := auditctx.GetMetadata(ctx)
+
+	// Only act if the user is an Accountant
+	if meta.UserType == nil || !strings.EqualFold(*meta.UserType, util.RoleAccountant) || meta.UserID == nil {
+		return
+	}
+
+	actorUserID, _ := uuid.Parse(*meta.UserID)
+
 	ver, err := s.versionSvc.GetByID(ctx, rs.FormVersionID)
 	if err != nil {
 		return
 	}
 
-	form, err := s.detailSvc.GetByID(ctx, ver.FormId)
+	form, err := s.detailSvc.GetByID(ctx, ver.FormId, actorUserID, *meta.UserType)
 	if err != nil || form.Method != "INDEPENDENT_CONTRACTOR" {
 		return
 	}
@@ -688,7 +770,7 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	formName := "Form"
 	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
 	if err == nil {
-		form, err := s.detailSvc.GetByID(ctx, ver.FormId)
+		form, err := s.detailSvc.GetByID(ctx, ver.FormId, actorUserID, *meta.UserType)
 		if err == nil {
 			formName = form.Name
 		}
@@ -719,7 +801,7 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	// Record Event
 	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 		ID:             uuid.New(),
-		PractitionerID: clinic.EntityID,
+		PractitionerID: clinic.PractitionerID,
 		AccountantID:   accountantID,
 		ActorID:        actorUserID,
 		ActorName:      &fullName,
