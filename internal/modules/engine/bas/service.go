@@ -222,13 +222,16 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			continue
 		}
 
-		// Skip rows with NULL section_type
-		if r.SectionType == nil {
-			continue
+		// Handle NULL section_type as expense (matches vw_bas_summary logic)
+		sectionType := ""
+		if r.SectionType != nil {
+			sectionType = *r.SectionType
 		}
 
-		if *r.SectionType == "COLLECTION" {
-			if r.GstAmount > 0 || BASCategory(r.BasCategory) == BASCategoryTaxable {
+		switch sectionType {
+		case "COLLECTION":
+			// Split by BAS category only (not by GST amount)
+			if BASCategory(r.BasCategory) == BASCategoryTaxable {
 				g8.Gross += r.GrossAmount
 				g8.GST += r.GstAmount
 				g8.Net += r.NetAmount
@@ -238,11 +241,10 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 				g3.GST += r.GstAmount
 				g3.Net += r.NetAmount
 			}
-		} else if *r.SectionType == "COST" || *r.SectionType == "OTHER_COST" {
-			// Track 1B for all taxable costs
-			if BASCategory(r.BasCategory) == BASCategoryTaxable {
-				b1.Gross += r.GstAmount
-			}
+		case "COST", "OTHER_COST", "":
+			// Track 1B for ALL GST on purchases (matches vw_bas_summary)
+			// This includes TAXABLE and GST_FREE items with GST
+			b1.Gross += r.GstAmount
 
 			// Categorize by Account Name, not by BAS Category
 			accName := strings.ToLower(r.AccountName)
@@ -285,11 +287,10 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	col.Sections.Income.Items = []BASLineItem{
 		{Name: "Income – GST Free (G3)", Amounts: g3},
 		{Name: "Income – GST", Amounts: g8},
-		{Name: "Total Income (G1)", Amounts: totalIncome},
 		{
 			Name: "1A GST on Sales",
 			Amounts: BASAmount{
-				Gross: totalIncome.GST,
+				Gross: a1.Gross, // Use a1 (only taxable GST), not totalIncome.GST
 			},
 		},
 	}
@@ -310,13 +311,13 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
 		{Name: "Other Expenses (GST)", Amounts: otherExp},
 		{Name: "Subtotal (non capital purchase)", Amounts: subtotalExpenses},
-		{
-			Name: "G11/1B GST on Purchases",
-			Amounts: BASAmount{
-				Gross: subtotalExpenses.Gross, // (G11) Total Spent
-				GST:   b1.Gross,               // (1B) GST to claim
-			},
-		},
+		// {
+		// 	Name: "G11/1B GST on Purchases",
+		// 	Amounts: BASAmount{
+		// 		Gross: subtotalExpenses.Gross, // (G11) Total Spent
+		// 		GST:   b1.Gross,               // (1B) GST to claim
+		// 	},
+		// },
 	}
 
 	// Net Profit/Loss
@@ -330,8 +331,8 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	}
 
 	// Totals
-	// col.NetGSTPayable = roundToTwo(a1.Gross - b1.Gross)
-	col.NetGSTPayable = roundToTwo(totalIncome.GST - b1.Gross)
+	// Net GST Payable = 1A (GST on taxable sales) - 1B (GST on purchases)
+	col.NetGSTPayable = roundToTwo(a1.Gross - b1.Gross)
 
 	return col
 }

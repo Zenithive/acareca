@@ -93,6 +93,7 @@ JOIN tbl_account_tax         atx  ON atx.id  = coa.account_tax_id
 WHERE fe.status      = 'SUBMITTED'
   AND fe.deleted_at  IS NULL
   AND ff.deleted_at  IS NULL
+  AND ff.is_formula  = FALSE 
   AND coa.deleted_at IS NULL;
 
 -- +goose StatementEnd
