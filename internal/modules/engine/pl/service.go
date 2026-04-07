@@ -178,19 +178,22 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 	coaTotals := map[coaKey]float64{}
 
 	for _, r := range rows {
-		if r.SectionType == nil {
-			continue
+		// Treat NULL section_type as 'COST' (operating expenses)
+		sectionType := "COST"
+		if r.SectionType != nil {
+			sectionType = *r.SectionType
 		}
+
 		// Use gross_amount consistently across all sections so that
 		// income and costs are compared on the same (GST-inclusive) basis.
 		// Previously COST/OTHER_COST used net_amount, which understated
 		// "Gross Up" management fees that carry GST on top.
 		val := r.GrossAmount
 
-		ck := coaKey{*r.SectionType, r.CoaID}
+		ck := coaKey{sectionType, r.CoaID}
 		if !coaSeen[ck] {
 			coaSeen[ck] = true
-			coaOrder[*r.SectionType] = append(coaOrder[*r.SectionType], r.CoaID)
+			coaOrder[sectionType] = append(coaOrder[sectionType], r.CoaID)
 			coaNames[ck] = r.AccountName
 		}
 		coaTotals[ck] += val
