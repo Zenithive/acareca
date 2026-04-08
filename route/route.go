@@ -124,7 +124,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	invite.GET("/:id", invitationHandler.GetInvitation)
 	// Protected Route
 	invite.Use(middleware.Auth(cfg))
-	invitation.RegisterRoutes(v1, invitationHandler)
+	invitation.RegisterRoutes(invite, invitationHandler)
 
 	//admin auth
 	adminRepo := admin.NewRepository(dbConn)
