@@ -253,20 +253,19 @@ func (r *repository) GetDB() *sqlx.DB {
 
 // Transaction-based methods
 func (r *repository) CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
-	query := `
-		INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, TRUE))
-		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
-	`
-	var c Clinic
-	err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID,
-		clinic.EntityID, clinic.ProfilePicture, clinic.Name,
-		clinic.ABN, clinic.Description, clinic.IsActive,
-	).StructScan(&c)
-	if err != nil {
-		return nil, fmt.Errorf("create clinic tx: %w", err)
-	}
-	return &c, nil
+    query := `
+        INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
+        VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
+        RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+    `
+    var c Clinic
+    err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
+        clinic.ABN, clinic.Description, clinic.IsActive,
+    ).StructScan(&c)
+    if err != nil {
+        return nil, fmt.Errorf("create clinic tx: %w", err)
+    }
+    return &c, nil
 }
 
 func (r *repository) CreateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, address *ClinicAddress) (*ClinicAddress, error) {
