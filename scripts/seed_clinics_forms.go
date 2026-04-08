@@ -240,22 +240,6 @@ func createForm(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID) (uuid.UUID
 		return uuid.Nil, fmt.Errorf("failed to insert form version: %w", err)
 	}
 
-	// Get a COA ID for fields (get first available for this practitioner)
-	var coaID uuid.UUID
-	err = tx.GetContext(ctx, &coaID, `
-		SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 LIMIT 1
-	`, practitionerID)
-	
-	// If no COA exists, create some basic ones
-	if err == sql.ErrNoRows {
-		coaID, err = createBasicCOA(ctx, tx, practitionerID)
-		if err != nil {
-			return uuid.Nil, fmt.Errorf("failed to create COA: %w", err)
-		}
-	} else if err != nil {
-		return uuid.Nil, fmt.Errorf("failed to get COA: %w", err)
-	}
-
 	// Create form fields
 	fields := []struct {
 		key         string
@@ -271,8 +255,41 @@ func createForm(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID) (uuid.UUID
 		{"D", "Net Income", true, "", "", 4},
 	}
 
+	// Get available COA IDs for this practitioner
+	var coaIDs []uuid.UUID
+	err = tx.SelectContext(ctx, &coaIDs, `
+		SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 ORDER BY code
+	`, practitionerID)
+	
+	// Calculate how many non-computed fields we have
+	nonComputedCount := 0
+	for _, field := range fields {
+		if !field.isComputed {
+			nonComputedCount++
+		}
+	}
+	
+	// If no COA exists or not enough, create sufficient COAs
+	if err == sql.ErrNoRows || len(coaIDs) == 0 || len(coaIDs) < nonComputedCount {
+		coaIDs, err = createBasicCOAs(ctx, tx, practitionerID)
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("failed to create COA: %w", err)
+		}
+	} else if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get COA: %w", err)
+	}
+	
+	// Verify we have enough COAs
+	if len(coaIDs) < nonComputedCount {
+		return uuid.Nil, fmt.Errorf("insufficient COA entries: have %d, need %d", len(coaIDs), nonComputedCount)
+	}
+
+	coaIndex := 0
+	fieldIDMap := make(map[string]uuid.UUID) // Map field keys to their IDs
+	
 	for _, field := range fields {
 		fieldID := uuid.New()
+		fieldIDMap[field.key] = fieldID
 		
 		var sectionType, taxType, paymentResp *string
 		var coaIDPtr *uuid.UUID
@@ -280,7 +297,14 @@ func createForm(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID) (uuid.UUID
 		if !field.isComputed {
 			sectionType = &field.sectionType
 			taxType = &field.taxType
-			coaIDPtr = &coaID
+			// Use different COA for each field (unique per form)
+			if coaIndex < len(coaIDs) {
+				coaIDPtr = &coaIDs[coaIndex]
+				coaIndex++
+			} else {
+				// If we run out of COAs, this is an error - each field must have unique COA
+				return uuid.Nil, fmt.Errorf("not enough COA entries for all fields (need at least %d)", coaIndex+1)
+			}
 			pr := "OWNER"
 			paymentResp = &pr
 		}
@@ -289,11 +313,86 @@ func createForm(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID) (uuid.UUID
 			INSERT INTO tbl_form_field (id, form_version_id, field_key, label, is_computed, is_formula, 
 				section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		`, fieldID, versionID, field.key, field.label, field.isComputed, false,
+		`, fieldID, versionID, field.key, field.label, field.isComputed, field.isComputed,
 			sectionType, paymentResp, taxType, coaIDPtr, field.sortOrder, time.Now(), time.Now())
 		
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("failed to insert form field: %w", err)
+		}
+	}
+
+	// Create formulas for computed fields
+	// Formula for field D (Net Income) = A + B - C
+	if fieldD, ok := fieldIDMap["D"]; ok {
+		formulaID := uuid.New()
+		
+		// Create formula
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula (id, form_version_id, field_id, name, created_at)
+			VALUES ($1, $2, $3, $4, $5)
+		`, formulaID, versionID, fieldD, "Net Income Calculation", time.Now())
+		
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("failed to insert formula: %w", err)
+		}
+
+		// Create formula tree: (A + B) - C
+		// Root node: - (subtraction)
+		rootNodeID := uuid.New()
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, rootNodeID, formulaID, nil, "OPERATOR", "-", nil, time.Now())
+		
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("failed to insert root formula node: %w", err)
+		}
+
+		// Left child: + (addition)
+		addNodeID := uuid.New()
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, addNodeID, formulaID, rootNodeID, "OPERATOR", "+", 0, time.Now())
+		
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("failed to insert add formula node: %w", err)
+		}
+
+		// Left-left child: Field A
+		if fieldA, ok := fieldIDMap["A"]; ok {
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, uuid.New(), formulaID, addNodeID, "FIELD", fieldA, 0, time.Now())
+			
+			if err != nil {
+				return uuid.Nil, fmt.Errorf("failed to insert field A node: %w", err)
+			}
+		}
+
+		// Left-right child: Field B
+		if fieldB, ok := fieldIDMap["B"]; ok {
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, uuid.New(), formulaID, addNodeID, "FIELD", fieldB, 1, time.Now())
+			
+			if err != nil {
+				return uuid.Nil, fmt.Errorf("failed to insert field B node: %w", err)
+			}
+		}
+
+		// Right child: Field C
+		if fieldC, ok := fieldIDMap["C"]; ok {
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, uuid.New(), formulaID, rootNodeID, "FIELD", fieldC, 1, time.Now())
+			
+			if err != nil {
+				return uuid.Nil, fmt.Errorf("failed to insert field C node: %w", err)
+			}
 		}
 	}
 
@@ -304,13 +403,42 @@ func createForm(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID) (uuid.UUID
 	return formID, nil
 }
 
-func createBasicCOA(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) (uuid.UUID, error) {
-	coaID := uuid.New()
+func createBasicCOAs(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) ([]uuid.UUID, error) {
+	// Create enough COA entries to ensure uniqueness per field (at least 10 unique COAs)
+	coaEntries := []struct {
+		code          int
+		key           string
+		name          string
+		accountTypeID int
+		accountTaxID  int
+	}{
+		{4000, "revenue", "Revenue", 4, 1},
+		{4100, "service_income", "Service Income", 4, 1},
+		{4200, "consultation_fees", "Consultation Fees", 4, 1},
+		{5000, "cogs", "Cost of Goods Sold", 5, 1},
+		{5100, "direct_labor", "Direct Labor", 5, 1},
+		{5200, "materials", "Materials", 5, 1},
+		{6000, "operating_expenses", "Operating Expenses", 5, 1},
+		{6100, "admin_expenses", "Administrative Expenses", 5, 1},
+		{6200, "marketing_expenses", "Marketing Expenses", 5, 1},
+		{7000, "other_income", "Other Income", 4, 1},
+	}
+
+	var coaIDs []uuid.UUID
 	
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO tbl_chart_of_accounts (id, practitioner_id, code, name, account_type_id, account_tax_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, coaID, practitionerID, 4000, "Revenue", 4, 1, time.Now(), time.Now())
+	for _, entry := range coaEntries {
+		coaID := uuid.New()
+		coaIDs = append(coaIDs, coaID)
+		
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO tbl_chart_of_accounts (id, practitioner_id, code, key, name, account_type_id, account_tax_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`, coaID, practitionerID, entry.code, entry.key, entry.name, entry.accountTypeID, entry.accountTaxID, time.Now(), time.Now())
+		
+		if err != nil {
+			return nil, err
+		}
+	}
 	
-	return coaID, err
+	return coaIDs, nil
 }

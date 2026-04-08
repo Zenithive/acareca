@@ -217,3 +217,79 @@ The script deletes in this order (respecting foreign keys):
 - Provides `-dry-run` mode to preview
 - Shows statistics before and after
 - Warns user if no flags provided
+
+---
+
+## cleanup_practitioner.go
+
+Utility script to delete all clinics and forms for a specific practitioner.
+
+### Features
+
+- Target specific practitioner by UUID
+- Dry-run mode to preview what will be deleted
+- Shows detailed statistics for the practitioner
+- Transactional deletion (all or nothing)
+- Validates practitioner exists before deletion
+- Safe deletion order respecting foreign keys
+
+### Usage
+
+```bash
+# Preview what will be deleted for a practitioner (safe)
+go run scripts/cleanup_practitioner.go -practitioner-id <UUID> -dry-run
+
+# Actually delete the data (requires confirmation)
+go run scripts/cleanup_practitioner.go -practitioner-id <UUID> -confirm
+
+# Using makefile
+make cleanup-practitioner-dry PRACTITIONER_ID=<UUID>
+make cleanup-practitioner PRACTITIONER_ID=<UUID>
+```
+
+### Example
+
+```bash
+# Dry run first to see what will be deleted
+go run scripts/cleanup_practitioner.go \
+  -practitioner-id c9b2ecb5-ced4-43ea-9507-ac9ba56482f0 \
+  -dry-run
+
+# Then confirm deletion
+go run scripts/cleanup_practitioner.go \
+  -practitioner-id c9b2ecb5-ced4-43ea-9507-ac9ba56482f0 \
+  -confirm
+```
+
+### What Gets Deleted
+
+The script deletes in this order (respecting foreign keys):
+1. Form fields (for all forms owned by practitioner's clinics)
+2. Form versions (owned by practitioner)
+3. Forms (for all clinics owned by practitioner)
+4. Chart of accounts (non-system entries for practitioner)
+5. Clinic contacts (for all clinics owned by practitioner)
+6. Clinic addresses (for all clinics owned by practitioner)
+7. Clinics (owned by practitioner)
+
+**Note:** The practitioner record itself is NOT deleted. Only their clinics, forms, and related data.
+
+### Statistics Shown
+
+The script displays counts for:
+- Clinics
+- Clinic Addresses
+- Clinic Contacts
+- Forms
+- Form Versions
+- Form Fields
+- Chart of Accounts (non-system)
+
+### Safety Features
+
+- Requires practitioner UUID (no wildcards)
+- Validates practitioner exists before proceeding
+- Requires explicit `-confirm` flag to delete
+- Provides `-dry-run` mode to preview
+- Uses transactions (rollback on any error)
+- Shows statistics before and after deletion

@@ -30,3 +30,21 @@ seed-cleanup:
 
 seed-cleanup-dry:
 	go run scripts/cleanup_seed.go -dry-run
+
+cleanup-practitioner:
+	@echo "Usage: make cleanup-practitioner PRACTITIONER_ID=<uuid>"
+	@if [ -z "$(PRACTITIONER_ID)" ]; then \
+		echo "Error: PRACTITIONER_ID is required"; \
+		echo "Example: make cleanup-practitioner PRACTITIONER_ID=c9b2ecb5-ced4-43ea-9507-ac9ba56482f0"; \
+		exit 1; \
+	fi
+	go run scripts/cleanup_practitioner.go -practitioner-id $(PRACTITIONER_ID) -confirm
+
+cleanup-practitioner-dry:
+	@echo "Usage: make cleanup-practitioner-dry PRACTITIONER_ID=<uuid>"
+	@if [ -z "$(PRACTITIONER_ID)" ]; then \
+		echo "Error: PRACTITIONER_ID is required"; \
+		echo "Example: make cleanup-practitioner-dry PRACTITIONER_ID=c9b2ecb5-ced4-43ea-9507-ac9ba56482f0"; \
+		exit 1; \
+	fi
+	go run scripts/cleanup_practitioner.go -practitioner-id $(PRACTITIONER_ID) -dry-run

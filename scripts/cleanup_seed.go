@@ -4,8 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 
+	"github.com/iamarpitzala/acareca/internal/shared/db"
+	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -30,8 +31,13 @@ func main() {
 		log.Println("No .env file found, using system environment variables")
 	}
 
+	cfg := config.NewConfig()
+
+
+
 	// Connect to database
-	db, err := connectDB()
+	db, err := db.DBConn(cfg)
+
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -53,23 +59,6 @@ func main() {
 	}
 }
 
-func connectDB() (*sqlx.DB, error) {
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbUser := os.Getenv("DB_USER")
-	dbPassword := os.Getenv("DB_PASSWORD")
-	dbName := os.Getenv("DB_NAME")
-
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
 
 func showStats(db *sqlx.DB) {
 	type Stats struct {
@@ -111,7 +100,8 @@ func cleanupData(db *sqlx.DB) error {
 		"DELETE FROM tbl_form_field",
 		"DELETE FROM tbl_custom_form_version",
 		"DELETE FROM tbl_form",
-		"DELETE FROM tbl_chart_of_accounts WHERE is_system = FALSE",
+		// Don't delete chart of accounts - keep them for reuse
+		// "DELETE FROM tbl_chart_of_accounts WHERE is_system = FALSE",
 		"DELETE FROM tbl_clinic_contact",
 		"DELETE FROM tbl_clinic_address",
 		"DELETE FROM tbl_clinic",

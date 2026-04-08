@@ -6,11 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/db"
+	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -41,8 +42,10 @@ func main() {
 		log.Println("No .env file found, using system environment variables")
 	}
 
+	cfg := config.NewConfig()
+
 	// Connect to database
-	db, err := connectDB()
+	db, err := db.DBConn(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -75,24 +78,6 @@ func main() {
 
 	log.Println("✓ Seeding completed successfully!")
 	log.Printf("Created %d clinics with %d forms each", config.NumClinics, config.NumFormsPerClinic)
-}
-
-func connectDB() (*sqlx.DB, error) {
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbUser := os.Getenv("DB_USER")
-	dbPassword := os.Getenv("DB_PASSWORD")
-	dbName := os.Getenv("DB_NAME")
-
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
 }
 
 func getOrCreatePractitionerAdvanced(db *sqlx.DB, config AdvancedSeedConfig) (uuid.UUID, error) {
@@ -321,21 +306,6 @@ func createFormAdvanced(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID, co
 		return uuid.Nil, "", fmt.Errorf("failed to insert form version: %w", err)
 	}
 
-	// Get or create COA
-	var coaID uuid.UUID
-	err = tx.GetContext(ctx, &coaID, `
-		SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 LIMIT 1
-	`, practitionerID)
-	
-	if err == sql.ErrNoRows {
-		coaID, err = createBasicCOAAdvanced(ctx, tx, practitionerID)
-		if err != nil {
-			return uuid.Nil, "", fmt.Errorf("failed to create COA: %w", err)
-		}
-	} else if err != nil {
-		return uuid.Nil, "", fmt.Errorf("failed to get COA: %w", err)
-	}
-
 	// Create form fields based on config
 	fieldTemplates := []struct {
 		key         string
@@ -361,9 +331,42 @@ func createFormAdvanced(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID, co
 		numFields = len(fieldTemplates)
 	}
 
+	// Get or create COA IDs
+	var coaIDs []uuid.UUID
+	err = tx.SelectContext(ctx, &coaIDs, `
+		SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 ORDER BY code
+	`, practitionerID)
+	
+	// Calculate how many non-computed fields we'll have
+	nonComputedCount := 0
+	for i := 0; i < numFields; i++ {
+		if !fieldTemplates[i].isComputed {
+			nonComputedCount++
+		}
+	}
+	
+	// If no COA exists or not enough, create sufficient COAs
+	if err == sql.ErrNoRows || len(coaIDs) == 0 || len(coaIDs) < nonComputedCount {
+		coaIDs, err = createBasicCOAAdvanced(ctx, tx, practitionerID)
+		if err != nil {
+			return uuid.Nil, "", fmt.Errorf("failed to create COA: %w", err)
+		}
+	} else if err != nil {
+		return uuid.Nil, "", fmt.Errorf("failed to get COA: %w", err)
+	}
+	
+	// Verify we have enough COAs
+	if len(coaIDs) < nonComputedCount {
+		return uuid.Nil, "", fmt.Errorf("insufficient COA entries: have %d, need %d", len(coaIDs), nonComputedCount)
+	}
+
+	coaIndex := 0
+	fieldIDMap := make(map[string]uuid.UUID) // Map field keys to their IDs
+	
 	for i := 0; i < numFields; i++ {
 		field := fieldTemplates[i]
 		fieldID := uuid.New()
+		fieldIDMap[field.key] = fieldID
 		
 		var sectionType, taxType, paymentResp *string
 		var coaIDPtr *uuid.UUID
@@ -371,7 +374,14 @@ func createFormAdvanced(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID, co
 		if !field.isComputed {
 			sectionType = &field.sectionType
 			taxType = &field.taxType
-			coaIDPtr = &coaID
+			// Use different COA for each field (unique per form)
+			if coaIndex < len(coaIDs) {
+				coaIDPtr = &coaIDs[coaIndex]
+				coaIndex++
+			} else {
+				// If we run out of COAs, this is an error - each field must have unique COA
+				return uuid.Nil, "", fmt.Errorf("not enough COA entries for all fields (need at least %d)", coaIndex+1)
+			}
 			pr := gofakeit.RandomString([]string{"OWNER", "CLINIC"})
 			paymentResp = &pr
 		}
@@ -388,6 +398,47 @@ func createFormAdvanced(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID, co
 		}
 	}
 
+	// Create formulas for computed fields
+	// Formula for field G (Gross Profit) = A + B - C - D
+	if numFields >= 7 {
+		if fieldG, ok := fieldIDMap["G"]; ok {
+			err = createFormulaGrossProfit(ctx, tx, versionID, fieldG, fieldIDMap)
+			if err != nil {
+				return uuid.Nil, "", fmt.Errorf("failed to create formula for Gross Profit: %w", err)
+			}
+		}
+	}
+
+	// Formula for field H (Net Income) = G - E - F
+	if numFields >= 8 {
+		if fieldH, ok := fieldIDMap["H"]; ok {
+			err = createFormulaNetIncome(ctx, tx, versionID, fieldH, fieldIDMap)
+			if err != nil {
+				return uuid.Nil, "", fmt.Errorf("failed to create formula for Net Income: %w", err)
+			}
+		}
+	}
+
+	// Formula for field I (Tax Amount) = H * 0.1 (10% tax)
+	if numFields >= 9 {
+		if fieldI, ok := fieldIDMap["I"]; ok {
+			err = createFormulaTaxAmount(ctx, tx, versionID, fieldI, fieldIDMap)
+			if err != nil {
+				return uuid.Nil, "", fmt.Errorf("failed to create formula for Tax Amount: %w", err)
+			}
+		}
+	}
+
+	// Formula for field J (Final Total) = H - I
+	if numFields >= 10 {
+		if fieldJ, ok := fieldIDMap["J"]; ok {
+			err = createFormulaFinalTotal(ctx, tx, versionID, fieldJ, fieldIDMap)
+			if err != nil {
+				return uuid.Nil, "", fmt.Errorf("failed to create formula for Final Total: %w", err)
+			}
+		}
+	}
+
 	if err = tx.Commit(); err != nil {
 		return uuid.Nil, "", err
 	}
@@ -395,37 +446,306 @@ func createFormAdvanced(ctx context.Context, db *sqlx.DB, clinicID uuid.UUID, co
 	return formID, formName, nil
 }
 
-func createBasicCOAAdvanced(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) (uuid.UUID, error) {
-	// Create multiple COA entries
+func createBasicCOAAdvanced(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) ([]uuid.UUID, error) {
+	// Create enough COA entries to ensure uniqueness per field (at least 12 unique COAs)
 	coaEntries := []struct {
 		code          int
+		key           string
 		name          string
 		accountTypeID int
 		accountTaxID  int
 	}{
-		{4000, "Revenue", 4, 1},
-		{5000, "Cost of Goods Sold", 5, 1},
-		{6000, "Operating Expenses", 5, 1},
-		{7000, "Other Income", 4, 1},
+		{4000, "revenue", "Revenue", 4, 1},
+		{4100, "service_income", "Service Income", 4, 1},
+		{4200, "consultation_fees", "Consultation Fees", 4, 1},
+		{4300, "product_sales", "Product Sales", 4, 1},
+		{5000, "cogs", "Cost of Goods Sold", 5, 1},
+		{5100, "direct_labor", "Direct Labor", 5, 1},
+		{5200, "materials", "Materials", 5, 1},
+		{5300, "subcontractor_costs", "Subcontractor Costs", 5, 1},
+		{6000, "operating_expenses", "Operating Expenses", 5, 1},
+		{6100, "admin_expenses", "Administrative Expenses", 5, 1},
+		{6200, "marketing_expenses", "Marketing Expenses", 5, 1},
+		{6300, "utilities", "Utilities", 5, 1},
+		{7000, "other_income", "Other Income", 4, 1},
+		{7100, "misc_income", "Miscellaneous Income", 4, 1},
+		{7200, "interest_income", "Interest Income", 4, 1},
 	}
 
-	var firstCoaID uuid.UUID
+	var coaIDs []uuid.UUID
 	
-	for i, entry := range coaEntries {
+	for _, entry := range coaEntries {
 		coaID := uuid.New()
-		if i == 0 {
-			firstCoaID = coaID
-		}
+		coaIDs = append(coaIDs, coaID)
 		
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO tbl_chart_of_accounts (id, practitioner_id, code, name, account_type_id, account_tax_id, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		`, coaID, practitionerID, entry.code, entry.name, entry.accountTypeID, entry.accountTaxID, time.Now(), time.Now())
+			INSERT INTO tbl_chart_of_accounts (id, practitioner_id, code, key, name, account_type_id, account_tax_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`, coaID, practitionerID, entry.code, entry.key, entry.name, entry.accountTypeID, entry.accountTaxID, time.Now(), time.Now())
 		
 		if err != nil {
-			return uuid.Nil, err
+			return nil, err
 		}
 	}
 	
-	return firstCoaID, nil
+	return coaIDs, nil
+}
+
+// Formula helper functions
+
+// createFormulaGrossProfit creates formula: G = A + B - C - D
+func createFormulaGrossProfit(ctx context.Context, tx *sqlx.Tx, versionID, fieldG uuid.UUID, fieldIDMap map[string]uuid.UUID) error {
+	formulaID := uuid.New()
+	
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula (id, form_version_id, field_id, name, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, formulaID, versionID, fieldG, "Gross Profit Calculation", time.Now())
+	
+	if err != nil {
+		return err
+	}
+
+	// Tree: ((A + B) - C) - D
+	// Root: -
+	rootID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, rootID, formulaID, nil, "OPERATOR", "-", nil, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// Left: (A + B) - C
+	leftSubID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, leftSubID, formulaID, rootID, "OPERATOR", "-", 0, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// Left-Left: A + B
+	addID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, addID, formulaID, leftSubID, "OPERATOR", "+", 0, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// A
+	if fieldA, ok := fieldIDMap["A"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, addID, "FIELD", fieldA, 0, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// B
+	if fieldB, ok := fieldIDMap["B"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, addID, "FIELD", fieldB, 1, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// C
+	if fieldC, ok := fieldIDMap["C"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, leftSubID, "FIELD", fieldC, 1, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// D
+	if fieldD, ok := fieldIDMap["D"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, rootID, "FIELD", fieldD, 1, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// createFormulaNetIncome creates formula: H = G - E - F
+func createFormulaNetIncome(ctx context.Context, tx *sqlx.Tx, versionID, fieldH uuid.UUID, fieldIDMap map[string]uuid.UUID) error {
+	formulaID := uuid.New()
+	
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula (id, form_version_id, field_id, name, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, formulaID, versionID, fieldH, "Net Income Calculation", time.Now())
+	
+	if err != nil {
+		return err
+	}
+
+	// Tree: (G - E) - F
+	// Root: -
+	rootID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, rootID, formulaID, nil, "OPERATOR", "-", nil, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// Left: G - E
+	leftSubID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, leftSubID, formulaID, rootID, "OPERATOR", "-", 0, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// G
+	if fieldG, ok := fieldIDMap["G"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, leftSubID, "FIELD", fieldG, 0, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// E
+	if fieldE, ok := fieldIDMap["E"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, leftSubID, "FIELD", fieldE, 1, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// F
+	if fieldF, ok := fieldIDMap["F"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, rootID, "FIELD", fieldF, 1, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// createFormulaTaxAmount creates formula: I = H * 0.1
+func createFormulaTaxAmount(ctx context.Context, tx *sqlx.Tx, versionID, fieldI uuid.UUID, fieldIDMap map[string]uuid.UUID) error {
+	formulaID := uuid.New()
+	
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula (id, form_version_id, field_id, name, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, formulaID, versionID, fieldI, "Tax Amount Calculation", time.Now())
+	
+	if err != nil {
+		return err
+	}
+
+	// Tree: H * 0.1
+	// Root: *
+	rootID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, rootID, formulaID, nil, "OPERATOR", "*", nil, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// H
+	if fieldH, ok := fieldIDMap["H"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, rootID, "FIELD", fieldH, 0, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// 0.1 constant
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, constant_value, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, uuid.New(), formulaID, rootID, "CONSTANT", 0.1, 1, time.Now())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// createFormulaFinalTotal creates formula: J = H - I
+func createFormulaFinalTotal(ctx context.Context, tx *sqlx.Tx, versionID, fieldJ uuid.UUID, fieldIDMap map[string]uuid.UUID) error {
+	formulaID := uuid.New()
+	
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula (id, form_version_id, field_id, name, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, formulaID, versionID, fieldJ, "Final Total Calculation", time.Now())
+	
+	if err != nil {
+		return err
+	}
+
+	// Tree: H - I
+	// Root: -
+	rootID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, operator, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, rootID, formulaID, nil, "OPERATOR", "-", nil, time.Now())
+	if err != nil {
+		return err
+	}
+
+	// H
+	if fieldH, ok := fieldIDMap["H"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, rootID, "FIELD", fieldH, 0, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	// I
+	if fieldI, ok := fieldIDMap["I"]; ok {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tbl_formula_node (id, formula_id, parent_id, node_type, field_id, position, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, uuid.New(), formulaID, rootID, "FIELD", fieldI, 1, time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
