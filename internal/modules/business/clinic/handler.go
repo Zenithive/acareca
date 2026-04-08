@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -141,30 +142,40 @@ func (h *handler) List(c *gin.Context) {
 // @Security BearerToken
 // @Router /clinic/{id} [get]
 func (h *handler) GetByID(c *gin.Context) {
-	// Get user ID from JWT token context
-	actorID, ok := util.GetUserID(c)
-	if !ok {
-		return
-	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
-		return
-	}
+    idParam := c.Param("id")
+    id, err := uuid.Parse(idParam)
+    if err != nil {
+        response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+        return
+    }
 
-	clinic, err := h.svc.GetClinicByID(c.Request.Context(), actorID, id)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
+    var actorID uuid.UUID
+    var ok bool
+    role := c.GetString("role")
 
-	response.JSON(c, http.StatusOK, clinic, "Clinic fetched successfully")
+    if strings.EqualFold(role, util.RoleAccountant) {
+        actorID, ok = util.GetAccountantID(c)
+    } else {
+        actorID, ok = util.GetPractitionerID(c)
+    }
+
+    if !ok {
+        response.Error(c, http.StatusUnauthorized, errors.New("profile not found"))
+        return
+    }
+
+    clinic, err := h.svc.GetClinicByID(c.Request.Context(), actorID, id)
+    if err != nil {
+        if errors.Is(err, ErrNotFound) {
+            response.Error(c, http.StatusNotFound, err)
+            return
+        }
+        response.Error(c, http.StatusInternalServerError, err)
+        return
+    }
+
+    response.JSON(c, http.StatusOK, clinic, "Clinic fetched successfully")
 }
 
 // @Summary Update clinic details
