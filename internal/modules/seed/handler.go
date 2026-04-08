@@ -28,14 +28,14 @@ func NewHandler(svc IService) IHandler {
 // @Accept json
 // @Produce json
 // @Param request body RqSeedData true "Seed configuration"
-// @Success 200 {object} response.Response{data=RsSeedData}
-// @Failure 400 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /api/seed [post]
+// @Success 200 {object} RsSeedData "Data seeded successfully"
+// @Failure 400 {object} response.RsError "Invalid input"
+// @Failure 500 {object} response.RsError "Internal server error"
+// @Router /seed [post]
 func (h *handler) SeedData(c *gin.Context) {
 	var req RqSeedData
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest,err)
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -44,7 +44,7 @@ func (h *handler) SeedData(c *gin.Context) {
 	if req.PractitionerID != nil && *req.PractitionerID != "" {
 		id, err := uuid.Parse(*req.PractitionerID)
 		if err != nil {
-			response.Error(c, http.StatusBadRequest,  err)
+			response.Error(c, http.StatusBadRequest, err)
 			return
 		}
 		practitionerID = &id
@@ -56,7 +56,7 @@ func (h *handler) SeedData(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, result,"Data seeded successfully")
+	response.JSON(c, http.StatusOK, result, "Data seeded successfully")
 }
 
 // CleanupData godoc
@@ -66,10 +66,10 @@ func (h *handler) SeedData(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body RqCleanupData true "Cleanup configuration"
-// @Success 200 {object} response.Response{data=RsCleanupData}
-// @Failure 400 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /api/seed/cleanup [post]
+// @Success 200 {object} RsCleanupData "Data cleaned up successfully"
+// @Failure 400 {object} response.RsError "Invalid input"
+// @Failure 500 {object} response.RsError "Internal server error"
+// @Router /seed/cleanup [post]
 func (h *handler) CleanupData(c *gin.Context) {
 	var req RqCleanupData
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -90,5 +90,5 @@ func (h *handler) CleanupData(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, result, "Data cleaned up successfully" )
+	response.JSON(c, http.StatusOK, result, "Data cleaned up successfully")
 }
