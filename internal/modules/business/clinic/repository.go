@@ -246,11 +246,6 @@ func (r *repository) BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) err
 	return nil
 }
 
-// GetDB returns the database connection for transactions
-func (r *repository) GetDB() *sqlx.DB {
-	return r.db
-}
-
 // Transaction-based methods
 func (r *repository) CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
     query := `
@@ -617,7 +612,7 @@ func (r *repository) GetAccountantPermission(ctx context.Context, accountantID u
 func (r *repository) IsClinicOwner(ctx context.Context, practitionerID uuid.UUID, clinicID uuid.UUID) (bool, error) {
 	var exists bool
 	// Adjust table/column names to match your schema (e.g., tbl_clinics)
-	query := `SELECT EXISTS(SELECT 1 FROM clinics WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL)`
+	query := `SELECT EXISTS(SELECT 1 FROM tbl_clinic WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL)`
 
 	err := r.db.GetContext(ctx, &exists, query, clinicID, practitionerID)
 	if err != nil {
