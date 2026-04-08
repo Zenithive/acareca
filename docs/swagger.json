@@ -5500,6 +5500,98 @@
                 }
             }
         },
+        "/seed": {
+            "post": {
+                "description": "Create test clinics, forms, and formulas for a practitioner",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Seed"
+                ],
+                "summary": "Seed test data",
+                "parameters": [
+                    {
+                        "description": "Seed configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/seed.RqSeedData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data seeded successfully",
+                        "schema": {
+                            "$ref": "#/definitions/seed.RsSeedData"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/seed/cleanup": {
+            "post": {
+                "description": "Delete all clinics and forms for a practitioner (preserves COA)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Seed"
+                ],
+                "summary": "Cleanup seeded data",
+                "parameters": [
+                    {
+                        "description": "Cleanup configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/seed.RqCleanupData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data cleaned up successfully",
+                        "schema": {
+                            "$ref": "#/definitions/seed.RsCleanupData"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/setting": {
             "get": {
                 "security": [
@@ -7825,6 +7917,139 @@
                     "type": "string"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "seed.ClinicDetail": {
+            "type": "object",
+            "properties": {
+                "clinic_id": {
+                    "type": "string"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "forms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/seed.FormDetail"
+                    }
+                }
+            }
+        },
+        "seed.FormDetail": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "integer"
+                },
+                "form_id": {
+                    "type": "string"
+                },
+                "form_name": {
+                    "type": "string"
+                },
+                "formulas": {
+                    "type": "integer"
+                }
+            }
+        },
+        "seed.RqCleanupData": {
+            "type": "object",
+            "required": [
+                "practitioner_id"
+            ],
+            "properties": {
+                "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "seed.RqSeedData": {
+            "type": "object",
+            "required": [
+                "num_clinics",
+                "num_forms"
+            ],
+            "properties": {
+                "num_clinics": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1
+                },
+                "num_fields": {
+                    "type": "integer",
+                    "maximum": 10,
+                    "minimum": 1
+                },
+                "num_forms": {
+                    "type": "integer",
+                    "maximum": 50,
+                    "minimum": 1
+                },
+                "practitioner_id": {
+                    "type": "string"
+                },
+                "verbose": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "seed.RsCleanupData": {
+            "type": "object",
+            "properties": {
+                "addresses_deleted": {
+                    "type": "integer"
+                },
+                "clinics_deleted": {
+                    "type": "integer"
+                },
+                "contacts_deleted": {
+                    "type": "integer"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "fields_deleted": {
+                    "type": "integer"
+                },
+                "form_versions_deleted": {
+                    "type": "integer"
+                },
+                "forms_deleted": {
+                    "type": "integer"
+                },
+                "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "seed.RsSeedData": {
+            "type": "object",
+            "properties": {
+                "clinics_created": {
+                    "type": "integer"
+                },
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/seed.ClinicDetail"
+                    }
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "fields_created": {
+                    "type": "integer"
+                },
+                "forms_created": {
+                    "type": "integer"
+                },
+                "formulas_created": {
+                    "type": "integer"
+                },
+                "practitioner_id": {
                     "type": "string"
                 }
             }

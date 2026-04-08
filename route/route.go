@@ -35,6 +35,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/modules/seed"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -253,6 +254,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Webhook route MUST be registered before any JSON body-parsing middleware
 	billing.RegisterWebhookRoute(r.Group("/api/v1/webhooks"), billingHandler)
 	billing.RegisterRoutes(v1, billingHandler, cfg)
+
+	// Seed module (for development/testing)
+	seedSvc := seed.NewService(dbConn)
+	seedHandler := seed.NewHandler(seedSvc)
+	seed.RegisterRoutes(v1, seedHandler)
 
 	return auditSvc, notifier, notificationRepo
 
