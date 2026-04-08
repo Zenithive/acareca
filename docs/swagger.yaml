@@ -4291,6 +4291,34 @@ paths:
       summary: Revoke an accepted/completed invitation
       tags:
       - invitation
+  /invite/list-permissions:
+    get:
+      description: Retrieve all active entity permissions (Clinics, Forms) assigned
+        to the logged-in Accountant.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List Accountant Permissions
+      tags:
+      - invitation
   /invite/permissions:
     post:
       consumes:

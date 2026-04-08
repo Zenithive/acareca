@@ -37,6 +37,7 @@ type Service interface {
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 	GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, eType string, perms Permissions) (*Permissions, error)
+	ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*util.RsList, error)
 }
 
 const (
@@ -515,28 +516,28 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 	if inv.Status != StatusAccepted && inv.Status != StatusCompleted {
 		return fmt.Errorf("cannot revoke an invitation with status: %s", inv.Status)
 	}
-	
+
 	// START TRANSACTION
 	accountantID := *inv.EntityID
-    tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
-    if err != nil {
-        return fmt.Errorf("failed to start transaction: %w", err)
-    }
-    defer tx.Rollback()
+	tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
 	// 1. Update Invitation Status
-    if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.EntityID); err != nil {
-        return fmt.Errorf("revoke invitation status update: %w", err)
-    }
+	if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.EntityID); err != nil {
+		return fmt.Errorf("revoke invitation status update: %w", err)
+	}
 
-    // 2. Delete all permissions granted to this accountant by this practitioner
-    if err := s.repo.DeleteAllPermissionsForAccountantTx(ctx, tx, practitionerID, accountantID); err != nil {
-        return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
-    }
+	// 2. Delete all permissions granted to this accountant by this practitioner
+	if err := s.repo.DeleteAllPermissionsForAccountantTx(ctx, tx, practitionerID, accountantID); err != nil {
+		return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
+	}
 
-    // COMMIT TRANSACTION
-    if err := tx.Commit(); err != nil {
-        return fmt.Errorf("failed to commit revocation: %w", err)
-    }
+	// COMMIT TRANSACTION
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit revocation: %w", err)
+	}
 
 	// Audit log
 	meta := auditctx.GetMetadata(ctx)
@@ -584,45 +585,65 @@ func (s *service) GetPractitionerLinkedToAccountant(ctx context.Context, account
 	return s.repo.GetPractitionerLinkedToAccountant(ctx, accountantID)
 }
 
+func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, f *Filter) (*util.RsList, error) {
+
+	ft := f.MapToFilterAccountant()
+
+	res, err := s.repo.ListAccountantPermissions(ctx, aID, ft)
+	if err != nil {
+		return nil, fmt.Errorf("list accountant permissions: %w", err)
+	}
+
+	total, err := s.repo.CountAccountantPermissions(ctx, aID, ft)
+	if err != nil {
+		return nil, fmt.Errorf("count accountant permissions: %w", err)
+	}
+
+	var rsList util.RsList
+	rsList.MapToList(res, total, *ft.Offset, *ft.Limit)
+	return &rsList, nil
+
+}
+
 func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, eType string, perms Permissions) (*Permissions, error) {
-    // Verify accountant is linked to this practitioner
-    linkedPracID, err := s.repo.GetPractitionerLinkedToAccountant(ctx, aID)
-    if err != nil || linkedPracID != pID {
-        return nil, fmt.Errorf("unauthorized association")
-    }
+	// Verify accountant is linked to this practitioner
+	linkedPracID, err := s.repo.GetPractitionerLinkedToAccountant(ctx, aID)
+	if err != nil || linkedPracID != pID {
+		return nil, fmt.Errorf("unauthorized association")
+	}
 
-    dbMap := make(map[string]bool)
-    finalDisplay := &Permissions{}
+	dbMap := make(map[string]bool)
+	finalDisplay := &Permissions{}
 
-  if perms.All {
-        // All-access mode
-        dbMap["all"] = true
-        finalDisplay.All, finalDisplay.Read = true, true
-        finalDisplay.Create, finalDisplay.Update, finalDisplay.Delete = true, true, true
-    } else {
-        // Granular mode (only add keys if they are true)
-        dbMap["read"] = true // Always grant read at minimum
-        finalDisplay.Read = true
+	if perms.All {
+		// All-access mode
+		dbMap["all"] = true
+		finalDisplay.All, finalDisplay.Read = true, true
+		finalDisplay.Create, finalDisplay.Update, finalDisplay.Delete = true, true, true
+	} else {
+		// Granular mode (only add keys if they are true)
+		dbMap["read"] = true // Always grant read at minimum
+		finalDisplay.Read = true
 
-        if perms.Create {
-            dbMap["create"] = true
-            finalDisplay.Create = true
-        }
-        if perms.Update {
-            dbMap["update"] = true
-            finalDisplay.Update = true
-        }
-        if perms.Delete {
-            dbMap["delete"] = true
-            finalDisplay.Delete = true
-        }
-    }
+		if perms.Create {
+			dbMap["create"] = true
+			finalDisplay.Create = true
+		}
+		if perms.Update {
+			dbMap["update"] = true
+			finalDisplay.Update = true
+		}
+		if perms.Delete {
+			dbMap["delete"] = true
+			finalDisplay.Delete = true
+		}
+	}
 
-    // Save to DB and return finalDisplay
-    permJson, _ := json.Marshal(dbMap)
-    if err := s.repo.GrantEntityPermission(ctx, pID, aID, eID, eType, permJson); err != nil {
+	// Save to DB and return finalDisplay
+	permJson, _ := json.Marshal(dbMap)
+	if err := s.repo.GrantEntityPermission(ctx, pID, aID, eID, eType, permJson); err != nil {
 		return nil, err
 	}
 
-    return finalDisplay, nil
+	return finalDisplay, nil
 }

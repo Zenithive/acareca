@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -18,14 +19,16 @@ type IHandler interface {
 	ResendInvitation(c *gin.Context)
 	RevokeInvitation(c *gin.Context)
 	HandlePermissions(c *gin.Context)
+	ListAccountantPermissions(c *gin.Context)
 }
 
 type Handler struct {
-	svc Service
+	svc            Service
+	accountantRepo accountant.Repository
 }
 
-func NewHandler(svc Service) IHandler {
-	return &Handler{svc: svc}
+func NewHandler(svc Service, accountantRepo accountant.Repository) IHandler {
+	return &Handler{svc: svc, accountantRepo: accountantRepo}
 }
 
 // @Summary      Send an invitation
@@ -249,6 +252,39 @@ func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
 	}
 }
 
+// ListAccountantPermissions godoc
+// @Summary      List Accountant Permissions
+// @Description   Retrieve all active entity permissions (Clinics, Forms) assigned to the logged-in Accountant.
+// @Tags         invitation
+// @Produce      json
+// @Success      200      {object}  util.RsList
+// @Failure      400      {object}  response.RsError
+// @Failure      401      {object}  response.RsError
+// @Failure      500      {object}  response.RsError
+// @Security     BearerToken
+// @Router       /invite/list-permissions [get]
+func (h *Handler) ListAccountantPermissions(c *gin.Context) {
+
+	accId, ok := util.GetAccountantID(c)
+	if !ok {
+		return
+	}
+
+	var reqFilter Filter
+	if err := c.ShouldBindQuery(&reqFilter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	// 2. Call Service with the Accountant ID pointer
+	res, err := h.svc.ListAccountantPermissions(c.Request.Context(), accId, &reqFilter)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, res, "Permissions retrieved successfully")
+}
+
 // @Summary      Grant or Update permissions
 // @Description  Practitioner grants specific permissions (Read, Create, Update, Delete, All) to an accountant for a specific entity.
 // @Tags         invitation
@@ -279,12 +315,12 @@ func (h *Handler) HandlePermissions(c *gin.Context) {
 	}
 
 	// Wrap the result in a detailed response object
-    data := gin.H{
-        "accountant_id": req.AccountantID,
-        "entity_id":     req.EntityID,
-        "entity_type":   req.EntityType,
-        "permissions":   resPerms,
-    }
+	data := gin.H{
+		"accountant_id": req.AccountantID,
+		"entity_id":     req.EntityID,
+		"entity_type":   req.EntityType,
+		"permissions":   resPerms,
+	}
 
 	response.JSON(c, http.StatusOK, data, "Permissions Granted")
 }
