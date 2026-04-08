@@ -65,6 +65,14 @@ func (a *permissionAdapter) ListAccountantPermission(ctx context.Context, accId 
 	return result, nil
 }
 
+func (a *permissionAdapter) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (middleware.PermissionItem, error) {
+	perm, err := a.invSvc.GetPermissionsForAccountant(ctx, accountantID, entityID)
+	if err != nil {
+		return nil, err
+	}
+	return perm, nil
+}
+
 func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
 
 	// Initialize Stripe SDK
