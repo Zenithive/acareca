@@ -159,3 +159,11 @@ func (p *Permissions) HasAccess(action string) bool {
 		return false
 	}
 }
+
+// RqGrantPermission is the input for granting/updating permissions
+type RqGrantPermission struct {
+	AccountantID uuid.UUID   `json:"accountant_id" validate:"required"`
+	EntityID     uuid.UUID   `json:"entity_id" validate:"required"`
+	EntityType   string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
+	Permissions  Permissions `json:"permissions" validate:"required"`
+}

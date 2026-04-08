@@ -17,6 +17,7 @@ type IHandler interface {
 	ListInvitations(c *gin.Context)
 	ResendInvitation(c *gin.Context)
 	RevokeInvitation(c *gin.Context)
+	HandlePermissions(c *gin.Context)
 }
 
 type Handler struct {
@@ -246,4 +247,44 @@ func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
 	default:
 		return nil, nil, false
 	}
+}
+
+// @Summary      Grant or Update permissions
+// @Description  Practitioner grants specific permissions (Read, Create, Update, Delete, All) to an accountant for a specific entity.
+// @Tags         invitation
+// @Accept       json
+// @Produce      json
+// @Param        request body RqGrantPermission true "Permission Details"
+// @Success      200 {object} response.RsBase
+// @Failure      400 {object} response.RsError
+// @Security     BearerToken
+// @Router       /invite/permissions [post]
+func (h *Handler) HandlePermissions(c *gin.Context) {
+	practID, ok := util.GetPractitionerID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var req RqGrantPermission
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	resPerms, err := h.svc.GrantEntityPermission(c.Request.Context(), practID, req.AccountantID, req.EntityID, req.EntityType, req.Permissions)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Wrap the result in a detailed response object
+    data := gin.H{
+        "accountant_id": req.AccountantID,
+        "entity_id":     req.EntityID,
+        "entity_type":   req.EntityType,
+        "permissions":   resPerms,
+    }
+
+	response.JSON(c, http.StatusOK, data, "Permissions Granted")
 }

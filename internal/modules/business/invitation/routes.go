@@ -20,4 +20,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	invite.POST("/:id/resend", h.ResendInvitation)
 	invite.DELETE("/:id/revoke", h.RevokeInvitation)
 	invite.GET("", h.ListInvitations)
+	invite.POST("/permissions", h.HandlePermissions)
 }

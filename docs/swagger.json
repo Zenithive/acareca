@@ -229,6 +229,93 @@
                 }
             }
         },
+        "/admin/accountant": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetch a paginated list of all accountants with their associated practitioners. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-accountant"
+                ],
+                "summary": "List all accountants with their practitioners (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email address",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by accountant full name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by phone number (partial match)",
+                        "name": "phone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across accountant full name and email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records per page (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: id, first_name, last_name, email (default: id)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/audit": {
             "get": {
                 "security": [
@@ -524,6 +611,105 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/practitioner": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetch a paginated list of all practitioners with their active subscription details. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-practitioner"
+                ],
+                "summary": "List all practitioners with active subscriptions (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email address",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by practitioner full name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by phone number (partial match)",
+                        "name": "phone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by active subscription (true=with active, false=without active)",
+                        "name": "has_active_subscription",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by subscription plan name (partial match)",
+                        "name": "subscription_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across practitioner full name and email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records per page (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: id, first_name, last_name, email, created_at (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -1107,7 +1293,7 @@
         },
         "/auth/google/callback": {
             "get": {
-                "description": "handle Google OAuth callback and return tokens",
+                "description": "handle Google OAuth callback and redirect to frontend with tokens",
                 "produces": [
                     "application/json"
                 ],
@@ -1122,20 +1308,13 @@
                         "name": "code",
                         "in": "query",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "OAuth state (CSRF token)",
-                        "name": "state",
-                        "in": "query",
-                        "required": true
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "302": {
+                        "description": "Redirect to frontend",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "type": "string"
                         }
                     },
                     "400": {
@@ -4061,6 +4240,51 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/permissions": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Practitioner grants specific permissions (Read, Create, Update, Delete, All) to an accountant for a specific entity.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Grant or Update permissions",
+                "parameters": [
+                    {
+                        "description": "Permission Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invitation.RqGrantPermission"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -7153,6 +7377,54 @@
                 },
                 "label": {
                     "type": "string"
+                }
+            }
+        },
+        "invitation.Permissions": {
+            "type": "object",
+            "properties": {
+                "all": {
+                    "type": "boolean"
+                },
+                "create": {
+                    "type": "boolean"
+                },
+                "delete": {
+                    "type": "boolean"
+                },
+                "read": {
+                    "type": "boolean"
+                },
+                "update": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "invitation.RqGrantPermission": {
+            "type": "object",
+            "required": [
+                "accountant_id",
+                "entity_id",
+                "entity_type",
+                "permissions"
+            ],
+            "properties": {
+                "accountant_id": {
+                    "type": "string"
+                },
+                "entity_id": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "CLINIC",
+                        "FORM",
+                        "ENTRY"
+                    ]
+                },
+                "permissions": {
+                    "$ref": "#/definitions/invitation.Permissions"
                 }
             }
         },

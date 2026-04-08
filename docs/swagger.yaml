@@ -1036,6 +1036,39 @@ definitions:
       label:
         type: string
     type: object
+  invitation.Permissions:
+    properties:
+      all:
+        type: boolean
+      create:
+        type: boolean
+      delete:
+        type: boolean
+      read:
+        type: boolean
+      update:
+        type: boolean
+    type: object
+  invitation.RqGrantPermission:
+    properties:
+      accountant_id:
+        type: string
+      entity_id:
+        type: string
+      entity_type:
+        enum:
+        - CLINIC
+        - FORM
+        - ENTRY
+        type: string
+      permissions:
+        $ref: '#/definitions/invitation.Permissions'
+    required:
+    - accountant_id
+    - entity_id
+    - entity_type
+    - permissions
+    type: object
   invitation.RqProcessAction:
     properties:
       action:
@@ -1594,6 +1627,63 @@ paths:
       summary: Get Admin Detail
       tags:
       - admin
+  /admin/accountant:
+    get:
+      description: Fetch a paginated list of all accountants with their associated
+        practitioners. Admin only.
+      parameters:
+      - description: Filter by exact email address
+        in: query
+        name: email
+        type: string
+      - description: Filter by accountant full name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by phone number (partial match)
+        in: query
+        name: phone
+        type: string
+      - description: Search across accountant full name and email
+        in: query
+        name: search
+        type: string
+      - description: 'Number of records per page (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: id, first_name, last_name, email (default: id)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all accountants with their practitioners (Admin)
+      tags:
+      - admin-accountant
   /admin/audit:
     get:
       consumes:
@@ -1790,6 +1880,73 @@ paths:
       summary: Get all quarters for a specific financial year
       tags:
       - fy
+  /admin/practitioner:
+    get:
+      description: Fetch a paginated list of all practitioners with their active subscription
+        details. Admin only.
+      parameters:
+      - description: Filter by exact email address
+        in: query
+        name: email
+        type: string
+      - description: Filter by practitioner full name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by phone number (partial match)
+        in: query
+        name: phone
+        type: string
+      - description: Filter by active subscription (true=with active, false=without
+          active)
+        in: query
+        name: has_active_subscription
+        type: boolean
+      - description: Filter by subscription plan name (partial match)
+        in: query
+        name: subscription_name
+        type: string
+      - description: Search across practitioner full name and email
+        in: query
+        name: search
+        type: string
+      - description: 'Number of records per page (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: id, first_name, last_name, email, created_at (default:
+          created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all practitioners with active subscriptions (Admin)
+      tags:
+      - admin-practitioner
   /admin/subscription:
     get:
       consumes:
@@ -2129,25 +2286,20 @@ paths:
       - auth
   /auth/google/callback:
     get:
-      description: handle Google OAuth callback and return tokens
+      description: handle Google OAuth callback and redirect to frontend with tokens
       parameters:
       - description: OAuth authorization code
         in: query
         name: code
         required: true
         type: string
-      - description: OAuth state (CSRF token)
-        in: query
-        name: state
-        required: true
-        type: string
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "302":
+          description: Redirect to frontend
           schema:
-            $ref: '#/definitions/response.RsBase'
+            type: string
         "400":
           description: Bad Request
           schema:
@@ -4137,6 +4289,35 @@ paths:
       security:
       - BearerToken: []
       summary: Revoke an accepted/completed invitation
+      tags:
+      - invitation
+  /invite/permissions:
+    post:
+      consumes:
+      - application/json
+      description: Practitioner grants specific permissions (Read, Create, Update,
+        Delete, All) to an accountant for a specific entity.
+      parameters:
+      - description: Permission Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invitation.RqGrantPermission'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Grant or Update permissions
       tags:
       - invitation
   /invite/process:

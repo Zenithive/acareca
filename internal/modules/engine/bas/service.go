@@ -185,8 +185,11 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, clin
 		}
 		ownerID = permission.PractitionerID
 	} else {
-
-		ownerID = actorID
+		pID, er := s.clinicRepo.GetPractitionerIDByUserID(ctx, actorID.String())
+        if er != nil {
+            return nil, fmt.Errorf("practitioner profile not found")
+        }
+        ownerID = *pID
 
 		// Verify the practitioner actually owns this clinic
 		_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicID, ownerID)
