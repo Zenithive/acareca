@@ -8779,6 +8779,30 @@ const docTemplate = `{
                 }
             }
         },
+        "invitation.RqPermissionDetail": {
+            "type": "object",
+            "required": [
+                "entity_id",
+                "entity_type",
+                "permissions"
+            ],
+            "properties": {
+                "entity_id": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "CLINIC",
+                        "FORM",
+                        "ENTRY"
+                    ]
+                },
+                "permissions": {
+                    "$ref": "#/definitions/invitation.Permissions"
+                }
+            }
+        },
         "invitation.RqProcessAction": {
             "type": "object",
             "required": [
@@ -8806,6 +8830,12 @@ const docTemplate = `{
             "properties": {
                 "email": {
                     "type": "string"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/invitation.RqPermissionDetail"
+                    }
                 }
             }
         },

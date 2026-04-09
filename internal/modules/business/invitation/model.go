@@ -34,16 +34,19 @@ type Invitation struct {
 
 // RqSendInvitation is the input for creating a new invitation
 type RqSendInvitation struct {
-	Email string `json:"email" validate:"required,email"`
+	Email       string               `json:"email" validate:"required,email"`
+	Permissions []RqPermissionDetail `json:"permissions"`
 }
 
 // RsInvitation is the response after an invitation is created
 type RsInvitation struct {
 	ID         uuid.UUID        `json:"id"`
 	Email      string           `json:"email"`
+	AccountantID *uuid.UUID     `json:"accountant_id"`
 	InviteLink string           `json:"invite_link"`
 	Status     InvitationStatus `json:"status"`
 	ExpiresAt  time.Time        `json:"expires_at"`
+	Permissions []RqPermissionDetail `json:"permissions"`
 }
 
 type UserDetails struct {
@@ -59,6 +62,9 @@ type RsInviteDetails struct {
 	SentBy       UserDetails      `json:"sent_by"`
 	SentTo       UserDetails      `json:"sent_to"`
 	SenderRole   string           `json:"sender_role"`
+	AccountantID *uuid.UUID           `json:"id"` 
+	Email        string               `json:"email"`
+	Permissions  []RqPermissionDetail `json:"permissions"`
 }
 
 // RsInviteProcess helps the frontend navigate after a link click
@@ -179,4 +185,17 @@ type RqGrantPermission struct {
 	EntityID     uuid.UUID   `json:"entity_id" validate:"required"`
 	EntityType   string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
 	Permissions  Permissions `json:"permissions" validate:"required"`
+}
+
+// RqUpdatePermissions is the input for updating permissions
+type RqUpdatePermissions struct {
+	AccountantID uuid.UUID            `json:"accountant_id" validate:"required"`
+	Permissions  []RqPermissionDetail `json:"permissions" validate:"required,dive"`
+}
+
+// RqPermissionDetail is for individual entity permissions
+type RqPermissionDetail struct {
+	EntityID    uuid.UUID   `json:"entity_id" validate:"required"`
+	EntityType  string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
+	Permissions Permissions `json:"permissions" validate:"required"`
 }

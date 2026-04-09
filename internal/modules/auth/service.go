@@ -175,7 +175,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			if a == nil {
 				return errors.New("failed to retrieve accountant profile for invitation finalization")
 			}
-			err = s.invitationSvc.FinalizeRegistrationInternal(ctx, created.Email, a.ID)
+			err = s.invitationSvc.FinalizeRegistrationInternal(ctx, tx, created.Email, a.ID)
 			if err != nil {
 				return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
 			}

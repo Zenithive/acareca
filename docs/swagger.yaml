@@ -1422,6 +1422,23 @@ definitions:
     - entity_type
     - permissions
     type: object
+  invitation.RqPermissionDetail:
+    properties:
+      entity_id:
+        type: string
+      entity_type:
+        enum:
+        - CLINIC
+        - FORM
+        - ENTRY
+        type: string
+      permissions:
+        $ref: '#/definitions/invitation.Permissions'
+    required:
+    - entity_id
+    - entity_type
+    - permissions
+    type: object
   invitation.RqProcessAction:
     properties:
       action:
@@ -1439,6 +1456,10 @@ definitions:
     properties:
       email:
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/invitation.RqPermissionDetail'
+        type: array
     required:
     - email
     type: object
