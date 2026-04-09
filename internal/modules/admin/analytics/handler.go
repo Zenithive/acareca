@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	sharedAnalytics "github.com/iamarpitzala/acareca/internal/shared/analytics"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 )
 
@@ -160,7 +161,7 @@ func (h *Handler) ListPractitionersWithDetails(c *gin.Context) {
 // @Success 200 {object} RsPractitionerOverview
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/dashboard/practitioner/overview [get]
+// @Router /admin/analytics/dashboard/practitioner/overview [get]
 func (h *Handler) GetPractitionerOverview(c *gin.Context) {
 	result, err := h.svc.GetPractitionerOverview(c.Request.Context())
 	if err != nil {
@@ -182,7 +183,7 @@ func (h *Handler) GetPractitionerOverview(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/dashboard/practitioner/resource-analytics [get]
+// @Router /admin/analytics/dashboard/practitioner/resource-analytics [get]
 func (h *Handler) GetResourceAnalytics(c *gin.Context) {
 	var filter ResourceAnalyticsFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -212,7 +213,7 @@ func (h *Handler) GetResourceAnalytics(c *gin.Context) {
 // @Success 200 {object} RsAccountantOverview
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/dashboard/accountant/overview [get]
+// @Router /admin/analytics/dashboard/accountant/overview [get]
 func (h *Handler) GetAccountantOverview(c *gin.Context) {
 	result, err := h.svc.GetAccountantOverview(c.Request.Context())
 	if err != nil {
@@ -234,7 +235,7 @@ func (h *Handler) GetAccountantOverview(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/dashboard/accountant/resource-access-timeseries [get]
+// @Router /admin/analytics/dashboard/accountant/resource-access-timeseries [get]
 func (h *Handler) GetResourceAccessTimeseries(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -268,7 +269,7 @@ func (h *Handler) GetResourceAccessTimeseries(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/dashboard/billing/platform-revenue [get]
+// @Router /admin/analytics/dashboard/billing/platform-revenue [get]
 func (h *Handler) GetPlatformRevenue(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -308,7 +309,7 @@ func (h *Handler) GetPlatformRevenue(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/billing/subscriptions [get]
+// @Router /admin/analytics/billing/subscriptions [get]
 func (h *Handler) ListSubscriptionRecords(c *gin.Context) {
 	var filter SubscriptionRecordFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -342,7 +343,7 @@ func (h *Handler) ListSubscriptionRecords(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/billing/plan-distribution [get]
+// @Router /admin/analytics/billing/plan-distribution [get]
 func (h *Handler) GetPlanDistribution(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -363,4 +364,71 @@ func (h *Handler) GetPlanDistribution(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "Plan distribution fetched")
+}
+
+// Validation helper functions
+
+func validateDateRangeFilter(filter *DateRangeFilter) error {
+	if filter == nil {
+		return nil
+	}
+
+	var from, to string
+	if filter.From != nil {
+		from = *filter.From
+	}
+	if filter.To != nil {
+		to = *filter.To
+	}
+
+	if err := sharedAnalytics.ValidateDateRange(from, to); err != nil {
+		return err
+	}
+
+	var bucket string
+	if filter.Bucket != nil {
+		bucket = *filter.Bucket
+	}
+
+	return sharedAnalytics.ValidateBucket(bucket)
+}
+
+func validateResourceAnalyticsFilter(filter *ResourceAnalyticsFilter) error {
+	if filter == nil {
+		return nil
+	}
+
+	var from, to string
+	if filter.From != nil {
+		from = *filter.From
+	}
+	if filter.To != nil {
+		to = *filter.To
+	}
+
+	return sharedAnalytics.ValidateDateRange(from, to)
+}
+
+func validateSubscriptionRecordFilter(filter *SubscriptionRecordFilter) error {
+	if filter == nil {
+		return nil
+	}
+
+	if err := sharedAnalytics.SanitizeSearchTerm(filter.Search); err != nil {
+		return err
+	}
+
+	if err := sharedAnalytics.ValidatePagination(filter.Limit, filter.Offset); err != nil {
+		return err
+	}
+
+	var from, to string
+	if filter.From != nil {
+		from = *filter.From
+	}
+	if filter.To != nil {
+		to = *filter.To
+	}
+
+	return sharedAnalytics.ValidateDateRange(from, to)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	sharedAnalytics "github.com/iamarpitzala/acareca/internal/shared/analytics"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -414,7 +415,7 @@ func (r *repository) ListPractitionersWithDetails(ctx context.Context, filter *P
 	}
 
 	// Get practitioner IDs with sorting and pagination
-	selectQuery := "SELECT DISTINCT p.id " + baseQuery
+	selectQuery := "SELECT DISTINCT p.id, p.created_at, u.email, u.first_name, u.last_name " + baseQuery
 	listQuery, listArgs := common.BuildQuery(selectQuery, cf, practitionerColumns, practitionerSearchCols, false)
 
 	rows, err := r.db.QueryxContext(ctx, r.db.Rebind(listQuery), listArgs...)
@@ -426,7 +427,9 @@ func (r *repository) ListPractitionersWithDetails(ctx context.Context, filter *P
 	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var createdAt time.Time
+		var email, firstName, lastName string
+		if err := rows.Scan(&id, &createdAt, &email, &firstName, &lastName); err != nil {
 			return nil, 0, fmt.Errorf("scan id: %w", err)
 		}
 		ids = append(ids, id)
@@ -694,7 +697,7 @@ func (r *repository) GetPractitionerOverview(ctx context.Context) (*RsPractition
 
 // GetResourceAnalytics retrieves resource analytics grouped by entity type
 func (r *repository) GetResourceAnalytics(ctx context.Context, filter *ResourceAnalyticsFilter) (*RsResourceAnalytics, error) {
-	from, to := parseDateRange(filter.From, filter.To, DefaultDaysShort)
+	from, to := sharedAnalytics.ParseDateRange(filter.From, filter.To, sharedAnalytics.DefaultDaysShort)
 	groupBy := "entity_type"
 	if filter.GroupBy != nil {
 		groupBy = *filter.GroupBy
@@ -789,9 +792,9 @@ func (r *repository) GetAccountantOverview(ctx context.Context) (*RsAccountantOv
 
 // GetResourceAccessTimeseries retrieves accountant resource access over time
 func (r *repository) GetResourceAccessTimeseries(ctx context.Context, filter *DateRangeFilter) (*RsResourceAccessTimeseries, error) {
-	from, to := parseDateRange(filter.From, filter.To, DefaultDaysShort)
-	bucket := parseBucket(filter.Bucket, BucketDay)
-	dateTrunc, dateFormat := getBucketConfig(bucket)
+	from, to := sharedAnalytics.ParseDateRange(filter.From, filter.To, sharedAnalytics.DefaultDaysShort)
+	bucket := sharedAnalytics.ParseBucket(filter.Bucket, sharedAnalytics.BucketDay)
+	dateTrunc, dateFormat := sharedAnalytics.GetBucketConfig(bucket)
 
 	query := buildTimeseriesQuery("tbl_audit_log", "entity_type", "created_at", "AND entity_type IN ('CLINIC', 'INVOICE', 'PATIENT', 'FORM')")
 	rows, err := r.db.QueryxContext(ctx, query, dateTrunc, from, to)
@@ -821,9 +824,9 @@ func (r *repository) GetResourceAccessTimeseries(ctx context.Context, filter *Da
 
 // GetPlatformRevenue retrieves platform revenue over time
 func (r *repository) GetPlatformRevenue(ctx context.Context, filter *DateRangeFilter) (*RsPlatformRevenue, error) {
-	from, to := parseDateRange(filter.From, filter.To, DefaultDaysLong)
-	bucket := parseBucket(filter.Bucket, BucketMonth)
-	dateTrunc, dateFormat := getBucketConfig(bucket)
+	from, to := sharedAnalytics.ParseDateRange(filter.From, filter.To, sharedAnalytics.DefaultDaysLong)
+	bucket := sharedAnalytics.ParseBucket(filter.Bucket, sharedAnalytics.BucketMonth)
+	dateTrunc, dateFormat := sharedAnalytics.GetBucketConfig(bucket)
 
 	rows, err := r.db.QueryxContext(ctx, buildRevenueQuery(), dateTrunc, from, to)
 	if err != nil {
@@ -837,15 +840,15 @@ func (r *repository) GetPlatformRevenue(ctx context.Context, filter *DateRangeFi
 	}
 
 	return &RsPlatformRevenue{
-		Meta:   RevenueMeta{From: from, To: to, Bucket: bucket, Currency: DefaultCurrency},
+		Meta:   RevenueMeta{From: from, To: to, Bucket: bucket, Currency: sharedAnalytics.DefaultCurrency},
 		Series: series,
 	}, nil
 }
 
 // ListSubscriptionRecords retrieves filtered subscription records
 func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *SubscriptionRecordFilter) ([]*RsSubscriptionRecord, int, error) {
-	limit, offset := parsePaginationParams(filter.Limit, filter.Offset)
-	sortBy, orderBy := parseSortParams(filter.SortBy, filter.OrderBy, "created_at", "DESC")
+	limit, offset := sharedAnalytics.ParsePaginationParams(filter.Limit, filter.Offset)
+	sortBy, orderBy := sharedAnalytics.ParseSortParams(filter.SortBy, filter.OrderBy, "created_at", "DESC")
 
 	baseQuery := `
 		FROM tbl_practitioner_subscription ps
@@ -922,12 +925,12 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 
 // GetPlanDistribution retrieves plan distribution with historical data
 func (r *repository) GetPlanDistribution(ctx context.Context, filter *DateRangeFilter) (*RsPlanDistribution, error) {
-	from, to := parseDateRange(filter.From, filter.To, DefaultDaysLong)
-	bucket := parseBucket(filter.Bucket, BucketMonth)
-	dateTrunc, dateFormat := getBucketConfig(bucket)
+	from, to := sharedAnalytics.ParseDateRange(filter.From, filter.To, sharedAnalytics.DefaultDaysLong)
+	bucket := sharedAnalytics.ParseBucket(filter.Bucket, sharedAnalytics.BucketMonth)
+	dateTrunc, dateFormat := sharedAnalytics.GetBucketConfig(bucket)
 
 	result := RsPlanDistribution{
-		Meta: RevenueMeta{From: from, To: to, Bucket: bucket, Currency: DefaultCurrency},
+		Meta: RevenueMeta{From: from, To: to, Bucket: bucket, Currency: sharedAnalytics.DefaultCurrency},
 	}
 
 	// Get plans with counts
@@ -1012,4 +1015,115 @@ func (r *repository) GetPlanDistribution(ctx context.Context, filter *DateRangeF
 	}
 
 	return &result, nil
+}
+
+// Query builder helper functions
+
+// buildTimeseriesQuery creates a reusable timeseries query
+func buildTimeseriesQuery(table, groupField, dateField string, entityFilter string) string {
+	return fmt.Sprintf(`
+		SELECT 
+			%s,
+			DATE_TRUNC($1, %s) as ts,
+			COUNT(*) as count
+		FROM %s
+		WHERE %s BETWEEN $2 AND $3
+			%s
+		GROUP BY %s, DATE_TRUNC($1, %s)
+		ORDER BY %s, ts
+	`, groupField, dateField, table, dateField, entityFilter, groupField, dateField, groupField)
+}
+
+// scanTimeseries scans timeseries data into a map
+func scanTimeseries(rows *sqlx.Rows, dateFormat string) (map[string][]TimePoint, error) {
+	seriesMap := make(map[string][]TimePoint)
+	
+	for rows.Next() {
+		var key string
+		var ts time.Time
+		var count int
+		if err := rows.Scan(&key, &ts, &count); err != nil {
+			return nil, err
+		}
+
+		seriesMap[key] = append(seriesMap[key], TimePoint{
+			Timestamp: ts.Format(dateFormat),
+			Count:     count,
+		})
+	}
+	
+	return seriesMap, nil
+}
+
+// buildRevenueQuery creates a reusable revenue query
+func buildRevenueQuery() string {
+	return `
+		SELECT 
+			DATE_TRUNC($1, ps.created_at) as ts,
+			SUM(s.price) as revenue
+		FROM tbl_practitioner_subscription ps
+		JOIN tbl_subscription s ON ps.subscription_id = s.id
+		WHERE ps.created_at BETWEEN $2 AND $3
+			AND ps.deleted_at IS NULL
+		GROUP BY DATE_TRUNC($1, ps.created_at)
+		ORDER BY ts
+	`
+}
+
+// scanRevenue scans revenue data
+func scanRevenue(rows *sqlx.Rows, dateFormat string) ([]RevenuePoint, error) {
+	var points []RevenuePoint
+	
+	for rows.Next() {
+		var ts time.Time
+		var revenue float64
+		if err := rows.Scan(&ts, &revenue); err != nil {
+			return nil, err
+		}
+		points = append(points, RevenuePoint{
+			Timestamp: ts.Format(dateFormat),
+			Revenue:   revenue,
+		})
+	}
+	
+	return points, nil
+}
+
+// buildFilterConditions builds WHERE conditions from filter
+func buildFilterConditions(filter *SubscriptionRecordFilter) ([]string, []interface{}, int) {
+	var conditions []string
+	var args []interface{}
+	argCount := 1
+
+	if filter == nil {
+		return conditions, args, argCount
+	}
+
+	if filter.Search != nil && *filter.Search != "" {
+		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR CONCAT(u.first_name, ' ', u.last_name) ILIKE $%d)", argCount, argCount))
+		args = append(args, "%"+*filter.Search+"%")
+		argCount++
+	}
+	if filter.PlanName != nil && *filter.PlanName != "" {
+		conditions = append(conditions, fmt.Sprintf("s.name ILIKE $%d", argCount))
+		args = append(args, "%"+*filter.PlanName+"%")
+		argCount++
+	}
+	if filter.Status != nil && *filter.Status != "" {
+		conditions = append(conditions, fmt.Sprintf("ps.status = $%d", argCount))
+		args = append(args, *filter.Status)
+		argCount++
+	}
+	if filter.From != nil && *filter.From != "" {
+		conditions = append(conditions, fmt.Sprintf("ps.created_at >= $%d", argCount))
+		args = append(args, *filter.From)
+		argCount++
+	}
+	if filter.To != nil && *filter.To != "" {
+		conditions = append(conditions, fmt.Sprintf("ps.created_at <= $%d", argCount))
+		args = append(args, *filter.To)
+		argCount++
+	}
+
+	return conditions, args, argCount
 }

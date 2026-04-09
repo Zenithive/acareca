@@ -3,7 +3,7 @@ package analytics
 import "time"
 
 // parseDateRange extracts and validates date range from filter
-func parseDateRange(from, to *string, defaultDays int) (string, string) {
+func ParseDateRange(from, to *string, defaultDays int) (string, string) {
 	endDate := time.Now().Format("2006-01-02")
 	startDate := time.Now().AddDate(0, 0, -defaultDays).Format("2006-01-02")
 
@@ -17,16 +17,16 @@ func parseDateRange(from, to *string, defaultDays int) (string, string) {
 	return startDate, endDate
 }
 
-// parseBucket extracts bucket value with default
-func parseBucket(bucket *string, defaultBucket string) string {
+// ParseBucket extracts bucket value with default
+func ParseBucket(bucket *string, defaultBucket string) string {
 	if bucket != nil && *bucket != "" {
 		return *bucket
 	}
 	return defaultBucket
 }
 
-// getBucketConfig returns date truncation and format based on bucket type
-func getBucketConfig(bucket string) (dateTrunc, dateFormat string) {
+// GetBucketConfig returns date truncation and format based on bucket type
+func GetBucketConfig(bucket string) (dateTrunc, dateFormat string) {
 	switch bucket {
 	case BucketDay:
 		return "day", "2006-01-02"
@@ -39,8 +39,8 @@ func getBucketConfig(bucket string) (dateTrunc, dateFormat string) {
 	}
 }
 
-// parsePaginationParams extracts pagination parameters with defaults
-func parsePaginationParams(limit, offset *int) (int, int) {
+// ParsePaginationParams extracts pagination parameters with defaults
+func ParsePaginationParams(limit, offset *int) (int, int) {
 	l, o := DefaultPageSize, 0
 	if limit != nil && *limit > 0 && *limit <= MaxPageSize {
 		l = *limit
@@ -51,8 +51,8 @@ func parsePaginationParams(limit, offset *int) (int, int) {
 	return l, o
 }
 
-// parseSortParams extracts sort parameters with defaults
-func parseSortParams(sortBy, orderBy *string, defaultSort, defaultOrder string) (string, string) {
+// ParseSortParams extracts sort parameters with defaults
+func ParseSortParams(sortBy, orderBy *string, defaultSort, defaultOrder string) (string, string) {
 	sort := defaultSort
 	order := defaultOrder
 
