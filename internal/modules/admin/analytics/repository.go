@@ -763,11 +763,10 @@ func (r *repository) GetAccountantOverview(ctx context.Context) (*RsAccountantOv
 		return nil, fmt.Errorf("get accountant KPIs: %w", err)
 	}
 
-	// Get invites status distribution
+	// Get invites status distribution from tbl_invitation
 	statusQuery := `
 		SELECT status, COUNT(*) as count
-		FROM tbl_invite_permissions
-		WHERE deleted_at IS NULL
+		FROM tbl_invitation
 		GROUP BY status
 	`
 	rows, err := r.db.QueryxContext(ctx, statusQuery)
