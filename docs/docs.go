@@ -319,6 +319,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/analytics/accountant/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns accountant KPIs and invite status distribution",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get accountant dashboard overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsAccountantOverview"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/accountant/resource-access-timeseries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns accountant resource access over time by resource type",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get resource access timeseries",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsResourceAccessTimeseries"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/analytics/active-users": {
             "get": {
                 "security": [
@@ -410,6 +498,63 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/analytics.RsPlanDistribution"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/platform-revenue": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns platform revenue over time",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get platform revenue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPlatformRevenue"
                         }
                     },
                     "400": {
@@ -520,152 +665,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/analytics/dashboard/accountant/overview": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns accountant KPIs and invite status distribution",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin-dashboard"
-                ],
-                "summary": "Get accountant dashboard overview",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/analytics.RsAccountantOverview"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/analytics/dashboard/accountant/resource-access-timeseries": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns accountant resource access over time by resource type",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin-dashboard"
-                ],
-                "summary": "Get resource access timeseries",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Start date (YYYY-MM-DD)",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "End date (YYYY-MM-DD)",
-                        "name": "to",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Time bucket: day, week, month",
-                        "name": "bucket",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/analytics.RsResourceAccessTimeseries"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/analytics/dashboard/billing/platform-revenue": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Returns platform revenue over time",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin-dashboard"
-                ],
-                "summary": "Get platform revenue",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Start date (YYYY-MM-DD)",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "End date (YYYY-MM-DD)",
-                        "name": "to",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Time bucket: day, week, month",
-                        "name": "bucket",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/analytics.RsPlatformRevenue"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/analytics/dashboard/practitioner/overview": {
+        "/admin/analytics/practitioner/overview": {
             "get": {
                 "security": [
                     {
@@ -696,7 +696,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/analytics/dashboard/practitioner/resource-analytics": {
+        "/admin/analytics/practitioner/resource-analytics": {
             "get": {
                 "security": [
                     {

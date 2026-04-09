@@ -161,7 +161,7 @@ func (h *Handler) ListPractitionersWithDetails(c *gin.Context) {
 // @Success 200 {object} RsPractitionerOverview
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/analytics/dashboard/practitioner/overview [get]
+// @Router /admin/analytics/practitioner/overview [get]
 func (h *Handler) GetPractitionerOverview(c *gin.Context) {
 	result, err := h.svc.GetPractitionerOverview(c.Request.Context())
 	if err != nil {
@@ -183,7 +183,7 @@ func (h *Handler) GetPractitionerOverview(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/analytics/dashboard/practitioner/resource-analytics [get]
+// @Router /admin/analytics/practitioner/resource-analytics [get]
 func (h *Handler) GetResourceAnalytics(c *gin.Context) {
 	var filter ResourceAnalyticsFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -213,7 +213,7 @@ func (h *Handler) GetResourceAnalytics(c *gin.Context) {
 // @Success 200 {object} RsAccountantOverview
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/analytics/dashboard/accountant/overview [get]
+// @Router /admin/analytics/accountant/overview [get]
 func (h *Handler) GetAccountantOverview(c *gin.Context) {
 	result, err := h.svc.GetAccountantOverview(c.Request.Context())
 	if err != nil {
@@ -235,7 +235,7 @@ func (h *Handler) GetAccountantOverview(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/analytics/dashboard/accountant/resource-access-timeseries [get]
+// @Router /admin/analytics/accountant/resource-access-timeseries [get]
 func (h *Handler) GetResourceAccessTimeseries(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -269,7 +269,7 @@ func (h *Handler) GetResourceAccessTimeseries(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/analytics/dashboard/billing/platform-revenue [get]
+// @Router /admin/analytics/billing/platform-revenue [get]
 func (h *Handler) GetPlatformRevenue(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {

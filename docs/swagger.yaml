@@ -2146,6 +2146,61 @@ paths:
       summary: List all accountants with their practitioners (Admin)
       tags:
       - admin-accountant
+  /admin/analytics/accountant/overview:
+    get:
+      description: Returns accountant KPIs and invite status distribution
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsAccountantOverview'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get accountant dashboard overview
+      tags:
+      - admin-dashboard
+  /admin/analytics/accountant/resource-access-timeseries:
+    get:
+      description: Returns accountant resource access over time by resource type
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsResourceAccessTimeseries'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get resource access timeseries
+      tags:
+      - admin-dashboard
   /admin/analytics/active-users:
     get:
       description: Returns DAU, WAU, MAU metrics with DAU/MAU ratio and timeline
@@ -2215,6 +2270,42 @@ paths:
       summary: Get plan distribution
       tags:
       - admin-dashboard
+  /admin/analytics/billing/platform-revenue:
+    get:
+      description: Returns platform revenue over time
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPlatformRevenue'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get platform revenue
+      tags:
+      - admin-dashboard
   /admin/analytics/billing/subscriptions:
     get:
       description: Returns paginated and filtered list of subscription records
@@ -2275,98 +2366,7 @@ paths:
       summary: List subscription records
       tags:
       - admin-dashboard
-  /admin/analytics/dashboard/accountant/overview:
-    get:
-      description: Returns accountant KPIs and invite status distribution
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/analytics.RsAccountantOverview'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get accountant dashboard overview
-      tags:
-      - admin-dashboard
-  /admin/analytics/dashboard/accountant/resource-access-timeseries:
-    get:
-      description: Returns accountant resource access over time by resource type
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        in: query
-        name: from
-        type: string
-      - description: End date (YYYY-MM-DD)
-        in: query
-        name: to
-        type: string
-      - description: 'Time bucket: day, week, month'
-        in: query
-        name: bucket
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/analytics.RsResourceAccessTimeseries'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get resource access timeseries
-      tags:
-      - admin-dashboard
-  /admin/analytics/dashboard/billing/platform-revenue:
-    get:
-      description: Returns platform revenue over time
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        in: query
-        name: from
-        type: string
-      - description: End date (YYYY-MM-DD)
-        in: query
-        name: to
-        type: string
-      - description: 'Time bucket: day, week, month'
-        in: query
-        name: bucket
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/analytics.RsPlatformRevenue'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get platform revenue
-      tags:
-      - admin-dashboard
-  /admin/analytics/dashboard/practitioner/overview:
+  /admin/analytics/practitioner/overview:
     get:
       description: Returns practitioner KPIs and user bifurcation
       produces:
@@ -2385,7 +2385,7 @@ paths:
       summary: Get practitioner dashboard overview
       tags:
       - admin-dashboard
-  /admin/analytics/dashboard/practitioner/resource-analytics:
+  /admin/analytics/practitioner/resource-analytics:
     get:
       description: Returns resource analytics grouped by entity type with action counts
       parameters:
