@@ -26,7 +26,7 @@ type Service interface {
 	SendInvite(ctx context.Context, practitionerID uuid.UUID, req *RqSendInvitation) (*RsInvitation, error)
 	GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteDetails, error)
 	ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error)
-	FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error
+	FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx, email string, entityID uuid.UUID) error
 	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
 	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
@@ -67,6 +67,9 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		return nil, err
 	}
 
+	// Check if an accountant already exists for this email
+	existingAccID, _ := s.repo.GetAccountantIDByEmail(ctx, req.Email)
+
 	var baseURL string
 	if s.cfg.Env == "dev" {
 		baseURL = s.cfg.DevUrl
@@ -79,16 +82,50 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		return nil, fmt.Errorf("system configuration error: frontend application URL is not defined")
 	}
 
+	// Start Transaction
+	tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	invite := &Invitation{
 		ID:             uuid.New(),
 		PractitionerID: practitionerID,
+		EntityID:       existingAccID,
 		Email:          req.Email,
 		Status:         StatusSent,
 		ExpiresAt:      time.Now().AddDate(0, 0, 7),
 	}
 
-	if err := s.repo.Create(ctx, invite); err != nil {
+	if err := s.repo.CreateTx(ctx, tx, invite); err != nil {
 		return nil, fmt.Errorf("[DEBUG] failed to save invite: %w", err)
+	}
+
+	// We'll create a slice to hold the "finalized" permissions (after processing)
+	var processedPermissions []RqPermissionDetail
+
+	// Process and Save Permissions
+	for _, pDetail := range req.Permissions {
+		permJson, finalDisplay := s.processPermissions(pDetail.Permissions)
+
+		// We use the Email because the AccountantID doesn't exist yet
+		err := s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, &req.Email, pDetail.EntityID, pDetail.EntityType, permJson)
+		if err != nil {
+			fmt.Printf("[ERROR] failed to save pending permission: %v\n", err)
+		}
+
+		// Add to our response slice
+		processedPermissions = append(processedPermissions, RqPermissionDetail{
+			EntityID:    pDetail.EntityID,
+			EntityType:  pDetail.EntityType,
+			Permissions: finalDisplay,
+		})
+	}
+
+	// Commit DB changes
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", baseURL, invite.ID)
@@ -146,11 +183,13 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	})
 
 	return &RsInvitation{
-		ID:         invite.ID,
-		Email:      invite.Email,
-		InviteLink: inviteLink,
-		Status:     invite.Status,
-		ExpiresAt:  invite.ExpiresAt,
+		ID:           invite.ID,
+		Email:        invite.Email,
+		AccountantID: existingAccID,
+		InviteLink:   inviteLink,
+		Status:       invite.Status,
+		ExpiresAt:    invite.ExpiresAt,
+		Permissions:  processedPermissions,
 	}, nil
 }
 
@@ -228,24 +267,37 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 	recipient := UserDetails{Email: inv.Email}
 
 	queryUser, _ := s.repo.GetUserDetailsByEmail(ctx, inv.Email)
+	var accountantID *uuid.UUID
 	isFound := false
 	if queryUser != nil {
 		recipient.FirstName = queryUser.FirstName
 		recipient.LastName = queryUser.LastName
+		accID, _ := s.repo.GetAccountantIDByEmail(ctx, inv.Email)
+		accountantID = accID
 		isFound = true
+	}
+
+	// Fetch Permissions associated with this email
+	dbPerms, err := s.repo.GetPermissionsByEmail(ctx, inv.PractitionerID, inv.Email)
+	if err != nil {
+		// Log error but don't fail the whole request
+		fmt.Printf("[ERROR] failed to fetch permissions for invite: %v\n", err)
 	}
 
 	return &RsInviteDetails{
 		InvitationID: inv.ID,
 		Status:       inv.Status,
 		IsFound:      isFound,
+		AccountantID: accountantID,
+		Email:        inv.Email,
 		SenderRole:   util.RolePractitioner,
 		SentBy: UserDetails{
 			FirstName: inv.SenderFirstName,
 			LastName:  inv.SenderLastName,
 			Email:     inv.SenderEmail,
 		},
-		SentTo: recipient,
+		SentTo:      recipient,
+		Permissions: dbPerms,
 	}, nil
 }
 
@@ -358,7 +410,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 	return nil, errors.New("invalid action: must be ACCEPT or REJECT")
 }
 
-func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string, entityID uuid.UUID) error {
+func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx, email string, entityID uuid.UUID) error {
 	inv, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		return err
@@ -372,8 +424,14 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, email string
 		return nil
 	}
 
-	if err := s.repo.UpdateStatus(ctx, inv.ID, StatusCompleted, &entityID); err != nil {
+	// Update Invitation Status
+	if err := s.repo.UpdateStatusTx(ctx, tx, inv.ID, StatusCompleted, &entityID); err != nil {
 		return err
+	}
+
+	// Update accountant_id in tbl_invite_permissions for all entries with this email to map permissions with accountant_id
+	if err := s.repo.LinkPermissionsToAccountantTx(ctx, tx, email, entityID); err != nil {
+		return fmt.Errorf("failed to link permissions: %w", err)
 	}
 
 	// Audit log: invitation completed
@@ -574,7 +632,9 @@ func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID,
 		perms.Read = true
 	}
 
-	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, aID, eID, eType, perms)
+	permJson, _ := s.processPermissions(perms)
+
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, nil, eID, eType, permJson)
 }
 
 func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
@@ -612,16 +672,49 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 		return nil, fmt.Errorf("unauthorized association")
 	}
 
+	// Capture state BEFORE update for Audit Logs
+	oldPerms, _ := s.repo.GetPermissions(ctx, aID, eID)
+
+	// Process Permissions
+	permJson, finalDisplay := s.processPermissions(perms)
+
+	// Save to DB and return finalDisplay
+	if err := s.repo.GrantEntityPermission(ctx, pID, &aID, nil, eID, eType, permJson); err != nil {
+		return nil, err
+	}
+
+	// Audit Log (Async)
+	meta := auditctx.GetMetadata(ctx)
+	pIDStr := pID.String()
+	eIDStr := eID.String()
+	// aIDStr := aID.String()
+	entityType := auditctx.EntityPermission
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionPermissionUpdated,
+		EntityType:  &entityType,
+		EntityID:    &eIDStr,
+		BeforeState: oldPerms,
+		AfterState:  finalDisplay,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return &finalDisplay, nil
+}
+
+// Helper to centralize permission logic
+func (s *service) processPermissions(perms Permissions) (json.RawMessage, Permissions) {
 	dbMap := make(map[string]bool)
-	finalDisplay := &Permissions{}
+	finalDisplay := Permissions{}
 
 	if perms.All {
-		// All-access mode
 		dbMap["all"] = true
-		finalDisplay.All, finalDisplay.Read = true, true
-		finalDisplay.Create, finalDisplay.Update, finalDisplay.Delete = true, true, true
+		finalDisplay = Permissions{All: true, Read: true, Create: true, Update: true, Delete: true}
 	} else {
-		// Granular mode (only add keys if they are true)
 		dbMap["read"] = true // Always grant read at minimum
 		finalDisplay.Read = true
 
@@ -639,11 +732,6 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 		}
 	}
 
-	// Save to DB and return finalDisplay
 	permJson, _ := json.Marshal(dbMap)
-	if err := s.repo.GrantEntityPermission(ctx, pID, aID, eID, eType, permJson); err != nil {
-		return nil, err
-	}
-
-	return finalDisplay, nil
+	return permJson, finalDisplay
 }

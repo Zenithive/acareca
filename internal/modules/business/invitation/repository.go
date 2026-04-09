@@ -14,6 +14,7 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, inv *Invitation) error
+	CreateTx(ctx context.Context, tx *sqlx.Tx, inv *Invitation) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Invitation, error)
 	GetByEmail(ctx context.Context, email string) (*Invitation, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
@@ -31,14 +32,16 @@ type Repository interface {
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
 	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
-	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID, entityID uuid.UUID, entityType string, perms Permissions) error
+	GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, eType string, permJson []byte) error
+	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
 	ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]AccountantPermissionRow, error)
 	CountAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error)
+	LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error
 }
 
 type repository struct {
@@ -53,6 +56,16 @@ func (r *repository) Create(ctx context.Context, inv *Invitation) error {
 	query := `INSERT INTO tbl_invitation (id, practitioner_id, entity_id, email, status, expires_at) 
               VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := r.db.ExecContext(ctx, query, inv.ID, inv.PractitionerID, inv.EntityID, inv.Email, inv.Status, inv.ExpiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to create invitation: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) CreateTx(ctx context.Context, tx *sqlx.Tx, inv *Invitation) error {
+	query := `INSERT INTO tbl_invitation (id, practitioner_id, entity_id, email, status, expires_at) 
+              VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := tx.ExecContext(ctx, query, inv.ID, inv.PractitionerID, inv.EntityID, inv.Email, inv.Status, inv.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to create invitation: %w", err)
 	}
@@ -288,36 +301,36 @@ func (r *repository) GetPermissions(ctx context.Context, accountantID uuid.UUID,
 	return &permissions, nil
 }
 
-// This method is for granting access to the resouce on "create" action since no mapping exisitng while creating a new
-// entity so we check for parent entity permissions and after creating the resource by default assign a "read" permission.
-func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID, entityID uuid.UUID, entityType string, perms Permissions) error {
-	permJSON, err := json.Marshal(perms)
-	if err != nil {
-		return fmt.Errorf("failed to marshal permissions: %w", err)
+func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error {
+	var query string
+
+	// Choose the query based on whether we have an actual Accountant ID or just an Email
+	if accID != nil {
+		query = `
+            INSERT INTO tbl_invite_permissions (
+                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
+            WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
+            DO UPDATE SET 
+                permissions = EXCLUDED.permissions,
+                updated_at = NOW(),
+                deleted_at = NULL;`
+	} else {
+		query = `
+            INSERT INTO tbl_invite_permissions (
+                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
+            WHERE accountant_id IS NULL AND deleted_at IS NULL
+            DO UPDATE SET 
+                permissions = EXCLUDED.permissions,
+                updated_at = NOW(),
+                deleted_at = NULL;`
 	}
 
-	query := `
-		INSERT INTO tbl_invite_permissions (
-			id, practitioner_id, accountant_id, entity_id, entity_type, permissions, created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, NOW(), Now()
-		)
-	`
-
-	_, err = tx.ExecContext(ctx, query,
-		uuid.New(),
-		practitionerID,
-		accountantID,
-		entityID,
-		entityType,
-		permJSON, // This sends the JSON string to the DB
-	)
-
-	if err != nil {
-		return fmt.Errorf("grant entity permission repo: %w", err)
-	}
-
-	return nil
+	_, err := tx.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, permJson)
+	return err
 }
 
 func (r *repository) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
@@ -346,22 +359,35 @@ func (r *repository) GetPractitionerLinkedToAccountant(ctx context.Context, acco
 	return practitionerID, err
 }
 
-func (r *repository) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, eType string, permJson []byte) error {
-	query := `
-        INSERT INTO tbl_invite_permissions (
-            id, practitioner_id, accountant_id, entity_id, entity_type, permissions, created_at, updated_at
-        ) VALUES (
-            $1, $2, $3, $4, $5, $6, NOW(), NOW()
-        )
-        ON CONFLICT ON CONSTRAINT unique_permission_scope
-        DO UPDATE SET 
-            -- This performs the 'Full Overwrite' to remove old keys
-            permissions = EXCLUDED.permissions,
-            updated_at = NOW(),
-            deleted_at = NULL;
-    `
+func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error {
+	var query string
 
-	_, err := r.db.ExecContext(ctx, query, uuid.New(), pID, aID, eID, eType, permJson)
+	// Choose the query based on whether we have an actual Accountant ID or just an Email
+	if accID != nil {
+		query = `
+            INSERT INTO tbl_invite_permissions (
+                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
+            WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
+            DO UPDATE SET 
+                permissions = EXCLUDED.permissions,
+                updated_at = NOW(),
+                deleted_at = NULL;`
+	} else {
+		query = `
+            INSERT INTO tbl_invite_permissions (
+                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
+            WHERE accountant_id IS NULL AND deleted_at IS NULL
+            DO UPDATE SET 
+                permissions = EXCLUDED.permissions,
+                updated_at = NOW(),
+                deleted_at = NULL;`
+	}
+
+	_, err := r.db.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, permJson)
 	return err
 }
 
@@ -434,4 +460,40 @@ func (r *repository) CountAccountantPermissions(ctx context.Context, accountantI
 	}
 
 	return total, nil
+}
+
+func (r *repository) LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error {
+	query := `
+        UPDATE tbl_invite_permissions 
+        SET accountant_id = $1 
+        WHERE email = $2 AND accountant_id IS NULL
+    `
+	_, err := tx.ExecContext(ctx, query, accountantID, email)
+	return err
+}
+
+func (r *repository) GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error) {
+	var rows []AccountantPermissionRow
+	query := `
+		SELECT entity_id, entity_type, permissions 
+		FROM tbl_invite_permissions 
+		WHERE practitioner_id = $1 AND email = $2 AND deleted_at IS NULL`
+
+	err := r.db.SelectContext(ctx, &rows, query, pID, email)
+	if err != nil {
+		return nil, err
+	}
+
+	var details []RqPermissionDetail
+	for _, row := range rows {
+		var p Permissions
+		_ = json.Unmarshal(row.Permissions, &p)
+
+		details = append(details, RqPermissionDetail{
+			EntityID:    row.EntityID,
+			EntityType:  row.EntityType,
+			Permissions: p,
+		})
+	}
+	return details, nil
 }

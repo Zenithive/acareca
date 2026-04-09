@@ -1069,6 +1069,23 @@ definitions:
     - entity_type
     - permissions
     type: object
+  invitation.RqPermissionDetail:
+    properties:
+      entity_id:
+        type: string
+      entity_type:
+        enum:
+        - CLINIC
+        - FORM
+        - ENTRY
+        type: string
+      permissions:
+        $ref: '#/definitions/invitation.Permissions'
+    required:
+    - entity_id
+    - entity_type
+    - permissions
+    type: object
   invitation.RqProcessAction:
     properties:
       action:
@@ -1086,6 +1103,10 @@ definitions:
     properties:
       email:
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/invitation.RqPermissionDetail'
+        type: array
     required:
     - email
     type: object
@@ -1448,12 +1469,28 @@ definitions:
       name:
         maxLength: 255
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/subscription.RqPermissionEntry'
+        type: array
       price:
         minimum: 0
         type: number
     required:
     - duration_days
     - name
+    type: object
+  subscription.RqPermissionEntry:
+    properties:
+      is_enabled:
+        type: boolean
+      key:
+        type: string
+      usage_limit:
+        minimum: -1
+        type: integer
+    required:
+    - key
     type: object
   subscription.RqUpdatePermission:
     properties:
@@ -1487,6 +1524,10 @@ definitions:
       name:
         maxLength: 255
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/subscription.RqPermissionEntry'
+        type: array
       price:
         minimum: 0
         type: number
