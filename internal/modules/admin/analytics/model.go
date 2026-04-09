@@ -10,11 +10,11 @@ import (
 // User Growth & Retention Models
 
 type RsUserGrowth struct {
-	TotalUsers         int               `json:"total_users"`
-	TotalPractitioners int               `json:"total_practitioners"`
-	TotalAccountants   int               `json:"total_accountants"`
-	NewUsers30Days     int               `json:"new_users_30_days"`
-	ActiveUsers30Days  int               `json:"active_users_30_days"`
+	TotalUsers         int               `json:"total_users" db:"total_users"`
+	TotalPractitioners int               `json:"total_practitioners" db:"total_practitioners"`
+	TotalAccountants   int               `json:"total_accountants" db:"total_accountants"`
+	NewUsers30Days     int               `json:"new_users_30_days" db:"new_users_30_days"`
+	ActiveUsers30Days  int               `json:"active_users_30_days" db:"active_users_30_days"`
 	GrowthRate         float64           `json:"growth_rate_percentage"`
 	RetentionRate      float64           `json:"retention_rate_percentage"`
 	Timeline           []UserGrowthPoint `json:"timeline"`
@@ -49,11 +49,11 @@ type SubscriptionDistribution struct {
 // Daily/Monthly Active Users Models
 
 type RsActiveUsers struct {
-	DAU            int                `json:"dau"`
-	WAU            int                `json:"wau"`
-	MAU            int                `json:"mau"`
-	DAUToMAURatio  float64            `json:"dau_to_mau_ratio"`
-	Timeline       []ActiveUsersPoint `json:"timeline"`
+	DAU           int                `json:"dau"`
+	WAU           int                `json:"wau"`
+	MAU           int                `json:"mau"`
+	DAUToMAURatio float64            `json:"dau_to_mau_ratio"`
+	Timeline      []ActiveUsersPoint `json:"timeline"`
 }
 
 type ActiveUsersPoint struct {
@@ -68,7 +68,7 @@ type RsPractitionerDetail struct {
 	Name             string            `json:"name"`
 	Email            string            `json:"email"`
 	Phone            *string           `json:"phone"`
-	CreatedAt        time.Time         `json:"created_at"`
+	CreatedAt        time.Time         `json:"created_at" db:"created_at"`
 	Subscription     *SubscriptionInfo `json:"subscription,omitempty"`
 	Clinics          []ClinicInfo      `json:"clinics"`
 	TotalClinics     int               `json:"total_clinics"`
@@ -116,14 +116,14 @@ type PractitionerFilter struct {
 }
 
 var practitionerColumns = map[string]string{
-	"id":                  "p.id",
-	"email":               "u.email",
-	"first_name":          "u.first_name",
-	"last_name":           "u.last_name",
-	"name":                "CONCAT(u.first_name, ' ', u.last_name)",
-	"phone":               "u.phone",
-	"subscription_name":   "s.name",
-	"created_at":          "p.created_at",
+	"id":                "p.id",
+	"email":             "u.email",
+	"first_name":        "u.first_name",
+	"last_name":         "u.last_name",
+	"name":              "CONCAT(u.first_name, ' ', u.last_name)",
+	"phone":             "u.phone",
+	"subscription_name": "s.name",
+	"created_at":        "p.created_at",
 }
 
 var practitionerSearchCols = []string{

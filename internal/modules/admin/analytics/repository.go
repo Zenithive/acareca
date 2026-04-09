@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -67,14 +68,24 @@ func (r *repository) GetUserGrowth(ctx context.Context, startDate, endDate time.
 		return nil, fmt.Errorf("get active users: %w", err)
 	}
 
+	denominator := float64(result.TotalUsers - result.NewUsers30Days)
+
 	// Calculate growth rate
-	if result.TotalUsers > 0 {
-		result.GrowthRate = (float64(result.NewUsers30Days) / float64(result.TotalUsers-result.NewUsers30Days)) * 100
+	if denominator > 0 {
+		result.GrowthRate = roundToTwo((float64(result.NewUsers30Days) / denominator) * 100)
+	} else if result.TotalUsers > 0 {
+		// If all users are new (Total == New), growth is technically 100% or "New"
+		result.GrowthRate = 100.0
+	} else {
+		// No users at all
+		result.GrowthRate = 0.0
 	}
 
 	// Calculate retention rate
 	if result.TotalUsers > 0 {
-		result.RetentionRate = (float64(result.ActiveUsers30Days) / float64(result.TotalUsers)) * 100
+		result.RetentionRate = roundToTwo((float64(result.ActiveUsers30Days) / float64(result.TotalUsers)) * 100)
+	} else {
+		result.RetentionRate = 0.0
 	}
 
 	// Timeline data
@@ -465,7 +476,7 @@ func (r *repository) ListPractitionersWithDetails(ctx context.Context, filter *P
 		if clinicList, ok := clinics[id]; ok {
 			detail.Clinics = clinicList
 			detail.TotalClinics = len(clinicList)
-			
+
 			// Count unique accountants
 			accountantMap := make(map[uuid.UUID]bool)
 			for _, clinic := range clinicList {
@@ -494,7 +505,7 @@ func (r *repository) batchGetPractitioners(ctx context.Context, ids []uuid.UUID)
 		JOIN tbl_user u ON p.user_id = u.id
 		WHERE p.id = ANY($1) AND p.deleted_at IS NULL
 	`
-	
+
 	rows, err := r.db.QueryxContext(ctx, query, ids)
 	if err != nil {
 		return nil, fmt.Errorf("batch get practitioners: %w", err)
@@ -532,7 +543,7 @@ func (r *repository) batchGetSubscriptions(ctx context.Context, ids []uuid.UUID)
 			AND ps.deleted_at IS NULL
 		ORDER BY ps.practitioner_id, ps.created_at DESC
 	`
-	
+
 	rows, err := r.db.QueryxContext(ctx, query, ids)
 	if err != nil {
 		return nil, fmt.Errorf("batch get subscriptions: %w", err)
@@ -566,7 +577,7 @@ func (r *repository) batchGetClinicsWithAccountants(ctx context.Context, ids []u
 		WHERE c.practitioner_id = ANY($1) AND c.deleted_at IS NULL
 		ORDER BY c.practitioner_id, c.created_at DESC
 	`
-	
+
 	rows, err := r.db.QueryxContext(ctx, clinicQuery, ids)
 	if err != nil {
 		return nil, fmt.Errorf("batch get clinics: %w", err)
@@ -610,7 +621,7 @@ func (r *repository) batchGetClinicsWithAccountants(ctx context.Context, ids []u
 			AND ip.deleted_at IS NULL
 			AND a.deleted_at IS NULL
 	`
-	
+
 	accRows, err := r.db.QueryxContext(ctx, accQuery, allClinicIDs)
 	if err != nil {
 		return nil, fmt.Errorf("batch get accountants: %w", err)
@@ -1036,7 +1047,7 @@ func buildTimeseriesQuery(table, groupField, dateField string, entityFilter stri
 // scanTimeseries scans timeseries data into a map
 func scanTimeseries(rows *sqlx.Rows, dateFormat string) (map[string][]TimePoint, error) {
 	seriesMap := make(map[string][]TimePoint)
-	
+
 	for rows.Next() {
 		var key string
 		var ts time.Time
@@ -1050,7 +1061,7 @@ func scanTimeseries(rows *sqlx.Rows, dateFormat string) (map[string][]TimePoint,
 			Count:     count,
 		})
 	}
-	
+
 	return seriesMap, nil
 }
 
@@ -1072,7 +1083,7 @@ func buildRevenueQuery() string {
 // scanRevenue scans revenue data
 func scanRevenue(rows *sqlx.Rows, dateFormat string) ([]RevenuePoint, error) {
 	var points []RevenuePoint
-	
+
 	for rows.Next() {
 		var ts time.Time
 		var revenue float64
@@ -1084,7 +1095,7 @@ func scanRevenue(rows *sqlx.Rows, dateFormat string) ([]RevenuePoint, error) {
 			Revenue:   revenue,
 		})
 	}
-	
+
 	return points, nil
 }
 
@@ -1125,4 +1136,9 @@ func buildFilterConditions(filter *SubscriptionRecordFilter) ([]string, []interf
 	}
 
 	return conditions, args, argCount
+}
+
+// Helper to round to 2 decimal places
+func roundToTwo(n float64) float64 {
+	return math.Round(n*100) / 100
 }
