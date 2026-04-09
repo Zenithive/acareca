@@ -1,7 +1,9 @@
 package invitation
 
 import (
+	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -211,4 +213,24 @@ type RqPermissionDetail struct {
 	EntityID    uuid.UUID   `json:"entity_id" validate:"required"`
 	EntityType  string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
 	Permissions Permissions `json:"permissions" validate:"required"`
+}
+
+// Make it satisfy the sql.Scanner interface (Database -> Go)
+func (p *Permissions) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		// Handle cases where the driver returns a string instead of []byte
+		str, ok := value.(string)
+		if !ok {
+			return errors.New("type assertion to []byte/string failed")
+		}
+		bytes = []byte(str)
+	}
+
+	return json.Unmarshal(bytes, p)
+}
+
+// Make it satisfy the driver.Valuer interface (Go -> Database)
+func (p Permissions) Value() (driver.Value, error) {
+	return json.Marshal(p)
 }
