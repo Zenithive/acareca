@@ -174,6 +174,152 @@ definitions:
     - last_name
     - password
     type: object
+  analytics.AccountantInfo:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      permissions:
+        type: string
+      phone:
+        type: string
+    type: object
+  analytics.ActiveUsersPoint:
+    properties:
+      active_users:
+        type: integer
+      date:
+        type: string
+    type: object
+  analytics.ClinicInfo:
+    properties:
+      abn:
+        type: string
+      accountants:
+        items:
+          $ref: '#/definitions/analytics.AccountantInfo'
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  analytics.RsActiveUsers:
+    properties:
+      dau:
+        type: integer
+      dau_to_mau_ratio:
+        type: number
+      mau:
+        type: integer
+      timeline:
+        items:
+          $ref: '#/definitions/analytics.ActiveUsersPoint'
+        type: array
+      wau:
+        type: integer
+    type: object
+  analytics.RsPractitionerDetail:
+    properties:
+      clinics:
+        items:
+          $ref: '#/definitions/analytics.ClinicInfo'
+        type: array
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      subscription:
+        $ref: '#/definitions/analytics.SubscriptionInfo'
+      total_accountants:
+        type: integer
+      total_clinics:
+        type: integer
+    type: object
+  analytics.RsSubscriptionMetrics:
+    properties:
+      arpu:
+        type: number
+      arr:
+        type: number
+      churn_rate_percentage:
+        type: number
+      distribution:
+        items:
+          $ref: '#/definitions/analytics.SubscriptionDistribution'
+        type: array
+      mrr:
+        type: number
+      total_active_subscriptions:
+        type: integer
+    type: object
+  analytics.RsUserGrowth:
+    properties:
+      active_users_30_days:
+        type: integer
+      growth_rate_percentage:
+        type: number
+      new_users_30_days:
+        type: integer
+      retention_rate_percentage:
+        type: number
+      timeline:
+        items:
+          $ref: '#/definitions/analytics.UserGrowthPoint'
+        type: array
+      total_accountants:
+        type: integer
+      total_practitioners:
+        type: integer
+      total_users:
+        type: integer
+    type: object
+  analytics.SubscriptionDistribution:
+    properties:
+      count:
+        type: integer
+      percentage:
+        type: number
+      plan_id:
+        type: integer
+      plan_name:
+        type: string
+      revenue:
+        type: number
+    type: object
+  analytics.SubscriptionInfo:
+    properties:
+      end_date:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      start_date:
+        type: string
+      status:
+        type: string
+    type: object
+  analytics.UserGrowthPoint:
+    properties:
+      active_users:
+        type: integer
+      date:
+        type: string
+      new_users:
+        type: integer
+      total_users:
+        type: integer
+    type: object
   auth.RqChangePassword:
     properties:
       new_password:
@@ -1448,12 +1594,28 @@ definitions:
       name:
         maxLength: 255
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/subscription.RqPermissionEntry'
+        type: array
       price:
         minimum: 0
         type: number
     required:
     - duration_days
     - name
+    type: object
+  subscription.RqPermissionEntry:
+    properties:
+      is_enabled:
+        type: boolean
+      key:
+        type: string
+      usage_limit:
+        minimum: -1
+        type: integer
+    required:
+    - key
     type: object
   subscription.RqUpdatePermission:
     properties:
@@ -1487,6 +1649,10 @@ definitions:
       name:
         maxLength: 255
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/subscription.RqPermissionEntry'
+        type: array
       price:
         minimum: 0
         type: number
@@ -1773,6 +1939,191 @@ paths:
       summary: List all accountants with their practitioners (Admin)
       tags:
       - admin-accountant
+  /admin/analytics/active-users:
+    get:
+      description: Returns DAU, WAU, MAU metrics with DAU/MAU ratio and timeline
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsActiveUsers'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get daily/weekly/monthly active users
+      tags:
+      - admin-analytics
+  /admin/analytics/practitioners:
+    get:
+      description: Returns paginated and filtered list of practitioners with their
+        clinics and associated accountants
+      parameters:
+      - description: Filter by exact email
+        in: query
+        name: email
+        type: string
+      - description: Filter by name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by phone (partial match)
+        in: query
+        name: phone
+        type: string
+      - description: Filter by active subscription
+        in: query
+        name: has_active_subscription
+        type: boolean
+      - description: Filter by subscription plan name
+        in: query
+        name: subscription_name
+        type: string
+      - description: Search across name and email
+        in: query
+        name: search
+        type: string
+      - description: 'Records per page (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: created_at, email, first_name, last_name (default:
+          created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all practitioners with clinics and accountants
+      tags:
+      - admin-analytics
+  /admin/analytics/practitioners/{id}:
+    get:
+      description: Returns detailed practitioner information including subscription,
+        clinics, and associated accountants
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPractitionerDetail'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner details with clinics and accountants
+      tags:
+      - admin-analytics
+  /admin/analytics/subscriptions:
+    get:
+      description: Returns subscription metrics including MRR, ARR, ARPU, churn rate,
+        and distribution by plan
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsSubscriptionMetrics'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get subscription distribution and MRR
+      tags:
+      - admin-analytics
+  /admin/analytics/user-growth:
+    get:
+      description: Returns user growth statistics including total users, new users,
+        active users, growth rate, and retention rate with timeline
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsUserGrowth'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get user growth and retention metrics
+      tags:
+      - admin-analytics
   /admin/audit:
     get:
       consumes:
