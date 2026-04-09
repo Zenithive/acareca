@@ -2,7 +2,6 @@ package entry
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -74,23 +73,23 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		return nil, err
 	}
 
-	// Resolve the FormID to check permissions
-	version, err := s.versionSvc.GetByID(ctx, formVersionID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid version: %w", err)
-	}
+	// // Resolve the FormID to check permissions
+	// version, err := s.versionSvc.GetByID(ctx, formVersionID)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("invalid version: %w", err)
+	// }
 
-	// PERMISSION CHECK (Accountant Only)
-	if strings.EqualFold(role, util.RoleAccountant) {
-		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, version.FormId)
-		if err != nil {
-			return nil, err
-		}
-		// Must have 'create' or 'all'
-		if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
-			return nil, errors.New("Access denied: you do not have permission to create entries for this form")
-		}
-	}
+	// // PERMISSION CHECK (Accountant Only)
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, version.FormId)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	// Must have 'create' or 'all'
+	// 	if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
+	// 		return nil, errors.New("Access denied: you do not have permission to create entries for this form")
+	// 	}
+	// }
 
 	status := EntryStatusDraft
 	if req.Status != "" {
@@ -163,36 +162,36 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, 
 		return nil, err
 	}
 	// Resolve the Form ID via Version ID
-	formVersion, err := s.versionSvc.GetByID(ctx, e.FormVersionID)
-	if err != nil {
-		return nil, err
-	}
-	if strings.EqualFold(role, util.RoleAccountant) {
-		// First, check if there's a specific permission for this ENTRY ID
-		entryPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-		if err != nil {
-			return nil, fmt.Errorf("auth error: %w", err)
-		}
+	// formVersion, err := s.versionSvc.GetByID(ctx, e.FormVersionID)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	// First, check if there's a specific permission for this ENTRY ID
+	// 	entryPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("auth error: %w", err)
+	// 	}
 
-		// Fallback: If no entry perms, check the PARENT FORM permissions
-		if entryPerms == nil {
-			formPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formVersion.FormId)
-			if err != nil {
-				return nil, fmt.Errorf("auth error: %w", err)
-			}
+	// 	// Fallback: If no entry perms, check the PARENT FORM permissions
+	// 	if entryPerms == nil {
+	// 		formPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formVersion.FormId)
+	// 		if err != nil {
+	// 			return nil, fmt.Errorf("auth error: %w", err)
+	// 		}
 
-			// If no form perms either, block access entirely
-			if formPerms == nil || (!formPerms.HasAccess("read") && !formPerms.HasAccess("all")) {
-				return nil, errors.New("Access denied: no permission found for this entry or its parent form")
-			}
-			// SUCCESS: No specific entry perms, but has form-level read access. Allow read-only access.
-		} else {
-			// SUCCESS: Found specific Entry perms. Check for read access.
-			if !entryPerms.HasAccess("read") && !entryPerms.HasAccess("all") {
-				return nil, errors.New("Access denied: you do not have permission to view this entry")
-			}
-		}
-	}
+	// 		// If no form perms either, block access entirely
+	// 		if formPerms == nil || (!formPerms.HasAccess("read") && !formPerms.HasAccess("all")) {
+	// 			return nil, errors.New("Access denied: no permission found for this entry or its parent form")
+	// 		}
+	// 		// SUCCESS: No specific entry perms, but has form-level read access. Allow read-only access.
+	// 	} else {
+	// 		// SUCCESS: Found specific Entry perms. Check for read access.
+	// 		if !entryPerms.HasAccess("read") && !entryPerms.HasAccess("all") {
+	// 			return nil, errors.New("Access denied: you do not have permission to view this entry")
+	// 		}
+	// 	}
+	// }
 
 	rs := e.ToRs(values)
 	s.attachFieldMetadata(ctx, rs)
@@ -209,14 +208,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	beforeState := existing.ToRs(values)
 
 	// PERMISSION CHECK (Accountant Only)
-	if strings.EqualFold(role, util.RoleAccountant) {
-		entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
 
-		// Must have 'update' OR 'all'
-		if entryPerms == nil || (!entryPerms.HasAccess("update") && !entryPerms.HasAccess("all")) {
-			return nil, errors.New("Access denied: you do not have permission to update this entry")
-		}
-	}
+	// 	// Must have 'update' OR 'all'
+	// 	if entryPerms == nil || (!entryPerms.HasAccess("update") && !entryPerms.HasAccess("all")) {
+	// 		return nil, errors.New("Access denied: you do not have permission to update this entry")
+	// 	}
+	// }
 
 	if req.Status != nil {
 		existing.Status = *req.Status
@@ -294,14 +293,14 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, r
 	beforeState := existing.ToRs(values)
 
 	// PERMISSION CHECK (Accountant Only)
-	if strings.EqualFold(role, util.RoleAccountant) {
-		entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
 
-		// Must have 'delete' OR 'all'
-		if entryPerms == nil || (!entryPerms.HasAccess("delete") && !entryPerms.HasAccess("all")) {
-			return errors.New("Access denied: you do not have permission to delete this entry")
-		}
-	}
+	// 	// Must have 'delete' OR 'all'
+	// 	if entryPerms == nil || (!entryPerms.HasAccess("delete") && !entryPerms.HasAccess("all")) {
+	// 		return errors.New("Access denied: you do not have permission to delete this entry")
+	// 	}
+	// }
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{

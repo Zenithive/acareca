@@ -1,9 +1,9 @@
 package route
 
 import (
+	"context"
 	"log"
 
-	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -40,12 +40,38 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
-	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/stripe/stripe-go/v82"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+// permissionAdapter adapts invitation.Service to middleware.PermissionChecker
+type permissionAdapter struct {
+	invSvc invitation.Service
+}
+
+func (a *permissionAdapter) ListAccountantPermission(ctx context.Context, accId uuid.UUID) ([]middleware.PermissionItem, error) {
+	perms, _, err := a.invSvc.ListAccountantPermission(ctx, accId)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert []invitation.Permissions to []middleware.PermissionItem
+	result := make([]middleware.PermissionItem, 0, len(*perms))
+	for i := range *perms {
+		result = append(result, &(*perms)[i])
+	}
+	return result, nil
+}
+
+func (a *permissionAdapter) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (middleware.PermissionItem, error) {
+	perm, err := a.invSvc.GetPermissionsForAccountant(ctx, accountantID, entityID)
+	if err != nil {
+		return nil, err
+	}
+	return perm, nil
+}
 
 func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
 
@@ -70,6 +96,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
+
 	authRepo := auth.NewRepository(dbConn)
 	subscriptionRepo := subscription.NewRepository(dbConn)
 	practitionerRepo := practitioner.NewRepository(dbConn)
@@ -97,7 +124,15 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc)
 	invitationHandler := invitation.NewHandler(invitationSvc, accountantRepo)
-	invitation.RegisterRoutes(v1, invitationHandler, cfg)
+
+	//invite api
+	invite := v1.Group("/invite")
+	// Public Route (These endpoints are for the person receiving the invite)
+	invite.POST("/process", invitationHandler.ProcessInvitation)
+	invite.GET("/:id", invitationHandler.GetInvitation)
+	// Protected Route
+	invite.Use(middleware.Auth(cfg))
+	invitation.RegisterRoutes(invite, invitationHandler)
 
 	//admin auth
 	adminRepo := admin.NewRepository(dbConn)
@@ -109,46 +144,27 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
-	superadminCheck := func(ctx context.Context, userID uuid.UUID) (bool, error) {
-		u, err := authRepo.FindByID(ctx, userID)
-		if err != nil {
-			return false, err
-		}
-		return u.Role != "" && u.Role == util.RoleAdmin, nil
-	}
+
 	adminGroup := v1.Group("/admin")
 	subscriptionGroup := adminGroup.Group("/subscription")
-	subscriptionGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
-		id, err := util.ParseUUID(userID)
-		if err != nil {
-			return false, err
-		}
-		return superadminCheck(ctx, id)
-	}), middleware.AuditContext())
+	
 	subscriptionHandler := subscription.NewHandler(subscriptionSvc)
 	subscription.RegisterRoutes(subscriptionGroup, subscriptionHandler)
 
 	// Audit routes
 	auditGroup := adminGroup.Group("/audit")
-	auditGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
-		id, err := util.ParseUUID(userID)
-		if err != nil {
-			return false, err
-		}
-		return superadminCheck(ctx, id)
-	}))
-	auditHandler := audit.NewHandler(auditSvc)
-	audit.RegisterRoutes(auditGroup, auditHandler)
-
-	// Admin Practitioner routes
-	practitionerGroup := adminGroup.Group("/practitioner")
-	// //practitionerGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
+	// auditGroup.Use(middleware.Auth(cfg), middleware.RequireSuperadmin(func(ctx context.Context, userID string) (bool, error) {
 	// 	id, err := util.ParseUUID(userID)
 	// 	if err != nil {
 	// 		return false, err
 	// 	}
 	// 	return superadminCheck(ctx, id)
 	// }))
+	auditHandler := audit.NewHandler(auditSvc)
+	audit.RegisterRoutes(auditGroup, auditHandler)
+
+	// Admin Practitioner routes
+	practitionerGroup := adminGroup.Group("/practitioner")
 	adminPractitionerRepo := adminPractitioner.NewRepository(dbConn)
 	adminPractitionerSvc := adminPractitioner.NewService(adminPractitionerRepo)
 	adminPractitionerHandler := adminPractitioner.NewHandler(adminPractitionerSvc)
@@ -176,11 +192,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
 	fyHandler := fy.NewHandler(fySvc)
 	fyGroup := v1.Group("/")
-	fyGroup.Use(middleware.Auth(cfg))
 	fy.RegisterRoutes(fyGroup, fyHandler)
 
-	formGroup := v1.Group("/form")
-	formGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
+	formGroup := v1.Group("/form", middleware.Auth(cfg), middleware.AuditContext())
 
 	detailRepo := detail.NewRepository(dbConn)
 	versionRepo := version.NewRepository(dbConn)
@@ -194,14 +208,19 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	formulaSvc := formula.NewService(formulaRepo)
 	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc, invitationSvc)
 	formHandler := form.NewHandler(formSvc)
+	
+	// Apply method-based permission middleware (GET=read, POST=create, PUT/PATCH=update, DELETE=delete)
+	permChecker := &permissionAdapter{invSvc: invitationSvc}
+	formGroup.Use(middleware.MethodBasedPermission(permChecker))
 	form.RegisterRoutes(formGroup, formHandler)
 
-	entryGroup := v1.Group("/entry")
-	entryGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
+	entryGroup := v1.Group("/entry",middleware.Auth(cfg), middleware.AuditContext())
 	entriesRepo := entry.NewRepository(dbConn)
 	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc)
 	entriesHandler := entry.NewHandler(entriesSvc)
 
+	// Apply method-based permission middleware (GET=read, POST=create, PUT/PATCH=update, DELETE=delete)
+	entryGroup.Use(middleware.MethodBasedPermission(permChecker))
 	entry.RegisterRoutes(entryGroup, entriesHandler)
 
 	calculationGroup := v1.Group("")
@@ -234,15 +253,19 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
 
-	userSubscriptionGroup := v1.Group("/practitioner/subscription")
-
-	userSubscriptionGroup.Use(middleware.Auth(cfg))
+	userSubscriptionGroup := v1.Group("/practitioner/subscription",middleware.Auth(cfg))
 
 	userSubscription.RegisterRoutes(userSubscriptionGroup, userSubscriptionHandler)
 
 	// notification (in-app list + WebSocket)
 	notificationHandler := notification.NewHandler(notificationSvc)
-	notification.RegisterRoutes(v1, notificationHandler, notifier, cfg)
+	nft := v1.Group("/notification")
+
+	// WebSocket — auth via ?token= query param
+	nft.GET("/ws", notifier.ServeWS(cfg))
+	nft.Use(middleware.Auth(cfg))
+
+	notification.RegisterRoutes(nft, notificationHandler)
 
 	accountantHandler := accountant.NewHandler(accountantSvc)
 

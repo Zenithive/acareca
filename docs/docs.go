@@ -7542,27 +7542,17 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "accountant_id",
-                "entity_id",
-                "entity_type",
                 "permissions"
             ],
             "properties": {
                 "accountant_id": {
                     "type": "string"
                 },
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string",
-                    "enum": [
-                        "CLINIC",
-                        "FORM",
-                        "ENTRY"
-                    ]
-                },
                 "permissions": {
-                    "$ref": "#/definitions/invitation.Permissions"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/invitation.RqPermissionDetail"
+                    }
                 }
             }
         },

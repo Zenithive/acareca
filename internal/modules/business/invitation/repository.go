@@ -39,8 +39,8 @@ type Repository interface {
 	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
-	ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]AccountantPermissionRow, error)
-	CountAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error)
+	ListAccountantPermissions(ctx context.Context, f common.Filter) ([]AccountantPermissionRow, error)
+	CountAccountantPermissions(ctx context.Context, f common.Filter) (int, error)
 	LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error
 }
 
@@ -412,44 +412,22 @@ func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UU
 	return err
 }
 
-func (r *repository) ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]AccountantPermissionRow, error) {
-	f.Where = append(f.Where, common.Condition{
-		Field:    "accountant_id",
-		Operator: common.OpEq,
-		Value:    accountantID,
-	})
+func (r *repository) ListAccountantPermissions(ctx context.Context, f common.Filter) ([]AccountantPermissionRow, error) {
+	// Base should be clean
+	base := `SELECT id, entity_id, entity_type, practitioner_id, accountant_id, permissions, created_at, updated_at FROM tbl_invite_permissions`
 
-	// 2. Base query must be just the FROM clause (BuildQuery adds WHERE, ORDER, LIMIT)
-	// IMPORTANT: Do not include "WHERE accountant_id = $1" here!
-	base := `FROM tbl_invite_permissions`
-
-	// Select columns
-	columns := `SELECT id, entity_id, entity_type, practitioner_id, accountant_id, permissions, created_at, updated_at, deleted_at `
-
-	// 3. Build the query and the argument slice
-	// BuildQuery will handle the "?", the sorting, and the LIMIT/OFFSET integers.
-	querySuffix, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
-
-	fullQuery := columns + querySuffix
+	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
 
 	var perms []AccountantPermissionRow
-	// 4. Rebind converts all "?" into sequential "$1, $2, $3..."
-	// This ensures accountantID is $1 and LIMIT is a later number (BigInt).
-	if err := r.db.SelectContext(ctx, &perms, r.db.Rebind(fullQuery), filterArgs...); err != nil {
+	// Rebind ensures all ? are converted to $1, $2, etc. correctly
+	if err := r.db.SelectContext(ctx, &perms, r.db.Rebind(query), filterArgs...); err != nil {
 		return nil, fmt.Errorf("list accountant permissions repo: %w", err)
 	}
 
 	return perms, nil
 }
 
-func (r *repository) CountAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error) {
-
-	f.Where = append(f.Where, common.Condition{
-		Field:    "accountant_id",
-		Operator: common.OpEq,
-		Value:    accountantID,
-	})
-
+func (r *repository) CountAccountantPermissions(ctx context.Context, f common.Filter) (int, error) {
 	base := `FROM tbl_invite_permissions`
 
 	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, true)

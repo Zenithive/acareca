@@ -40,13 +40,13 @@ type RqSendInvitation struct {
 
 // RsInvitation is the response after an invitation is created
 type RsInvitation struct {
-	ID         uuid.UUID        `json:"id"`
-	Email      string           `json:"email"`
-	AccountantID *uuid.UUID     `json:"accountant_id"`
-	InviteLink string           `json:"invite_link"`
-	Status     InvitationStatus `json:"status"`
-	ExpiresAt  time.Time        `json:"expires_at"`
-	Permissions []RqPermissionDetail `json:"permissions"`
+	ID           uuid.UUID            `json:"id"`
+	Email        string               `json:"email"`
+	AccountantID *uuid.UUID           `json:"accountant_id"`
+	InviteLink   string               `json:"invite_link"`
+	Status       InvitationStatus     `json:"status"`
+	ExpiresAt    time.Time            `json:"expires_at"`
+	Permissions  []RqPermissionDetail `json:"permissions"`
 }
 
 type UserDetails struct {
@@ -56,13 +56,13 @@ type UserDetails struct {
 }
 
 type RsInviteDetails struct {
-	InvitationID uuid.UUID        `json:"invitation_id"`
-	Status       InvitationStatus `json:"status"`
-	IsFound      bool             `json:"is_found"`
-	SentBy       UserDetails      `json:"sent_by"`
-	SentTo       UserDetails      `json:"sent_to"`
-	SenderRole   string           `json:"sender_role"`
-	AccountantID *uuid.UUID           `json:"id"` 
+	InvitationID uuid.UUID            `json:"invitation_id"`
+	Status       InvitationStatus     `json:"status"`
+	IsFound      bool                 `json:"is_found"`
+	SentBy       UserDetails          `json:"sent_by"`
+	SentTo       UserDetails          `json:"sent_to"`
+	SenderRole   string               `json:"sender_role"`
+	AccountantID *uuid.UUID           `json:"id"`
 	Email        string               `json:"email"`
 	Permissions  []RqPermissionDetail `json:"permissions"`
 }
@@ -90,6 +90,7 @@ type RqProcessAction struct {
 	Action  string    `json:"action" validate:"required,oneof=ACCEPT REJECT"`
 }
 
+// AccountantPermissionRow represents the raw database row
 type AccountantPermissionRow struct {
 	ID             uuid.UUID       `db:"id" json:"id"`
 	EntityID       uuid.UUID       `db:"entity_id" json:"entity_id"`
@@ -102,6 +103,18 @@ type AccountantPermissionRow struct {
 	DeletedAt      *time.Time      `db:"deleted_at" json:"deleted_at,omitempty"`
 }
 
+// AccountantPermissionRes represents what the user sees
+type AccountantPermissionRes struct {
+	ID             uuid.UUID   `json:"id"`
+	EntityID       uuid.UUID   `json:"entity_id"`
+	EntityType     string      `json:"entity_type"`
+	PractitionerID uuid.UUID   `json:"practitioner_id"`
+	AccountantID   uuid.UUID   `json:"accountant_id"`
+	Permissions    Permissions `json:"permissions"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
 // FILTERS
 var invitationColumns = map[string]string{
 	"email":           "email",
@@ -109,6 +122,8 @@ var invitationColumns = map[string]string{
 	"created_at":      "created_at",
 	"practitioner_id": "practitioner_id",
 	"entity_id":       "entity_id",
+	"accountant_id":   "accountant_id",
+	"deleted_at":      "deleted_at",
 }
 
 var invitationSearchCols = []string{"email"}
@@ -181,10 +196,8 @@ func (p *Permissions) HasAccess(action string) bool {
 
 // RqGrantPermission is the input for granting/updating permissions
 type RqGrantPermission struct {
-	AccountantID uuid.UUID   `json:"accountant_id" validate:"required"`
-	EntityID     uuid.UUID   `json:"entity_id" validate:"required"`
-	EntityType   string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
-	Permissions  Permissions `json:"permissions" validate:"required"`
+	AccountantID uuid.UUID            `json:"accountant_id" validate:"required"`
+	Permissions  []RqPermissionDetail `json:"permissions" validate:"required,dive"`
 }
 
 // RqUpdatePermissions is the input for updating permissions

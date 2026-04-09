@@ -1,6 +1,7 @@
 package invitation
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -214,13 +215,15 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 	}
 
 	if err := h.svc.RevokeInvite(c.Request.Context(), practID, inviteID); err != nil {
-		switch err.Error() {
-		case "invitation not found":
+		switch {
+		case errors.Is(err, ErrInvitationNotFound):
 			response.Error(c, http.StatusNotFound, err)
-		case "unauthorized: you did not send this invitation":
+		case errors.Is(err, ErrUnauthorizedInvite):
 			response.Error(c, http.StatusForbidden, err)
-		default:
+		case errors.Is(err, ErrInvitationAlreadyUsed), errors.Is(err, ErrCannotRevokeStatus):
 			response.Error(c, http.StatusBadRequest, err)
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -264,7 +267,6 @@ func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
 // @Security     BearerToken
 // @Router       /invite/list-permissions [get]
 func (h *Handler) ListAccountantPermissions(c *gin.Context) {
-
 	accId, ok := util.GetAccountantID(c)
 	if !ok {
 		return
@@ -308,22 +310,37 @@ func (h *Handler) HandlePermissions(c *gin.Context) {
 		return
 	}
 
-	// Normalize EntityType to Uppercase
-    req.EntityType = strings.ToUpper(req.EntityType)
-	
-	resPerms, err := h.svc.GrantEntityPermission(c.Request.Context(), practID, req.AccountantID, req.EntityID, req.EntityType, req.Permissions)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
+	var results []interface{}
+
+	// Loop through each permission detail in the request
+	for _, p := range req.Permissions {
+		// Normalize EntityType
+		p.EntityType = strings.ToUpper(p.EntityType)
+
+		resPerms, err := h.svc.GrantEntityPermission(
+			c.Request.Context(),
+			practID,
+			req.AccountantID,
+			p.EntityID,
+			p.EntityType,
+			p.Permissions,
+		)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, err)
+			return
+		}
+
+		results = append(results, gin.H{
+			"entity_id":   p.EntityID,
+			"entity_type": p.EntityType,
+			"permissions": resPerms,
+		})
 	}
 
-	// Wrap the result in a detailed response object
 	data := gin.H{
 		"accountant_id": req.AccountantID,
-		"entity_id":     req.EntityID,
-		"entity_type":   req.EntityType,
-		"permissions":   resPerms,
+		"results":       results,
 	}
 
-	response.JSON(c, http.StatusOK, data, "Permissions Granted")
+	response.JSON(c, http.StatusOK, data, "Permissions Processed Successfully")
 }

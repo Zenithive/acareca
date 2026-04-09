@@ -1053,20 +1053,12 @@ definitions:
     properties:
       accountant_id:
         type: string
-      entity_id:
-        type: string
-      entity_type:
-        enum:
-        - CLINIC
-        - FORM
-        - ENTRY
-        type: string
       permissions:
-        $ref: '#/definitions/invitation.Permissions'
+        items:
+          $ref: '#/definitions/invitation.RqPermissionDetail'
+        type: array
     required:
     - accountant_id
-    - entity_id
-    - entity_type
     - permissions
     type: object
   invitation.RqPermissionDetail:

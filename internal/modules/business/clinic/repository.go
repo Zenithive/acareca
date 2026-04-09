@@ -193,7 +193,6 @@ func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerI
 	query = r.db.Rebind(query)
 
 	var list []*Clinic
-	fmt.Printf("DEBUG QUERY: %s | ARGS: %v\n", query, append(baseArgs, filterArgs...))
 	if err := r.db.SelectContext(ctx, &list, query, append(baseArgs, filterArgs...)...); err != nil {
 		return nil, fmt.Errorf("list clinics: %w", err)
 	}
@@ -248,19 +247,19 @@ func (r *repository) BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) err
 
 // Transaction-based methods
 func (r *repository) CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
-    query := `
+	query := `
         INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
         VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
         RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
     `
-    var c Clinic
-    err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
-        clinic.ABN, clinic.Description, clinic.IsActive,
-    ).StructScan(&c)
-    if err != nil {
-        return nil, fmt.Errorf("create clinic tx: %w", err)
-    }
-    return &c, nil
+	var c Clinic
+	err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
+		clinic.ABN, clinic.Description, clinic.IsActive,
+	).StructScan(&c)
+	if err != nil {
+		return nil, fmt.Errorf("create clinic tx: %w", err)
+	}
+	return &c, nil
 }
 
 func (r *repository) CreateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, address *ClinicAddress) (*ClinicAddress, error) {
@@ -537,7 +536,11 @@ func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uu
         INNER JOIN tbl_invite_permissions p ON c.id = p.entity_id
         WHERE p.accountant_id = ? 
           AND p.entity_type = 'CLINIC' 
-		 AND (p.permissions->>'read')::boolean = true
+		  AND (
+          (p.permissions->>'read')::boolean = true 
+          OR 
+          (p.permissions->>'all')::boolean = true
+        )
           AND p.deleted_at IS NULL 
           AND c.deleted_at IS NULL`
 
