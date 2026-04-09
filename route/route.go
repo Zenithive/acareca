@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	adminAccountant "github.com/iamarpitzala/acareca/internal/modules/admin/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/analytics"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	adminPractitioner "github.com/iamarpitzala/acareca/internal/modules/admin/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
@@ -173,6 +174,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Admin Accountant routes
 	accountantGroup := adminGroup.Group("/accountant")
 	adminAccountant.RegisterRoutes(accountantGroup, dbConn)
+
+	// Admin Analytics routes
+	analyticsGroup := adminGroup.Group("/analytics")
+	analyticsRepo := analytics.NewRepository(dbConn)
+	analyticsSvc := analytics.NewService(analyticsRepo)
+	analyticsHandler := analytics.NewHandler(analyticsSvc)
+	analytics.RegisterRoutes(analyticsGroup, analyticsHandler)
 
 	// Initialize events service first
 	eventsRepo := events.NewRepository(dbConn)

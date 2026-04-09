@@ -319,6 +319,673 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/analytics/accountant/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns accountant KPIs and invite status distribution",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get accountant dashboard overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsAccountantOverview"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/accountant/resource-access-timeseries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns accountant resource access over time by resource type",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get resource access timeseries",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsResourceAccessTimeseries"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/active-users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns DAU, WAU, MAU metrics with DAU/MAU ratio and timeline",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get daily/weekly/monthly active users",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsActiveUsers"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/plan-distribution": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns plan distribution with historical revenue and subscription counts",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get plan distribution",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPlanDistribution"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/platform-revenue": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns platform revenue over time",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get platform revenue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPlatformRevenue"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/subscriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns paginated and filtered list of subscription records",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "List subscription records",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search by practitioner name or email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by plan name",
+                        "name": "plan_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by end date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records per page (default: 20, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: created_at, start_date, end_date (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioner/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns practitioner KPIs and user bifurcation",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get practitioner dashboard overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPractitionerOverview"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioner/resource-analytics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns resource analytics grouped by entity type with action counts",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get resource analytics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group by: entity_type, action",
+                        "name": "group_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsResourceAnalytics"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioners": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns paginated and filtered list of practitioners with their clinics and associated accountants",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "List all practitioners with clinics and accountants",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by phone (partial match)",
+                        "name": "phone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by active subscription",
+                        "name": "has_active_subscription",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by subscription plan name",
+                        "name": "subscription_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across name and email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records per page (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: created_at, email, first_name, last_name (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioners/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns detailed practitioner information including subscription, clinics, and associated accountants",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get practitioner details with clinics and accountants",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPractitionerDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/subscriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns subscription metrics including MRR, ARR, ARPU, churn rate, and distribution by plan",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get subscription distribution and MRR",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsSubscriptionMetrics"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/user-growth": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns user growth statistics including total users, new users, active users, growth rate, and retention rate with timeline",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get user growth and retention metrics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsUserGrowth"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/audit": {
             "get": {
                 "security": [
@@ -6247,6 +6914,552 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                }
+            }
+        },
+        "analytics.AccountantInfo": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.AccountantKPIs": {
+            "type": "object",
+            "properties": {
+                "total_accountants": {
+                    "type": "integer"
+                },
+                "total_invites": {
+                    "type": "integer"
+                },
+                "total_permissions": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ActionCounts": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "integer"
+                },
+                "delete": {
+                    "type": "integer"
+                },
+                "read": {
+                    "type": "integer"
+                },
+                "update": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ActiveUsersPoint": {
+            "type": "object",
+            "properties": {
+                "active_users": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.ClinicInfo": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "accountants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.AccountantInfo"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.InvitesStatusPie": {
+            "type": "object",
+            "properties": {
+                "by_status": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.StatusCount"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.PlanCounts": {
+            "type": "object",
+            "properties": {
+                "active_subscriptions": {
+                    "type": "integer"
+                },
+                "total_subscriptions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.PlanDistribution": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "$ref": "#/definitions/analytics.PlanCounts"
+                },
+                "plan_id": {
+                    "type": "string"
+                },
+                "plan_name": {
+                    "type": "string"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.PlanDistributionPoint"
+                    }
+                }
+            }
+        },
+        "analytics.PlanDistributionPoint": {
+            "type": "object",
+            "properties": {
+                "active_subscriptions": {
+                    "type": "integer"
+                },
+                "new_subscriptions": {
+                    "type": "integer"
+                },
+                "revenue": {
+                    "type": "number"
+                },
+                "ts": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.PractitionerKPIs": {
+            "type": "object",
+            "properties": {
+                "active_subscriptions": {
+                    "type": "integer"
+                },
+                "no_active_plan": {
+                    "type": "integer"
+                },
+                "total_invites": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ResourceAnalyticsMeta": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "group_by": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.ResourceRow": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/analytics.ActionCounts"
+                },
+                "entity_type": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ResourceSeries": {
+            "type": "object",
+            "properties": {
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.TimePoint"
+                    }
+                },
+                "resource_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RevenueMeta": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RevenuePoint": {
+            "type": "object",
+            "properties": {
+                "revenue": {
+                    "type": "number"
+                },
+                "ts": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RoleCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RsAccountantOverview": {
+            "type": "object",
+            "properties": {
+                "invites_status_pie": {
+                    "$ref": "#/definitions/analytics.InvitesStatusPie"
+                },
+                "kpis": {
+                    "$ref": "#/definitions/analytics.AccountantKPIs"
+                }
+            }
+        },
+        "analytics.RsActiveUsers": {
+            "type": "object",
+            "properties": {
+                "dau": {
+                    "type": "integer"
+                },
+                "dau_to_mau_ratio": {
+                    "type": "number"
+                },
+                "mau": {
+                    "type": "integer"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ActiveUsersPoint"
+                    }
+                },
+                "wau": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.RsPlanDistribution": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.RevenueMeta"
+                },
+                "plans": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.PlanDistribution"
+                    }
+                }
+            }
+        },
+        "analytics.RsPlatformRevenue": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.RevenueMeta"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.RevenuePoint"
+                    }
+                }
+            }
+        },
+        "analytics.RsPractitionerDetail": {
+            "type": "object",
+            "properties": {
+                "clinics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ClinicInfo"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "subscription": {
+                    "$ref": "#/definitions/analytics.SubscriptionInfo"
+                },
+                "total_accountants": {
+                    "type": "integer"
+                },
+                "total_clinics": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.RsPractitionerOverview": {
+            "type": "object",
+            "properties": {
+                "kpis": {
+                    "$ref": "#/definitions/analytics.PractitionerKPIs"
+                },
+                "user_bifurcation": {
+                    "$ref": "#/definitions/analytics.UserBifurcation"
+                }
+            }
+        },
+        "analytics.RsResourceAccessTimeseries": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.TimeseriesMeta"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ResourceSeries"
+                    }
+                }
+            }
+        },
+        "analytics.RsResourceAnalytics": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.ResourceAnalyticsMeta"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ResourceRow"
+                    }
+                }
+            }
+        },
+        "analytics.RsSubscriptionMetrics": {
+            "type": "object",
+            "properties": {
+                "arpu": {
+                    "type": "number"
+                },
+                "arr": {
+                    "type": "number"
+                },
+                "churn_rate_percentage": {
+                    "type": "number"
+                },
+                "distribution": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.SubscriptionDistribution"
+                    }
+                },
+                "mrr": {
+                    "type": "number"
+                },
+                "total_active_subscriptions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.RsUserGrowth": {
+            "type": "object",
+            "properties": {
+                "active_users_30_days": {
+                    "type": "integer"
+                },
+                "growth_rate_percentage": {
+                    "type": "number"
+                },
+                "new_users_30_days": {
+                    "type": "integer"
+                },
+                "retention_rate_percentage": {
+                    "type": "number"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.UserGrowthPoint"
+                    }
+                },
+                "total_accountants": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.StatusCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.SubscriptionDistribution": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "percentage": {
+                    "type": "number"
+                },
+                "plan_id": {
+                    "type": "integer"
+                },
+                "plan_name": {
+                    "type": "string"
+                },
+                "revenue": {
+                    "type": "number"
+                }
+            }
+        },
+        "analytics.SubscriptionInfo": {
+            "type": "object",
+            "properties": {
+                "end_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.TimePoint": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "ts": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.TimeseriesMeta": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.UserBifurcation": {
+            "type": "object",
+            "properties": {
+                "by_role": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.RoleCount"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.UserGrowthPoint": {
+            "type": "object",
+            "properties": {
+                "active_users": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "new_users": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
                 }
             }
         },
