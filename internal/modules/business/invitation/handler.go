@@ -308,6 +308,9 @@ func (h *Handler) HandlePermissions(c *gin.Context) {
 		return
 	}
 
+	// Normalize EntityType to Uppercase
+    req.EntityType = strings.ToUpper(req.EntityType)
+	
 	resPerms, err := h.svc.GrantEntityPermission(c.Request.Context(), practID, req.AccountantID, req.EntityID, req.EntityType, req.Permissions)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)

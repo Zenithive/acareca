@@ -84,6 +84,7 @@ const (
 	EntitySubscriptionPermission = "tbl_subscription_permission"
 	EntityVerificationToken      = "tbl_verification_token"
 	EntityInvitation             = "tbl_invitation"
+	EntityPermission             = "tbl_invite_permissions"
 )
 
 // Action Constants -Accountant module
@@ -94,4 +95,10 @@ const (
 	ActionInviteExpired   = "accountant.invite_expired"
 	ActionInviteCompleted = "accountant.invite_completed"
 	ActionInviteRevoked   = "accountant.invite_revoked"
+)
+
+// Action Constants - Invite Permissions
+const (
+	ActionPermissionAssigned  = "invite.permission_assigned"
+	ActionPermissionUpdated  = "invite.permission_updated"
 )
