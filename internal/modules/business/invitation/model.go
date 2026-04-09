@@ -40,13 +40,13 @@ type RqSendInvitation struct {
 
 // RsInvitation is the response after an invitation is created
 type RsInvitation struct {
-	ID         uuid.UUID        `json:"id"`
-	Email      string           `json:"email"`
-	AccountantID *uuid.UUID     `json:"accountant_id"`
-	InviteLink string           `json:"invite_link"`
-	Status     InvitationStatus `json:"status"`
-	ExpiresAt  time.Time        `json:"expires_at"`
-	Permissions []RqPermissionDetail `json:"permissions"`
+	ID           uuid.UUID            `json:"id"`
+	Email        string               `json:"email"`
+	AccountantID *uuid.UUID           `json:"accountant_id"`
+	InviteLink   string               `json:"invite_link"`
+	Status       InvitationStatus     `json:"status"`
+	ExpiresAt    time.Time            `json:"expires_at"`
+	Permissions  []RqPermissionDetail `json:"permissions"`
 }
 
 type UserDetails struct {
@@ -56,13 +56,13 @@ type UserDetails struct {
 }
 
 type RsInviteDetails struct {
-	InvitationID uuid.UUID        `json:"invitation_id"`
-	Status       InvitationStatus `json:"status"`
-	IsFound      bool             `json:"is_found"`
-	SentBy       UserDetails      `json:"sent_by"`
-	SentTo       UserDetails      `json:"sent_to"`
-	SenderRole   string           `json:"sender_role"`
-	AccountantID *uuid.UUID           `json:"id"` 
+	InvitationID uuid.UUID            `json:"invitation_id"`
+	Status       InvitationStatus     `json:"status"`
+	IsFound      bool                 `json:"is_found"`
+	SentBy       UserDetails          `json:"sent_by"`
+	SentTo       UserDetails          `json:"sent_to"`
+	SenderRole   string               `json:"sender_role"`
+	AccountantID *uuid.UUID           `json:"id"`
 	Email        string               `json:"email"`
 	Permissions  []RqPermissionDetail `json:"permissions"`
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
@@ -38,6 +39,8 @@ type Service interface {
 	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 	GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, eType string, perms Permissions) (*Permissions, error)
 	ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*util.RsList, error)
+
+	ListAccountantPermission(ctx context.Context, accId uuid.UUID) (*[]Permissions, int, error)
 }
 
 const (
@@ -48,6 +51,7 @@ const (
 type service struct {
 	repo         Repository
 	cfg          *config.Config
+	inviteConfig InvitationConfig
 	notification notification.Service
 	auditSvc     audit.Service
 }
@@ -56,6 +60,7 @@ func NewService(repo Repository, cfg *config.Config, notification notification.S
 	return &service{
 		repo:         repo,
 		cfg:          cfg,
+		inviteConfig: InviteDefaultConfig(),
 		notification: notification,
 		auditSvc:     auditSvc,
 	}
@@ -78,8 +83,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	}
 
 	if baseURL == "" {
-		fmt.Printf("[CRITICAL] Configuration Error: Frontend URL is missing for ENV=%s\n", s.cfg.Env)
-		return nil, fmt.Errorf("system configuration error: frontend application URL is not defined")
+		return nil, ErrConfigMissing
 	}
 
 	// Start Transaction
@@ -93,13 +97,13 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		ID:             uuid.New(),
 		PractitionerID: practitionerID,
 		EntityID:       existingAccID,
-		Email:          req.Email,
+		Email:          strings.ToLower(strings.TrimSpace(req.Email)),
 		Status:         StatusSent,
-		ExpiresAt:      time.Now().AddDate(0, 0, 7),
+		ExpiresAt:      time.Now().AddDate(0, 0, s.inviteConfig.ExpirationDays),
 	}
 
 	if err := s.repo.CreateTx(ctx, tx, invite); err != nil {
-		return nil, fmt.Errorf("[DEBUG] failed to save invite: %w", err)
+		return nil, fmt.Errorf("failed to save invite: %w", err)
 	}
 
 	// We'll create a slice to hold the "finalized" permissions (after processing)
@@ -132,7 +136,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 
 	go func() {
 		if err := s.sendEmailViaResend(invite.Email, inviteLink, senderName); err != nil {
-			fmt.Printf("[DEBUG] Resend Error: %v\n", err)
+			fmt.Printf("[ERROR] Failed to send invitation email: %v\n", err)
 		}
 	}()
 
@@ -235,7 +239,7 @@ func (s *service) sendEmailViaResend(to string, link string, senderName string) 
 	req.Header.Set("Authorization", "Bearer "+s.cfg.ResendAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: s.inviteConfig.EmailTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -261,7 +265,7 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 	}
 
 	if time.Now().After(inv.ExpiresAt) {
-		return nil, errors.New("Invitation expired")
+		return nil, ErrInvitationExpired
 	}
 
 	recipient := UserDetails{Email: inv.Email}
@@ -304,31 +308,31 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error) {
 	inv, err := s.repo.GetByID(ctx, req.TokenID)
 	if err != nil || inv == nil {
-		return nil, errors.New("invitation not found")
+		return nil, ErrInvitationNotFound
 	}
 
-	beforeState := inv // Capture state before processing
+	beforeState := inv
 	if time.Now().After(inv.ExpiresAt) {
-		return nil, errors.New("invitation expired")
+		return nil, ErrInvitationExpired
 	}
 
 	if inv.Status == StatusResent {
-		return nil, errors.New("this invitation link is no longer valid as a new one has been sent")
+		return nil, ErrInvitationInvalidated
 	}
 
 	res := &RsInviteProcess{InvitationID: inv.ID, PractitionerID: inv.PractitionerID, Email: inv.Email}
 
 	if inv.Status == StatusRejected || inv.Status == StatusCompleted {
-		return nil, fmt.Errorf("action not allowed: invitation is already %s", inv.Status)
+		return nil, ErrInvitationAlreadyUsed
 	}
 
 	if req.Action == ActionReject {
 		if err := s.repo.UpdateStatus(ctx, inv.ID, StatusRejected, nil); err != nil {
 			return nil, err
 		}
-
 		res.Status = StatusRejected
 		res.IsFound = false
+		s.logInvitationAction(ctx, inv, auditctx.ActionInviteRejected, beforeState)
 		return res, nil
 	}
 
@@ -352,52 +356,59 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		}
 
 		res.Status = targetStatus
-		res.IsFound = false
-
-		// Notify the practitioner live
-		if s.notification != nil {
-			body := json.RawMessage(fmt.Sprintf(`"%s accepted your invitation."`, inv.Email))
-			extraData := map[string]interface{}{"invite_id": inv.ID.String()}
-			payload := notification.BuildNotificationPayload("Invitation Accepted", body, nil, nil, &extraData)
-			payloadBytes, _ := json.Marshal(payload)
-			senderType := notification.ActorAccountant
-			rq := notification.RqNotification{
-				ID:            uuid.New(),
-				RecipientID:   inv.PractitionerID,
-				RecipientType: notification.ActorPractitioner,
-				SenderID:      accountantID,
-				SenderType:    &senderType,
-				EventType:     notification.EventInviteAccepted,
-				EntityType:    notification.EntityInvite,
-				EntityID:      inv.ID,
-				Status:        notification.StatusUnread,
-				Payload:       payloadBytes,
-				CreatedAt:     time.Now(),
-			}
-			if err := s.notification.Publish(ctx, rq); err != nil {
-				fmt.Printf("[ERROR] failed to publish invite.accepted notification: %v\n", err)
-			}
-		}
-
+		s.notifyInvitationAccepted(ctx, inv, accountantID)
+		s.logInvitationAction(ctx, inv, auditctx.ActionInviteAccepted, beforeState)
 		return res, nil
 	}
 
-	updatedInv, err := s.repo.GetByID(ctx, inv.ID)
-	// Audit log for accept/reject
+	return nil, ErrInvalidAction
+}
+
+func (s *service) notifyInvitationAccepted(ctx context.Context, inv *Invitation, accountantID *uuid.UUID) {
+	if s.notification == nil {
+		return
+	}
+
+	body := json.RawMessage(fmt.Sprintf(`"%s accepted your invitation."`, inv.Email))
+	extraData := map[string]interface{}{"invite_id": inv.ID.String()}
+	payload := notification.BuildNotificationPayload("Invitation Accepted", body, nil, nil, &extraData)
+	payloadBytes, _ := json.Marshal(payload)
+	senderType := notification.ActorAccountant
+	rq := notification.RqNotification{
+		ID:            uuid.New(),
+		RecipientID:   inv.PractitionerID,
+		RecipientType: notification.ActorPractitioner,
+		SenderID:      accountantID,
+		SenderType:    &senderType,
+		EventType:     notification.EventInviteAccepted,
+		EntityType:    notification.EntityInvite,
+		EntityID:      inv.ID,
+		Status:        notification.StatusUnread,
+		Payload:       payloadBytes,
+		CreatedAt:     time.Now(),
+	}
+	if err := s.notification.Publish(ctx, rq); err != nil {
+		fmt.Printf("[ERROR] failed to publish invite.accepted notification: %v\n", err)
+	}
+}
+
+func (s *service) logInvitationAction(ctx context.Context, inv *Invitation, action string, beforeState interface{}) {
+	if s.auditSvc == nil {
+		return
+	}
+
 	meta := auditctx.GetMetadata(ctx)
 	pIDStr := inv.PractitionerID.String()
 	entityID := inv.ID.String()
-	actionStr := auditctx.ActionInviteAccepted
-	if req.Action == ActionReject {
-		actionStr = auditctx.ActionInviteRejected
-	}
 	entityType := auditctx.EntityInvitation
+
+	updatedInv, _ := s.repo.GetByID(ctx, inv.ID)
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
-		//PracticeID: meta.PracticeID,
 		PracticeID:  &pIDStr,
 		UserID:      meta.UserID,
 		Module:      auditctx.ModuleBusiness,
-		Action:      actionStr,
+		Action:      action,
 		EntityType:  &entityType,
 		EntityID:    &entityID,
 		BeforeState: beforeState,
@@ -405,9 +416,6 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		IPAddress:   meta.IPAddress,
 		UserAgent:   meta.UserAgent,
 	})
-
-	// Fallback for unexpected actions
-	return nil, errors.New("invalid action: must be ACCEPT or REJECT")
 }
 
 func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx, email string, entityID uuid.UUID) error {
@@ -550,8 +558,8 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 		return fmt.Errorf("failed to check invitation limit: %w", err)
 	}
 
-	if count >= 5 {
-		return errors.New("daily invitation limit reached for this email (max 5 per 24h)")
+	if count >= s.inviteConfig.DailyInviteLimit {
+		return ErrDailyLimitReached
 	}
 	return nil
 }
@@ -559,62 +567,41 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error {
 	inv, err := s.repo.GetByID(ctx, inviteID)
 	if err != nil || inv == nil {
-		return errors.New("invitation not found")
+		return ErrInvitationNotFound
 	}
 
 	if inv.PractitionerID != practitionerID {
-		return errors.New("unauthorized: you did not send this invitation")
+		return ErrUnauthorizedInvite
 	}
 
 	if inv.Status == StatusRevoked {
-		return errors.New("invitation is already revoked")
+		return ErrInvitationAlreadyUsed
 	}
 
-	// Only allow revoking invitations that have been accepted or completed
 	if inv.Status != StatusAccepted && inv.Status != StatusCompleted {
-		return fmt.Errorf("cannot revoke an invitation with status: %s", inv.Status)
+		return ErrCannotRevokeStatus
 	}
 
-	// START TRANSACTION
 	accountantID := *inv.EntityID
 	tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
-	// 1. Update Invitation Status
+
 	if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.EntityID); err != nil {
 		return fmt.Errorf("revoke invitation status update: %w", err)
 	}
 
-	// 2. Delete all permissions granted to this accountant by this practitioner
 	if err := s.repo.DeleteAllPermissionsForAccountantTx(ctx, tx, practitionerID, accountantID); err != nil {
 		return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
 	}
 
-	// COMMIT TRANSACTION
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit revocation: %w", err)
 	}
 
-	// Audit log
-	meta := auditctx.GetMetadata(ctx)
-	pIDStr := practitionerID.String()
-	entityIDStr := inviteID.String()
-	entityType := auditctx.EntityInvitation
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  &pIDStr,
-		UserID:      meta.UserID,
-		Module:      auditctx.ModuleBusiness,
-		Action:      auditctx.ActionInviteRevoked,
-		EntityType:  &entityType,
-		EntityID:    &entityIDStr,
-		BeforeState: inv,
-		AfterState:  map[string]interface{}{"status": StatusRevoked},
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
-	})
-
+	s.logInvitationAction(ctx, inv, auditctx.ActionInviteRevoked, inv)
 	return nil
 }
 
@@ -666,10 +653,9 @@ func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, 
 }
 
 func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, eType string, perms Permissions) (*Permissions, error) {
-	// Verify accountant is linked to this practitioner
 	linkedPracID, err := s.repo.GetPractitionerLinkedToAccountant(ctx, aID)
 	if err != nil || linkedPracID != pID {
-		return nil, fmt.Errorf("unauthorized association")
+		return nil, ErrUnauthorizedAssociation
 	}
 
 	// Capture state BEFORE update for Audit Logs
@@ -734,4 +720,24 @@ func (s *service) processPermissions(perms Permissions) (json.RawMessage, Permis
 
 	permJson, _ := json.Marshal(dbMap)
 	return permJson, finalDisplay
+}
+
+// ListAccountantPermission implements [Service].
+func (s *service) ListAccountantPermission(ctx context.Context, accId uuid.UUID) (*[]Permissions, int, error) {
+	var filter common.Filter
+
+	permissionRows, err := s.repo.ListAccountantPermissions(ctx, accId, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var perms []Permissions
+	for _, v := range permissionRows {
+		var permission Permissions
+		if err := json.Unmarshal(v.Permissions, &permission); err != nil {
+			return nil, 0, fmt.Errorf("failed to unmarshal permissions: %w", err)
+		}
+		perms = append(perms, permission)
+	}
+	return &perms, 0, nil
 }

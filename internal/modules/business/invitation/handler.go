@@ -1,6 +1,7 @@
 package invitation
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -214,13 +215,15 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 	}
 
 	if err := h.svc.RevokeInvite(c.Request.Context(), practID, inviteID); err != nil {
-		switch err.Error() {
-		case "invitation not found":
+		switch {
+		case errors.Is(err, ErrInvitationNotFound):
 			response.Error(c, http.StatusNotFound, err)
-		case "unauthorized: you did not send this invitation":
+		case errors.Is(err, ErrUnauthorizedInvite):
 			response.Error(c, http.StatusForbidden, err)
-		default:
+		case errors.Is(err, ErrInvitationAlreadyUsed), errors.Is(err, ErrCannotRevokeStatus):
 			response.Error(c, http.StatusBadRequest, err)
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
 		return
 	}

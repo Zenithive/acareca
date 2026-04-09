@@ -62,18 +62,18 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	var perms *invitation.Permissions
 	var err error
 	// PERMISSION CHECK
-	if strings.EqualFold(role, util.RoleAccountant) {
-		// Here, entityID is the ClinicID because the accountant is creating a new form inside a clinic
-		perms, err = s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, d.ClinicID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("Authentication error: %w", err)
-		}
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	// Here, entityID is the ClinicID because the accountant is creating a new form inside a clinic
+	// 	perms, err = s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, d.ClinicID)
+	// 	if err != nil {
+	// 		return nil, nil, fmt.Errorf("Authentication error: %w", err)
+	// 	}
 
-		// We check if this accountant has permission to 'create' for this SPECIFIC Clinic
-		if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
-			return nil, nil, errors.New("Access denied: you do not have permission to create forms for this clinic")
-		}
-	}
+	// 	// We check if this accountant has permission to 'create' for this SPECIFIC Clinic
+	// 	if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
+	// 		return nil, nil, errors.New("Access denied: you do not have permission to create forms for this clinic")
+	// 	}
+	// }
 
 	// 1. Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
@@ -226,7 +226,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 
 func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, actorID uuid.UUID, role string) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
-	isAccountant := strings.EqualFold(role, util.RoleAccountant)
+	// isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
 	req.Normalize()
 
@@ -240,19 +240,19 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	}
 	beforeState := *existing
 
-	// PERMISSION CHECK (Accountant Only)
-	if isAccountant {
-		// Check if they have 'update' or 'all' permission for this FORM
-		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("Authentication error: %w", err)
-		}
+	// // PERMISSION CHECK (Accountant Only)
+	// if isAccountant {
+	// 	// Check if they have 'update' or 'all' permission for this FORM
+	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
+	// 	if err != nil {
+	// 		return nil, nil, fmt.Errorf("Authentication error: %w", err)
+	// 	}
 
-		// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
-		if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
-			return nil, nil, errors.New("Access denied: you do not have permission to update this form")
-		}
-	}
+	// 	// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
+	// 	if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
+	// 		return nil, nil, errors.New("Access denied: you do not have permission to update this form")
+	// 	}
+	// }
 
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, existing.ClinicID)
 	if err != nil {
@@ -582,20 +582,20 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID, actorID uuid.UUI
 	if err != nil {
 		return err
 	}
-	var perms *invitation.Permissions
+	// var perms *invitation.Permissions
 	// PERMISSION CHECK
-	if strings.EqualFold(role, util.RoleAccountant) {
-		// Here, entityID is the ClinicID because the accountant is creating a new form inside a clinic
-		perms, err = s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formID)
-		if err != nil {
-			return fmt.Errorf("Authentication error: %w", err)
-		}
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	// Here, entityID is the ClinicID because the accountant is creating a new form inside a clinic
+	// 	perms, err = s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formID)
+	// 	if err != nil {
+	// 		return fmt.Errorf("Authentication error: %w", err)
+	// 	}
 
-		// We check if this accountant has permission to 'delete' for this form
-		if perms == nil || (!perms.HasAccess("delete") && !perms.HasAccess("all")) {
-			return errors.New("Access denied: you do not have permission to delete this form")
-		}
-	}
+	// 	// We check if this accountant has permission to 'delete' for this form
+	// 	if perms == nil || (!perms.HasAccess("delete") && !perms.HasAccess("all")) {
+	// 		return errors.New("Access denied: you do not have permission to delete this form")
+	// 	}
+	// }
 
 	// 2. Resolve the REAL owner (Practitioner) from the Clinic
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, formDetail.ClinicID)
@@ -679,19 +679,19 @@ func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID, actorID uui
 		return detail, err
 	}
 
-	// PERMISSION CHECK (Accountant Only)
-	if strings.EqualFold(role, util.RoleAccountant) {
-		// We ONLY check if they have a direct mapping to this specific Form ID
-		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formId)
-		if err != nil {
-			return nil, fmt.Errorf("Authentication error: %w", err)
-		}
+	// // PERMISSION CHECK (Accountant Only)
+	// if strings.EqualFold(role, util.RoleAccountant) {
+	// 	// We ONLY check if they have a direct mapping to this specific Form ID
+	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formId)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("Authentication error: %w", err)
+	// 	}
 
-		// Deny if no direct mapping exists OR if permissions don't allow 'read'/'all'
-		if perms == nil || (!perms.HasAccess("read") && !perms.HasAccess("all")) {
-			return nil, errors.New("Access denied: you do not have permission to view this form")
-		}
-	}
+	// 	// Deny if no direct mapping exists OR if permissions don't allow 'read'/'all'
+	// 	if perms == nil || (!perms.HasAccess("read") && !perms.HasAccess("all")) {
+	// 		return nil, errors.New("Access denied: you do not have permission to view this form")
+	// 	}
+	// }
 
 	return detail, err
 }
@@ -704,19 +704,19 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 	}
 
 	// PERMISSION CHECK (Accountant Only)
-	isAccountant := strings.EqualFold(role, util.RoleAccountant)
-	if isAccountant {
-		// Check if they have 'update' or 'all' permission for this FORM
-		perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
-		if err != nil {
-			return nil, fmt.Errorf("Authentication error: %w", err)
-		}
+	// isAccountant := strings.EqualFold(role, util.RoleAccountant)
+	// if isAccountant {
+	// 	// Check if they have 'update' or 'all' permission for this FORM
+	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("Authentication error: %w", err)
+	// 	}
 
-		// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
-		if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
-			return nil, errors.New("Access denied: you do not have permission to update this form")
-		}
-	}
+	// 	// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
+	// 	if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
+	// 		return nil, errors.New("Access denied: you do not have permission to update this form")
+	// 	}
+	// }
 
 	// Call the detail service to perform the update
 	err = s.detailSvc.UpdateFormStatus(ctx, &detail.RqUpdateFormStatus{
