@@ -190,6 +190,12 @@ func (h *Handler) GetResourceAnalytics(c *gin.Context) {
 		return
 	}
 
+	// Validate filter
+	if err := validateResourceAnalyticsFilter(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
 	result, err := h.svc.GetResourceAnalytics(c.Request.Context(), &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -236,6 +242,12 @@ func (h *Handler) GetResourceAccessTimeseries(c *gin.Context) {
 		return
 	}
 
+	// Validate filter
+	if err := validateDateRangeFilter(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
 	result, err := h.svc.GetResourceAccessTimeseries(c.Request.Context(), &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -260,6 +272,12 @@ func (h *Handler) GetResourceAccessTimeseries(c *gin.Context) {
 func (h *Handler) GetPlatformRevenue(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Validate filter
+	if err := validateDateRangeFilter(&filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
@@ -298,6 +316,12 @@ func (h *Handler) ListSubscriptionRecords(c *gin.Context) {
 		return
 	}
 
+	// Validate filter
+	if err := validateSubscriptionRecordFilter(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
 	result, err := h.svc.ListSubscriptionRecords(c.Request.Context(), &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -322,6 +346,12 @@ func (h *Handler) ListSubscriptionRecords(c *gin.Context) {
 func (h *Handler) GetPlanDistribution(c *gin.Context) {
 	var filter DateRangeFilter
 	if err := c.ShouldBindQuery(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Validate filter
+	if err := validateDateRangeFilter(&filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}

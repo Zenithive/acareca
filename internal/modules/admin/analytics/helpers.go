@@ -28,11 +28,11 @@ func parseBucket(bucket *string, defaultBucket string) string {
 // getBucketConfig returns date truncation and format based on bucket type
 func getBucketConfig(bucket string) (dateTrunc, dateFormat string) {
 	switch bucket {
-	case "day":
+	case BucketDay:
 		return "day", "2006-01-02"
-	case "week":
+	case BucketWeek:
 		return "week", "2006-01-02"
-	case "month":
+	case BucketMonth:
 		return "month", "2006-01"
 	default:
 		return "month", "2006-01"
@@ -41,8 +41,8 @@ func getBucketConfig(bucket string) (dateTrunc, dateFormat string) {
 
 // parsePaginationParams extracts pagination parameters with defaults
 func parsePaginationParams(limit, offset *int) (int, int) {
-	l, o := 20, 0
-	if limit != nil && *limit > 0 && *limit <= 100 {
+	l, o := DefaultPageSize, 0
+	if limit != nil && *limit > 0 && *limit <= MaxPageSize {
 		l = *limit
 	}
 	if offset != nil && *offset >= 0 {

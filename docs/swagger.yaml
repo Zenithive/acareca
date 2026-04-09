@@ -187,6 +187,28 @@ definitions:
       phone:
         type: string
     type: object
+  analytics.AccountantKPIs:
+    properties:
+      total_accountants:
+        type: integer
+      total_invites:
+        type: integer
+      total_permissions:
+        type: integer
+      total_practitioners:
+        type: integer
+    type: object
+  analytics.ActionCounts:
+    properties:
+      create:
+        type: integer
+      delete:
+        type: integer
+      read:
+        type: integer
+      update:
+        type: integer
+    type: object
   analytics.ActiveUsersPoint:
     properties:
       active_users:
@@ -207,6 +229,116 @@ definitions:
       name:
         type: string
     type: object
+  analytics.InvitesStatusPie:
+    properties:
+      by_status:
+        items:
+          $ref: '#/definitions/analytics.StatusCount'
+        type: array
+      total:
+        type: integer
+    type: object
+  analytics.PlanCounts:
+    properties:
+      active_subscriptions:
+        type: integer
+      total_subscriptions:
+        type: integer
+    type: object
+  analytics.PlanDistribution:
+    properties:
+      counts:
+        $ref: '#/definitions/analytics.PlanCounts'
+      plan_id:
+        type: string
+      plan_name:
+        type: string
+      series:
+        items:
+          $ref: '#/definitions/analytics.PlanDistributionPoint'
+        type: array
+    type: object
+  analytics.PlanDistributionPoint:
+    properties:
+      active_subscriptions:
+        type: integer
+      new_subscriptions:
+        type: integer
+      revenue:
+        type: number
+      ts:
+        type: string
+    type: object
+  analytics.PractitionerKPIs:
+    properties:
+      active_subscriptions:
+        type: integer
+      no_active_plan:
+        type: integer
+      total_invites:
+        type: integer
+      total_practitioners:
+        type: integer
+    type: object
+  analytics.ResourceAnalyticsMeta:
+    properties:
+      from:
+        type: string
+      group_by:
+        type: string
+      to:
+        type: string
+    type: object
+  analytics.ResourceRow:
+    properties:
+      actions:
+        $ref: '#/definitions/analytics.ActionCounts'
+      entity_type:
+        type: string
+      total:
+        type: integer
+    type: object
+  analytics.ResourceSeries:
+    properties:
+      points:
+        items:
+          $ref: '#/definitions/analytics.TimePoint'
+        type: array
+      resource_type:
+        type: string
+    type: object
+  analytics.RevenueMeta:
+    properties:
+      bucket:
+        type: string
+      currency:
+        type: string
+      from:
+        type: string
+      to:
+        type: string
+    type: object
+  analytics.RevenuePoint:
+    properties:
+      revenue:
+        type: number
+      ts:
+        type: string
+    type: object
+  analytics.RoleCount:
+    properties:
+      count:
+        type: integer
+      role:
+        type: string
+    type: object
+  analytics.RsAccountantOverview:
+    properties:
+      invites_status_pie:
+        $ref: '#/definitions/analytics.InvitesStatusPie'
+      kpis:
+        $ref: '#/definitions/analytics.AccountantKPIs'
+    type: object
   analytics.RsActiveUsers:
     properties:
       dau:
@@ -221,6 +353,24 @@ definitions:
         type: array
       wau:
         type: integer
+    type: object
+  analytics.RsPlanDistribution:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.RevenueMeta'
+      plans:
+        items:
+          $ref: '#/definitions/analytics.PlanDistribution'
+        type: array
+    type: object
+  analytics.RsPlatformRevenue:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.RevenueMeta'
+      series:
+        items:
+          $ref: '#/definitions/analytics.RevenuePoint'
+        type: array
     type: object
   analytics.RsPractitionerDetail:
     properties:
@@ -244,6 +394,31 @@ definitions:
         type: integer
       total_clinics:
         type: integer
+    type: object
+  analytics.RsPractitionerOverview:
+    properties:
+      kpis:
+        $ref: '#/definitions/analytics.PractitionerKPIs'
+      user_bifurcation:
+        $ref: '#/definitions/analytics.UserBifurcation'
+    type: object
+  analytics.RsResourceAccessTimeseries:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.TimeseriesMeta'
+      series:
+        items:
+          $ref: '#/definitions/analytics.ResourceSeries'
+        type: array
+    type: object
+  analytics.RsResourceAnalytics:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.ResourceAnalyticsMeta'
+      rows:
+        items:
+          $ref: '#/definitions/analytics.ResourceRow'
+        type: array
     type: object
   analytics.RsSubscriptionMetrics:
     properties:
@@ -283,6 +458,13 @@ definitions:
       total_users:
         type: integer
     type: object
+  analytics.StatusCount:
+    properties:
+      count:
+        type: integer
+      status:
+        type: string
+    type: object
   analytics.SubscriptionDistribution:
     properties:
       count:
@@ -308,6 +490,31 @@ definitions:
         type: string
       status:
         type: string
+    type: object
+  analytics.TimePoint:
+    properties:
+      count:
+        type: integer
+      ts:
+        type: string
+    type: object
+  analytics.TimeseriesMeta:
+    properties:
+      bucket:
+        type: string
+      from:
+        type: string
+      to:
+        type: string
+    type: object
+  analytics.UserBifurcation:
+    properties:
+      by_role:
+        items:
+          $ref: '#/definitions/analytics.RoleCount'
+        type: array
+      total:
+        type: integer
     type: object
   analytics.UserGrowthPoint:
     properties:
@@ -2235,6 +2442,103 @@ paths:
       summary: Get audit log by ID
       tags:
       - audit
+  /admin/billing/plan-distribution:
+    get:
+      description: Returns plan distribution with historical revenue and subscription
+        counts
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPlanDistribution'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get plan distribution
+      tags:
+      - admin-dashboard
+  /admin/billing/subscriptions:
+    get:
+      description: Returns paginated and filtered list of subscription records
+      parameters:
+      - description: Search by practitioner name or email
+        in: query
+        name: search
+        type: string
+      - description: Filter by plan name
+        in: query
+        name: plan_name
+        type: string
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Records per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: created_at, start_date, end_date (default: created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List subscription records
+      tags:
+      - admin-dashboard
   /admin/create-fy:
     post:
       consumes:
@@ -2270,6 +2574,152 @@ paths:
       summary: Create a new financial year
       tags:
       - fy
+  /admin/dashboard/accountant/overview:
+    get:
+      description: Returns accountant KPIs and invite status distribution
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsAccountantOverview'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get accountant dashboard overview
+      tags:
+      - admin-dashboard
+  /admin/dashboard/accountant/resource-access-timeseries:
+    get:
+      description: Returns accountant resource access over time by resource type
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsResourceAccessTimeseries'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get resource access timeseries
+      tags:
+      - admin-dashboard
+  /admin/dashboard/billing/platform-revenue:
+    get:
+      description: Returns platform revenue over time
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPlatformRevenue'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get platform revenue
+      tags:
+      - admin-dashboard
+  /admin/dashboard/practitioner/overview:
+    get:
+      description: Returns practitioner KPIs and user bifurcation
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPractitionerOverview'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner dashboard overview
+      tags:
+      - admin-dashboard
+  /admin/dashboard/practitioner/resource-analytics:
+    get:
+      description: Returns resource analytics grouped by entity type with action counts
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Group by: entity_type, action'
+        in: query
+        name: group_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsResourceAnalytics'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get resource analytics
+      tags:
+      - admin-dashboard
   /admin/get-fys:
     get:
       produces:

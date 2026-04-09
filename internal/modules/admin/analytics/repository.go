@@ -383,6 +383,7 @@ func (r *repository) GetPractitionerDetails(ctx context.Context, practitionerID 
 }
 
 // ListPractitionersWithDetails retrieves filtered and paginated list of practitioners with details
+// Fixed N+1 query problem by using batch queries
 func (r *repository) ListPractitionersWithDetails(ctx context.Context, filter *PractitionerFilter) ([]*RsPractitionerDetail, int, error) {
 	cf := filter.MapToFilter()
 
@@ -422,21 +423,219 @@ func (r *repository) ListPractitionersWithDetails(ctx context.Context, filter *P
 	}
 	defer rows.Close()
 
-	var results []*RsPractitionerDetail
+	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, 0, fmt.Errorf("scan id: %w", err)
 		}
+		ids = append(ids, id)
+	}
 
-		detail, err := r.GetPractitionerDetails(ctx, id)
-		if err != nil {
-			return nil, 0, err
+	if len(ids) == 0 {
+		return []*RsPractitionerDetail{}, total, nil
+	}
+
+	// Batch fetch all data in 3 queries instead of N queries
+	practitioners, err := r.batchGetPractitioners(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	subscriptions, err := r.batchGetSubscriptions(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	clinics, err := r.batchGetClinicsWithAccountants(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Assemble results
+	results := make([]*RsPractitionerDetail, 0, len(ids))
+	for _, id := range ids {
+		detail := practitioners[id]
+		if sub, ok := subscriptions[id]; ok {
+			detail.Subscription = &sub
 		}
-		results = append(results, detail)
+		if clinicList, ok := clinics[id]; ok {
+			detail.Clinics = clinicList
+			detail.TotalClinics = len(clinicList)
+			
+			// Count unique accountants
+			accountantMap := make(map[uuid.UUID]bool)
+			for _, clinic := range clinicList {
+				for _, acc := range clinic.Accountants {
+					accountantMap[acc.ID] = true
+				}
+			}
+			detail.TotalAccountants = len(accountantMap)
+		}
+		results = append(results, &detail)
 	}
 
 	return results, total, nil
+}
+
+// batchGetPractitioners fetches basic practitioner info for multiple IDs in one query
+func (r *repository) batchGetPractitioners(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]RsPractitionerDetail, error) {
+	query := `
+		SELECT 
+			p.id,
+			u.first_name || ' ' || u.last_name as name,
+			u.email,
+			u.phone,
+			u.created_at
+		FROM tbl_practitioner p
+		JOIN tbl_user u ON p.user_id = u.id
+		WHERE p.id = ANY($1) AND p.deleted_at IS NULL
+	`
+	
+	rows, err := r.db.QueryxContext(ctx, query, ids)
+	if err != nil {
+		return nil, fmt.Errorf("batch get practitioners: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID]RsPractitionerDetail)
+	for rows.Next() {
+		var detail RsPractitionerDetail
+		err := rows.Scan(&detail.ID, &detail.Name, &detail.Email, &detail.Phone, &detail.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("scan practitioner: %w", err)
+		}
+		detail.Clinics = []ClinicInfo{}
+		result[detail.ID] = detail
+	}
+
+	return result, nil
+}
+
+// batchGetSubscriptions fetches active subscriptions for multiple practitioners in one query
+func (r *repository) batchGetSubscriptions(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]SubscriptionInfo, error) {
+	query := `
+		SELECT DISTINCT ON (ps.practitioner_id)
+			ps.practitioner_id,
+			s.id,
+			s.name,
+			ps.status,
+			ps.start_date,
+			ps.end_date
+		FROM tbl_practitioner_subscription ps
+		JOIN tbl_subscription s ON ps.subscription_id = s.id
+		WHERE ps.practitioner_id = ANY($1)
+			AND ps.status = 'ACTIVE'
+			AND ps.deleted_at IS NULL
+		ORDER BY ps.practitioner_id, ps.created_at DESC
+	`
+	
+	rows, err := r.db.QueryxContext(ctx, query, ids)
+	if err != nil {
+		return nil, fmt.Errorf("batch get subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID]SubscriptionInfo)
+	for rows.Next() {
+		var practitionerID uuid.UUID
+		var sub SubscriptionInfo
+		err := rows.Scan(&practitionerID, &sub.ID, &sub.Name, &sub.Status, &sub.StartDate, &sub.EndDate)
+		if err != nil {
+			return nil, fmt.Errorf("scan subscription: %w", err)
+		}
+		result[practitionerID] = sub
+	}
+
+	return result, nil
+}
+
+// batchGetClinicsWithAccountants fetches clinics and accountants for multiple practitioners in two queries
+func (r *repository) batchGetClinicsWithAccountants(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]ClinicInfo, error) {
+	// Get all clinics for these practitioners
+	clinicQuery := `
+		SELECT 
+			c.practitioner_id,
+			c.id,
+			c.name,
+			c.abn
+		FROM tbl_clinic c
+		WHERE c.practitioner_id = ANY($1) AND c.deleted_at IS NULL
+		ORDER BY c.practitioner_id, c.created_at DESC
+	`
+	
+	rows, err := r.db.QueryxContext(ctx, clinicQuery, ids)
+	if err != nil {
+		return nil, fmt.Errorf("batch get clinics: %w", err)
+	}
+	defer rows.Close()
+
+	clinicMap := make(map[uuid.UUID][]ClinicInfo)
+	var allClinicIDs []uuid.UUID
+	clinicToPractitioner := make(map[uuid.UUID]uuid.UUID)
+
+	for rows.Next() {
+		var practitionerID uuid.UUID
+		var clinic ClinicInfo
+		err := rows.Scan(&practitionerID, &clinic.ID, &clinic.Name, &clinic.ABN)
+		if err != nil {
+			return nil, fmt.Errorf("scan clinic: %w", err)
+		}
+		clinic.Accountants = []AccountantInfo{}
+		clinicMap[practitionerID] = append(clinicMap[practitionerID], clinic)
+		allClinicIDs = append(allClinicIDs, clinic.ID)
+		clinicToPractitioner[clinic.ID] = practitionerID
+	}
+
+	if len(allClinicIDs) == 0 {
+		return clinicMap, nil
+	}
+
+	// Get all accountants for these clinics in one query
+	accQuery := `
+		SELECT DISTINCT
+			ip.entity_id as clinic_id,
+			a.id,
+			u.first_name || ' ' || u.last_name as name,
+			u.email,
+			u.phone,
+			'read,update' as permissions
+		FROM tbl_invite_permissions ip
+		JOIN tbl_accountant a ON ip.accountant_id = a.id
+		JOIN tbl_user u ON a.user_id = u.id
+		WHERE ip.entity_id = ANY($1)
+			AND ip.deleted_at IS NULL
+			AND a.deleted_at IS NULL
+	`
+	
+	accRows, err := r.db.QueryxContext(ctx, accQuery, allClinicIDs)
+	if err != nil {
+		return nil, fmt.Errorf("batch get accountants: %w", err)
+	}
+	defer accRows.Close()
+
+	// Map accountants to clinics
+	clinicAccountants := make(map[uuid.UUID][]AccountantInfo)
+	for accRows.Next() {
+		var clinicID uuid.UUID
+		var acc AccountantInfo
+		err := accRows.Scan(&clinicID, &acc.ID, &acc.Name, &acc.Email, &acc.Phone, &acc.Permissions)
+		if err != nil {
+			return nil, fmt.Errorf("scan accountant: %w", err)
+		}
+		clinicAccountants[clinicID] = append(clinicAccountants[clinicID], acc)
+	}
+
+	// Attach accountants to clinics
+	for practitionerID, clinics := range clinicMap {
+		for i := range clinics {
+			if accountants, ok := clinicAccountants[clinics[i].ID]; ok {
+				clinicMap[practitionerID][i].Accountants = accountants
+			}
+		}
+	}
+
+	return clinicMap, nil
 }
 
 // Dashboard Repository Methods
@@ -495,7 +694,7 @@ func (r *repository) GetPractitionerOverview(ctx context.Context) (*RsPractition
 
 // GetResourceAnalytics retrieves resource analytics grouped by entity type
 func (r *repository) GetResourceAnalytics(ctx context.Context, filter *ResourceAnalyticsFilter) (*RsResourceAnalytics, error) {
-	from, to := parseDateRange(filter.From, filter.To, 30)
+	from, to := parseDateRange(filter.From, filter.To, DefaultDaysShort)
 	groupBy := "entity_type"
 	if filter.GroupBy != nil {
 		groupBy = *filter.GroupBy
@@ -590,8 +789,8 @@ func (r *repository) GetAccountantOverview(ctx context.Context) (*RsAccountantOv
 
 // GetResourceAccessTimeseries retrieves accountant resource access over time
 func (r *repository) GetResourceAccessTimeseries(ctx context.Context, filter *DateRangeFilter) (*RsResourceAccessTimeseries, error) {
-	from, to := parseDateRange(filter.From, filter.To, 30)
-	bucket := parseBucket(filter.Bucket, "day")
+	from, to := parseDateRange(filter.From, filter.To, DefaultDaysShort)
+	bucket := parseBucket(filter.Bucket, BucketDay)
 	dateTrunc, dateFormat := getBucketConfig(bucket)
 
 	query := buildTimeseriesQuery("tbl_audit_log", "entity_type", "created_at", "AND entity_type IN ('CLINIC', 'INVOICE', 'PATIENT', 'FORM')")
@@ -622,8 +821,8 @@ func (r *repository) GetResourceAccessTimeseries(ctx context.Context, filter *Da
 
 // GetPlatformRevenue retrieves platform revenue over time
 func (r *repository) GetPlatformRevenue(ctx context.Context, filter *DateRangeFilter) (*RsPlatformRevenue, error) {
-	from, to := parseDateRange(filter.From, filter.To, 365)
-	bucket := parseBucket(filter.Bucket, "month")
+	from, to := parseDateRange(filter.From, filter.To, DefaultDaysLong)
+	bucket := parseBucket(filter.Bucket, BucketMonth)
 	dateTrunc, dateFormat := getBucketConfig(bucket)
 
 	rows, err := r.db.QueryxContext(ctx, buildRevenueQuery(), dateTrunc, from, to)
@@ -638,7 +837,7 @@ func (r *repository) GetPlatformRevenue(ctx context.Context, filter *DateRangeFi
 	}
 
 	return &RsPlatformRevenue{
-		Meta:   RevenueMeta{From: from, To: to, Bucket: bucket, Currency: "AUD"},
+		Meta:   RevenueMeta{From: from, To: to, Bucket: bucket, Currency: DefaultCurrency},
 		Series: series,
 	}, nil
 }
@@ -723,12 +922,12 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 
 // GetPlanDistribution retrieves plan distribution with historical data
 func (r *repository) GetPlanDistribution(ctx context.Context, filter *DateRangeFilter) (*RsPlanDistribution, error) {
-	from, to := parseDateRange(filter.From, filter.To, 365)
-	bucket := parseBucket(filter.Bucket, "month")
+	from, to := parseDateRange(filter.From, filter.To, DefaultDaysLong)
+	bucket := parseBucket(filter.Bucket, BucketMonth)
 	dateTrunc, dateFormat := getBucketConfig(bucket)
 
 	result := RsPlanDistribution{
-		Meta: RevenueMeta{From: from, To: to, Bucket: bucket, Currency: "AUD"},
+		Meta: RevenueMeta{From: from, To: to, Bucket: bucket, Currency: DefaultCurrency},
 	}
 
 	// Get plans with counts
