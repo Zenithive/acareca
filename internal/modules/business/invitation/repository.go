@@ -33,10 +33,10 @@ type Repository interface {
 
 	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
 	GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
-	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error
+	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
 	ListAccountantPermissions(ctx context.Context, f common.Filter) ([]AccountantPermissionRow, error)
@@ -301,7 +301,7 @@ func (r *repository) GetPermissions(ctx context.Context, accountantID uuid.UUID,
 	return &permissions, nil
 }
 
-func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error {
+func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error {
 	var query string
 
 	// Choose the query based on whether we have an actual Accountant ID or just an Email
@@ -329,7 +329,7 @@ func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, p
                 deleted_at = NULL;`
 	}
 
-	_, err := tx.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, permJson)
+	_, err := tx.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, perms)
 	return err
 }
 
@@ -359,7 +359,7 @@ func (r *repository) GetPractitionerLinkedToAccountant(ctx context.Context, acco
 	return practitionerID, err
 }
 
-func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, permJson []byte) error {
+func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error {
 	var query string
 
 	// Choose the query based on whether we have an actual Accountant ID or just an Email
@@ -387,7 +387,7 @@ func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, a
                 deleted_at = NULL;`
 	}
 
-	_, err := r.db.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, permJson)
+	_, err := r.db.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, perms)
 	return err
 }
 

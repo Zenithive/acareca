@@ -217,17 +217,32 @@ type RqPermissionDetail struct {
 
 // Make it satisfy the sql.Scanner interface (Database -> Go)
 func (p *Permissions) Scan(value interface{}) error {
-	bytes, ok := value.([]byte)
-	if !ok {
-		// Handle cases where the driver returns a string instead of []byte
-		str, ok := value.(string)
-		if !ok {
-			return errors.New("type assertion to []byte/string failed")
-		}
-		bytes = []byte(str)
+	if value == nil {
+		return nil
 	}
 
-	return json.Unmarshal(bytes, p)
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("type assertion to []byte/string failed")
+	}
+
+	// First attempt: Standard Unmarshal
+	err := json.Unmarshal(bytes, p)
+	if err != nil {
+		// Second attempt: Check if it's a double-encoded string (common in messy migrations)
+		var s string
+		if err2 := json.Unmarshal(bytes, &s); err2 == nil {
+			return json.Unmarshal([]byte(s), p)
+		}
+		return err // Return original error if fallback also fails
+	}
+
+	return nil
 }
 
 // Make it satisfy the driver.Valuer interface (Go -> Database)

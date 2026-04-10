@@ -111,10 +111,10 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 
 	// Process and Save Permissions
 	for _, pDetail := range req.Permissions {
-		permJson, finalDisplay := s.processPermissions(pDetail.Permissions)
+		finalDisplay := s.processPermissions(pDetail.Permissions)
 
 		// We use the Email because the AccountantID doesn't exist yet
-		err := s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, &req.Email, pDetail.EntityID, pDetail.EntityType, permJson)
+		err := s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, &req.Email, pDetail.EntityID, pDetail.EntityType, finalDisplay)
 		if err != nil {
 			fmt.Printf("[ERROR] failed to save pending permission: %v\n", err)
 		}
@@ -619,9 +619,9 @@ func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID,
 		perms.Read = true
 	}
 
-	permJson, _ := s.processPermissions(perms)
+	perms = s.processPermissions(perms)
 
-	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, nil, eID, eType, permJson)
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, nil, eID, eType, perms)
 }
 
 func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
@@ -689,10 +689,10 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 	oldPerms, _ := s.repo.GetPermissions(ctx, aID, eID)
 
 	// Process Permissions
-	permJson, finalDisplay := s.processPermissions(perms)
+	finalDisplay := s.processPermissions(perms)
 
 	// Save to DB and return finalDisplay
-	if err := s.repo.GrantEntityPermission(ctx, pID, &aID, nil, eID, eType, permJson); err != nil {
+	if err := s.repo.GrantEntityPermission(ctx, pID, &aID, nil, eID, eType, finalDisplay); err != nil {
 		return nil, err
 	}
 
@@ -720,33 +720,27 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 }
 
 // Helper to centralize permission logic
-func (s *service) processPermissions(perms Permissions) (json.RawMessage, Permissions) {
-	dbMap := make(map[string]bool)
+func (s *service) processPermissions(perms Permissions) Permissions {
 	finalDisplay := Permissions{}
 
 	if perms.All {
-		dbMap["all"] = true
+		// If All is true, everything is true
 		finalDisplay = Permissions{All: true, Read: true, Create: true, Update: true, Delete: true}
 	} else {
-		dbMap["read"] = true // Always grant read at minimum
-		finalDisplay.Read = true
+		finalDisplay.Read = true // Always grant read at minimum
 
 		if perms.Create {
-			dbMap["create"] = true
 			finalDisplay.Create = true
 		}
 		if perms.Update {
-			dbMap["update"] = true
 			finalDisplay.Update = true
 		}
 		if perms.Delete {
-			dbMap["delete"] = true
 			finalDisplay.Delete = true
 		}
 	}
 
-	permJson, _ := json.Marshal(dbMap)
-	return permJson, finalDisplay
+	return finalDisplay
 }
 
 // ListAccountantPermission implements [Service].
