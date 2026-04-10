@@ -24,8 +24,8 @@ type Repository interface {
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 	GetAccountTypeByName(ctx context.Context, name string) (int, error)
 
-	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error)
-	CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
+	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error)
+	CountChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
@@ -115,6 +115,7 @@ func (r *repository) GetAccountTax(ctx context.Context, id int16) (*AccountTax, 
 }
 
 var chartOfAccountColumns = map[string]string{
+	"practitioner_id": "practitioner_id",
 	"id":              "coa.id",
 	"account_type_id": "coa.account_type_id",
 	"account_tax_id":  "coa.account_tax_id",
@@ -127,42 +128,68 @@ var chartOfAccountColumns = map[string]string{
 
 var coaSearchColumns = []string{"coa.name", "CAST(coa.code AS TEXT)"}
 
-func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error) {
+func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error) {
 	base := `
 		SELECT 
 			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
 			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		WHERE coa.practitioner_id = ?
-		AND coa.deleted_at IS NULL
+		WHERE coa.deleted_at IS NULL
 	`
 
-	baseArgs := []interface{}{practitionerID}
+	// Check if practitioner_id is already in the filter slice
+	hasPractitionerFilter := false
+	for _, cond := range f.Where {
+		if cond.Field == "practitioner_id" {
+			hasPractitionerFilter = true
+			break
+		}
+	}
+
+	// Let accountant see everything if filter not passed
+	if !hasPractitionerFilter && actorID != uuid.Nil {
+		// Only force this if you want to restrict accountants to their own data by default
+		// f.Where = append(f.Where, common.Condition{Field: "practitioner_id", Operator: common.OpEq, Value: actorID})
+	}
+
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, false)
 	query = r.db.Rebind(query)
 
 	var list []*ChartOfAccount
-	if err := r.db.SelectContext(ctx, &list, query, append(baseArgs, filterArgs...)...); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query, filterArgs...); err != nil {
 		return nil, fmt.Errorf("list chart of accounts: %w", err)
 	}
 
 	return list, nil
 }
 
-func (r *repository) CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error) {
+func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) (int, error) {
 	base := `
 		FROM tbl_chart_of_accounts coa
-		WHERE coa.practitioner_id = ?
-		AND coa.deleted_at IS NULL
+		WHERE coa.deleted_at IS NULL
 	`
 
-	baseArgs := []interface{}{practitionerID}
+	// Check if practitioner_id is already in the filter slice
+	hasPractitionerFilter := false
+	for _, cond := range f.Where {
+		if cond.Field == "practitioner_id" {
+			hasPractitionerFilter = true
+			break
+		}
+	}
+
+	// Let accountant see everything if filter not passed
+	if !hasPractitionerFilter && actorID != uuid.Nil {
+		// Only force this if you want to restrict accountants to their own data by default
+		// f.Where = append(f.Where, common.Condition{Field: "practitioner_id", Operator: common.OpEq, Value: actorID})
+	}
+
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, true)
 	query = r.db.Rebind(query)
 
 	var count int
-	if err := r.db.GetContext(ctx, &count, query, append(baseArgs, filterArgs...)...); err != nil {
+	if err := r.db.GetContext(ctx, &count, query, filterArgs...); err != nil {
 		return 0, fmt.Errorf("count chart of accounts: %w", err)
 	}
 

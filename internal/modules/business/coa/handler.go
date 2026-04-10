@@ -143,6 +143,7 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Summary List chart of accounts for practitioner
 // @Tags coa
 // @Produce json
+// @Param practitioner_id query string false "Filter by practitioner ID (Accountant only)"
 // @Param name query string false "Filter by name"
 // @Param code query int false "Filter by code"
 // @Param account_type query string false "Filter by account type name"
@@ -157,17 +158,27 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Security BearerToken
 // @Router /coa/chart-of-account [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+	if role == util.RoleAccountant {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
 	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
+
 	var filter Filter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	result, err := h.svc.ListChartOfAccount(c.Request.Context(), practitionerID, &filter)
+	result, err := h.svc.ListChartOfAccount(c.Request.Context(), actorID, role, &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

@@ -1406,12 +1406,13 @@ definitions:
     properties:
       accountant_id:
         type: string
+      email:
+        type: string
       permissions:
         items:
           $ref: '#/definitions/invitation.RqPermissionDetail'
         type: array
     required:
-    - accountant_id
     - permissions
     type: object
   invitation.RqPermissionDetail:
@@ -4252,6 +4253,10 @@ paths:
   /coa/chart-of-account:
     get:
       parameters:
+      - description: Filter by practitioner ID (Accountant only)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Filter by name
         in: query
         name: name

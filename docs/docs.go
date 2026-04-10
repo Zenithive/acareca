@@ -3616,6 +3616,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Filter by practitioner ID (Accountant only)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Filter by name",
                         "name": "name",
                         "in": "query"
@@ -8754,11 +8760,13 @@ const docTemplate = `{
         "invitation.RqGrantPermission": {
             "type": "object",
             "required": [
-                "accountant_id",
                 "permissions"
             ],
             "properties": {
                 "accountant_id": {
+                    "type": "string"
+                },
+                "email": {
                     "type": "string"
                 },
                 "permissions": {

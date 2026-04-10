@@ -142,11 +142,12 @@ type RsChartOfAccountList struct {
 }
 
 type Filter struct {
-	Name          *string `form:"name"`
-	Id            *string `form:"id"`
-	Code          *int    `form:"code"`
-	AccountType   *string `form:"account_type"`
-	AccountTypeID *int16  `form:"-"`
+	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	Name           *string    `form:"name"`
+	Id             *string    `form:"id"`
+	Code           *int       `form:"code"`
+	AccountType    *string    `form:"account_type"`
+	AccountTypeID  *int16     `form:"-"`
 	common.Filter
 }
 
