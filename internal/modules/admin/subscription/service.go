@@ -103,7 +103,20 @@ func (s *service) GetSubscription(ctx context.Context, id int) (*RsSubscription,
 	if err != nil {
 		return nil, err
 	}
-	return sub.ToRs(), nil
+
+	res := sub.ToRs()
+
+	perms, err := s.repo.ListPermissions(ctx, id)
+
+	res.Permissions = make([]*RsSubscriptionPermission, 0)
+
+	if err == nil && len(perms) > 0 {
+		for _, p := range perms {
+			res.Permissions = append(res.Permissions, p.ToRs())
+		}
+	}
+
+	return res, nil
 }
 
 func (s *service) ListSubscriptions(ctx context.Context, f *Filter) (*util.RsList, error) {
@@ -122,7 +135,6 @@ func (s *service) ListSubscriptions(ctx context.Context, f *Filter) (*util.RsLis
 	for _, item := range list {
 		data = append(data, item.ToRs())
 	}
-
 	var rsList util.RsList
 	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil

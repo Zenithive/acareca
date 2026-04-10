@@ -65,14 +65,15 @@ type RqUpdateSubscription struct {
 }
 
 type RsSubscription struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Description  *string   `json:"description,omitempty"`
-	Price        float64   `json:"price"`
-	DurationDays int       `json:"duration_days"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int                         `json:"id"`
+	Name         string                      `json:"name"`
+	Description  *string                     `json:"description,omitempty"`
+	Price        float64                     `json:"price"`
+	DurationDays int                         `json:"duration_days"`
+	IsActive     bool                        `json:"is_active"`
+	CreatedAt    time.Time                   `json:"created_at"`
+	UpdatedAt    time.Time                   `json:"updated_at"`
+	Permissions  []*RsSubscriptionPermission `json:"permissions"`
 }
 
 func (s *Subscription) ToRs() *RsSubscription {
