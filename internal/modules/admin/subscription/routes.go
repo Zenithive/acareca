@@ -7,7 +7,7 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.Use(middleware.RequireRole("ADMIN"))
-	rg.POST("/", h.CreateSubscription)
+	rg.POST("", h.CreateSubscription)
 	rg.GET("", h.ListSubscriptions)
 	rg.GET("/:id", h.GetSubscription)
 	rg.PATCH("/:id", h.UpdateSubscription)
