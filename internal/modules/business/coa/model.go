@@ -142,7 +142,7 @@ type RsChartOfAccountList struct {
 }
 
 type Filter struct {
-	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	PractitionerID *uuid.UUID `form:"-"`
 	Name           *string    `form:"name"`
 	Id             *string    `form:"id"`
 	Code           *int       `form:"code"`

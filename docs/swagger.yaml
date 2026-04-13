@@ -4120,6 +4120,249 @@ paths:
       summary: Bulk update clinics
       tags:
       - clinic
+  /coa/{practitioner_id}/chart-of-account:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Practitioner UUID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      - description: COA Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqCreateChartOfAccountOfAccount'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new chart of account
+      tags:
+      - coa
+  /coa/{practitioner_id}/chart-of-account/{id}:
+    delete:
+      parameters:
+      - description: Practitioner UUID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      - description: Chart of Account UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete chart of account
+      tags:
+      - coa
+    get:
+      parameters:
+      - description: Practitioner UUID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      - description: Chart of Account UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get chart of account by ID
+      tags:
+      - coa
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Practitioner UUID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      - description: Chart of Account UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated COA Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqUpdateCharOfAccountOfAccount'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update an existing chart of account
+      tags:
+      - coa
+  /coa/{practitioner_id}/chart-of-account/by-key/{key}:
+    get:
+      parameters:
+      - description: Practitioner UUID
+        in: path
+        name: practitioner_id
+        type: string
+      - description: Chart of Account Key (e.g., patient_fee_account)
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get chart of account by key
+      tags:
+      - coa
+  /coa/{practitioner_id}/chart-of-account/check-code:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Practitioner UUID
+        in: path
+        name: practitioner_id
+        required: true
+        type: string
+      - description: Code to check
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqCheckCodeUnique'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/coa.RsCodeUnique'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Check if a chart of account code is unique for the practitioner
+      tags:
+      - coa
   /coa/account-taxes:
     get:
       parameters:
@@ -4307,219 +4550,6 @@ paths:
       security:
       - BearerToken: []
       summary: List chart of accounts for practitioner
-      tags:
-      - coa
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: COA Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/coa.RqCreateChartOfAccountOfAccount'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Create a new chart of account
-      tags:
-      - coa
-  /coa/chart-of-account/{id}:
-    delete:
-      parameters:
-      - description: Chart of Account UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Delete chart of account
-      tags:
-      - coa
-    get:
-      parameters:
-      - description: Chart of Account UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get chart of account by ID
-      tags:
-      - coa
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Chart of Account UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Updated COA Data
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/coa.RqUpdateCharOfAccountOfAccount'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Update an existing chart of account
-      tags:
-      - coa
-  /coa/chart-of-account/by-key/{key}:
-    get:
-      parameters:
-      - description: Chart of Account Key (e.g., patient_fee_account)
-        in: path
-        name: key
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get chart of account by key
-      tags:
-      - coa
-  /coa/chart-of-account/check-code:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Code to check
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/coa.RqCheckCodeUnique'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/coa.RsCodeUnique'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
   /entry/{id}:

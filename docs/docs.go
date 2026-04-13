@@ -3689,7 +3689,9 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/coa/{practitioner_id}/chart-of-account": {
             "post": {
                 "security": [
                     {
@@ -3707,6 +3709,13 @@ const docTemplate = `{
                 ],
                 "summary": "Create a new chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "description": "COA Data",
                         "name": "request",
@@ -3745,7 +3754,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/coa/chart-of-account/by-key/{key}": {
+        "/coa/{practitioner_id}/chart-of-account/by-key/{key}": {
             "get": {
                 "security": [
                     {
@@ -3760,6 +3769,12 @@ const docTemplate = `{
                 ],
                 "summary": "Get chart of account by key",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path"
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account Key (e.g., patient_fee_account)",
@@ -3796,7 +3811,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/coa/chart-of-account/check-code": {
+        "/coa/{practitioner_id}/chart-of-account/check-code": {
             "post": {
                 "security": [
                     {
@@ -3814,6 +3829,13 @@ const docTemplate = `{
                 ],
                 "summary": "Check if a chart of account code is unique for the practitioner",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "description": "Code to check",
                         "name": "request",
@@ -3846,7 +3868,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/coa/chart-of-account/{id}": {
+        "/coa/{practitioner_id}/chart-of-account/{id}": {
             "get": {
                 "security": [
                     {
@@ -3861,6 +3883,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get chart of account by ID",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -3913,6 +3942,13 @@ const docTemplate = `{
                 ],
                 "summary": "Update an existing chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -3983,6 +4019,13 @@ const docTemplate = `{
                 ],
                 "summary": "Delete chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",

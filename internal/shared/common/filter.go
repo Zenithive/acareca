@@ -18,6 +18,7 @@ const (
 	OpLt     Operator = "lt"
 	OpNotEq  Operator = "neq"
 	OpIsNull Operator = "isnull"
+	OpRaw    Operator = "raw"
 )
 
 type Condition struct {
@@ -72,8 +73,15 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 		case OpNotEq:
 			conditions = append(conditions, fmt.Sprintf("%s != ?", col))
 			args = append(args, c.Value)
+
 		case OpIsNull:
 			conditions = append(conditions, fmt.Sprintf("%s IS NULL", col))
+
+		case OpRaw:
+			conditions = append(conditions, c.Field)
+			if c.Value != nil {
+				args = append(args, c.Value)
+			}
 		}
 	}
 

@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -24,8 +26,8 @@ type Repository interface {
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 	GetAccountTypeByName(ctx context.Context, name string) (int, error)
 
-	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error)
-	CountChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) (int, error)
+	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error)
+	CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
@@ -128,30 +130,29 @@ var chartOfAccountColumns = map[string]string{
 
 var coaSearchColumns = []string{"coa.name", "CAST(coa.code AS TEXT)"}
 
-func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error) {
+func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error) {
 	base := `
-		SELECT 
-			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
-			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		WHERE coa.deleted_at IS NULL
-	`
+        SELECT 
+            coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
+            coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
+        FROM tbl_chart_of_accounts coa
+        JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+    `
 
-	// Check if practitioner_id is already in the filter slice
-	hasPractitionerFilter := false
-	for _, cond := range f.Where {
-		if cond.Field == "practitioner_id" {
-			hasPractitionerFilter = true
-			break
-		}
+	if role == util.RoleAccountant {
+		base += fmt.Sprintf(` WHERE EXISTS (
+                SELECT 1 FROM tbl_invitation inv 
+                WHERE inv.practitioner_id = coa.practitioner_id 
+                AND inv.entity_id = '%s' 
+                AND inv.status = 'COMPLETED'
+            )`, actorID.String())
+	} else {
+		base += fmt.Sprintf(` WHERE coa.practitioner_id = '%s'`, actorID.String())
 	}
 
-	// Let accountant see everything if filter not passed
-	if !hasPractitionerFilter && actorID != uuid.Nil {
-		// Only force this if you want to restrict accountants to their own data by default
-		// f.Where = append(f.Where, common.Condition{Field: "practitioner_id", Operator: common.OpEq, Value: actorID})
-	}
+	f.Where = append(f.Where, common.Condition{
+		Field: "coa.deleted_at", Operator: common.OpIsNull,
+	})
 
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, false)
 	query = r.db.Rebind(query)
@@ -164,28 +165,30 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, 
 	return list, nil
 }
 
-func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID, f common.Filter) (int, error) {
-	base := `
-		FROM tbl_chart_of_accounts coa
-		WHERE coa.deleted_at IS NULL
-	`
+func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error) {
+	base := ` FROM tbl_chart_of_accounts coa `
 
-	// Check if practitioner_id is already in the filter slice
-	hasPractitionerFilter := false
-	for _, cond := range f.Where {
-		if cond.Field == "practitioner_id" {
-			hasPractitionerFilter = true
-			break
-		}
+	if role == util.RoleAccountant {
+		base += fmt.Sprintf(` WHERE EXISTS (
+                SELECT 1 FROM tbl_invitation
+                WHERE practitioner_id = coa.practitioner_id 
+                AND entity_id = '%s' 
+                AND status = 'COMPLETED'
+            )`, actorID.String())
+	} else {
+		base += fmt.Sprintf(` WHERE coa.practitioner_id = '%s'`, actorID.String())
 	}
 
-	// Let accountant see everything if filter not passed
-	if !hasPractitionerFilter && actorID != uuid.Nil {
-		// Only force this if you want to restrict accountants to their own data by default
-		// f.Where = append(f.Where, common.Condition{Field: "practitioner_id", Operator: common.OpEq, Value: actorID})
+	f.Where = []common.Condition{
+		{Field: "coa.deleted_at", Operator: common.OpIsNull},
 	}
 
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, true)
+
+	if strings.Contains(query, "ORDER BY") {
+		query = strings.Split(query, "ORDER BY")[0]
+	}
+
 	query = r.db.Rebind(query)
 
 	var count int
@@ -215,13 +218,22 @@ func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practi
 }
 
 func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
+	// query := `
+	// 	SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
+	// 	       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+	// 	FROM tbl_chart_of_accounts coa
+	// 	JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+	// 	WHERE coa.key = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
+	// `
 	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		WHERE coa.key = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
-	`
+        SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
+               coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+        FROM tbl_chart_of_accounts coa
+        JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+        WHERE coa.key = $1 
+          AND ($2 = '00000000-0000-0000-0000-000000000000'::uuid OR coa.practitioner_id = $2)
+          AND coa.deleted_at IS NULL
+    `
 	var c ChartOfAccount
 	if err := r.db.QueryRowxContext(ctx, query, key, practitionerID).StructScan(&c); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

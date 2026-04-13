@@ -19,7 +19,7 @@ type Service interface {
 
 	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
-	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*RsChartOfAccount, error)
+	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
@@ -118,11 +118,11 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 		}
 	}
 
-	list, err := s.repo.ListChartOfAccount(ctx, actorID, ft)
+	list, err := s.repo.ListChartOfAccount(ctx, actorID, role, ft)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountChartOfAccount(ctx, actorID, ft)
+	total, err := s.repo.CountChartOfAccount(ctx, actorID, role, ft)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +147,15 @@ func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitio
 	return &rs, nil
 }
 
-func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*RsChartOfAccount, error) {
-	c, err := s.repo.GetChartOfAccountByKey(ctx, key, practitionerID)
+func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error) {
+	targetID := actorID
+
+	// Accountants search globally by key
+	if role == util.RoleAccountant {
+		targetID = uuid.Nil
+	}
+
+	c, err := s.repo.GetChartOfAccountByKey(ctx, key, targetID)
 	if err != nil {
 		return nil, err
 	}

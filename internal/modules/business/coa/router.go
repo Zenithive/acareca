@@ -12,10 +12,17 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	rg.GET("/account-taxes", h.ListAccountTaxes)
 	rg.GET("/account-taxes/:id", h.GetAccountTax)
 
+	listGroup := rg.Group("")
+	listGroup.Use(middleware.Auth(cfg), middleware.AuditContext())
+	{
+		listGroup.GET("/chart-of-account", h.ListChartOfAccount)
+	}
+
 	// Chart of Accounts CRUD — scoped by practitioner_id
-	accounts := rg.Group("/chart-of-account")
+	// Format: /coa/:practitioner_id/chart-of-account
+	accounts := rg.Group("/:practitioner_id/chart-of-account")
 	accounts.Use(middleware.Auth(cfg), middleware.AuditContext())
-	accounts.GET("", h.ListChartOfAccount)
+	// accounts.GET("", h.ListChartOfAccount)
 	accounts.POST("/check-code", h.CheckCodeUnique)
 	accounts.GET("/by-key/:key", h.GetChartOfAccountByKey)
 	accounts.GET("/:id", h.GetChartOfAccount)

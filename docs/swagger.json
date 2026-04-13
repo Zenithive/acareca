@@ -3686,7 +3686,9 @@
                         }
                     }
                 }
-            },
+            }
+        },
+        "/coa/{practitioner_id}/chart-of-account": {
             "post": {
                 "security": [
                     {
@@ -3704,6 +3706,13 @@
                 ],
                 "summary": "Create a new chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "description": "COA Data",
                         "name": "request",
@@ -3742,7 +3751,7 @@
                 }
             }
         },
-        "/coa/chart-of-account/by-key/{key}": {
+        "/coa/{practitioner_id}/chart-of-account/by-key/{key}": {
             "get": {
                 "security": [
                     {
@@ -3757,6 +3766,12 @@
                 ],
                 "summary": "Get chart of account by key",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path"
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account Key (e.g., patient_fee_account)",
@@ -3793,7 +3808,7 @@
                 }
             }
         },
-        "/coa/chart-of-account/check-code": {
+        "/coa/{practitioner_id}/chart-of-account/check-code": {
             "post": {
                 "security": [
                     {
@@ -3811,6 +3826,13 @@
                 ],
                 "summary": "Check if a chart of account code is unique for the practitioner",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "description": "Code to check",
                         "name": "request",
@@ -3843,7 +3865,7 @@
                 }
             }
         },
-        "/coa/chart-of-account/{id}": {
+        "/coa/{practitioner_id}/chart-of-account/{id}": {
             "get": {
                 "security": [
                     {
@@ -3858,6 +3880,13 @@
                 ],
                 "summary": "Get chart of account by ID",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -3910,6 +3939,13 @@
                 ],
                 "summary": "Update an existing chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -3980,6 +4016,13 @@
                 ],
                 "summary": "Delete chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
