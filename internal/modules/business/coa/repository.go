@@ -179,9 +179,9 @@ func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID,
 		base += fmt.Sprintf(` WHERE coa.practitioner_id = '%s'`, actorID.String())
 	}
 
-	f.Where = []common.Condition{
-		{Field: "coa.deleted_at", Operator: common.OpIsNull},
-	}
+	f.Where = append(f.Where, common.Condition{
+		Field: "coa.deleted_at", Operator: common.OpIsNull,
+	})
 
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, true)
 
