@@ -152,7 +152,7 @@ func (r *repository) ListFailedInAppDeliveries(ctx context.Context, limit int) (
 		       n.event_type, n.entity_type, n.entity_id, n.payload, n.created_at
 		FROM tbl_notification_delivery d
 		JOIN tbl_notification n ON n.id = d.notification_id
-		WHERE d.channel = 'in_app'
+		WHERE d.channel = 'email'
 		  AND d.status = 'FAILED'
 		  AND d.retry_count < $1
 		  AND n.status != 'DISMISSED'

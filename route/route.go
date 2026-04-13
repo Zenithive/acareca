@@ -153,11 +153,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// Audit routes
 	auditGroup := adminGroup.Group("/audit")
-
-	auditGroup.Use(
-		middleware.Auth(cfg),
-		middleware.RequireRole("ADMIN"),
-	)
+	auditGroup.Use(middleware.Auth(cfg))
 	auditHandler := audit.NewHandler(auditSvc)
 	audit.RegisterRoutes(auditGroup, auditHandler)
 
