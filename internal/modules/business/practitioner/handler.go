@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Handler struct {
@@ -55,7 +56,22 @@ func (h *Handler) GetPractitioner(c *gin.Context) {
 // @Security BearerToken
 // @Router /practitioner [get]
 func (h *Handler) ListPractitioners(c *gin.Context) {
-	list, err := h.svc.ListPractitioners(c.Request.Context(), &Filter{})
+	_, aIDPtr, ok := util.GetRoleBasedIDs(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("user role not authorized"))
+		return
+	}
+
+	var filter Filter
+	if err := c.ShouldBindQuery(&filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	if aIDPtr != nil {
+		filter.AccountantID = aIDPtr
+	}
+
+	list, err := h.svc.ListPractitioners(c, &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

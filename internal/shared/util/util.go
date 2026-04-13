@@ -258,3 +258,43 @@ func GetEntityID(c *gin.Context) (uuid.UUID, bool) {
 	}
 	return id, true
 }
+
+// Helper function to return pointers to Practitioner or Accountant IDs based on the user's role.
+func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
+	role := strings.ToUpper(c.GetString("role"))
+
+	switch role {
+	case RolePractitioner:
+		id, exists := GetPractitionerID(c)
+		if !exists || id == uuid.Nil {
+			return nil, nil, false
+		}
+		return &id, nil, true
+
+	case RoleAccountant:
+		id, exists := GetAccountantID(c)
+		if !exists || id == uuid.Nil {
+			return nil, nil, false
+		}
+		return nil, &id, true
+
+	default:
+		return nil, nil, false
+	}
+}
+
+// InvitationConfig holds configurable values for invitation management
+type InvitationConfig struct {
+	ExpirationDays   int
+	DailyInviteLimit int
+	EmailTimeout     time.Duration
+}
+
+// DefaultConfig returns default invitation configuration
+func InviteDefaultConfig() InvitationConfig {
+	return InvitationConfig{
+		ExpirationDays:   7,
+		DailyInviteLimit: 5,
+		EmailTimeout:     10 * time.Second,
+	}
+}

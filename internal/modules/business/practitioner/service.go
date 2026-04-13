@@ -90,14 +90,31 @@ func (s *service) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) 
 // ListPractitioners implements [IService].
 func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error) {
 	ft := f.MapToFilter()
-	list, err := s.repo.ListPractitioners(ctx, ft)
-	if err != nil {
-		return nil, err
-	}
 
-	total, err := s.repo.CountPractitioners(ctx, ft)
-	if err != nil {
-		return nil, err
+	var (
+		list  []*PractitionerWithUser
+		total int
+		err   error
+	)
+
+	if f.AccountantID != nil {
+		list, err = s.repo.ListPractitionersForAccountant(ctx, *f.AccountantID, ft)
+		if err != nil {
+			return nil, err
+		}
+		total, err = s.repo.CountPractitionersForAccountant(ctx, *f.AccountantID, ft)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		list, err = s.repo.ListPractitioners(ctx, ft)
+		if err != nil {
+			return nil, err
+		}
+		total, err = s.repo.CountPractitioners(ctx, ft)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	data := make([]*RsPractitioner, 0, len(list))

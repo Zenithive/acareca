@@ -17,8 +17,10 @@ type Repository interface {
 	GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error)
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
 	ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error)
+	ListPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*PractitionerWithUser, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	CountPractitioners(ctx context.Context, f common.Filter) (int, error)
+	CountPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error)
 
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
@@ -128,6 +130,54 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 
 	var count int
 	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), filterArgs...); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListPractitionersForAccountant lists practitioners associated with an accountant via COMPLETED invitations
+func (r *repository) ListPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*PractitionerWithUser, error) {
+	base := `
+		SELECT DISTINCT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
+		       u.email, u.first_name, u.last_name, u.phone
+		FROM tbl_practitioner p
+		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
+		JOIN tbl_invitation i ON i.practitioner_id = p.id 
+		WHERE p.deleted_at IS NULL
+		  AND i.entity_id = ?
+		  AND i.status = 'COMPLETED'
+	`
+	
+	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, false)
+	
+	// Prepend accountantID to filterArgs
+	args := append([]interface{}{accountantID}, filterArgs...)
+
+	var list []*PractitionerWithUser
+	if err := r.db.SelectContext(ctx, &list, r.db.Rebind(query), args...); err != nil {
+		return nil, fmt.Errorf("list practitioners for accountant repo: %w", err)
+	}
+	return list, nil
+}
+
+// CountPractitionersForAccountant counts practitioners associated with an accountant via COMPLETED invitations
+func (r *repository) CountPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error) {
+	base := `
+        FROM tbl_practitioner p
+        JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
+        JOIN tbl_invitation i ON i.practitioner_id = p.id
+        WHERE p.deleted_at IS NULL
+          AND i.entity_id = ?
+          AND i.status = 'COMPLETED'
+    `
+	
+	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, true)
+	
+	// Prepend accountantID to filterArgs
+	args := append([]interface{}{accountantID}, filterArgs...)
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), args...); err != nil {
 		return 0, err
 	}
 	return count, nil

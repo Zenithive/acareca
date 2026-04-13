@@ -81,12 +81,13 @@ func (p *PractitionerWithUser) ToRs() *RsPractitioner {
 }
 
 type Filter struct {
-	ID        *uuid.UUID `form:"id"`
-	Email     *string    `form:"email"`
-	FirstName *string    `form:"first_name"`
-	LastName  *string    `form:"last_name"`
-	Phone     *string    `form:"phone"`
-	ABN       *string    `form:"abn"`
+	ID           *uuid.UUID `form:"id"`
+	Email        *string    `form:"email"`
+	FirstName    *string    `form:"first_name"`
+	LastName     *string    `form:"last_name"`
+	Phone        *string    `form:"phone"`
+	ABN          *string    `form:"abn"`
+	AccountantID *uuid.UUID `form:"-"` //internal used only
 	common.Filter
 }
 

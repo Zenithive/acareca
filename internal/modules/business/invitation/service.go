@@ -51,7 +51,7 @@ const (
 type service struct {
 	repo         Repository
 	cfg          *config.Config
-	inviteConfig InvitationConfig
+	inviteConfig util.InvitationConfig
 	notification notification.Service
 	auditSvc     audit.Service
 }
@@ -60,7 +60,7 @@ func NewService(repo Repository, cfg *config.Config, notification notification.S
 	return &service{
 		repo:         repo,
 		cfg:          cfg,
-		inviteConfig: InviteDefaultConfig(),
+		inviteConfig: util.InviteDefaultConfig(),
 		notification: notification,
 		auditSvc:     auditSvc,
 	}
