@@ -212,10 +212,10 @@ func (h *handler) GetReport(c *gin.Context) {
 
 // GetBASPreparation godoc
 // @Summary      Full BAS Preparation Report
-// @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics.
+// @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics. Multiple clinicId values can be provided to aggregate specific clinics.
 // @Tags         engine/bas
 // @Produce      json
-// @Param        clinicId          query  string  false "Clinic UUID (optional - aggregates all clinics if not provided)"
+// @Param        clinicId          query  []string false "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)" collectionFormat(multi)
 // @Param        quarter_ids       query  []string true "Array of Quarter UUIDs" collectionFormat(multi)
 // @Param        financial_year_id query  string  true "Restrict to a financial year by UUID"
 // @Success      200  {object}  RsBASPreparation

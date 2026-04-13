@@ -176,8 +176,8 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	// Convert BASFilter to common.Filter for clinic listing
 	commonFilter := f.MapToFilter()
 
-	// Use clinic_id from BASFilter
-	clinicID := f.ClinicId
+	// Use clinic_id array from BASFilter
+	requestedClinicIDs := f.ClinicId
 
 	if isAccountant {
 
@@ -186,16 +186,21 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 			return nil, fmt.Errorf("access denied: accountant profile not found")
 		}
 
-		// If clinic_id is provided, verify permission for that specific clinic
-		if clinicID != nil {
-			permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, *clinicID)
-			if err != nil {
-				return nil, fmt.Errorf("permission denied: you are not associated with this clinic")
+		// If clinic_ids are provided, verify permission for each clinic
+		if len(requestedClinicIDs) > 0 {
+			for _, clinicID := range requestedClinicIDs {
+				if clinicID == nil {
+					continue
+				}
+				permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, *clinicID)
+				if err != nil {
+					return nil, fmt.Errorf("permission denied for clinic %s: you are not associated with this clinic", clinicID.String())
+				}
+				ownerID = permission.PractitionerID
+				clinicIDs = append(clinicIDs, *clinicID)
 			}
-			ownerID = permission.PractitionerID
-			clinicIDs = []uuid.UUID{*clinicID}
 		} else {
-			// If no clinic_id provided, get all clinics the accountant has access to
+			// If no clinic_ids provided, get all clinics the accountant has access to
 			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, accProfile.ID, commonFilter)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
@@ -216,13 +221,18 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 		}
 		ownerID = *pID
 
-		if clinicID != nil {
-			// Verify the practitioner actually owns this clinic
-			_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, *clinicID, ownerID)
-			if err != nil {
-				return nil, fmt.Errorf("clinic not found or access denied")
+		if len(requestedClinicIDs) > 0 {
+			// Verify the practitioner owns each requested clinic
+			for _, clinicID := range requestedClinicIDs {
+				if clinicID == nil {
+					continue
+				}
+				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, *clinicID, ownerID)
+				if err != nil {
+					return nil, fmt.Errorf("clinic %s not found or access denied", clinicID.String())
+				}
+				clinicIDs = append(clinicIDs, *clinicID)
 			}
-			clinicIDs = []uuid.UUID{*clinicID}
 		} else {
 			// Get all clinics for this practitioner
 			clinics, err := s.clinicRepo.ListClinicByPractitioner(ctx, ownerID, commonFilter)

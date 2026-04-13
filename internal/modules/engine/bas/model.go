@@ -80,7 +80,7 @@ type BASMonthlyRow struct {
 }
 
 type BASFilter struct {
-	ClinicId        *uuid.UUID   `form:"clinicId"`
+	ClinicId        []*uuid.UUID `form:"clinicId"`
 	FromDate        *string      `form:"from_date"`         // YYYY-MM-DD
 	ToDate          *string      `form:"to_date"`           // YYYY-MM-DD
 	FinancialYearID *string      `form:"financial_year_id"` // UUID — maps quarter to FY
@@ -92,9 +92,18 @@ func (f *BASFilter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	operators := map[string]common.Operator{}
 
-	if f.ClinicId != nil {
-		filters["clinicId"] = *f.ClinicId
+	if len(f.ClinicId) > 0 {
+		ids := make([]uuid.UUID, 0, len(f.ClinicId))
+		for _, cid := range f.ClinicId {
+			if cid != nil {
+				ids = append(ids, *cid)
+			}
+		}
+		if len(ids) > 0 {
+			filters["clinicId"] = ids
+		}
 	}
+
 	if f.FromDate != nil {
 		filters["from_date"] = *f.FromDate
 	}
@@ -104,7 +113,7 @@ func (f *BASFilter) MapToFilter() common.Filter {
 	if f.FinancialYearID != nil {
 		filters["financial_year_id"] = *f.FinancialYearID
 	}
-	if f.QuarterIDs != nil {
+	if len(f.QuarterIDs) > 0 {
 		ids := make([]uuid.UUID, 0, len(f.QuarterIDs))
 		for _, qid := range f.QuarterIDs {
 			if qid != nil {
