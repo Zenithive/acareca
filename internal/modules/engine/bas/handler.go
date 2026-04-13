@@ -212,24 +212,19 @@ func (h *handler) GetReport(c *gin.Context) {
 
 // GetBASPreparation godoc
 // @Summary      Full BAS Preparation Report
-// @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.
+// @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics. Multiple clinicId values can be provided to aggregate specific clinics.
 // @Tags         engine/bas
 // @Produce      json
-// @Param        clinic_id         path   string  true  "Clinic UUID"
+// @Param        clinicId          query  []string false "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)" collectionFormat(multi)
 // @Param        quarter_ids       query  []string true "Array of Quarter UUIDs" collectionFormat(multi)
 // @Param        financial_year_id query  string  true "Restrict to a financial year by UUID"
 // @Success      200  {object}  RsBASPreparation
 // @Failure      400  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken
-// @Router       /bas/clinic/{clinic_id}/bas-preparation [get]
+// @Router       /bas/bas-preparation [get]
 func (h *handler) GetBASPreparation(c *gin.Context) {
-	actorID, ok := util.GetUserID(c) // Accountant's User ID from JWT
-	if !ok {
-		return
-	}
-
-	clinicID, ok := parseClinicID(c)
+	actorID, ok := util.GetUserID(c) // User ID from JWT
 	if !ok {
 		return
 	}
@@ -240,7 +235,7 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, clinicID, &f)
+	result, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

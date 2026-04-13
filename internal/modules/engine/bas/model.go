@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 var ErrClinicNotFound = errors.New("clinic not found")
@@ -79,10 +80,59 @@ type BASMonthlyRow struct {
 }
 
 type BASFilter struct {
+	ClinicId        []*uuid.UUID `form:"clinicId"`
 	FromDate        *string      `form:"from_date"`         // YYYY-MM-DD
 	ToDate          *string      `form:"to_date"`           // YYYY-MM-DD
 	FinancialYearID *string      `form:"financial_year_id"` // UUID — maps quarter to FY
 	QuarterIDs      []*uuid.UUID `form:"quarterIds"`
+}
+
+// MapToFilter returns the BASFilter as a common.Filter, omitting nil values.
+func (f *BASFilter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	operators := map[string]common.Operator{}
+
+	if len(f.ClinicId) > 0 {
+		ids := make([]uuid.UUID, 0, len(f.ClinicId))
+		for _, cid := range f.ClinicId {
+			if cid != nil {
+				ids = append(ids, *cid)
+			}
+		}
+		if len(ids) > 0 {
+			filters["clinicId"] = ids
+		}
+	}
+
+	if f.FromDate != nil {
+		filters["from_date"] = *f.FromDate
+	}
+	if f.ToDate != nil {
+		filters["to_date"] = *f.ToDate
+	}
+	if f.FinancialYearID != nil {
+		filters["financial_year_id"] = *f.FinancialYearID
+	}
+	if len(f.QuarterIDs) > 0 {
+		ids := make([]uuid.UUID, 0, len(f.QuarterIDs))
+		for _, qid := range f.QuarterIDs {
+			if qid != nil {
+				ids = append(ids, *qid)
+			}
+		}
+		if len(ids) > 0 {
+			filters["quarterIds"] = ids
+		}
+	}
+	return common.NewFilter(
+		nil,
+		filters,
+		operators,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }
 
 // BASReportFilter is used by the /bas/report endpoint.

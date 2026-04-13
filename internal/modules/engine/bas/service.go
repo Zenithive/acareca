@@ -22,7 +22,7 @@ type Service interface {
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
-	GetBASPreparation(ctx context.Context, actorID uuid.UUID, clinicID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
+	GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
 }
 
 type service struct {
@@ -155,7 +155,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 	}, nil
 }
 
-func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, clinicID uuid.UUID, f *BASFilter) (*RsBASPreparation, error) {
+func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error) {
 
 	meta := auditctx.GetMetadata(ctx)
 
@@ -171,6 +171,13 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, clin
 	}
 
 	var ownerID uuid.UUID
+	var clinicIDs []uuid.UUID
+
+	// Convert BASFilter to common.Filter for clinic listing
+	commonFilter := f.MapToFilter()
+
+	// Use clinic_id array from BASFilter
+	requestedClinicIDs := f.ClinicId
 
 	if isAccountant {
 
@@ -179,31 +186,80 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, clin
 			return nil, fmt.Errorf("access denied: accountant profile not found")
 		}
 
-		permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, clinicID)
-		if err != nil {
-			return nil, fmt.Errorf("permission denied: you are not associated with this clinic")
+		// If clinic_ids are provided, verify permission for each clinic
+		if len(requestedClinicIDs) > 0 {
+			for _, clinicID := range requestedClinicIDs {
+				if clinicID == nil {
+					continue
+				}
+				permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, *clinicID)
+				if err != nil {
+					return nil, fmt.Errorf("permission denied for clinic %s: you are not associated with this clinic", clinicID.String())
+				}
+				ownerID = permission.PractitionerID
+				clinicIDs = append(clinicIDs, *clinicID)
+			}
+		} else {
+			// If no clinic_ids provided, get all clinics the accountant has access to
+			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, accProfile.ID, commonFilter)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
+			}
+			if len(clinics) == 0 {
+				return nil, fmt.Errorf("no clinics found for this accountant")
+			}
+			// Use the first clinic's practitioner as owner (they should all belong to same practitioner)
+			ownerID = clinics[0].PractitionerID
+			for _, clinic := range clinics {
+				clinicIDs = append(clinicIDs, clinic.ID)
+			}
 		}
-		ownerID = permission.PractitionerID
 	} else {
 		pID, er := s.clinicRepo.GetPractitionerIDByUserID(ctx, actorID.String())
-        if er != nil {
-            return nil, fmt.Errorf("practitioner profile not found")
-        }
-        ownerID = *pID
+		if er != nil {
+			return nil, fmt.Errorf("practitioner profile not found")
+		}
+		ownerID = *pID
 
-		// Verify the practitioner actually owns this clinic
-		_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicID, ownerID)
-		if err != nil {
-			return nil, fmt.Errorf("clinic not found or access denied")
+		if len(requestedClinicIDs) > 0 {
+			// Verify the practitioner owns each requested clinic
+			for _, clinicID := range requestedClinicIDs {
+				if clinicID == nil {
+					continue
+				}
+				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, *clinicID, ownerID)
+				if err != nil {
+					return nil, fmt.Errorf("clinic %s not found or access denied", clinicID.String())
+				}
+				clinicIDs = append(clinicIDs, *clinicID)
+			}
+		} else {
+			// Get all clinics for this practitioner
+			clinics, err := s.clinicRepo.ListClinicByPractitioner(ctx, ownerID, commonFilter)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
+			}
+			if len(clinics) == 0 {
+				return nil, fmt.Errorf("no clinics found for this practitioner")
+			}
+			for _, clinic := range clinics {
+				clinicIDs = append(clinicIDs, clinic.ID)
+			}
 		}
 	}
-	rows, err := s.repo.GetBASLineItems(ctx, clinicID, f)
-	if err != nil {
-		return nil, err
+
+	// Aggregate data from all relevant clinics
+	var allRows []*BASLineItemRow
+	for _, cID := range clinicIDs {
+		rows, err := s.repo.GetBASLineItems(ctx, cID, f)
+		if err != nil {
+			return nil, err
+		}
+		allRows = append(allRows, rows...)
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
-	for _, r := range rows {
+	for _, r := range allRows {
 		k := r.PeriodQuarter.Format("2006-01-02")
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
@@ -251,7 +307,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, clin
 	})
 
 	// Build Grand Total last
-	resp.GrandTotal = s.mapToBASColumn(rows)
+	resp.GrandTotal = s.mapToBASColumn(allRows)
 	resp.GrandTotal.Quarter.Name = "Total"
 
 	return resp, nil
@@ -333,8 +389,8 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		Net:   roundToTwo(g3.Net + g8.Net),
 	}
 	col.Sections.Income.Items = []BASLineItem{
-		{Name: "Income – GST Free (G3)", Amounts: g3},
-		{Name: "Income – GST", Amounts: g8},
+		{Name: "Income - GST Free (G3)", Amounts: g3},
+		{Name: "Income - GST", Amounts: g8},
 		{
 			Name: "1A GST on Sales",
 			Amounts: BASAmount{
