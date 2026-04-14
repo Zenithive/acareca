@@ -2424,14 +2424,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/bas/clinic/{clinic_id}/bas-preparation": {
+        "/bas/bas-preparation": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.",
+                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics. Multiple clinicId values can be provided to aggregate specific clinics.",
                 "produces": [
                     "application/json"
                 ],
@@ -2441,11 +2441,14 @@ const docTemplate = `{
                 "summary": "Full BAS Preparation Report",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "path",
-                        "required": true
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)",
+                        "name": "clinicId",
+                        "in": "query"
                     },
                     {
                         "type": "array",
@@ -7010,9 +7013,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "delete": {
-                    "type": "integer"
-                },
-                "read": {
                     "type": "integer"
                 },
                 "update": {

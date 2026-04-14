@@ -64,7 +64,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &actorID, actorID, actorID, role)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &actorID, actorID)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -93,16 +93,7 @@ func (h *handler) Get(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	// Get correct ID based on role
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, _ = util.GetAccountantID(c)
-	} else {
-		actorID, _ = util.GetPractitionerID(c)
-	}
-
-	e, err := h.svc.GetByID(c.Request.Context(), id, actorID, role)
+	e, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -151,7 +142,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.svc.Update(c.Request.Context(), id, &req, &actorID, actorID, role)
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, &actorID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -180,19 +171,7 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	// Get ID based on who is logged in
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-	if !ok {
-		return
-	}
-
-	if err := h.svc.Delete(c.Request.Context(), id, actorID, role); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return
@@ -229,9 +208,17 @@ func (h *handler) List(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID
 	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, _ = util.GetAccountantID(c)
+		id, ok := util.GetAccountantID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	} else {
-		actorID, _ = util.GetPractitionerID(c)
+		id, ok := util.GetPractitionerID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	}
 
 	var filter Filter
@@ -269,17 +256,18 @@ func (h *handler) List(c *gin.Context) {
 func (h *handler) ListTransactions(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID
-	var ok bool
-
 	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
+		id, ok := util.GetAccountantID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, nil)
-		return
+		id, ok := util.GetPractitionerID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	}
 
 	var filter TransactionFilter

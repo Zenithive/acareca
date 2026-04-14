@@ -49,22 +49,7 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// --- NEW PERMISSION CHECK ---
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		// Resolve the Accountant Profile ID from the UserID in the token
-		actorUserID, _ := uuid.Parse(*meta.UserID)
-		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-		if err != nil {
-			return nil, fmt.Errorf("could not find accountant profile: %w", err)
-		}
-
-		// Check if this Accountant has permission to 'CLINIC' entities for this Practitioner
-		// You'll need a method like 'HasPermission' in your repo
-		hasAccess, err := s.repo.HasPermission(ctx, practitionerID, accProfile.ID, "CLINIC", nil, "write")
-		if err != nil || !hasAccess {
-			return nil, fmt.Errorf("permission denied: accountant does not have write access for this practice")
-		}
-	}
+	// Permission checks are handled by middleware - no need to check here
 
 	limitCheckID := practitionerID
 
@@ -371,106 +356,99 @@ func (s *service) CountClinic(ctx context.Context, practitionerID uuid.UUID, fil
 }
 
 func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
-    meta := auditctx.GetMetadata(ctx)
+	meta := auditctx.GetMetadata(ctx)
 
-    var ownerID uuid.UUID
-    var err error
+	var ownerID uuid.UUID
+	var err error
 
-    // 1. ROLE-BASED IDENTITY RESOLUTION
-    if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-        // --- ACCOUNTANT FLOW ---
-        // actorID is the Accountant Profile ID from your Handler
+	// 1. ROLE-BASED IDENTITY RESOLUTION
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+		// --- ACCOUNTANT FLOW ---
+		// actorID is the Accountant Profile ID from your Handler
 
-        // Find which Practitioner owns this clinic context
-        ownerID, err = s.CheckPermission(ctx, actorID, id)
-        if err != nil {
-            return nil, err
-        }
+		// Find which Practitioner owns this clinic context
+		ownerID, err = s.CheckPermission(ctx, actorID, id)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// --- PRACTITIONER FLOW ---
+		// actorID is already the PractitionerID
+		ownerID = actorID
+	}
 
-        
-        hasRead, err := s.repo.HasPermission(ctx, ownerID, actorID, "CLINIC", &id, "read")
-        if err != nil || !hasRead {
-            return nil, fmt.Errorf("permission denied: you do not have read access")
-        }
-    } else {
-        // --- PRACTITIONER FLOW ---
-        // actorID is already the PractitionerID
-        ownerID = actorID
-    }
+	// 2. FETCH CLINIC
+	// Now ownerID is guaranteed to be the Practitioner's ID for both roles
+	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, ownerID)
+	if err != nil {
+		// If it fails here for a Practitioner, it means the actorID
+		// in the token doesn't match the practitioner_id in tbl_clinic
+		return nil, err
+	}
 
-    // 2. FETCH CLINIC
-    // Now ownerID is guaranteed to be the Practitioner's ID for both roles
-    clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, ownerID)
-    if err != nil {
-        // If it fails here for a Practitioner, it means the actorID
-        // in the token doesn't match the practitioner_id in tbl_clinic
-        return nil, err
-    }
+	addresses, err := s.repo.GetClinicAddresses(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 
-    addresses, err := s.repo.GetClinicAddresses(ctx, id)
-    if err != nil {
-        return nil, err
-    }
+	contacts, err := s.repo.GetClinicContacts(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 
-    contacts, err := s.repo.GetClinicContacts(ctx, id)
-    if err != nil {
-        return nil, err
-    }
+	financialSettings, err := s.repo.GetFinancialSettings(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 
-    financialSettings, err := s.repo.GetFinancialSettings(ctx, id)
-    if err != nil {
-        return nil, err
-    }
+	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
+	for _, addr := range addresses {
+		rsAddresses = append(rsAddresses, RsClinicAddress{
+			ID:        addr.ID,
+			Address:   addr.Address,
+			City:      addr.City,
+			State:     addr.State,
+			Postcode:  addr.Postcode,
+			IsPrimary: addr.IsPrimary,
+		})
+	}
 
-    rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-    for _, addr := range addresses {
-        rsAddresses = append(rsAddresses, RsClinicAddress{
-            ID:        addr.ID,
-            Address:   addr.Address,
-            City:      addr.City,
-            State:     addr.State,
-            Postcode:  addr.Postcode,
-            IsPrimary: addr.IsPrimary,
-        })
-    }
+	rsContacts := make([]RsClinicContact, 0, len(contacts))
+	for _, cont := range contacts {
+		rsContacts = append(rsContacts, RsClinicContact{
+			ID:          cont.ID,
+			ContactType: cont.ContactType,
+			Value:       cont.Value,
+			Label:       cont.Label,
+			IsPrimary:   cont.IsPrimary,
+		})
+	}
 
-    rsContacts := make([]RsClinicContact, 0, len(contacts))
-    for _, cont := range contacts {
-        rsContacts = append(rsContacts, RsClinicContact{
-            ID:          cont.ID,
-            ContactType: cont.ContactType,
-            Value:       cont.Value,
-            Label:       cont.Label,
-            IsPrimary:   cont.IsPrimary,
-        })
-    }
+	var rsFinancialSettings *RsFinancialSettings
+	if financialSettings != nil {
+		rsFinancialSettings = &RsFinancialSettings{
+			ID:              financialSettings.ID,
+			FinancialYearID: financialSettings.FinancialYearID,
+			LockDate:        financialSettings.LockDate,
+		}
+	}
 
-    var rsFinancialSettings *RsFinancialSettings
-    if financialSettings != nil {
-        rsFinancialSettings = &RsFinancialSettings{
-            ID:              financialSettings.ID,
-            FinancialYearID: financialSettings.FinancialYearID,
-            LockDate:        financialSettings.LockDate,
-        }
-    }
-
-    return &RsClinic{
-        ID: clinic.ID,
-        //EntityID:          clinic.EntityID,
-        PractitionerID:    clinic.PractitionerID,
-        ProfilePicture:    clinic.ProfilePicture,
-        Name:              clinic.Name,
-        ABN:               clinic.ABN,
-        Description:       clinic.Description,
-        IsActive:          clinic.IsActive,
-        Addresses:         rsAddresses,
-        Contacts:          rsContacts,
-        FinancialSettings: rsFinancialSettings,
-        CreatedAt:         clinic.CreatedAt,
-        UpdatedAt:         clinic.UpdatedAt,
-    }, nil
+	return &RsClinic{
+		ID: clinic.ID,
+		//EntityID:          clinic.EntityID,
+		PractitionerID:    clinic.PractitionerID,
+		ProfilePicture:    clinic.ProfilePicture,
+		Name:              clinic.Name,
+		ABN:               clinic.ABN,
+		Description:       clinic.Description,
+		IsActive:          clinic.IsActive,
+		Addresses:         rsAddresses,
+		Contacts:          rsContacts,
+		FinancialSettings: rsFinancialSettings,
+		CreatedAt:         clinic.CreatedAt,
+		UpdatedAt:         clinic.UpdatedAt,
+	}, nil
 }
-
 
 func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error {
 
@@ -481,20 +459,6 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 	}
 
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-			actorUserID, _ := uuid.Parse(*meta.UserID)
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err != nil {
-				return fmt.Errorf("could not find accountant profile: %w", err)
-			}
-
-			// Check if the permission array actually contains "delete"
-			hasDeleteAccess, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "delete")
-			if err != nil || !hasDeleteAccess {
-				return fmt.Errorf("permission denied: accountant does not have 'delete' access for this clinic")
-			}
-		}
 
 		existing, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
 		if err != nil {
@@ -583,23 +547,8 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		return nil, err
 	}
 
-	// --- EXPLICIT PERMISSION CHECK (Matches CreateClinic logic) ---
+	// Permission checks are handled by middleware
 	meta := auditctx.GetMetadata(ctx)
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		// Resolve the Accountant Profile ID
-		actorUserID, _ := uuid.Parse(*meta.UserID)
-		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-		if err != nil {
-			return nil, fmt.Errorf("could not find accountant profile: %w", err)
-		}
-
-		// Check 'write' permission for this specific Clinic ID
-		// Note: Passing &id ensures the accountant has access to THIS clinic
-		hasAccess, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "update")
-		if err != nil || !hasAccess {
-			return nil, fmt.Errorf("permission denied: accountant does not have write access for this clinic")
-		}
-	}
 
 	var result *RsClinic
 
@@ -1143,44 +1092,43 @@ func (s *service) verifyAccess(ctx context.Context, actorID uuid.UUID, clinicID 
 }
 
 func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinicID uuid.UUID) (uuid.UUID, error) {
-    meta := auditctx.GetMetadata(ctx)
+	meta := auditctx.GetMetadata(ctx)
 
-    // 1. Accountant Flow
-    if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+	// 1. Accountant Flow
+	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
 
-        accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
-        var finalAccountantID uuid.UUID
+		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
+		var finalAccountantID uuid.UUID
 
-        if err != nil {
+		if err != nil {
 
-            finalAccountantID = actorID
-        } else {
+			finalAccountantID = actorID
+		} else {
 
-            finalAccountantID = accProfile.ID
-        }
-        // Query tbl_invite_permissions
-        permission, err := s.repo.GetAccountantPermission(ctx, finalAccountantID, clinicID)
-        if err != nil {
-            // Return a clear error for the handler to map to 403 Forbidden
-            return uuid.Nil, fmt.Errorf("accountant access denied for clinic %s: %w", clinicID, err)
-        }
+			finalAccountantID = accProfile.ID
+		}
+		// Query tbl_invite_permissions
+		permission, err := s.repo.GetAccountantPermission(ctx, finalAccountantID, clinicID)
+		if err != nil {
+			// Return a clear error for the handler to map to 403 Forbidden
+			return uuid.Nil, fmt.Errorf("accountant access denied for clinic %s: %w", clinicID, err)
+		}
 
-        // Return the Practitioner who owns the data
-        return permission.PractitionerID, nil
-    }
-    // 2. Practitioner Flow - check if they own the clinic
-    exists, err := s.repo.IsClinicOwner(ctx, actorID, clinicID)
-    if err != nil {
-        return uuid.Nil, fmt.Errorf("database error checking ownership: %w", err)
-    }
-    if !exists {
-        return uuid.Nil, fmt.Errorf("practitioner %s does not own clinic %s", actorID, clinicID)
-    }
+		// Return the Practitioner who owns the data
+		return permission.PractitionerID, nil
+	}
+	// 2. Practitioner Flow - check if they own the clinic
+	exists, err := s.repo.IsClinicOwner(ctx, actorID, clinicID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("database error checking ownership: %w", err)
+	}
+	if !exists {
+		return uuid.Nil, fmt.Errorf("practitioner %s does not own clinic %s", actorID, clinicID)
+	}
 
-    // Since they are the owner, the actorID IS the ownerID
-    return actorID, nil
+	// Since they are the owner, the actorID IS the ownerID
+	return actorID, nil
 }
-
 
 func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()

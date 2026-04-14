@@ -142,7 +142,7 @@ func MethodBasedPermission(checker PermissionChecker) gin.HandlerFunc {
 			// Common patterns: /:id, /form/:id, /version/:version_id
 			var targetEntityID uuid.UUID
 			var err error
-			
+
 			// Try common parameter names
 			if idParam := ctx.Param("id"); idParam != "" {
 				targetEntityID, err = uuid.Parse(idParam)
@@ -183,7 +183,7 @@ func MethodBasedPermission(checker PermissionChecker) gin.HandlerFunc {
 					ctx.Abort()
 					return
 				}
-				
+
 				ctx.Next()
 				return
 			}
@@ -205,4 +205,130 @@ func MethodBasedPermission(checker PermissionChecker) gin.HandlerFunc {
 
 		ctx.Next()
 	}
+}
+
+// EntityResolver defines the interface for resolving child entity IDs to their parent entity IDs for permission checking
+// For example: entry ID -> form version ID
+type EntityResolver interface {
+	ResolveParentEntityID(ctx context.Context, childID uuid.UUID) (uuid.UUID, error)
+}
+
+// ChildEntityPermissionMiddleware checks if a user has permission for a child entity by resolving its parent
+// This is used when permissions are inherited from parent entities (e.g., entry inherits from form)
+// resolver: function to resolve the child entity ID to the parent entity ID for permission checking
+func ChildEntityPermissionMiddleware(checker PermissionChecker, resolver EntityResolver) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Parse child entity ID from URL parameter (typically :id)
+		childIDParam := c.Param("id")
+		if childIDParam == "" {
+			// Fallback to other common parameter names if :id not found
+			for _, param := range []string{"entry_id", "clinic_id", "form_id", "version_id"} {
+				if val := c.Param(param); val != "" {
+					childIDParam = val
+					break
+				}
+			}
+		}
+
+		if childIDParam == "" {
+			response.Error(c, http.StatusBadRequest, errors.New("entity id not found in path"))
+			c.Abort()
+			return
+		}
+
+		childID, err := uuid.Parse(childIDParam)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, errors.New("invalid entity id format"))
+			c.Abort()
+			return
+		}
+
+		// Resolve the parent entity ID that will be used for permission checking
+		parentEntityID, err := resolver.ResolveParentEntityID(c.Request.Context(), childID)
+		if err != nil {
+			response.Error(c, http.StatusNotFound, err)
+			c.Abort()
+			return
+		}
+
+		if parentEntityID == uuid.Nil {
+			response.Error(c, http.StatusNotFound, errors.New("entity not found"))
+			c.Abort()
+			return
+		}
+
+		// Get user role
+		role, ok := c.Get("role")
+		if !ok {
+			response.Error(c, http.StatusForbidden, errors.New("role not in context"))
+			c.Abort()
+			return
+		}
+
+		// Only check permissions for accountants (practitioners have full access)
+		if strings.EqualFold(role.(string), util.RoleAccountant) {
+			// Get accountant ID from context
+			entityId, ok := c.Get(util.EntityIDKey)
+			if !ok {
+				response.Error(c, http.StatusForbidden, errors.New("accountant id not in context"))
+				c.Abort()
+				return
+			}
+
+			accountantID, ok := entityId.(uuid.UUID)
+			if !ok {
+				response.Error(c, http.StatusForbidden, errors.New("invalid accountant id type"))
+				c.Abort()
+				return
+			}
+
+			// Map HTTP method to required permission
+			var requiredAction string
+			switch c.Request.Method {
+			case http.MethodGet, http.MethodHead, http.MethodOptions:
+				requiredAction = "read"
+			case http.MethodPost:
+				requiredAction = "create"
+			case http.MethodPut, http.MethodPatch:
+				requiredAction = "update"
+			case http.MethodDelete:
+				requiredAction = "delete"
+			default:
+				response.Error(c, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+				c.Abort()
+				return
+			}
+
+			// Check permissions using the parent entity ID
+			perm, err := checker.GetPermissionsForAccountant(c.Request.Context(), accountantID, parentEntityID)
+			if err != nil || perm == nil {
+				response.Error(c, http.StatusForbidden, errors.New("you do not have access to this resource"))
+				c.Abort()
+				return
+			}
+
+			if !perm.HasAccess(requiredAction) {
+				response.Error(c, http.StatusForbidden, errors.New("you do not have permission to "+requiredAction+" this resource"))
+				c.Abort()
+				return
+			}
+		}
+
+		c.Next()
+	}
+}
+
+// Entry-specific middleware helpers
+// These are used to resolve entry and version entities to their parent forms for permission checking
+
+// EntryFormPermissionResolver resolves entry ID → form version ID → form ID for permission checks
+// This is needed because permissions are stored by form_id
+func NewEntryFormPermissionMiddleware(checker PermissionChecker, entryResolver EntityResolver) gin.HandlerFunc {
+	return ChildEntityPermissionMiddleware(checker, entryResolver)
+}
+
+// VersionFormPermissionResolver resolves form version ID → form ID for permission checks
+// This is needed because permissions are stored by form_id, not form_version_id
+func NewVersionFormPermissionMiddleware(checker PermissionChecker, versionResolver EntityResolver) gin.HandlerFunc {
+	return ChildEntityPermissionMiddleware(checker, versionResolver)
 }

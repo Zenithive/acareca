@@ -212,7 +212,7 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 // Calculate implements [Service].
 func (s *service) Calculate(ctx context.Context, formID uuid.UUID, filter *NetFilter, actorID uuid.UUID, role string) (interface{}, error) {
 
-	form, err := s.formSvc.GetFormByID(ctx, formID, actorID, role)
+	form, err := s.formSvc.GetFormByID(ctx, formID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (s *service) CalculateFromEntries(ctx context.Context, req *RqCalculateFrom
 		return nil, fmt.Errorf("invalid form_id: %w", err)
 	}
 
-	form, err := s.formSvc.GetFormByID(ctx, formID, actorID, role)
+	form, err := s.formSvc.GetFormByID(ctx, formID)
 	if err != nil {
 		return nil, err
 	}

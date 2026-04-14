@@ -85,7 +85,7 @@ func RegisterBuilderRoutes(
 	formGroup := v1.Group("/form", middleware.Auth(cfg), middleware.AuditContext())
 	permChecker := &builderPermissionAdapter{invSvc: invitationSvc}
 	formGroup.Use(middleware.MethodBasedPermission(permChecker))
-	form.RegisterRoutes(formGroup, formHandler)
+	form.RegisterRoutes(formGroup, formHandler, permChecker)
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
@@ -93,8 +93,9 @@ func RegisterBuilderRoutes(
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())
-	entryGroup.Use(middleware.MethodBasedPermission(permChecker))
-	entry.RegisterRoutes(entryGroup, entriesHandler)
+	// DO NOT apply MethodBasedPermission here - let entry.RegisterRoutes handle middleware per route
+	// This is important because version/:version_id and :id routes need resolvers to map to form_id
+	entry.RegisterRoutes(entryGroup, entriesHandler, permChecker, entryRepo, versionSvc)
 
 	// Calculation routes
 	calculationGroup := v1.Group("")

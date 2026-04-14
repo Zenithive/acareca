@@ -26,10 +26,10 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
-	GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
-	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error)
-	Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) error
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
+	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 
@@ -59,8 +59,10 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 }
 
 // Create implements [IService].
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
+	// Permission checks are handled by middleware
+
 	// Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 	if err != nil {
@@ -156,7 +158,8 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 }
 
 // GetByID implements [IService].
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error) {
+	// Permission checks are handled by middleware
 	e, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -200,7 +203,9 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID, actorID uuid.UUID, 
 }
 
 // Update implements [IService].
-func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, actorID uuid.UUID, role string) (*RsFormEntry, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+	// Permission checks are handled by middleware
+
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -284,7 +289,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 }
 
 // Delete implements [IService].
-func (s *Service) Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, role string) error {
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	// Permission checks are handled by middleware
+
 	// Get entry details before deletion for audit log
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -337,6 +344,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, r
 
 // List implements [IService].
 func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
+	// Permission checks are handled by middleware
 	f := filter.MapToFilter()
 
 	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f, actorID, role)
@@ -369,6 +377,7 @@ func (s *Service) GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntr
 
 // ListTransactions implements [IService].
 func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error) {
+	// Permission checks are handled by middleware
 	f := filter.ToCommonFilter()
 
 	items, err := s.repo.ListTransactions(ctx, f, actorID, role)

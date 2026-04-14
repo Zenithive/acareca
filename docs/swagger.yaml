@@ -204,8 +204,6 @@ definitions:
         type: integer
       delete:
         type: integer
-      read:
-        type: integer
       update:
         type: integer
     type: object
@@ -3487,16 +3485,21 @@ paths:
       summary: Verify user email address
       tags:
       - auth
-  /bas/clinic/{clinic_id}/bas-preparation:
+  /bas/bas-preparation:
     get:
       description: Returns a side-by-side comparison of BAS figures across selected
-        quarters/months, plus a calculated Grand Total column.
+        quarters/months, plus a calculated Grand Total column. If clinicId is not
+        provided in query params, aggregates data across all clinics. Multiple clinicId
+        values can be provided to aggregate specific clinics.
       parameters:
-      - description: Clinic UUID
-        in: path
-        name: clinic_id
-        required: true
-        type: string
+      - collectionFormat: multi
+        description: Clinic UUIDs (optional - aggregates all clinics if not provided,
+          can specify multiple)
+        in: query
+        items:
+          type: string
+        name: clinicId
+        type: array
       - collectionFormat: multi
         description: Array of Quarter UUIDs
         in: query
