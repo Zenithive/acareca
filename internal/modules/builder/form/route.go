@@ -9,7 +9,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permChecker middleware.Perm
 	// Apply permission middleware for all form routes
 	rg.Use(middleware.MethodBasedPermission(permChecker))
 
-	rg.GET("/:id", h.GetById)
+	rg.GET("/:id", h.GetFormWithFields)
 	rg.GET("", h.List)
 	rg.POST("", h.CreateFormWithFields)
 	rg.PATCH("/:id", h.UpdateFormWithFields)
