@@ -269,18 +269,37 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 }
 
 func (r *repository) UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) error {
-	query := `
-		INSERT INTO tbl_practitioner_subscription
-			(practitioner_id, subscription_id, stripe_subscription_id, stripe_invoice_id, status, start_date, end_date, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-		ON CONFLICT (stripe_subscription_id) DO UPDATE SET
-			status     = EXCLUDED.status,
-			end_date   = EXCLUDED.end_date,
-			stripe_invoice_id = EXCLUDED.stripe_invoice_id,
-			updated_at = EXCLUDED.updated_at
-	`
+
+	// 1. Start a transaction
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	deactivateQuery := `
+        UPDATE tbl_practitioner_subscription
+        SET status = 'INACTIVE', updated_at = $2
+        WHERE practitioner_id = $1 AND status = 'ACTIVE'
+    `
 	now := time.Now()
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, deactivateQuery, s.PractitionerID, now)
+	if err != nil {
+
+		return fmt.Errorf("deactivate old plans: %w", err)
+	}
+
+	upsertQuery := `
+        INSERT INTO tbl_practitioner_subscription
+            (practitioner_id, subscription_id, stripe_subscription_id, stripe_invoice_id, status, start_date, end_date, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+        ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+            status     = EXCLUDED.status,
+            end_date   = EXCLUDED.end_date,
+            stripe_invoice_id = EXCLUDED.stripe_invoice_id,
+            updated_at = EXCLUDED.updated_at
+    `
+	_, err = tx.ExecContext(ctx, upsertQuery,
 		s.PractitionerID,
 		s.SubscriptionID,
 		s.StripeSubscriptionID,
@@ -291,9 +310,10 @@ func (r *repository) UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) er
 		now,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert practitioner subscription from webhook: %w", err)
+		return fmt.Errorf("upsert new subscription: %w", err)
 	}
-	return nil
+	// 4. Commit the transaction
+	return tx.Commit()
 }
 
 func (r *repository) UpdateStripeFields(ctx context.Context, stripeSubID string, invoiceID *string, status Status, endDate time.Time) error {
