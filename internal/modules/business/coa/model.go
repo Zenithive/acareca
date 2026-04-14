@@ -110,11 +110,12 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 }
 
 type RqCreateChartOfAccountOfAccount struct {
-	AccountTypeID int16  `json:"account_type_id" validate:"required,min=1"`
-	AccountTaxID  int16  `json:"account_tax_id" validate:"required,min=1"`
-	Code          int16  `json:"code" validate:"required,gte=100,lte=9999"`
-	Name          string `json:"name" validate:"required,max=255"`
-	IsSystem      *bool  `json:"is_system"`
+	PractitionerID uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  int16     `json:"account_type_id" validate:"required,min=1"`
+	AccountTaxID   int16     `json:"account_tax_id" validate:"required,min=1"`
+	Code           int16     `json:"code" validate:"required,gte=100,lte=9999"`
+	Name           string    `json:"name" validate:"required,max=255"`
+	IsSystem       *bool     `json:"is_system"`
 }
 
 type RsCodeUnique struct {
@@ -122,15 +123,17 @@ type RsCodeUnique struct {
 }
 
 type RqCheckCodeUnique struct {
-	Code      int16      `json:"code" validate:"required,gte=100,lte=9999"`
-	ExcludeID *uuid.UUID `json:"exclude_id"`
+	PractitionerID uuid.UUID  `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	Code           int16      `json:"code" validate:"required,gte=100,lte=9999"`
+	ExcludeID      *uuid.UUID `json:"exclude_id"`
 }
 
 type RqUpdateCharOfAccountOfAccount struct {
-	AccountTypeID *int16  `json:"account_type_id" validate:"omitempty,min=1"`
-	AccountTaxID  *int16  `json:"account_tax_id" validate:"omitempty,min=1"`
-	Code          *int16  `json:"code" validate:"omitempty,gte=100,lte=9999"`
-	Name          *string `json:"name" validate:"omitempty,max=255"`
+	PractitionerID *uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  *int16     `json:"account_type_id" validate:"omitempty,min=1"`
+	AccountTaxID   *int16     `json:"account_tax_id" validate:"omitempty,min=1"`
+	Code           *int16     `json:"code" validate:"omitempty,gte=100,lte=9999"`
+	Name           *string    `json:"name" validate:"omitempty,max=255"`
 }
 
 // RsChartOfAccountList is the paginated list response for chart of accounts.
@@ -142,7 +145,7 @@ type RsChartOfAccountList struct {
 }
 
 type Filter struct {
-	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	PractitionerID *uuid.UUID `form:"-"`
 	Name           *string    `form:"name"`
 	Id             *string    `form:"id"`
 	Code           *int       `form:"code"`

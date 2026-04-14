@@ -204,8 +204,6 @@ definitions:
         type: integer
       delete:
         type: integer
-      read:
-        type: integer
       update:
         type: integer
     type: object
@@ -1028,6 +1026,8 @@ definitions:
         type: integer
       exclude_id:
         type: string
+      practitioner_id:
+        type: string
     required:
     - code
     type: object
@@ -1047,6 +1047,8 @@ definitions:
         type: boolean
       name:
         maxLength: 255
+        type: string
+      practitioner_id:
         type: string
     required:
     - account_tax_id
@@ -1068,6 +1070,8 @@ definitions:
         type: integer
       name:
         maxLength: 255
+        type: string
+      practitioner_id:
         type: string
     type: object
   coa.RsCodeUnique:
@@ -3487,16 +3491,21 @@ paths:
       summary: Verify user email address
       tags:
       - auth
-  /bas/clinic/{clinic_id}/bas-preparation:
+  /bas/bas-preparation:
     get:
       description: Returns a side-by-side comparison of BAS figures across selected
-        quarters/months, plus a calculated Grand Total column.
+        quarters/months, plus a calculated Grand Total column. If clinicId is not
+        provided in query params, aggregates data across all clinics. Multiple clinicId
+        values can be provided to aggregate specific clinics.
       parameters:
-      - description: Clinic UUID
-        in: path
-        name: clinic_id
-        required: true
-        type: string
+      - collectionFormat: multi
+        description: Clinic UUIDs (optional - aggregates all clinics if not provided,
+          can specify multiple)
+        in: query
+        items:
+          type: string
+        name: clinicId
+        type: array
       - collectionFormat: multi
         description: Array of Quarter UUIDs
         in: query
@@ -4346,6 +4355,10 @@ paths:
   /coa/chart-of-account/{id}:
     delete:
       parameters:
+      - description: Practitioner UUID (required for Accountants)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Chart of Account UUID
         in: path
         name: id
@@ -4383,6 +4396,11 @@ paths:
       - coa
     get:
       parameters:
+      - description: Practitioner UUID
+        in: query
+        name: practitioner_id
+        required: true
+        type: string
       - description: Chart of Account UUID
         in: path
         name: id
@@ -4462,6 +4480,10 @@ paths:
   /coa/chart-of-account/by-key/{key}:
     get:
       parameters:
+      - description: Practitioner UUID (for Accountants)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Chart of Account Key (e.g., patient_fee_account)
         in: path
         name: key

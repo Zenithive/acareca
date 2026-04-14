@@ -264,7 +264,7 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 		return &RsInviteDetails{InvitationID: inviteID, IsFound: false}, nil
 	}
 
-	if time.Now().After(inv.ExpiresAt) {
+	if inv.Status == StatusSent && time.Now().After(inv.ExpiresAt) {
 		return nil, ErrInvitationExpired
 	}
 

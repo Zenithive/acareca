@@ -2424,14 +2424,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/bas/clinic/{clinic_id}/bas-preparation": {
+        "/bas/bas-preparation": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.",
+                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics. Multiple clinicId values can be provided to aggregate specific clinics.",
                 "produces": [
                     "application/json"
                 ],
@@ -2441,11 +2441,14 @@ const docTemplate = `{
                 "summary": "Full BAS Preparation Report",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "path",
-                        "required": true
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)",
+                        "name": "clinicId",
+                        "in": "query"
                     },
                     {
                         "type": "array",
@@ -3762,6 +3765,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Practitioner UUID (for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Chart of Account Key (e.g., patient_fee_account)",
                         "name": "key",
                         "in": "path",
@@ -3861,6 +3870,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get chart of account by ID",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "query",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -3983,6 +3999,12 @@ const docTemplate = `{
                 ],
                 "summary": "Delete chart of account",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID (required for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -6969,9 +6991,6 @@ const docTemplate = `{
                 "delete": {
                     "type": "integer"
                 },
-                "read": {
-                    "type": "integer"
-                },
                 "update": {
                     "type": "integer"
                 }
@@ -8221,6 +8240,9 @@ const docTemplate = `{
                 },
                 "exclude_id": {
                     "type": "string"
+                },
+                "practitioner_id": {
+                    "type": "string"
                 }
             }
         },
@@ -8252,6 +8274,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "practitioner_id": {
+                    "type": "string"
                 }
             }
         },
@@ -8274,6 +8299,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "practitioner_id": {
+                    "type": "string"
                 }
             }
         },

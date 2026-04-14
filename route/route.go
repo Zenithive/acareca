@@ -122,13 +122,16 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	clinicRepo := clinic.NewRepository(dbConn)
 	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
-	clinic.RegisterRoutes(v1, clinicHandler, cfg)
+
+	// Apply method-based permission middleware (GET=read, POST=create, PUT/PATCH=update, DELETE=delete)
+	permChecker := &permissionAdapter{invSvc: invitationSvc}
+	clinic.RegisterRoutes(v1, clinicHandler, cfg, permChecker)
 
 	// ============ COA SERVICE (cross-module dependency) ============
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
-	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
+	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg, permChecker)
 
 	// ============ PRACTITIONER SERVICE (cross-module dependency) ============
 	practitionerRepo := practitioner.NewRepository(dbConn)
@@ -149,40 +152,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
-
-	// // ============ BUILDER MODULES (Form, Entry, Calculation) ============
-	// detailRepo := detail.NewRepository(dbConn)
-	// versionRepo := version.NewRepository(dbConn)
-	// fieldRepo := field.NewRepository(dbConn)
-	// entryRepo := entry.NewRepository(dbConn)
-
-	// detailSvc := detail.NewService(dbConn, detailRepo, version.NewService(dbConn, versionRepo, clinicSvc), clinicRepo, invitationSvc)
-	// fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, version.NewService(dbConn, versionRepo, clinicSvc))
-
-	// versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
-	// formulaRepo := formula.NewRepository(dbConn)
-	// formulaSvc := formula.NewService(formulaRepo)
-	// formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc, invitationSvc)
-	// formHandler := form.NewHandler(formSvc)
-
-	// formGroup := v1.Group("/form", middleware.Auth(cfg), middleware.AuditContext())
-	// permChecker := &permissionAdapter{invSvc: invitationSvc}
-	// formGroup.Use(middleware.MethodBasedPermission(permChecker))
-	// form.RegisterRoutes(formGroup, formHandler)
-
-	// entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())
-	// entriesRepo := entry.NewRepository(dbConn)
-	// entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc)
-	// entriesHandler := entry.NewHandler(entriesSvc)
-
-	// entryGroup.Use(middleware.MethodBasedPermission(permChecker))
-	// entry.RegisterRoutes(entryGroup, entriesHandler)
-
-	// calculationGroup := v1.Group("")
-	// calculationGroup.Use(middleware.Auth(cfg))
-	// calculationSvc := calculation.NewServiceWithFormula(formSvc, versionSvc, fieldSvc, entriesSvc, formulaSvc)
-	// calculationHandler := calculation.NewHandler(calculationSvc)
-	// calculation.RegisterRoutes(calculationGroup, calculationHandler)
 
 	// ============ ENGINE MODULES (P&L, BAS) ============
 	plRepo := pl.NewRepository(dbConn)
@@ -233,13 +202,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	notification.RegisterRoutes(nft, notificationHandler)
 
 	// ============ BILLING MODULE ============
-	// billingRepo := billing.NewRepository(dbConn)
-	// billingSvc := billing.NewService(billingRepo, practitionerRepo, userSubscriptionRepo, stripeClient)
-	// billingHandler := billing.NewHandler(billingSvc)
-	// billing.RegisterWebhookRoute(r.Group("/api/v1/webhooks"), billingHandler)
-	// billing.RegisterRoutes(v1, billingHandler, cfg)
-
-	// ADD THIS:
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient)
 
 	// ============ SEED MODULE ============

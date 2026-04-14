@@ -6,9 +6,12 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permChecker middleware.PermissionChecker) {
 	clinic := rg.Group("/clinic")
 	clinic.Use(middleware.Auth(cfg), middleware.AuditContext())
+
+	// Apply method-based permission middleware for all clinic routes
+	clinic.Use(middleware.MethodBasedPermission(permChecker))
 
 	clinic.POST("", h.Create)
 	clinic.GET("", h.List)
