@@ -38,7 +38,7 @@ func DefaultChartOfAccounts() []DefaultChartRow {
 		{Code: 410, Name: "M/V Registration", AccountTypeID: 5, AccountTaxID: 3, IsSystem: false},
 		{Code: 411, Name: "M/V Fuel", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 412, Name: "M/V Repairs/Maintenance", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
-		{Code: 413, Name: "Management Fee (Gross Up)", AccountTypeID: 5, AccountTaxID: 4, IsSystem: false},
+		{Code: 413, Name: "Management Fee (Gross Up)", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 414, Name: "Materials/Dental Supplies", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 415, Name: "Office Supplies", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 416, Name: "Postage", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
