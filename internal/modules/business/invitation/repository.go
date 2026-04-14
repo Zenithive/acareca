@@ -35,7 +35,8 @@ type Repository interface {
 	GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
-	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
+	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
+	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
@@ -349,7 +350,27 @@ func (r *repository) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.T
 	return nil
 }
 
-func (r *repository) GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
+func (r *repository) IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error) {
+	var exists bool
+	// Check if there exists an invitation relationship between the specific practitioner and accountant
+	// with a status that indicates an active relationship
+	query := `SELECT EXISTS(
+		SELECT 1 FROM tbl_invitation 
+		WHERE practitioner_id = $1 AND entity_id = $2 
+		AND status IN ('SENT', 'ACCEPTED', 'COMPLETED')
+		LIMIT 1
+	)`
+	err := r.db.GetContext(ctx, &exists, query, practitionerID, accountantID)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// GetFirstPractitionerLinkedToAccountant returns the first/any practitioner linked to an accountant.
+// NOTE: In a many-to-many environment, this should be improved to accept a practitioner preference or context.
+// This is maintained for backward compatibility with handlers that need to resolve a practitioner for an accountant.
+func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
 	var practitionerID uuid.UUID
 	query := `SELECT practitioner_id FROM tbl_invitation WHERE entity_id = $1 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
 	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
@@ -359,7 +380,7 @@ func (r *repository) GetPractitionerLinkedToAccountant(ctx context.Context, acco
 		}
 		return uuid.Nil, err
 	}
-	return practitionerID, err
+	return practitionerID, nil
 }
 
 func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error {

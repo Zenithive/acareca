@@ -178,7 +178,7 @@ func (h *handler) GetReport(c *gin.Context) {
 		}
 
 		// Resolve which Practitioner this Accountant is working for
-		resolvedID, err := h.invitationSvc.GetPractitionerLinkedToAccountant(c.Request.Context(), actorID)
+		resolvedID, err := h.invitationSvc.GetFirstPractitionerLinkedToAccountant(c.Request.Context(), actorID)
 		if err != nil {
 			response.Error(c, http.StatusForbidden, fmt.Errorf("accountant not linked to a practitioner: %w", err))
 			return
