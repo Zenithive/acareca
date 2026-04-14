@@ -25,4 +25,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h *Handler) {
 	billingDashboard.GET("/platform-revenue", h.GetPlatformRevenue)
 	billingDashboard.GET("/plan-distribution", h.GetPlanDistribution)
 	billingDashboard.GET("/subscriptions", h.ListSubscriptionRecords)
+	billingDashboard.GET("/dashboard", h.GetBillingDashboard)
 }

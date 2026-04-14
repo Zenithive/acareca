@@ -251,6 +251,14 @@ type TimePoint struct {
 
 // Billing Dashboard Models
 
+// RsBillingDashboard is the single combined response for the admin billing page.
+type RsBillingDashboard struct {
+	Overview         *RsSubscriptionMetrics  `json:"overview"`
+	Records          []*RsSubscriptionRecord `json:"records"`
+	RecordsTotal     int                     `json:"records_total"`
+	PlanDistribution *RsPlanDistribution     `json:"plan_distribution"`
+}
+
 type RsPlatformRevenue struct {
 	Meta   RevenueMeta    `json:"meta"`
 	Series []RevenuePoint `json:"series"`
