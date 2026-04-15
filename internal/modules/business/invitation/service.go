@@ -36,8 +36,9 @@ type Service interface {
 	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
-	GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error)
+	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
+	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
+	GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID *uuid.UUID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error)
 	ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*util.RsList, error)
 
 	ListAccountantPermission(ctx context.Context, accId uuid.UUID) (*[]Permissions, int, error)
@@ -631,8 +632,12 @@ func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, 
 	return s.repo.DeletePermissionsByEntityTx(ctx, tx, entityID)
 }
 
-func (s *service) GetPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
-	return s.repo.GetPractitionerLinkedToAccountant(ctx, accountantID)
+func (s *service) IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error) {
+	return s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, accountantID)
+}
+
+func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
+	return s.repo.GetFirstPractitionerLinkedToAccountant(ctx, accountantID)
 }
 
 func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, f *Filter) (*util.RsList, error) {
@@ -682,17 +687,20 @@ func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, 
 
 }
 
-func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error) {
-	if aID == uuid.Nil {
+func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID *uuid.UUID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error) {
+	if aID == nil || *aID == uuid.Nil {
 		// If AccountantID is missing, check the invitation by Email instead
 		inv, err := s.repo.GetByEmail(ctx, email)
 		if err != nil || inv == nil || inv.PractitionerID != pID {
 			return nil, ErrUnauthorizedAssociation
 		}
 	} else {
-		// Standard check for registered users
-		linkedPracID, err := s.repo.GetPractitionerLinkedToAccountant(ctx, aID)
-		if err != nil || linkedPracID != pID {
+		// Standard check for registered users - verify this specific practitioner-accountant relationship exists
+		isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, pID, *aID)
+		if err != nil {
+			return nil, ErrUnauthorizedAssociation
+		}
+		if !isLinked {
 			return nil, ErrUnauthorizedAssociation
 		}
 	}
@@ -700,9 +708,9 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 	// Capture state BEFORE update for Audit Logs
 	var oldPerms *Permissions
 
-	if aID != uuid.Nil {
+	if aID != nil && *aID != uuid.Nil {
 		// Registered user: Get by ID
-		oldPerms, _ = s.repo.GetPermissions(ctx, aID, eID)
+		oldPerms, _ = s.repo.GetPermissions(ctx, *aID, eID)
 	} else if email != "" {
 		// Invited user: Get one permission by email/entity
 		oldPerms, _ = s.repo.GetPermissionsByEmailAndEntity(ctx, pID, email, eID)
@@ -711,7 +719,7 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 	// Check if this is an "Empty" permission set
 	if !perms.All && !perms.Read && !perms.Create && !perms.Update && !perms.Delete {
 		// We return nil for the *Permissions and the error from the repo
-		err := s.repo.DeletePermission(ctx, pID, eID, &aID, email)
+		err := s.repo.DeletePermission(ctx, pID, eID, aID, email)
 		return nil, err
 	}
 
@@ -719,7 +727,7 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID, aID, eID uuid.
 	finalDisplay := s.processPermissions(perms)
 
 	// Save to DB and return finalDisplay
-	if err := s.repo.GrantEntityPermission(ctx, pID, &aID, &email, eID, eType, finalDisplay); err != nil {
+	if err := s.repo.GrantEntityPermission(ctx, pID, aID, &email, eID, eType, finalDisplay); err != nil {
 		return nil, err
 	}
 

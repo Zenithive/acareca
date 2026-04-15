@@ -4846,10 +4846,10 @@ paths:
         type: string
       - description: Sort direction
         enum:
-        - asc
-        - desc
+        - ASC
+        - DESC
         in: query
-        name: sort_order
+        name: order_by
         type: string
       - description: Page size
         in: query

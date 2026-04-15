@@ -112,7 +112,7 @@ type RsFormWithFields struct {
 
 type Filter struct {
 	PractitionerID *string      `form:"practitioner_id"`
-	ClinicID       []*uuid.UUID `form:"clinic_ids"`
+	ClinicID       []*uuid.UUID `form:"clinicIds"`
 	FormName       *string      `form:"form_name"`
 	Method         *string      `form:"method"`
 	Status         *string      `form:"status"`

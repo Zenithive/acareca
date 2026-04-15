@@ -263,7 +263,7 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Param status     query string false "Filter by status" Enums(DRAFT, PUBLISHED, ARCHIVED)
 // @Param search     query string false "General search keyword"
 // @Param sort_by    query string false "Field to sort by" Enums(status, method, clinic_id, created_at)
-// @Param sort_order query string false "Sort direction" Enums(asc, desc)
+// @Param order_by query string false "Sort direction" Enums(ASC, DESC)
 // @Param limit      query int    false "Page size"
 // @Param offset     query int    false "Page offset"
 // @Success 200 {object} util.RsList

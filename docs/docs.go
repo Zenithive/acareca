@@ -4518,12 +4518,12 @@ const docTemplate = `{
                     },
                     {
                         "enum": [
-                            "asc",
-                            "desc"
+                            "ASC",
+                            "DESC"
                         ],
                         "type": "string",
                         "description": "Sort direction",
-                        "name": "sort_order",
+                        "name": "order_by",
                         "in": "query"
                     },
                     {
