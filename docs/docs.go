@@ -458,6 +458,93 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/analytics/billing/dashboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns overview metrics, subscription records, and plan distribution in a single call",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get billing dashboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search subscription records by practitioner name or email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter records by plan name",
+                        "name": "plan_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter records by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records per page (default: 20)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsBillingDashboard"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/analytics/billing/plan-distribution": {
             "get": {
                 "security": [
@@ -4462,12 +4549,8 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "Filter by clinic ID (UUID)",
+                        "type": "string",
+                        "description": "Filter by clinic IDs (UUID)",
                         "name": "clinic_ids",
                         "in": "query"
                     },
@@ -7222,6 +7305,17 @@ const docTemplate = `{
                 },
                 "wau": {
                     "type": "integer"
+                }
+            }
+        },
+        "analytics.RsBillingDashboard": {
+            "type": "object",
+            "properties": {
+                "overview": {
+                    "$ref": "#/definitions/analytics.RsSubscriptionMetrics"
+                },
+                "plan_distribution": {
+                    "$ref": "#/definitions/analytics.RsPlanDistribution"
                 }
             }
         },

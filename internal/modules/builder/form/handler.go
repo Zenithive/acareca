@@ -257,7 +257,7 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Tags form
 // @Produce json
 // @Param practitioner_id  query string false "Filter by practitioner ID (UUID)"
-// @Param clinic_ids  query []string false "Filter by clinic ID (UUID)"
+// @Param clinic_ids  query string false "Filter by clinic IDs (UUID)"
 // @Param form_name  query string false "Filter by form name (partial match)"
 // @Param method     query string false "Filter by method" Enums(INDEPENDENT_CONTRACTOR, SERVICE_FEE)
 // @Param status     query string false "Filter by status" Enums(DRAFT, PUBLISHED, ARCHIVED)

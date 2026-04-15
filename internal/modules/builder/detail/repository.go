@@ -94,7 +94,7 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 		"name":        "f.name",
 		"status":      "f.status",
 		"method":      "f.method",
-		"clinic_id":   "f.clinic_id",
+		"clinic_ids":  "f.clinic_id",
 		"created_at":  "f.created_at",
 		"updated_at":  "f.updated_at",
 		"clinic_name": "f.name",
@@ -142,7 +142,7 @@ func (r *Repository) CountForm(ctx context.Context, filter common.Filter, actorI
 
 	// Use the same column mappings as ListForm
 	allowedColumns := map[string]string{
-		"status": "f.status", "method": "f.method", "clinic_id": "f.clinic_id",
+		"status": "f.status", "method": "f.method", "clinic_ids": "f.clinic_id",
 	}
 	searchCols := []string{"f.name", "f.description"}
 
