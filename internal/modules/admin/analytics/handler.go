@@ -409,6 +409,42 @@ func validateResourceAnalyticsFilter(filter *ResourceAnalyticsFilter) error {
 	return sharedAnalytics.ValidateDateRange(from, to)
 }
 
+// @Summary Get billing dashboard
+// @Description Returns overview metrics, subscription records, and plan distribution in a single call
+// @Tags admin-dashboard
+// @Produce json
+// @Param from query string false "Start date (YYYY-MM-DD)"
+// @Param to query string false "End date (YYYY-MM-DD)"
+// @Param bucket query string false "Time bucket: day, week, month"
+// @Param search query string false "Search subscription records by practitioner name or email"
+// @Param plan_name query string false "Filter records by plan name"
+// @Param status query string false "Filter records by status"
+// @Param limit query int false "Records per page (default: 20)"
+// @Param offset query int false "Records to skip (default: 0)"
+// @Success 200 {object} RsBillingDashboard
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /admin/analytics/billing/dashboard [get]
+func (h *Handler) GetBillingDashboard(c *gin.Context) {
+	var dateFilter DateRangeFilter
+	if err := c.ShouldBindQuery(&dateFilter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := validateDateRangeFilter(&dateFilter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.GetBillingDashboard(c.Request.Context(), &dateFilter)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, result, "Billing dashboard fetched successfully")
+}
+
 func validateSubscriptionRecordFilter(filter *SubscriptionRecordFilter) error {
 	if filter == nil {
 		return nil

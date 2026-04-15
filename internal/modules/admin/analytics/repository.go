@@ -123,74 +123,56 @@ func (r *repository) GetUserGrowth(ctx context.Context, startDate, endDate time.
 
 // GetSubscriptionMetrics retrieves subscription distribution and MRR
 func (r *repository) GetSubscriptionMetrics(ctx context.Context) (*RsSubscriptionMetrics, error) {
-	var result RsSubscriptionMetrics
-
-	// Total active subscriptions and MRR
+	// Single query: active totals + MRR + churn in one shot
 	query := `
-		SELECT 
-			COUNT(*) as total_active,
-			SUM(s.price / s.duration_days * 30) as mrr
-		FROM tbl_practitioner_subscription ps
-		JOIN tbl_subscription s ON ps.subscription_id = s.id
-		WHERE ps.status = 'ACTIVE'
-			AND ps.deleted_at IS NULL
-			AND s.deleted_at IS NULL
-	`
-	var totalActive int
-	var mrr *float64
-	err := r.db.QueryRowContext(ctx, query).Scan(&totalActive, &mrr)
-	if err != nil {
-		return nil, fmt.Errorf("get subscription totals: %w", err)
-	}
-
-	result.TotalActiveSubscriptions = totalActive
-	if mrr != nil {
-		result.MRR = *mrr
-		result.ARR = *mrr * 12
-	}
-
-	// ARPU
-	if totalActive > 0 && mrr != nil {
-		result.ARPU = *mrr / float64(totalActive)
-	}
-
-	// Churn rate (cancelled in last 30 days / total active 30 days ago)
-	churnQuery := `
-		WITH active_30_days_ago AS (
-			SELECT COUNT(*) as count
-			FROM tbl_practitioner_subscription
-			WHERE status = 'ACTIVE'
-				AND created_at <= NOW() - INTERVAL '30 days'
-				AND deleted_at IS NULL
+		WITH active AS (
+			SELECT ps.id, s.price, s.duration_days
+			FROM tbl_practitioner_subscription ps
+			JOIN tbl_subscription s ON ps.subscription_id = s.id
+			WHERE ps.status = 'ACTIVE' AND ps.deleted_at IS NULL AND s.deleted_at IS NULL
 		),
-		churned_last_30 AS (
-			SELECT COUNT(*) as count
+		churn AS (
+			SELECT
+				COUNT(*) FILTER (WHERE status = 'ACTIVE' AND created_at <= NOW() - INTERVAL '30 days') AS active_30_ago,
+				COUNT(*) FILTER (WHERE status IN ('CANCELLED','EXPIRED') AND updated_at >= NOW() - INTERVAL '30 days') AS churned_30
 			FROM tbl_practitioner_subscription
-			WHERE status IN ('CANCELLED', 'EXPIRED')
-				AND updated_at >= NOW() - INTERVAL '30 days'
-				AND deleted_at IS NULL
+			WHERE deleted_at IS NULL
 		)
-		SELECT 
-			CASE WHEN a.count > 0 THEN (c.count::float / a.count::float) * 100 ELSE 0 END as churn_rate
-		FROM active_30_days_ago a, churned_last_30 c
+		SELECT
+			(SELECT COUNT(*) FROM active) AS total_active,
+			(SELECT COALESCE(SUM(price / NULLIF(duration_days,0) * 30), 0) FROM active) AS mrr,
+			CASE WHEN c.active_30_ago > 0 THEN (c.churned_30::float / c.active_30_ago::float) * 100 ELSE 0 END AS churn_rate
+		FROM churn c
 	`
-	err = r.db.GetContext(ctx, &result.ChurnRate, churnQuery)
-	if err != nil {
-		return nil, fmt.Errorf("get churn rate: %w", err)
+	var row struct {
+		TotalActive int     `db:"total_active"`
+		MRR         float64 `db:"mrr"`
+		ChurnRate   float64 `db:"churn_rate"`
+	}
+	if err := r.db.QueryRowxContext(ctx, query).StructScan(&row); err != nil {
+		return nil, fmt.Errorf("get subscription metrics: %w", err)
 	}
 
-	// Distribution by plan
+	result := RsSubscriptionMetrics{
+		TotalActiveSubscriptions: row.TotalActive,
+		MRR:                      row.MRR,
+		ARR:                      row.MRR * 12,
+		ChurnRate:                row.ChurnRate,
+	}
+	if row.TotalActive > 0 {
+		result.ARPU = row.MRR / float64(row.TotalActive)
+	}
+
+	// Distribution by plan — single query
 	distQuery := `
-		SELECT 
-			s.id as plan_id,
-			s.name as plan_name,
-			COUNT(*) as count,
-			SUM(s.price / s.duration_days * 30) as revenue
+		SELECT
+			s.id AS plan_id,
+			s.name AS plan_name,
+			COUNT(*) AS count,
+			SUM(s.price / NULLIF(s.duration_days,0) * 30) AS revenue
 		FROM tbl_practitioner_subscription ps
 		JOIN tbl_subscription s ON ps.subscription_id = s.id
-		WHERE ps.status = 'ACTIVE'
-			AND ps.deleted_at IS NULL
-			AND s.deleted_at IS NULL
+		WHERE ps.status = 'ACTIVE' AND ps.deleted_at IS NULL AND s.deleted_at IS NULL
 		GROUP BY s.id, s.name
 		ORDER BY count DESC
 	`
@@ -202,12 +184,11 @@ func (r *repository) GetSubscriptionMetrics(ctx context.Context) (*RsSubscriptio
 
 	for rows.Next() {
 		var dist SubscriptionDistribution
-		err := rows.Scan(&dist.PlanID, &dist.PlanName, &dist.Count, &dist.Revenue)
-		if err != nil {
+		if err := rows.Scan(&dist.PlanID, &dist.PlanName, &dist.Count, &dist.Revenue); err != nil {
 			return nil, fmt.Errorf("scan distribution: %w", err)
 		}
-		if totalActive > 0 {
-			dist.Percentage = (float64(dist.Count) / float64(totalActive)) * 100
+		if row.TotalActive > 0 {
+			dist.Percentage = (float64(dist.Count) / float64(row.TotalActive)) * 100
 		}
 		result.Distribution = append(result.Distribution, dist)
 	}
@@ -889,63 +870,86 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 		baseQuery += " AND " + strings.Join(conditions, " AND ")
 	}
 
-	// Count query
-	countQuery := "SELECT COUNT(*) " + baseQuery
-	var total int
-	err := r.db.GetContext(ctx, &total, countQuery, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count subscriptions: %w", err)
+	// Run count and list queries in parallel
+	type countResult struct {
+		total int
+		err   error
+	}
+	type listResult struct {
+		rows []*RsSubscriptionRecord
+		err  error
 	}
 
-	// List query
-	selectQuery := `
-		SELECT 
-			ps.id as subscription_id,
-			p.id as practitioner_id,
-			CONCAT(u.first_name, ' ', u.last_name) as practitioner_name,
-			u.email as practitioner_email,
-			s.id as plan_id,
-			s.name as plan_name,
-			ps.status,
-			s.price as amount,
-			'AUD' as currency,
-			ps.start_date,
-			ps.end_date,
-			ps.created_at
-	` + baseQuery + fmt.Sprintf(" ORDER BY ps.%s %s LIMIT $%d OFFSET $%d", sortBy, orderBy, argCount, argCount+1)
+	countCh := make(chan countResult, 1)
+	listCh := make(chan listResult, 1)
 
-	args = append(args, limit, offset)
+	go func() {
+		var total int
+		err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) "+baseQuery, args...)
+		countCh <- countResult{total, err}
+	}()
 
-	rows, err := r.db.QueryxContext(ctx, selectQuery, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list subscriptions: %w", err)
-	}
-	defer rows.Close()
+	go func() {
+		selectQuery := `
+			SELECT 
+				ps.id as subscription_id,
+				p.id as practitioner_id,
+				CONCAT(u.first_name, ' ', u.last_name) as practitioner_name,
+				u.email as practitioner_email,
+				s.id as plan_id,
+				s.name as plan_name,
+				ps.status,
+				s.price as amount,
+				'AUD' as currency,
+				ps.start_date,
+				ps.end_date,
+				ps.created_at
+		` + baseQuery + fmt.Sprintf(" ORDER BY ps.%s %s LIMIT $%d OFFSET $%d", sortBy, orderBy, argCount, argCount+1)
 
-	var results []*RsSubscriptionRecord
-	for rows.Next() {
-		var record RsSubscriptionRecord
-		err := rows.Scan(
-			&record.SubscriptionID,
-			&record.PractitionerID,
-			&record.PractitionerName,
-			&record.PractitionerEmail,
-			&record.PlanID,
-			&record.PlanName,
-			&record.Status,
-			&record.Amount,
-			&record.Currency,
-			&record.StartDate,
-			&record.EndDate,
-			&record.CreatedAt,
-		)
+		listArgs := append(args, limit, offset)
+		rows, err := r.db.QueryxContext(ctx, selectQuery, listArgs...)
 		if err != nil {
-			return nil, 0, fmt.Errorf("scan subscription: %w", err)
+			listCh <- listResult{nil, fmt.Errorf("list subscriptions: %w", err)}
+			return
 		}
-		results = append(results, &record)
+		defer rows.Close()
+
+		var results []*RsSubscriptionRecord
+		for rows.Next() {
+			var record RsSubscriptionRecord
+			err := rows.Scan(
+				&record.SubscriptionID,
+				&record.PractitionerID,
+				&record.PractitionerName,
+				&record.PractitionerEmail,
+				&record.PlanID,
+				&record.PlanName,
+				&record.Status,
+				&record.Amount,
+				&record.Currency,
+				&record.StartDate,
+				&record.EndDate,
+				&record.CreatedAt,
+			)
+			if err != nil {
+				listCh <- listResult{nil, fmt.Errorf("scan subscription: %w", err)}
+				return
+			}
+			results = append(results, &record)
+		}
+		listCh <- listResult{results, nil}
+	}()
+
+	c := <-countCh
+	if c.err != nil {
+		return nil, 0, fmt.Errorf("count subscriptions: %w", c.err)
+	}
+	l := <-listCh
+	if l.err != nil {
+		return nil, 0, l.err
 	}
 
-	return results, total, nil
+	return l.rows, c.total, nil
 }
 
 // GetPlanDistribution retrieves plan distribution with historical data
@@ -958,85 +962,86 @@ func (r *repository) GetPlanDistribution(ctx context.Context, filter *DateRangeF
 		Meta: RevenueMeta{From: from, To: to, Bucket: bucket, Currency: sharedAnalytics.DefaultCurrency},
 	}
 
-	// Get plans with counts
-	plansQuery := `
-		SELECT 
-			s.id,
-			s.name,
-			COUNT(*) as total_subscriptions,
-			COUNT(CASE WHEN ps.status = 'ACTIVE' THEN 1 END) as active_subscriptions
-		FROM tbl_subscription s
-		LEFT JOIN tbl_practitioner_subscription ps ON ps.subscription_id = s.id AND ps.deleted_at IS NULL
-		WHERE s.deleted_at IS NULL
-		GROUP BY s.id, s.name
-		ORDER BY total_subscriptions DESC
+	// Single query: plan counts + timeseries in one pass
+	query := `
+		SELECT
+			s.id AS plan_id,
+			s.name AS plan_name,
+			COUNT(*) OVER (PARTITION BY s.id) AS total_subscriptions,
+			COUNT(*) FILTER (WHERE ps.status = 'ACTIVE') OVER (PARTITION BY s.id) AS active_subscriptions,
+			DATE_TRUNC($1, ps.created_at) AS ts,
+			SUM(s.price) OVER (PARTITION BY s.id, DATE_TRUNC($1, ps.created_at)) AS revenue,
+			COUNT(*) OVER (PARTITION BY s.id, DATE_TRUNC($1, ps.created_at)) AS new_subscriptions,
+			COUNT(*) FILTER (WHERE ps.status = 'ACTIVE') OVER (PARTITION BY s.id, DATE_TRUNC($1, ps.created_at)) AS active_in_bucket
+		FROM tbl_practitioner_subscription ps
+		JOIN tbl_subscription s ON ps.subscription_id = s.id
+		WHERE ps.created_at BETWEEN $2 AND $3
+		  AND ps.deleted_at IS NULL
+		  AND s.deleted_at IS NULL
+		ORDER BY s.id, ts
 	`
-	rows, err := r.db.QueryxContext(ctx, plansQuery)
+	rows, err := r.db.QueryxContext(ctx, query, dateTrunc, from, to)
 	if err != nil {
-		return nil, fmt.Errorf("get plans: %w", err)
+		return nil, fmt.Errorf("get plan distribution: %w", err)
 	}
 	defer rows.Close()
 
-	var planIDs []int
-	planMap := make(map[int]*PlanDistribution)
+	type planKey struct {
+		id   int
+		name string
+	}
+	type bucketKey struct {
+		planID int
+		ts     string
+	}
+
+	planOrder := []planKey{}
+	planSeen := map[int]bool{}
+	planCounts := map[int]PlanCounts{}
+	bucketSeen := map[bucketKey]bool{}
+	planSeries := map[int][]PlanDistributionPoint{}
+
 	for rows.Next() {
 		var planID int
 		var planName string
 		var total, active int
-		if err := rows.Scan(&planID, &planName, &total, &active); err != nil {
-			return nil, fmt.Errorf("scan plan: %w", err)
-		}
-		planIDs = append(planIDs, planID)
-		planMap[planID] = &PlanDistribution{
-			PlanID:   fmt.Sprintf("%d", planID),
-			PlanName: planName,
-			Counts:   PlanCounts{TotalSubscriptions: total, ActiveSubscriptions: active},
-			Series:   []PlanDistributionPoint{},
-		}
-	}
-
-	// Get timeseries data for each plan
-	timeseriesQuery := `
-		SELECT 
-			s.id as plan_id,
-			DATE_TRUNC($1, ps.created_at) as ts,
-			SUM(s.price) as revenue,
-			COUNT(CASE WHEN DATE(ps.created_at) = DATE(DATE_TRUNC($1, ps.created_at)) THEN 1 END) as new_subscriptions,
-			COUNT(CASE WHEN ps.status = 'ACTIVE' THEN 1 END) as active_subscriptions
-		FROM tbl_practitioner_subscription ps
-		JOIN tbl_subscription s ON ps.subscription_id = s.id
-		WHERE ps.created_at BETWEEN $2 AND $3
-			AND ps.deleted_at IS NULL
-		GROUP BY s.id, DATE_TRUNC($1, ps.created_at)
-		ORDER BY s.id, ts
-	`
-	tsRows, err := r.db.QueryxContext(ctx, timeseriesQuery, dateTrunc, from, to)
-	if err != nil {
-		return nil, fmt.Errorf("get timeseries: %w", err)
-	}
-	defer tsRows.Close()
-
-	for tsRows.Next() {
-		var planID int
 		var ts time.Time
 		var revenue float64
-		var newSubs, activeSubs int
-		if err := tsRows.Scan(&planID, &ts, &revenue, &newSubs, &activeSubs); err != nil {
-			return nil, fmt.Errorf("scan timeseries: %w", err)
+		var newSubs, activeBucket int
+
+		if err := rows.Scan(&planID, &planName, &total, &active, &ts, &revenue, &newSubs, &activeBucket); err != nil {
+			return nil, fmt.Errorf("scan plan distribution: %w", err)
 		}
 
-		if plan, ok := planMap[planID]; ok {
-			plan.Series = append(plan.Series, PlanDistributionPoint{
+		if !planSeen[planID] {
+			planSeen[planID] = true
+			planOrder = append(planOrder, planKey{planID, planName})
+			planCounts[planID] = PlanCounts{TotalSubscriptions: total, ActiveSubscriptions: active}
+		}
+
+		bk := bucketKey{planID, ts.Format(dateFormat)}
+		if !bucketSeen[bk] {
+			bucketSeen[bk] = true
+			planSeries[planID] = append(planSeries[planID], PlanDistributionPoint{
 				Timestamp:           ts.Format(dateFormat),
 				Revenue:             revenue,
 				NewSubscriptions:    newSubs,
-				ActiveSubscriptions: activeSubs,
+				ActiveSubscriptions: activeBucket,
 			})
 		}
 	}
 
-	for _, planID := range planIDs {
-		result.Plans = append(result.Plans, *planMap[planID])
+	for _, pk := range planOrder {
+		series := planSeries[pk.id]
+		if series == nil {
+			series = []PlanDistributionPoint{}
+		}
+		result.Plans = append(result.Plans, PlanDistribution{
+			PlanID:   fmt.Sprintf("%d", pk.id),
+			PlanName: pk.name,
+			Counts:   planCounts[pk.id],
+			Series:   series,
+		})
 	}
 
 	return &result, nil
@@ -1125,7 +1130,7 @@ func buildFilterConditions(filter *SubscriptionRecordFilter) ([]string, []interf
 	}
 
 	if filter.Search != nil && *filter.Search != "" {
-		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR CONCAT(u.first_name, ' ', u.last_name) ILIKE $%d)", argCount, argCount))
+		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR u.first_name ILIKE $%d OR u.last_name ILIKE $%d)", argCount, argCount, argCount))
 		args = append(args, "%"+*filter.Search+"%")
 		argCount++
 	}

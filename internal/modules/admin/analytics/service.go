@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,7 @@ type Service interface {
 	GetActiveUsers(ctx context.Context, filter *Filter) (*RsActiveUsers, error)
 	GetPractitionerDetails(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerDetail, error)
 	ListPractitionersWithDetails(ctx context.Context, filter *PractitionerFilter) (*util.RsList, error)
-	
+
 	// Dashboard APIs
 	GetPractitionerOverview(ctx context.Context) (*RsPractitionerOverview, error)
 	GetResourceAnalytics(ctx context.Context, filter *ResourceAnalyticsFilter) (*RsResourceAnalytics, error)
@@ -23,6 +24,7 @@ type Service interface {
 	GetPlatformRevenue(ctx context.Context, filter *DateRangeFilter) (*RsPlatformRevenue, error)
 	ListSubscriptionRecords(ctx context.Context, filter *SubscriptionRecordFilter) (*util.RsList, error)
 	GetPlanDistribution(ctx context.Context, filter *DateRangeFilter) (*RsPlanDistribution, error)
+	GetBillingDashboard(ctx context.Context, filter *DateRangeFilter) (*RsBillingDashboard, error)
 }
 
 type service struct {
@@ -134,4 +136,41 @@ func (s *service) ListSubscriptionRecords(ctx context.Context, filter *Subscript
 
 func (s *service) GetPlanDistribution(ctx context.Context, filter *DateRangeFilter) (*RsPlanDistribution, error) {
 	return s.repo.GetPlanDistribution(ctx, filter)
+}
+
+func (s *service) GetBillingDashboard(ctx context.Context, filter *DateRangeFilter) (*RsBillingDashboard, error) {
+	type overviewResult struct {
+		data *RsSubscriptionMetrics
+		err  error
+	}
+	type distResult struct {
+		data *RsPlanDistribution
+		err  error
+	}
+
+	overviewCh := make(chan overviewResult, 1)
+	distCh := make(chan distResult, 1)
+
+	go func() {
+		d, err := s.repo.GetSubscriptionMetrics(ctx)
+		overviewCh <- overviewResult{d, err}
+	}()
+	go func() {
+		d, err := s.repo.GetPlanDistribution(ctx, filter)
+		distCh <- distResult{d, err}
+	}()
+
+	o := <-overviewCh
+	if o.err != nil {
+		return nil, fmt.Errorf("billing overview: %w", o.err)
+	}
+	d := <-distCh
+	if d.err != nil {
+		return nil, fmt.Errorf("plan distribution: %w", d.err)
+	}
+
+	return &RsBillingDashboard{
+		Overview:         o.data,
+		PlanDistribution: d.data,
+	}, nil
 }
