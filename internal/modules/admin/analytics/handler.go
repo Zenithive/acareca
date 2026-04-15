@@ -293,17 +293,17 @@ func (h *Handler) GetPlatformRevenue(c *gin.Context) {
 }
 
 // @Summary List subscription records
-// @Description Returns paginated and filtered list of subscription records
+// @Description Returns paginated and filtered list of subscription records. Date filters apply to subscription creation date (created_at). Status values are case-insensitive and must be one of: ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED.
 // @Tags admin-dashboard
 // @Produce json
-// @Param search query string false "Search by practitioner name or email"
-// @Param plan_name query string false "Filter by plan name"
-// @Param status query string false "Filter by status"
-// @Param from query string false "Filter by start date (YYYY-MM-DD)"
-// @Param to query string false "Filter by end date (YYYY-MM-DD)"
+// @Param search query string false "Search by practitioner name or email (max 100 chars)"
+// @Param plan_name query string false "Filter by plan name (partial match, max 100 chars)"
+// @Param status query string false "Filter by status (ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED)"
+// @Param from query string false "Filter by creation date start (YYYY-MM-DD, includes full day)"
+// @Param to query string false "Filter by creation date end (YYYY-MM-DD, includes full day)"
 // @Param limit query int false "Records per page (default: 20, max: 100)"
 // @Param offset query int false "Records to skip (default: 0)"
-// @Param sort_by query string false "Sort field: created_at, start_date, end_date (default: created_at)"
+// @Param sort_by query string false "Sort field: created_at, start_date, end_date, status (default: created_at)"
 // @Param order_by query string false "Sort order: ASC or DESC (default: DESC)"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError

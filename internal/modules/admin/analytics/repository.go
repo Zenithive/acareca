@@ -853,8 +853,25 @@ func (r *repository) GetPlatformRevenue(ctx context.Context, filter *DateRangeFi
 
 // ListSubscriptionRecords retrieves filtered subscription records
 func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *SubscriptionRecordFilter) ([]*RsSubscriptionRecord, int, error) {
+	// Defensive validation at repository level
+	if err := validateSubscriptionRecordFilterAtRepo(filter); err != nil {
+		return nil, 0, fmt.Errorf("invalid filter: %w", err)
+	}
+
 	limit, offset := sharedAnalytics.ParsePaginationParams(filter.Limit, filter.Offset)
 	sortBy, orderBy := sharedAnalytics.ParseSortParams(filter.SortBy, filter.OrderBy, "created_at", "DESC")
+
+	// Validate sort parameters to prevent SQL injection using shared function
+	validSortFields := []string{"created_at", "start_date", "end_date", "status"}
+	validatedSortBy, err := sharedAnalytics.ValidateSortField(sortBy, validSortFields)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid sort field: %w", err)
+	}
+
+	validatedOrderBy, err := sharedAnalytics.ValidateOrderBy(orderBy)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid order: %w", err)
+	}
 
 	baseQuery := `
 		FROM tbl_practitioner_subscription ps
@@ -864,7 +881,10 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 		WHERE ps.deleted_at IS NULL
 	`
 
-	conditions, args, argCount := buildFilterConditions(filter)
+	conditions, args, argCount, err := buildFilterConditions(filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("build filter conditions: %w", err)
+	}
 
 	if len(conditions) > 0 {
 		baseQuery += " AND " + strings.Join(conditions, " AND ")
@@ -904,7 +924,7 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 				ps.start_date,
 				ps.end_date,
 				ps.created_at
-		` + baseQuery + fmt.Sprintf(" ORDER BY ps.%s %s LIMIT $%d OFFSET $%d", sortBy, orderBy, argCount, argCount+1)
+		` + baseQuery + fmt.Sprintf(" ORDER BY ps.%s %s LIMIT $%d OFFSET $%d", validatedSortBy, validatedOrderBy, argCount, argCount+1)
 
 		listArgs := append(args, limit, offset)
 		rows, err := r.db.QueryxContext(ctx, selectQuery, listArgs...)
@@ -937,6 +957,13 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 			}
 			results = append(results, &record)
 		}
+
+		// Check for iteration errors
+		if err := rows.Err(); err != nil {
+			listCh <- listResult{nil, fmt.Errorf("iterate rows: %w", err)}
+			return
+		}
+
 		listCh <- listResult{results, nil}
 	}()
 
@@ -950,6 +977,78 @@ func (r *repository) ListSubscriptionRecords(ctx context.Context, filter *Subscr
 	}
 
 	return l.rows, c.total, nil
+}
+
+// validateSubscriptionRecordFilterAtRepo performs defensive validation at repository level
+func validateSubscriptionRecordFilterAtRepo(filter *SubscriptionRecordFilter) error {
+	if filter == nil {
+		return nil
+	}
+
+	// Validate date format and range
+	var fromDate, toDate time.Time
+	var err error
+
+	if filter.From != nil && *filter.From != "" {
+		fromDate, err = time.Parse("2006-01-02", *filter.From)
+		if err != nil {
+			return fmt.Errorf("invalid from date format: %w", err)
+		}
+	}
+
+	if filter.To != nil && *filter.To != "" {
+		toDate, err = time.Parse("2006-01-02", *filter.To)
+		if err != nil {
+			return fmt.Errorf("invalid to date format: %w", err)
+		}
+	}
+
+	// Validate date range
+	if filter.From != nil && *filter.From != "" && filter.To != nil && *filter.To != "" {
+		if fromDate.After(toDate) {
+			return fmt.Errorf("from date must be before or equal to to date")
+		}
+
+		// Check for unreasonably large ranges (> 2 years)
+		if toDate.Sub(fromDate) > 730*24*time.Hour {
+			return fmt.Errorf("date range cannot exceed 2 years")
+		}
+	}
+
+	// Validate dates are not too far in the future
+	now := time.Now().UTC()
+	tomorrow := now.AddDate(0, 0, 1)
+
+	if filter.From != nil && *filter.From != "" && fromDate.After(tomorrow) {
+		return fmt.Errorf("from date cannot be in the future")
+	}
+
+	if filter.To != nil && *filter.To != "" && toDate.After(tomorrow) {
+		return fmt.Errorf("to date cannot be in the future")
+	}
+
+	// Validate status if provided using shared function
+	if filter.Status != nil && *filter.Status != "" {
+		if err := sharedAnalytics.ValidateSubscriptionStatus(*filter.Status); err != nil {
+			return err
+		}
+	}
+
+	// Validate search term length
+	if filter.Search != nil && *filter.Search != "" {
+		if len(*filter.Search) > 100 {
+			return fmt.Errorf("search term too long (max 100 characters)")
+		}
+	}
+
+	// Validate plan name length
+	if filter.PlanName != nil && *filter.PlanName != "" {
+		if len(*filter.PlanName) > 100 {
+			return fmt.Errorf("plan_name filter too long (max 100 characters)")
+		}
+	}
+
+	return nil
 }
 
 // GetPlanDistribution retrieves plan distribution with historical data
@@ -1146,42 +1245,79 @@ func scanRevenue(rows *sqlx.Rows, dateFormat string) ([]RevenuePoint, error) {
 }
 
 // buildFilterConditions builds WHERE conditions from filter
-func buildFilterConditions(filter *SubscriptionRecordFilter) ([]string, []interface{}, int) {
+func buildFilterConditions(filter *SubscriptionRecordFilter) ([]string, []interface{}, int, error) {
 	var conditions []string
 	var args []interface{}
 	argCount := 1
 
 	if filter == nil {
-		return conditions, args, argCount
+		return conditions, args, argCount, nil
 	}
 
+	// Search filter with LIKE pattern escaping
 	if filter.Search != nil && *filter.Search != "" {
-		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR u.first_name ILIKE $%d OR u.last_name ILIKE $%d)", argCount, argCount, argCount))
-		args = append(args, "%"+*filter.Search+"%")
-		argCount++
+		searchTerm := strings.TrimSpace(*filter.Search)
+		if len(searchTerm) > 100 {
+			return nil, nil, 0, fmt.Errorf("search term too long (max 100 characters)")
+		}
+		// Escape LIKE wildcards using shared function
+		searchTerm = sharedAnalytics.EscapeLikePattern(searchTerm)
+		// Use separate placeholders for better query optimization
+		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR u.first_name ILIKE $%d OR u.last_name ILIKE $%d)", argCount, argCount+1, argCount+2))
+		pattern := "%" + searchTerm + "%"
+		args = append(args, pattern, pattern, pattern)
+		argCount += 3
 	}
+
+	// Plan name filter with validation and escaping
 	if filter.PlanName != nil && *filter.PlanName != "" {
+		planName := strings.TrimSpace(*filter.PlanName)
+		if len(planName) > 100 {
+			return nil, nil, 0, fmt.Errorf("plan_name filter too long (max 100 characters)")
+		}
+		// Escape LIKE wildcards using shared function
+		planName = sharedAnalytics.EscapeLikePattern(planName)
 		conditions = append(conditions, fmt.Sprintf("s.name ILIKE $%d", argCount))
-		args = append(args, "%"+*filter.PlanName+"%")
-		argCount++
-	}
-	if filter.Status != nil && *filter.Status != "" {
-		conditions = append(conditions, fmt.Sprintf("ps.status = $%d", argCount))
-		args = append(args, *filter.Status)
-		argCount++
-	}
-	if filter.From != nil && *filter.From != "" {
-		conditions = append(conditions, fmt.Sprintf("ps.created_at >= $%d", argCount))
-		args = append(args, *filter.From)
-		argCount++
-	}
-	if filter.To != nil && *filter.To != "" {
-		conditions = append(conditions, fmt.Sprintf("ps.created_at <= $%d", argCount))
-		args = append(args, *filter.To)
+		args = append(args, "%"+planName+"%")
 		argCount++
 	}
 
-	return conditions, args, argCount
+	// Status filter with enum validation using shared function
+	if filter.Status != nil && *filter.Status != "" {
+		if err := sharedAnalytics.ValidateSubscriptionStatus(*filter.Status); err != nil {
+			return nil, nil, 0, err
+		}
+		conditions = append(conditions, fmt.Sprintf("ps.status = $%d", argCount))
+		args = append(args, strings.ToUpper(*filter.Status))
+		argCount++
+	}
+
+	// Date filters with proper timestamp handling
+	if filter.From != nil && *filter.From != "" {
+		fromDate, err := time.Parse("2006-01-02", *filter.From)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("invalid from date format: %w", err)
+		}
+		// Start of day in UTC
+		fromTimestamp := time.Date(fromDate.Year(), fromDate.Month(), fromDate.Day(), 0, 0, 0, 0, time.UTC)
+		conditions = append(conditions, fmt.Sprintf("ps.created_at >= $%d", argCount))
+		args = append(args, fromTimestamp)
+		argCount++
+	}
+
+	if filter.To != nil && *filter.To != "" {
+		toDate, err := time.Parse("2006-01-02", *filter.To)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("invalid to date format: %w", err)
+		}
+		// End of day in UTC (start of next day)
+		toTimestamp := time.Date(toDate.Year(), toDate.Month(), toDate.Day(), 23, 59, 59, 999999999, time.UTC)
+		conditions = append(conditions, fmt.Sprintf("ps.created_at <= $%d", argCount))
+		args = append(args, toTimestamp)
+		argCount++
+	}
+
+	return conditions, args, argCount, nil
 }
 
 // Helper to round to 2 decimal places

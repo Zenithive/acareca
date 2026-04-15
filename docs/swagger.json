@@ -663,7 +663,7 @@
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns paginated and filtered list of subscription records",
+                "description": "Returns paginated and filtered list of subscription records. Date filters apply to subscription creation date (created_at). Status values are case-insensitive and must be one of: ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED.",
                 "produces": [
                     "application/json"
                 ],
@@ -674,31 +674,31 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Search by practitioner name or email",
+                        "description": "Search by practitioner name or email (max 100 chars)",
                         "name": "search",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by plan name",
+                        "description": "Filter by plan name (partial match, max 100 chars)",
                         "name": "plan_name",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by status",
+                        "description": "Filter by status (ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED)",
                         "name": "status",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by start date (YYYY-MM-DD)",
+                        "description": "Filter by creation date start (YYYY-MM-DD, includes full day)",
                         "name": "from",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by end date (YYYY-MM-DD)",
+                        "description": "Filter by creation date end (YYYY-MM-DD, includes full day)",
                         "name": "to",
                         "in": "query"
                     },
@@ -716,7 +716,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "Sort field: created_at, start_date, end_date (default: created_at)",
+                        "description": "Sort field: created_at, start_date, end_date, status (default: created_at)",
                         "name": "sort_by",
                         "in": "query"
                     },

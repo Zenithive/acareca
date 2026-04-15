@@ -281,13 +281,22 @@ type RsSubscriptionRecord struct {
 	PractitionerEmail string    `json:"practitioner_email"`
 	PlanID            string    `json:"plan_id"`
 	PlanName          string    `json:"plan_name"`
-	Status            string    `json:"status"`
+	Status            string    `json:"status"` // Valid values: ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED
 	Amount            float64   `json:"amount"`
 	Currency          string    `json:"currency"`
 	StartDate         time.Time `json:"start_date"`
 	EndDate           time.Time `json:"end_date"`
 	CreatedAt         time.Time `json:"created_at"`
 }
+
+// Subscription status constants matching practitioner_subscription_status enum
+const (
+	SubscriptionStatusActive    = "ACTIVE"
+	SubscriptionStatusPastDue   = "PAST_DUE"
+	SubscriptionStatusCancelled = "CANCELLED"
+	SubscriptionStatusPaused    = "PAUSED"
+	SubscriptionStatusExpired   = "EXPIRED"
+)
 
 type RsPlanDistribution struct {
 	Meta  RevenueMeta        `json:"meta"`
