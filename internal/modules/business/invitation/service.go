@@ -187,6 +187,23 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		UserAgent:   meta.UserAgent,
 	})
 
+	// Audit Log: Combined Permissions Assigned
+	if len(processedPermissions) > 0 {
+		permEntityType := auditctx.EntityPermission
+		s.auditSvc.LogAsync(&audit.LogEntry{
+			PracticeID:  &pIDStr,
+			UserID:      meta.UserID,
+			Module:      auditctx.ModuleBusiness,
+			Action:      auditctx.ActionPermissionAssigned,
+			EntityType:  &permEntityType,
+			EntityID:    &entityID,
+			BeforeState: nil,
+			AfterState:  processedPermissions,
+			IPAddress:   meta.IPAddress,
+			UserAgent:   meta.UserAgent,
+		})
+	}
+
 	return &RsInvitation{
 		ID:           invite.ID,
 		Email:        invite.Email,
@@ -468,7 +485,14 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 }
 
 func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
-	// Accountant path: query by email so SENT/REJECTED (entity_id = NULL) are also visible
+	var baseURL string
+	if s.cfg.Env == "dev" {
+		baseURL = s.cfg.DevUrl
+	} else {
+		baseURL = s.cfg.LocalUrl
+	}
+
+	// Accountant path: query by email with practitioner details
 	if aID != nil {
 		email, err := s.repo.GetEmailByAccountantID(ctx, *aID)
 		if err != nil {
@@ -477,7 +501,7 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 
 		ft := f.MapToFilterAccountant()
 
-		list, err := s.repo.ListByEmail(ctx, email, ft)
+		listRows, err := s.repo.ListForAccountant(ctx, email, ft)
 		if err != nil {
 			return nil, err
 		}
@@ -486,14 +510,21 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 			return nil, err
 		}
 
+		// Add invite links for SENT status
+		for _, row := range listRows {
+			if row.Status == StatusSent {
+				row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+			}
+		}
+
 		var rsList util.RsList
-		rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
+		rsList.MapToList(listRows, total, *ft.Offset, *ft.Limit)
 		return &rsList, nil
 	}
 
-	// Practitioner path: unchanged
+	// Practitioner path: same response structure for consistency
 	ft := f.MapToFilter(pID, nil)
-	list, err := s.repo.List(ctx, ft)
+	listRows, err := s.repo.ListForPractitioner(ctx, *pID, ft)
 	if err != nil {
 		return nil, err
 	}
@@ -502,8 +533,15 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 		return nil, err
 	}
 
+	// Add invite links for SENT status
+	for _, row := range listRows {
+		if row.Status == StatusSent {
+			row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+		}
+	}
+
 	var rsList util.RsList
-	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
+	rsList.MapToList(listRows, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
 }
 

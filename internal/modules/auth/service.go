@@ -498,6 +498,7 @@ func sanitizeUser(u *User) map[string]interface{} {
 		"email":      u.Email,
 		"first_name": u.FirstName,
 		"last_name":  u.LastName,
+		"phone":      u.Phone,
 	}
 }
 

@@ -99,6 +99,6 @@ const (
 
 // Action Constants - Invite Permissions
 const (
-	ActionPermissionAssigned  = "invite.permission_assigned"
+	ActionPermissionAssigned = "invite.permission_assigned"
 	ActionPermissionUpdated  = "invite.permission_updated"
 )

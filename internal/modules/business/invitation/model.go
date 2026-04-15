@@ -78,6 +78,19 @@ type RsInviteProcess struct {
 	IsFound        bool             `json:"is_found"`
 }
 
+// RsInvitationListItem is the standardized response for ListInvitations (both practitioner and accountant)
+type RsInvitationListItem struct {
+	ID                uuid.UUID        `json:"id" db:"id"`
+	PractitionerID    uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
+	PractitionerEmail string           `json:"practitioner_email" db:"practitioner_email"`
+	EntityID          *uuid.UUID       `json:"entity_id" db:"entity_id"`
+	Email             string           `json:"email" db:"email"`
+	Status            InvitationStatus `json:"status" db:"status"`
+	InviteLink        string           `json:"invite_link"`
+	CreatedAt         time.Time        `json:"created_at" db:"created_at"`
+	ExpiresAt         time.Time        `json:"expires_at" db:"expires_at"`
+}
+
 // Internal struct for Repository JOIN result
 type InvitationExtended struct {
 	Invitation
