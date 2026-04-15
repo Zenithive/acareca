@@ -28,7 +28,9 @@ type Repository interface {
 	GetUserDetailsByEmail(ctx context.Context, email string) (*UserDetails, error)
 	CountDailyInvitesByEmail(ctx context.Context, practitionerID uuid.UUID, email string) (int, error)
 	GetEmailByAccountantID(ctx context.Context, accountantID uuid.UUID) (string, error)
-	ListByEmail(ctx context.Context, email string, f common.Filter) ([]*Invitation, error)
+	GetPractitionerEmailByID(ctx context.Context, practitionerID uuid.UUID) (string, error)
+	ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error)
+	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
 	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
@@ -248,11 +250,41 @@ func (r *repository) GetEmailByAccountantID(ctx context.Context, accountantID uu
 	return email, nil
 }
 
-func (r *repository) ListByEmail(ctx context.Context, email string, f common.Filter) ([]*Invitation, error) {
-	query := `SELECT id, practitioner_id, entity_id, email, status, created_at, expires_at 
-	          FROM tbl_invitation WHERE email = $1 AND status::text != $2`
+func (r *repository) GetPractitionerEmailByID(ctx context.Context, practitionerID uuid.UUID) (string, error) {
+	var email string
+	query := `
+		SELECT u.email FROM tbl_practitioner p
+		JOIN tbl_user u ON p.user_id = u.id
+		WHERE p.id = $1 AND p.deleted_at IS NULL`
+	if err := r.db.GetContext(ctx, &email, query, practitionerID); err != nil {
+		return "", fmt.Errorf("get email by practitioner id: %w", err)
+	}
+	return email, nil
+}
 
-	args := []interface{}{email, string(StatusResent)}
+func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error) {
+	base := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.entity_id, i.email, i.status, i.created_at, i.expires_at
+	         FROM tbl_invitation i
+	         JOIN tbl_practitioner p ON i.practitioner_id = p.id
+	         JOIN tbl_user u ON p.user_id = u.id`
+
+	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
+
+	var list []*RsInvitationListItem
+	if err := r.db.SelectContext(ctx, &list, r.db.Rebind(query), filterArgs...); err != nil {
+		return nil, fmt.Errorf("list invitations for practitioner: %w", err)
+	}
+	return list, nil
+}
+
+func (r *repository) ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error) {
+	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.entity_id, i.email, i.status, i.created_at, i.expires_at
+	          FROM tbl_invitation i
+	          JOIN tbl_practitioner p ON i.practitioner_id = p.id
+	          JOIN tbl_user u ON p.user_id = u.id
+	          WHERE i.email = $1 AND i.status::text != $2`
+
+	args := []interface{}{accountantEmail, string(StatusResent)}
 
 	if f.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *f.Limit)
@@ -261,9 +293,9 @@ func (r *repository) ListByEmail(ctx context.Context, email string, f common.Fil
 		query += fmt.Sprintf(" OFFSET %d", *f.Offset)
 	}
 
-	var list []*Invitation
+	var list []*RsInvitationListItem
 	if err := r.db.SelectContext(ctx, &list, query, args...); err != nil {
-		return nil, fmt.Errorf("list invitations by email: %w", err)
+		return nil, fmt.Errorf("list invitations for accountant: %w", err)
 	}
 	return list, nil
 }
