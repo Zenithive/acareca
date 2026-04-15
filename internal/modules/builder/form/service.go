@@ -559,19 +559,6 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 }
 
 func (s *service) List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
-	// Permission checks are handled by middleware
-	if filter.ClinicIDsRaw != nil {
-		ids := strings.SplitSeq(*filter.ClinicIDsRaw, ",")
-
-		for id := range ids {
-			parsed, err := uuid.Parse(strings.TrimSpace(id))
-			if err != nil {
-				return nil, fmt.Errorf("invalid uuid: %s", id)
-			}
-			filter.ClinicIDs = append(filter.ClinicIDs, &parsed)
-		}
-	}
-
 	// Pass actor info to detail service for data filtering based on ownership/permissions
 	return s.detailSvc.List(ctx, detail.Filter{
 		ClinicIDs: filter.ClinicIDs,

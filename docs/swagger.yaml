@@ -352,6 +352,13 @@ definitions:
       wau:
         type: integer
     type: object
+  analytics.RsBillingDashboard:
+    properties:
+      overview:
+        $ref: '#/definitions/analytics.RsSubscriptionMetrics'
+      plan_distribution:
+        $ref: '#/definitions/analytics.RsPlanDistribution'
+    type: object
   analytics.RsPlanDistribution:
     properties:
       meta:
@@ -2251,6 +2258,63 @@ paths:
       summary: Get daily/weekly/monthly active users
       tags:
       - admin-analytics
+  /admin/analytics/billing/dashboard:
+    get:
+      description: Returns overview metrics, subscription records, and plan distribution
+        in a single call
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      - description: Search subscription records by practitioner name or email
+        in: query
+        name: search
+        type: string
+      - description: Filter records by plan name
+        in: query
+        name: plan_name
+        type: string
+      - description: Filter records by status
+        in: query
+        name: status
+        type: string
+      - description: 'Records per page (default: 20)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsBillingDashboard'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get billing dashboard
+      tags:
+      - admin-dashboard
   /admin/analytics/billing/plan-distribution:
     get:
       description: Returns plan distribution with historical revenue and subscription
@@ -4805,13 +4869,10 @@ paths:
         in: query
         name: practitioner_id
         type: string
-      - collectionFormat: csv
-        description: Filter by clinic ID (UUID)
+      - description: Filter by clinic IDs (UUID)
         in: query
-        items:
-          type: string
         name: clinic_ids
-        type: array
+        type: string
       - description: Filter by form name (partial match)
         in: query
         name: form_name

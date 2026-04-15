@@ -1,6 +1,8 @@
 package detail
 
 import (
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
@@ -11,11 +13,11 @@ const (
 )
 
 type Filter struct {
-	PractitionerID *string      `form:"practitioner_id"`
-	ClinicIDs      []*uuid.UUID `form:"clinic_ids"`
-	FormName       *string      `form:"name"`
-	Method         *string      `form:"method"`
-	Status         *string      `form:"status"`
+	PractitionerID *string `form:"practitioner_id"`
+	ClinicIDs      *string `form:"clinic_ids"`
+	FormName       *string `form:"name"`
+	Method         *string `form:"method"`
+	Status         *string `form:"status"`
 	common.Filter
 }
 
@@ -27,15 +29,21 @@ func (filter *Filter) MapToFilter() common.Filter {
 			filters["practitioner_id"] = id // Pass as uuid.UUID type to common.Filter
 		}
 	}
-	if filter.ClinicIDs != nil {
-		ids := make([]uuid.UUID, 0, len(filter.ClinicIDs))
-		for _, cid := range filter.ClinicIDs {
-			if cid != nil {
-				ids = append(ids, *cid)
+	if filter.ClinicIDs != nil && *filter.ClinicIDs != "" {
+		// Split the string by commas
+		rawIDs := strings.Split(*filter.ClinicIDs, ",")
+		parsedIDs := make([]uuid.UUID, 0, len(rawIDs))
+
+		for _, idStr := range rawIDs {
+			// Trim whitespace and parse each UUID
+			if id, err := uuid.Parse(strings.TrimSpace(idStr)); err == nil {
+				parsedIDs = append(parsedIDs, id)
 			}
 		}
-		if len(ids) > 0 {
-			filters["clinic_ids"] = ids
+
+		if len(parsedIDs) > 0 {
+			// Use "clinic_ids" as the key to match the repository's allowedColumns
+			filters["clinic_ids"] = parsedIDs
 		}
 	}
 	if filter.Status != nil {
