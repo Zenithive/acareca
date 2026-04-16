@@ -6765,6 +6765,61 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/summary/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetches all individual entries/transactions for a specific form ID, including field names, COA details, and tax information.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calculation"
+                ],
+                "summary": "Get form summary by form ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of transactions",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/calculation.RsTransactionRow"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -8070,6 +8125,9 @@ const docTemplate = `{
                 "is_computed": {
                     "type": "boolean"
                 },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
                 "label": {
                     "type": "string"
                 },
@@ -8114,6 +8172,68 @@ const docTemplate = `{
                     }
                 },
                 "form_version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RsTransactionRow": {
+            "type": "object",
+            "properties": {
+                "clinicID": {
+                    "type": "string"
+                },
+                "clinicName": {
+                    "type": "string"
+                },
+                "coaID": {
+                    "type": "string"
+                },
+                "coaName": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "entryID": {
+                    "type": "string"
+                },
+                "formFieldID": {
+                    "type": "string"
+                },
+                "formFieldName": {
+                    "type": "string"
+                },
+                "formID": {
+                    "type": "string"
+                },
+                "formName": {
+                    "type": "string"
+                },
+                "grossAmount": {
+                    "type": "number"
+                },
+                "gstAmount": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "netAmount": {
+                    "type": "number"
+                },
+                "sectionType": {
+                    "type": "string"
+                },
+                "taxType": {
+                    "type": "string"
+                },
+                "taxTypeID": {
+                    "type": "integer"
+                },
+                "taxTypeName": {
+                    "type": "string"
+                },
+                "updatedAt": {
                     "type": "string"
                 }
             }
@@ -8530,6 +8650,9 @@ const docTemplate = `{
                 "is_formula": {
                     "type": "boolean"
                 },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
                 "key": {
                     "type": "string",
                     "maxLength": 5
@@ -8577,6 +8700,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_highlighted": {
+                    "type": "boolean"
                 },
                 "label": {
                     "type": "string",
@@ -8968,11 +9094,13 @@ const docTemplate = `{
             "enum": [
                 "PRACTITIONER",
                 "ACCOUNTANT",
+                "ADMIN",
                 "SYSTEM"
             ],
             "x-enum-varnames": [
                 "ActorPractitioner",
                 "ActorAccountant",
+                "ActorAdmin",
                 "ActorSystem"
             ]
         },
@@ -8983,14 +9111,16 @@ const docTemplate = `{
                 "form",
                 "transaction",
                 "document",
-                "invite"
+                "invite",
+                "audit_log"
             ],
             "x-enum-varnames": [
                 "EntityClinic",
                 "EntityForm",
                 "EntityTransaction",
                 "EntityDocument",
-                "EntityInvite"
+                "EntityInvite",
+                "EntityAuditLog"
             ]
         },
         "notification.EventType": {
@@ -9004,7 +9134,8 @@ const docTemplate = `{
                 "form.updated",
                 "transaction.created",
                 "transaction.status_changed",
-                "document.uploaded"
+                "document.uploaded",
+                "audit_log.created"
             ],
             "x-enum-varnames": [
                 "EventInviteSent",
@@ -9015,7 +9146,8 @@ const docTemplate = `{
                 "EventFormUpdated",
                 "EventTransactionCreated",
                 "EventTransactionUpdated",
-                "EventDocumentUploaded"
+                "EventDocumentUploaded",
+                "EventAuditLogCreated"
             ]
         },
         "notification.Notification": {

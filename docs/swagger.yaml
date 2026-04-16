@@ -855,6 +855,8 @@ definitions:
         type: number
       is_computed:
         type: boolean
+      is_highlighted:
+        type: boolean
       label:
         type: string
       net_amount:
@@ -885,6 +887,47 @@ definitions:
           $ref: '#/definitions/calculation.RsComputedFieldValue'
         type: array
       form_version_id:
+        type: string
+    type: object
+  calculation.RsTransactionRow:
+    properties:
+      clinicID:
+        type: string
+      clinicName:
+        type: string
+      coaID:
+        type: string
+      coaName:
+        type: string
+      createdAt:
+        type: string
+      entryID:
+        type: string
+      formFieldID:
+        type: string
+      formFieldName:
+        type: string
+      formID:
+        type: string
+      formName:
+        type: string
+      grossAmount:
+        type: number
+      gstAmount:
+        type: number
+      id:
+        type: string
+      netAmount:
+        type: number
+      sectionType:
+        type: string
+      taxType:
+        type: string
+      taxTypeID:
+        type: integer
+      taxTypeName:
+        type: string
+      updatedAt:
         type: string
     type: object
   clinic.RqBulkDeleteClinic:
@@ -1164,6 +1207,8 @@ definitions:
         type: boolean
       is_formula:
         type: boolean
+      is_highlighted:
+        type: boolean
       key:
         maxLength: 5
         type: string
@@ -1199,6 +1244,8 @@ definitions:
         type: string
       id:
         type: string
+      is_highlighted:
+        type: boolean
       label:
         maxLength: 255
         type: string
@@ -1471,11 +1518,13 @@ definitions:
     enum:
     - PRACTITIONER
     - ACCOUNTANT
+    - ADMIN
     - SYSTEM
     type: string
     x-enum-varnames:
     - ActorPractitioner
     - ActorAccountant
+    - ActorAdmin
     - ActorSystem
   notification.EntityType:
     enum:
@@ -1484,6 +1533,7 @@ definitions:
     - transaction
     - document
     - invite
+    - audit_log
     type: string
     x-enum-varnames:
     - EntityClinic
@@ -1491,6 +1541,7 @@ definitions:
     - EntityTransaction
     - EntityDocument
     - EntityInvite
+    - EntityAuditLog
   notification.EventType:
     enum:
     - invite.sent
@@ -1502,6 +1553,7 @@ definitions:
     - transaction.created
     - transaction.status_changed
     - document.uploaded
+    - audit_log.created
     type: string
     x-enum-varnames:
     - EventInviteSent
@@ -1513,6 +1565,7 @@ definitions:
     - EventTransactionCreated
     - EventTransactionUpdated
     - EventDocumentUploaded
+    - EventAuditLogCreated
   notification.Notification:
     properties:
       createdAt:
@@ -6305,6 +6358,42 @@ paths:
       summary: Upsert a setting by practitioner ID
       tags:
       - setting
+  /summary/{id}:
+    get:
+      description: Fetches all individual entries/transactions for a specific form
+        ID, including field names, COA details, and tax information.
+      parameters:
+      - description: Form ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of transactions
+          schema:
+            items:
+              $ref: '#/definitions/calculation.RsTransactionRow'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get form summary by form ID
+      tags:
+      - calculation
 schemes:
 - http
 - https

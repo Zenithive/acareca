@@ -22,9 +22,11 @@ type Service interface {
 	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries, actorID uuid.UUID, role string) (interface{}, error)
 	FormulaCalculate(ctx context.Context, formID uuid.UUID, req *RqFormulaCalculate) (*RsFormulaCalculate, error)
 	LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error)
+	GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
 }
 
 type service struct {
+	repo       Repository
 	formSvc    form.IService
 	versionSvc version.IService
 	fieldSvc   field.IService
@@ -33,8 +35,9 @@ type service struct {
 	methodSvc  method.IService
 }
 
-func NewService(formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService) Service {
+func NewService(repo Repository, formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService) Service {
 	return &service{
+		repo:       repo,
 		formSvc:    formSvc,
 		versionSvc: versionSvc,
 		fieldSvc:   fieldSvc,
@@ -44,8 +47,9 @@ func NewService(formSvc form.IService, versionSvc version.IService, fieldSvc fie
 }
 
 // NewServiceWithFormula constructs the service with formula and method support.
-func NewServiceWithFormula(formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService, formulaSvc formula.IService) Service {
+func NewServiceWithFormula(repo Repository, formSvc form.IService, versionSvc version.IService, fieldSvc field.IService, entries entry.IService, formulaSvc formula.IService) Service {
 	return &service{
+		repo:       repo,
 		formSvc:    formSvc,
 		versionSvc: versionSvc,
 		fieldSvc:   fieldSvc,
@@ -604,4 +608,8 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 		FormVersionID:  formVersionID,
 		ComputedFields: results,
 	}, nil
+}
+
+func (s *service) GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
+	return s.repo.GetTransactionsByFormID(ctx, formID, actorID, role)
 }

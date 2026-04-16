@@ -96,3 +96,50 @@ type RsLiveCalculate struct {
 	FormVersionID  uuid.UUID              `json:"form_version_id"`
 	ComputedFields []RsComputedFieldValue `json:"computed_fields"`
 }
+
+// RsTransactionRow represents a single row of transaction data for a form entry value.
+type RsTransactionRow struct {
+	ID            uuid.UUID `db:"id"`
+	EntryID       uuid.UUID `db:"entry_id"`
+	FormFieldID   uuid.UUID `db:"form_field_id"`
+	FormFieldName string    `db:"form_field_name"`
+	SectionType   *string   `db:"section_type"`
+	TaxType       *string   `db:"tax_type"`
+	CoaID         uuid.UUID `db:"coa_id"`
+	CoaName       string    `db:"coa_name"`
+	TaxTypeID     *int16    `db:"tax_type_id"`
+	TaxTypeName   *string   `db:"tax_type_name"`
+	FormID        uuid.UUID `db:"form_id"`
+	FormName      string    `db:"form_name"`
+	ClinicID      uuid.UUID `db:"clinic_id"`
+	ClinicName    string    `db:"clinic_name"`
+	NetAmount     *float64  `db:"net_amount"`
+	GstAmount     *float64  `db:"gst_amount"`
+	GrossAmount   *float64  `db:"gross_amount"`
+	CreatedAt     string    `db:"created_at"`
+	UpdatedAt     *string   `db:"updated_at"`
+}
+
+// transactionFlatRow is used internally for SQL scanning.
+// It uses *pointers for nullable fields to avoid scanning errors.
+type transactionFlatRow struct {
+	ID            uuid.UUID `db:"id"`
+	EntryID       uuid.UUID `db:"entry_id"`
+	FormFieldID   uuid.UUID `db:"form_field_id"`
+	FormFieldName string    `db:"form_field_name"`
+	SectionType   *string   `db:"section_type"`
+	TaxType       *string   `db:"tax_type"`
+	CoaID         uuid.UUID `db:"coa_id"`
+	CoaName       string    `db:"coa_name"`
+	TaxTypeID     *int16    `db:"tax_type_id"`
+	TaxTypeName   *string   `db:"tax_type_name"`
+	FormID        uuid.UUID `db:"form_id"`
+	FormName      string    `db:"form_name"`
+	ClinicID      uuid.UUID `db:"clinic_id"`
+	ClinicName    string    `db:"clinic_name"`
+	NetAmount     *float64  `db:"net_amount"`
+	GstAmount     *float64  `db:"gst_amount"`
+	GrossAmount   *float64  `db:"gross_amount"`
+	CreatedAt     string    `db:"created_at"`
+	UpdatedAt     *string   `db:"updated_at"`
+}

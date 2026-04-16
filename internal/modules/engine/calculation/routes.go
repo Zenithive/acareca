@@ -7,4 +7,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	rg.POST("/calculate/live", h.LiveCalculate)
 	rg.GET("/calculate/:id", h.Calculation)
 	rg.GET("/calculate/formula/:form_id", h.FormulaCalculate)
+	rg.GET("/summary/:id", h.GetFormSummary)
 }

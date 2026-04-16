@@ -18,10 +18,12 @@ import (
 type IHandler interface {
 	LiveCalculate(c *gin.Context)
 
-	// Legacy Code 
+	// Legacy Code
 	Calculation(c *gin.Context)
 	CalculateFromEntries(c *gin.Context)
 	FormulaCalculate(c *gin.Context)
+
+	GetFormSummary(c *gin.Context)
 }
 
 type handler struct {
@@ -63,7 +65,6 @@ func (h *handler) LiveCalculate(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, result, "Live calculation completed successfully")
 }
-
 
 //Legacy code
 
@@ -236,3 +237,45 @@ func (h *handler) FormulaCalculate(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result, "Formula calculation completed successfully")
 }
 
+// GetFormSummary godoc
+// @Summary      Get form summary by form ID
+// @Description  Fetches all individual entries/transactions for a specific form ID, including field names, COA details, and tax information.
+// @Tags         calculation
+// @Produce      json
+// @Param        id   path      string  true  "Form ID (UUID)"
+// @Success      200  {array}  RsTransactionRow "List of transactions"
+// @Failure      400  {object}  response.RsError
+// @Failure      401  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /summary/{id} [get]
+func (h *handler) GetFormSummary(c *gin.Context) {
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	// Extract security context
+	role := c.GetString("role")
+	var actorID uuid.UUID
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, fmt.Errorf("unauthorized access"))
+		return
+	}
+
+	// Call service and return the raw util.RsList
+	data, err := h.svc.GetFormSummary(c.Request.Context(), id.String(), actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, data, "Form summary fetched successfully")
+}

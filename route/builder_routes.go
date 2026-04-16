@@ -100,7 +100,8 @@ func RegisterBuilderRoutes(
 	// Calculation routes
 	calculationGroup := v1.Group("")
 	calculationGroup.Use(middleware.Auth(cfg))
-	calculationSvc := calculation.NewServiceWithFormula(formSvc, versionSvc, fieldSvc, entriesSvc, formulaSvc)
+	calculationRepo := calculation.NewRepository(dbConn)
+	calculationSvc := calculation.NewServiceWithFormula(calculationRepo, formSvc, versionSvc, fieldSvc, entriesSvc, formulaSvc)
 	calculationHandler := calculation.NewHandler(calculationSvc)
 	calculation.RegisterRoutes(calculationGroup, calculationHandler)
 }
