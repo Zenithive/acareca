@@ -726,21 +726,30 @@ func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, 
 }
 
 func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID *uuid.UUID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error) {
-	if aID == nil || *aID == uuid.Nil {
-		// If AccountantID is missing, check the invitation by Email instead
+	associated := false
+
+	if aID != nil && *aID != uuid.Nil {
+		// Check formal link
+		isLinked, _ := s.repo.IsAccountantLinkedToPractitioner(ctx, pID, *aID)
+		if isLinked {
+			associated = true
+		} else {
+			// Fallback: Check if they have an invitation under this email for this practitioner
+			inv, err := s.repo.GetByEmail(ctx, email)
+			if err == nil && inv != nil && inv.PractitionerID == pID {
+				associated = true
+			}
+		}
+	} else if email != "" {
+		// Check invitation by Email only
 		inv, err := s.repo.GetByEmail(ctx, email)
-		if err != nil || inv == nil || inv.PractitionerID != pID {
-			return nil, ErrUnauthorizedAssociation
+		if err == nil && inv != nil && inv.PractitionerID == pID {
+			associated = true
 		}
-	} else {
-		// Standard check for registered users - verify this specific practitioner-accountant relationship exists
-		isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, pID, *aID)
-		if err != nil {
-			return nil, ErrUnauthorizedAssociation
-		}
-		if !isLinked {
-			return nil, ErrUnauthorizedAssociation
-		}
+	}
+
+	if !associated {
+		return nil, ErrUnauthorizedAssociation
 	}
 
 	// Capture state BEFORE update for Audit Logs
@@ -764,8 +773,20 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID 
 	// Process Permissions
 	finalDisplay := s.processPermissions(perms)
 
+	var dbAccID *uuid.UUID
+	if aID != nil && *aID != uuid.Nil {
+		// Check if this ID actually exists in the tbl_accountant table
+		exists, err := s.repo.AccountantExists(ctx, *aID)
+		if err == nil && exists {
+			dbAccID = aID
+		} else {
+			// If the ID doesn't exist in tbl_accountant, we MUST use NULL (nil)
+			// so the permission is stored against the Email instead.
+			dbAccID = nil
+		}
+	}
 	// Save to DB and return finalDisplay
-	if err := s.repo.GrantEntityPermission(ctx, pID, aID, &email, eID, eType, finalDisplay); err != nil {
+	if err := s.repo.GrantEntityPermission(ctx, pID, dbAccID, &email, eID, eType, finalDisplay); err != nil {
 		return nil, err
 	}
 

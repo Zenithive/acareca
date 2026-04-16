@@ -48,6 +48,7 @@ type Repository interface {
 	DeletePermission(ctx context.Context, pID uuid.UUID, entityID uuid.UUID, accID *uuid.UUID, email string) error
 	GetPermissionsByEmailAndEntity(ctx context.Context, pID uuid.UUID, email string, eID uuid.UUID) (*Permissions, error)
 	GetAllAccountantPermissions(ctx context.Context, pID uuid.UUID, email string, accID *uuid.UUID) ([]RqPermissionDetail, error)
+	AccountantExists(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 type repository struct {
@@ -339,32 +340,33 @@ func (r *repository) GetPermissions(ctx context.Context, accountantID uuid.UUID,
 
 func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error {
 	var query string
-
-	// Choose the query based on whether we have an actual Accountant ID or just an Email
 	if accID != nil {
+		// This branch runs ONLY if we have a real, non-zero Accountant ID
 		query = `
-            INSERT INTO tbl_invite_permissions (
-                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-            ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
-            WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
-            DO UPDATE SET 
-                permissions = EXCLUDED.permissions,
-                updated_at = NOW(),
-                deleted_at = NULL;`
+			INSERT INTO tbl_invite_permissions (
+				id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+			ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
+			WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
+			DO UPDATE SET 
+				permissions = EXCLUDED.permissions,
+				updated_at = NOW(),
+				deleted_at = NULL;`
 	} else {
+		// This branch runs for "Invited" status (accID is NULL)
 		query = `
-            INSERT INTO tbl_invite_permissions (
-                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-            ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
-            WHERE accountant_id IS NULL AND deleted_at IS NULL
-            DO UPDATE SET 
-                permissions = EXCLUDED.permissions,
-                updated_at = NOW(),
-                deleted_at = NULL;`
+			INSERT INTO tbl_invite_permissions (
+				id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+			ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
+			WHERE accountant_id IS NULL AND deleted_at IS NULL
+			DO UPDATE SET 
+				permissions = EXCLUDED.permissions,
+				updated_at = NOW(),
+				deleted_at = NULL;`
 	}
 
+	// Double check: if accID is nil here, $3 will be NULL in Postgres.
 	_, err := tx.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, perms)
 	return err
 }
@@ -417,32 +419,33 @@ func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context,
 
 func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error {
 	var query string
-
-	// Choose the query based on whether we have an actual Accountant ID or just an Email
 	if accID != nil {
+		// This branch runs ONLY if we have a real, non-zero Accountant ID
 		query = `
-            INSERT INTO tbl_invite_permissions (
-                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-            ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
-            WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
-            DO UPDATE SET 
-                permissions = EXCLUDED.permissions,
-                updated_at = NOW(),
-                deleted_at = NULL;`
+			INSERT INTO tbl_invite_permissions (
+				id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+			ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
+			WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
+			DO UPDATE SET 
+				permissions = EXCLUDED.permissions,
+				updated_at = NOW(),
+				deleted_at = NULL;`
 	} else {
+		// This branch runs for "Invited" status (accID is NULL)
 		query = `
-            INSERT INTO tbl_invite_permissions (
-                id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-            ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
-            WHERE accountant_id IS NULL AND deleted_at IS NULL
-            DO UPDATE SET 
-                permissions = EXCLUDED.permissions,
-                updated_at = NOW(),
-                deleted_at = NULL;`
+			INSERT INTO tbl_invite_permissions (
+				id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+			ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
+			WHERE accountant_id IS NULL AND deleted_at IS NULL
+			DO UPDATE SET 
+				permissions = EXCLUDED.permissions,
+				updated_at = NOW(),
+				deleted_at = NULL;`
 	}
 
+	// Double check: if accID is nil here, $3 will be NULL in Postgres.
 	_, err := r.db.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, perms)
 	return err
 }
@@ -604,4 +607,11 @@ func (r *repository) GetAllAccountantPermissions(ctx context.Context, pID uuid.U
 	}
 
 	return details, nil
+}
+
+func (r *repository) AccountantExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM tbl_accountant WHERE id = $1 AND deleted_at IS NULL)`
+	err := r.db.GetContext(ctx, &exists, query, id)
+	return exists, err
 }
