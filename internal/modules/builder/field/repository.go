@@ -94,6 +94,7 @@ const fieldWithCoaSelect = `
 		ff.id, ff.form_version_id, ff.field_key, ff.slug, ff.label, ff.is_computed,
 		ff.section_type, ff.payment_responsibility, ff.tax_type, ff.coa_id,
 		ff.sort_order, ff.created_at, ff.updated_at, ff.is_formula,
+		ff.is_highlighted,
 		coa.code  AS coa_code,
 		coa.name  AS coa_name,
 		coa.account_type_id AS coa_account_type_id,
@@ -133,7 +134,7 @@ func (r *Repository) Update(ctx context.Context, f *FormField) (*FormField, erro
 	query := `
 		UPDATE tbl_form_field
 		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, is_highlighted = $8, updated_at = now()
-		WHERE id = $8 AND deleted_at IS NULL
+		WHERE id = $9 AND deleted_at IS NULL
 		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula, is_highlighted
 	`
 	var row fieldRow
@@ -210,7 +211,7 @@ func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, f *FormField) (*
 	query := `
 		UPDATE tbl_form_field
 		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, is_highlighted = $8, updated_at = now()
-		WHERE id = $8 AND deleted_at IS NULL
+		WHERE id = $9 AND deleted_at IS NULL
 		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula, is_highlighted
 	`
 	var row fieldRow
