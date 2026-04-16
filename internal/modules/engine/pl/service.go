@@ -269,11 +269,12 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 			sectionType = *r.SectionType
 		}
 
-		// Use gross_amount consistently across all sections so that
-		// income and costs are compared on the same (GST-inclusive) basis.
-		// Previously COST/OTHER_COST used net_amount, which understated
-		// "Gross Up" management fees that carry GST on top.
-		val := r.GrossAmount
+		// Use net_amount consistently across all sections for P&L reporting.
+		// P&L should show revenue and expenses on a GST-exclusive basis:
+		// - Income: NET (actual revenue earned, GST is collected for government)
+		// - Costs: NET (actual expenses, GST can be claimed back)
+		// This aligns with standard accounting practice where GST is a pass-through.
+		val := r.NetAmount
 
 		ck := coaKey{sectionType, r.CoaID}
 		if !coaSeen[ck] {
