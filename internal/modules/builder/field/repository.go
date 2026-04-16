@@ -48,6 +48,7 @@ type fieldRow struct {
 	CreatedAt             string     `db:"created_at"`
 	UpdatedAt             string     `db:"updated_at"`
 	IsFormula             bool       `db:"is_formula"`
+	IsHighlighted         bool       `db:"is_highlighted"`
 	CoaCode               *int16     `db:"coa_code"`
 	CoaName               *string    `db:"coa_name"`
 	CoaAccountTypeID      *int16     `db:"coa_account_type_id"`
@@ -64,6 +65,7 @@ func (r *fieldRow) toFormField() *FormField {
 		IsComputed:            r.IsComputed,
 		SectionType:           r.SectionType,
 		PaymentResponsibility: r.PaymentResponsibility,
+		IsHighlighted:         r.IsHighlighted,
 		TaxType:               r.TaxType,
 		CoaID:                 r.CoaID,
 		SortOrder:             r.SortOrder,
@@ -103,13 +105,11 @@ const fieldWithCoaSelect = `
 // Create implements [IRepository].
 func (r *Repository) Create(ctx context.Context, f *FormField) error {
 	query := `
-		INSERT INTO tbl_form_field (id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, is_formula)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::section_type, $8::payment_responsibility, $9::tax_type, $10, $11, $12)
+		INSERT INTO tbl_form_field (id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, is_formula, is_highlighted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::section_type, $8::payment_responsibility, $9::tax_type, $10, $11, $12, $13)
 		RETURNING created_at, updated_at
 	`
-	if err := r.db.QueryRowContext(ctx, query,
-		f.ID, f.FormVersionID, f.FieldKey, f.Slug, f.Label, f.IsComputed, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula,
-	).Scan(&f.CreatedAt, &f.UpdatedAt); err != nil {
+	if err := r.db.QueryRowContext(ctx, query, f.ID, f.FormVersionID, f.FieldKey, f.Slug, f.Label, f.IsComputed, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula, f.IsHighlighted).Scan(&f.CreatedAt, &f.UpdatedAt); err != nil {
 		return fmt.Errorf("create form field: %w", err)
 	}
 	return nil
@@ -132,13 +132,13 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormField, err
 func (r *Repository) Update(ctx context.Context, f *FormField) (*FormField, error) {
 	query := `
 		UPDATE tbl_form_field
-		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, updated_at = now()
+		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, is_highlighted = $8, updated_at = now()
 		WHERE id = $8 AND deleted_at IS NULL
-		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula
+		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula, is_highlighted
 	`
 	var row fieldRow
 	if err := r.db.QueryRowxContext(ctx, query,
-		f.Label, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula, f.ID,
+		f.Label, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula, f.IsHighlighted, f.ID,
 	).StructScan(&row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("form field not found")
@@ -193,12 +193,12 @@ func (r *Repository) ListRsByFormVersionID(ctx context.Context, formVersionID uu
 // CreateTx - Transaction variant of Create
 func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, f *FormField) error {
 	query := `
-		INSERT INTO tbl_form_field (id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, is_formula)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::section_type, $8::payment_responsibility, $9::tax_type, $10, $11, $12)
+		INSERT INTO tbl_form_field (id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, is_formula,is_highlighted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::section_type, $8::payment_responsibility, $9::tax_type, $10, $11, $12, $13)
 		RETURNING created_at, updated_at
 	`
 	if err := tx.QueryRowContext(ctx, query,
-		f.ID, f.FormVersionID, f.FieldKey, f.Slug, f.Label, f.IsComputed, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula,
+		f.ID, f.FormVersionID, f.FieldKey, f.Slug, f.Label, f.IsComputed, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula, f.IsHighlighted,
 	).Scan(&f.CreatedAt, &f.UpdatedAt); err != nil {
 		return fmt.Errorf("create form field tx: %w", err)
 	}
@@ -209,13 +209,13 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, f *FormField) er
 func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, f *FormField) (*FormField, error) {
 	query := `
 		UPDATE tbl_form_field
-		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, updated_at = now()
+		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, is_highlighted = $8, updated_at = now()
 		WHERE id = $8 AND deleted_at IS NULL
-		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula
+		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula, is_highlighted
 	`
 	var row fieldRow
 	if err := tx.QueryRowxContext(ctx, query,
-		f.Label, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula, f.ID,
+		f.Label, f.SectionType, f.PaymentResponsibility, f.TaxType, f.CoaID, f.SortOrder, f.IsFormula, f.IsHighlighted, f.ID,
 	).StructScan(&row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("form field not found")

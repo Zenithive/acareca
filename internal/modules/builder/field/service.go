@@ -121,6 +121,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 	if req.SortOrder != nil {
 		existing.SortOrder = *req.SortOrder
 	}
+	if req.IsHighlighted != nil {
+		existing.IsHighlighted = *req.IsHighlighted
+	}
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
