@@ -87,14 +87,14 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// ============ SHARED/CROSS-MODULE SERVICES ============
 	authRepo := auth.NewRepository(dbConn)
 
-	// Initialize audit service (used across modules)
-	auditRepo := audit.NewRepository(dbConn)
-	auditSvc := audit.NewService(auditRepo)
-
 	// notification (in-app list)
 	notificationRepo := notification.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
 	notificationSvc := notification.NewService(notificationRepo, notifier)
+
+	// Initialize audit service (used across modules)
+	auditRepo := audit.NewRepository(dbConn)
+	auditSvc := audit.NewService(auditRepo, notificationSvc)
 
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)

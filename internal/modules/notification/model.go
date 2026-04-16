@@ -42,6 +42,9 @@ const (
 	EventTransactionCreated EventType = "transaction.created"
 	EventTransactionUpdated EventType = "transaction.status_changed"
 	EventDocumentUploaded   EventType = "document.uploaded"
+
+	// System → Admin
+	EventAuditLogCreated EventType = "audit_log.created"
 )
 
 type EntityType string
@@ -52,6 +55,7 @@ const (
 	EntityTransaction EntityType = "transaction"
 	EntityDocument    EntityType = "document"
 	EntityInvite      EntityType = "invite"
+	EntityAuditLog    EntityType = "audit_log"
 )
 
 type Channel string
@@ -67,6 +71,7 @@ type ActorType string
 const (
 	ActorPractitioner ActorType = "PRACTITIONER"
 	ActorAccountant   ActorType = "ACCOUNTANT"
+	ActorAdmin        ActorType = "ADMIN"
 	ActorSystem       ActorType = "SYSTEM"
 )
 

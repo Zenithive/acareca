@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -14,6 +15,10 @@ type Repository interface {
 	List(ctx context.Context, f common.Filter) ([]*AuditLog, error)
 	GetByID(ctx context.Context, id string) (*AuditLog, error)
 	Count(ctx context.Context, f common.Filter) (int, error)
+	GetAdminIDs(ctx context.Context) ([]uuid.UUID, error)
+	GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error)
+	GetUserName(ctx context.Context, id string) (string, error)
+	GetEntityName(ctx context.Context, table string, id string) (string, error)
 }
 
 type repository struct {
@@ -117,4 +122,49 @@ func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
 		return 0, fmt.Errorf("count audit logs: %w", err)
 	}
 	return count, nil
+}
+
+func (r *repository) GetAdminIDs(ctx context.Context) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	query := `SELECT id FROM tbl_admin WHERE deleted_at IS NULL`
+
+	err := r.db.SelectContext(ctx, &ids, query)
+	return ids, err
+}
+
+func (r *repository) GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error) {
+	var userID string
+	// We fetch the user_id associated with this practitioner
+	query := `SELECT user_id FROM tbl_practitioner WHERE id = $1`
+
+	err := r.db.GetContext(ctx, &userID, query, practitionerID)
+	if err != nil {
+		return "", err
+	}
+	return userID, nil
+}
+
+func (r *repository) GetUserName(ctx context.Context, id string) (string, error) {
+	var name string
+	// Using COALESCE to handle potential nulls in names, falling back to an empty string if both are null
+	query := `SELECT COALESCE(first_name || ' ' || last_name) FROM tbl_user WHERE id = $1`
+
+	err := r.db.GetContext(ctx, &name, query, id)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func (r *repository) GetEntityName(ctx context.Context, table string, id string) (string, error) {
+	var name, query string
+
+	// Select 'name' from the provided table name
+	query = fmt.Sprintf(`SELECT name FROM %s WHERE id = $1`, table)
+
+	err := r.db.GetContext(ctx, &name, query, id)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
 }
