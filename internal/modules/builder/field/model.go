@@ -35,6 +35,7 @@ type RqCreateField struct {
 	CoaID                 *string `json:"coa_id" validate:"omitempty,uuid"`
 	SortOrder             int     `json:"sort_order" validate:"min=0"`
 	IsFormula             *bool   `json:"is_formula"`
+	IsHighlighted         bool    `json:"is_highlighted"`
 }
 
 func (r *RqCreateField) Validate() error {
@@ -75,6 +76,7 @@ func (r *RqCreateField) ToRqFormField() *RqFormField {
 		CoaID:                 coaID,
 		SortOrder:             r.SortOrder,
 		IsFormula:             r.IsFormula,
+		IsHighlighted:         r.IsHighlighted,
 	}
 }
 
@@ -89,6 +91,7 @@ type RqFormField struct {
 	CoaID                 string  `json:"coa_id" validate:"omitempty,uuid"`
 	SortOrder             int     `json:"sort_order" validate:"min=0"`
 	IsFormula             *bool   `json:"is_formula"`
+	IsHighlighted         bool    `json:"is_highlighted"`
 }
 
 func (r *RqFormField) Sanitize() {
@@ -112,6 +115,7 @@ type RqUpdateFormField struct {
 	TaxType               *string   `json:"tax_type" validate:"omitempty"`
 	CoaID                 *string   `json:"coa_id" validate:"omitempty,uuid"`
 	SortOrder             *int      `json:"sort_order" validate:"omitempty,min=0"`
+	IsHighlighted         *bool     `json:"is_highlighted"`
 }
 
 // Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
@@ -139,6 +143,7 @@ type FormField struct {
 	Label                 string     `db:"label"`
 	IsComputed            bool       `db:"is_computed"`
 	IsFormula             bool       `db:"is_formula"`
+	IsHighlighted         bool       `db:"is_highlighted"`
 	SectionType           *string    `db:"section_type"`
 	PaymentResponsibility *string    `db:"payment_responsibility"`
 	TaxType               *string    `db:"tax_type"`
@@ -185,6 +190,7 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		CoaID:                 coaID,
 		SortOrder:             r.SortOrder,
 		IsFormula:             formula,
+		IsHighlighted:         r.IsHighlighted,
 	}
 }
 
@@ -197,6 +203,7 @@ func (d *FormField) ToRs() *RsFormField {
 		Label:                 d.Label,
 		IsComputed:            d.IsComputed,
 		IsFormula:             d.IsFormula,
+		IsHighlighted:         d.IsHighlighted,
 		SectionType:           d.SectionType,
 		PaymentResponsibility: d.PaymentResponsibility,
 		TaxType:               d.TaxType,
@@ -223,6 +230,7 @@ type RsFormField struct {
 	Label                 string       `json:"label"`
 	IsComputed            bool         `json:"is_computed"`
 	IsFormula             bool         `json:"is_formula"`
+	IsHighlighted         bool         `json:"is_highlighted"`
 	SectionType           *string      `json:"section_type"`
 	PaymentResponsibility *string      `json:"payment_responsibility"`
 	TaxType               *string      `json:"tax_type"`

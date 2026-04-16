@@ -582,18 +582,19 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 		}
 
 		item := RsComputedFieldValue{
-			FieldID:     fieldID,
-			FormFieldID: fieldID.String(),
-			FieldKey:    f.FieldKey,
-			Label:       f.Label,
-			IsComputed:  f.IsComputed,
-			NetAmount:   netAmount,
-			GstAmount:   gstAmount,
-			GrossAmount: grossAmount,
-			SectionType: f.SectionType,
-			TaxType:     f.TaxType,
-			CoaID:       f.CoaID,
-			SortOrder:   f.SortOrder,
+			FieldID:       fieldID,
+			FormFieldID:   fieldID.String(),
+			FieldKey:      f.FieldKey,
+			Label:         f.Label,
+			IsComputed:    f.IsComputed,
+			NetAmount:     netAmount,
+			GstAmount:     gstAmount,
+			GrossAmount:   grossAmount,
+			SectionType:   f.SectionType,
+			TaxType:       f.TaxType,
+			CoaID:         f.CoaID,
+			SortOrder:     f.SortOrder,
+			IsHighlighted: f.IsHighlighted,
 		}
 
 		results = append(results, item)

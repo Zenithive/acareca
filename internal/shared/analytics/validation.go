@@ -98,15 +98,15 @@ func ValidateDateRange(from, to string) error {
 	}
 
 	// Check for future dates (use UTC for consistency)
+	// Allow dates up to end of current month to handle ongoing month queries
 	now := time.Now().UTC()
-	// Allow dates up to tomorrow to handle timezone differences
-	tomorrow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
 
-	if from != "" && fromDate.After(tomorrow) {
+	if from != "" && fromDate.After(endOfMonth) {
 		return ErrFutureDateNotValid
 	}
 
-	if to != "" && toDate.After(tomorrow) {
+	if to != "" && toDate.After(endOfMonth) {
 		return ErrFutureDateNotValid
 	}
 

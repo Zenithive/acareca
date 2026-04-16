@@ -1016,14 +1016,15 @@ func validateSubscriptionRecordFilterAtRepo(filter *SubscriptionRecordFilter) er
 	}
 
 	// Validate dates are not too far in the future
+	// Allow dates up to end of current month to handle ongoing month queries
 	now := time.Now().UTC()
-	tomorrow := now.AddDate(0, 0, 1)
+	endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
 
-	if filter.From != nil && *filter.From != "" && fromDate.After(tomorrow) {
+	if filter.From != nil && *filter.From != "" && fromDate.After(endOfMonth) {
 		return fmt.Errorf("from date cannot be in the future")
 	}
 
-	if filter.To != nil && *filter.To != "" && toDate.After(tomorrow) {
+	if filter.To != nil && *filter.To != "" && toDate.After(endOfMonth) {
 		return fmt.Errorf("to date cannot be in the future")
 	}
 

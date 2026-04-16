@@ -56,18 +56,19 @@ type RqFormulaCalculate struct {
 
 // RsComputedFieldValue is the per-field result for a computed field.
 type RsComputedFieldValue struct {
-	FieldID     uuid.UUID  `json:"field_id"`
-	FormFieldID string     `json:"form_field_id"` // UUID as string for consistency with request
-	FieldKey    string     `json:"field_key"`
-	Label       string     `json:"label"`
-	IsComputed  bool       `json:"is_computed"`
-	NetAmount   float64    `json:"net_amount"`       // net amount (ex-GST when tax applies)
-	GstAmount   *float64   `json:"gst_amount"`       // GST amount, null when no tax
-	GrossAmount *float64   `json:"gross_amount"`     // gross amount (including GST), null when no tax
-	SectionType *string    `json:"section_type"`     // COLLECTION, COST, OTHER_COST
-	TaxType     *string    `json:"tax_type"`         // INCLUSIVE, EXCLUSIVE, MANUAL, ZERO
-	CoaID       *uuid.UUID `json:"coa_id,omitempty"` // Chart of Account ID
-	SortOrder   int        `json:"sort_order"`
+	FieldID       uuid.UUID  `json:"field_id"`
+	FormFieldID   string     `json:"form_field_id"` // UUID as string for consistency with request
+	FieldKey      string     `json:"field_key"`
+	Label         string     `json:"label"`
+	IsComputed    bool       `json:"is_computed"`
+	NetAmount     float64    `json:"net_amount"`       // net amount (ex-GST when tax applies)
+	GstAmount     *float64   `json:"gst_amount"`       // GST amount, null when no tax
+	GrossAmount   *float64   `json:"gross_amount"`     // gross amount (including GST), null when no tax
+	SectionType   *string    `json:"section_type"`     // COLLECTION, COST, OTHER_COST
+	TaxType       *string    `json:"tax_type"`         // INCLUSIVE, EXCLUSIVE, MANUAL, ZERO
+	CoaID         *uuid.UUID `json:"coa_id,omitempty"` // Chart of Account ID
+	SortOrder     int        `json:"sort_order"`
+	IsHighlighted bool       `json:"is_highlighted"`
 }
 
 // RsFormulaCalculate is the response for POST /calculate/formula/:form_id.
