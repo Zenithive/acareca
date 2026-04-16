@@ -196,6 +196,12 @@ func GetMonthRange(monthName string) (time.Time, time.Time, error) {
 	now := time.Now()
 	loc := now.Location()
 
+	if strings.ToLower(monthName) == "all" {
+		startOfYear := time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, loc)
+		endOfYear := startOfYear.AddDate(1, 0, 0).Add(-time.Nanosecond)
+		return startOfYear, endOfYear, nil
+	}
+
 	months := map[string]time.Month{
 		"january":   time.January,
 		"february":  time.February,
