@@ -831,11 +831,11 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID *uuid.UUID) (*util.RsList, error) {
 	f := filter.ToCommonFilter()
 
-	items, err := s.repo.ListCoaEntries(ctx, f, actorID)
+	items, err := s.repo.ListCoaEntries(ctx, f, actorID, filter.Role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountCoaEntries(ctx, f, actorID)
+	total, err := s.repo.CountCoaEntries(ctx, f, actorID, filter.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -854,11 +854,11 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 
 	f := filter.ToCommonFilter()
 
-	items, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, &f, actorID)
+	items, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f, actorID, filter.Role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountCoaEntryDetails(ctx, coaUUID, &f, actorID)
+	total, err := s.repo.CountCoaEntryDetails(ctx, coaUUID, f, actorID, filter.Role)
 	if err != nil {
 		return nil, err
 	}

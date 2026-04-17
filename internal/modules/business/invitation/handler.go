@@ -136,7 +136,8 @@ func (h *Handler) ProcessInvitation(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /invite [get]
 func (h *Handler) ListInvitations(c *gin.Context) {
-	pIDPtr, aIDPtr, ok := util.GetRoleBasedIDs(c)
+
+	actorId, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -146,8 +147,9 @@ func (h *Handler) ListInvitations(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+	reqFilter.Role = role
 
-	res, err := h.svc.ListInvitations(c.Request.Context(), pIDPtr, aIDPtr, &reqFilter)
+	res, err := h.svc.ListInvitations(c.Request.Context(), actorId, &reqFilter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

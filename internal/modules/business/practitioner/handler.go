@@ -56,7 +56,7 @@ func (h *Handler) GetPractitioner(c *gin.Context) {
 // @Security BearerToken
 // @Router /practitioner [get]
 func (h *Handler) ListPractitioners(c *gin.Context) {
-	_, aIDPtr, ok := util.GetRoleBasedIDs(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("user role not authorized"))
 		return
@@ -67,8 +67,8 @@ func (h *Handler) ListPractitioners(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	if aIDPtr != nil {
-		filter.AccountantID = aIDPtr
+	if actorID != nil && role == util.RoleAccountant {
+		filter.AccountantID = actorID
 	}
 
 	list, err := h.svc.ListPractitioners(c, &filter)

@@ -30,10 +30,10 @@ type IRepository interface {
 	CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
 
 	// COA-grouped endpoints
-	ListCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID) ([]*RsCoaEntry, error)
-	CountCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID) (int, error)
-	ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f *common.Filter, actorID *uuid.UUID) ([]*RsCoaEntryDetail, error)
-	CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f *common.Filter, actorID *uuid.UUID) (int, error)
+	ListCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntry, error)
+	CountCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) (int, error)
+	ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntryDetail, error)
+	CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) (int, error)
 
 	// Transaction-based variants
 	CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
@@ -562,10 +562,10 @@ func (r *Repository) GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.
 }
 
 // ListCoaEntries returns grouped COA rows with aggregated amounts and entry counts
-func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID) ([]*RsCoaEntry, error) {
+func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
 
-	if strings.EqualFold(f["role"], util.RoleAccountant) {
+	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND fm.id IN (
             SELECT entity_id FROM tbl_invite_permissions 
             WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
@@ -639,10 +639,10 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 }
 
 // CountCoaEntries returns the total number of grouped COA rows
-func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID) (int, error) {
+func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) (int, error) {
 	var permissionClause string
 
-	if strings.EqualFold(f["role"], util.RoleAccountant) {
+	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND fm.id IN (
             SELECT entity_id FROM tbl_invite_permissions
             WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
@@ -690,7 +690,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 }
 
 // ListCoaEntryDetails returns detailed entry rows for a specific COA
-func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
+func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
@@ -804,7 +804,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 }
 
 // CountCoaEntryDetails returns the total number of entry details for a specific COA
-func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error) {
+func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) (int, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {

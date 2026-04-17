@@ -340,13 +340,11 @@ func (h *handler) ListTransactions(c *gin.Context) {
 // @Security BearerToken
 // @Router /entry/coa-entries [get]
 func (h *handler) ListCoaEntries(c *gin.Context) {
-	actorID, ok := util.GetRoleBasedID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
-
-	role := c.GetString("role")
 
 	var filter TransactionFilter
 	if err := util.BindAndValidate(c, &filter); err != nil {
@@ -390,13 +388,11 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 		return
 	}
 
-	actorID, ok := util.GetRoleBasedID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
-
-	role := c.GetString("role")
 
 	var filter TransactionFilter
 	if err := util.BindAndValidate(c, &filter); err != nil {
