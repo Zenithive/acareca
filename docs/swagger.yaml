@@ -2230,6 +2230,38 @@ paths:
       summary: List all accountants with their practitioners (Admin)
       tags:
       - admin-accountant
+  /admin/activate-fy/{financial_year_id}:
+    patch:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Activate a specific financial year
+      tags:
+      - fy
   /admin/analytics/accountant/overview:
     get:
       description: Returns accountant KPIs and invite status distribution
