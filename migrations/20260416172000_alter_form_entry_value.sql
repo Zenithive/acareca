@@ -1,9 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 ALTER TABLE tbl_form_entry_value 
-ADD COLUMN deleted_at TIMESTAMPTZ DEFAULT NULL;
+ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
 
-CREATE INDEX idx_form_entry_value_deleted_at 
+CREATE INDEX IF NOT EXISTS idx_form_entry_value_deleted_at 
 ON tbl_form_entry_value (deleted_at) 
 WHERE deleted_at IS NULL;
 -- +goose StatementEnd

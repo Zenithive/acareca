@@ -303,8 +303,9 @@ var allowedTransactionColumns = map[string]string{
 	"status":          "e.status",
 	"created_at":      "ev.created_at",
 	"practitioner_id": "c.practitioner_id",
-	"date_from":       "ev.created_at",
-	"date_to":         "ev.created_at",
+	"date_from":       "COALESCE(e.date, ev.created_at)",
+	"date_to":         "COALESCE(e.date, ev.created_at)",
+	"date":            "e.date",
 }
 
 func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
@@ -342,7 +343,8 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 			ev.gst_amount,
 			ev.gross_amount,
 			ev.created_at,
-			ev.updated_at
+			ev.updated_at,
+			e.date
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
 		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE

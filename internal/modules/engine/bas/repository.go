@@ -230,7 +230,7 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
 	args := []interface{}{clinicID}
 
 	// 2. Handle Quarter IDs
-	if len(f.QuarterIDs) > 0 {
+	if len(f.parsedQuarterIDs) > 0 {
 		// sqlx.In replaces (?) with (?, ?, ?)
 		subQuery, qArgs, err := sqlx.In(" AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))", f.QuarterIDs)
 		if err == nil {
@@ -240,7 +240,7 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
 	}
 
 	// 3. Handle Financial Year (Fall-through logic)
-	if len(f.QuarterIDs) == 0 && f.FinancialYearID != nil {
+	if len(f.parsedQuarterIDs) == 0 && f.FinancialYearID != nil {
 		query += ` AND period_quarter BETWEEN (
                 SELECT start_date FROM tbl_financial_year WHERE id = ?
             ) AND (

@@ -3,6 +3,7 @@ package bas
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,13 +85,30 @@ type BASFilter struct {
 	FromDate        *string      `form:"from_date"`         // YYYY-MM-DD
 	ToDate          *string      `form:"to_date"`           // YYYY-MM-DD
 	FinancialYearID *string      `form:"financial_year_id"` // UUID — maps quarter to FY
-	QuarterIDs      []*uuid.UUID `form:"quarterIds"`
+	QuarterIDs      *string      `form:"quarter_ids"`       // UUIDs of tbl_financial_quarter
+
+	parsedQuarterIDs []uuid.UUID
 }
 
 // MapToFilter returns the BASFilter as a common.Filter, omitting nil values.
 func (f *BASFilter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	operators := map[string]common.Operator{}
+
+	if f.QuarterIDs != nil && *f.QuarterIDs != "" {
+
+		idStrings := strings.Split(*f.QuarterIDs, ",")
+		for _, s := range idStrings {
+			parsedID, err := uuid.Parse(strings.TrimSpace(s))
+			if err == nil {
+				f.parsedQuarterIDs = append(f.parsedQuarterIDs, parsedID)
+			}
+		}
+
+		if len(f.parsedQuarterIDs) > 0 {
+			filters["quarterIds"] = f.parsedQuarterIDs
+		}
+	}
 
 	if len(f.ClinicId) > 0 {
 		ids := make([]uuid.UUID, 0, len(f.ClinicId))
@@ -113,17 +131,7 @@ func (f *BASFilter) MapToFilter() common.Filter {
 	if f.FinancialYearID != nil {
 		filters["financial_year_id"] = *f.FinancialYearID
 	}
-	if len(f.QuarterIDs) > 0 {
-		ids := make([]uuid.UUID, 0, len(f.QuarterIDs))
-		for _, qid := range f.QuarterIDs {
-			if qid != nil {
-				ids = append(ids, *qid)
-			}
-		}
-		if len(ids) > 0 {
-			filters["quarterIds"] = ids
-		}
-	}
+
 	return common.NewFilter(
 		nil,
 		filters,

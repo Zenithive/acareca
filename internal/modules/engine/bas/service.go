@@ -156,7 +156,6 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 }
 
 func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error) {
-
 	meta := auditctx.GetMetadata(ctx)
 
 	isAccountant := false
@@ -265,22 +264,22 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	}
 
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
+	var finalizedRowsForTotal []*BASLineItemRow
 
 	// --- Iterate over SELECTED Quarters first ---
-	if len(f.QuarterIDs) > 0 {
-		for _, qID := range f.QuarterIDs {
-			if qID == nil {
-				continue
-			}
+	if len(f.parsedQuarterIDs) > 0 {
+		for _, qID := range f.parsedQuarterIDs {
 
 			// Get metadata by ID (Always works even if no transactions)
-			qInfo, err := s.repo.GetQuarterInfoByID(ctx, *qID)
+			qInfo, err := s.repo.GetQuarterInfoByID(ctx, qID)
 			if err != nil {
 				continue
 			}
 
 			// Get data from our map (might be nil/empty)
 			qRows := quarterGroups[qInfo.StartDate]
+
+			finalizedRowsForTotal = append(finalizedRowsForTotal, qRows...)
 
 			// Map to column (mapToBASColumn handles nil/empty rows by returning $0)
 			col := s.mapToBASColumn(qRows)
@@ -290,6 +289,8 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	} else {
 		// Fallback for when no specific quarters are selected (Show what exists)
 		for key, qRows := range quarterGroups {
+			finalizedRowsForTotal = append(finalizedRowsForTotal, qRows...)
+
 			col := s.mapToBASColumn(qRows)
 			quarterDate, _ := time.Parse("2006-01-02", key)
 			qInfo, _ := s.repo.GetQuarterInfoByDate(ctx, quarterDate)
@@ -307,7 +308,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	})
 
 	// Build Grand Total last
-	resp.GrandTotal = s.mapToBASColumn(allRows)
+	resp.GrandTotal = s.mapToBASColumn(finalizedRowsForTotal)
 	resp.GrandTotal.Quarter.Name = "Total"
 
 	return resp, nil
