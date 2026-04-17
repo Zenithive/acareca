@@ -9109,7 +9109,8 @@
                 "transaction",
                 "document",
                 "invite",
-                "audit_log"
+                "audit_log",
+                "system"
             ],
             "x-enum-varnames": [
                 "EntityClinic",
@@ -9117,7 +9118,8 @@
                 "EntityTransaction",
                 "EntityDocument",
                 "EntityInvite",
-                "EntityAuditLog"
+                "EntityAuditLog",
+                "EntitySystem"
             ]
         },
         "notification.EventType": {
@@ -9132,7 +9134,9 @@
                 "transaction.created",
                 "transaction.status_changed",
                 "document.uploaded",
-                "audit_log.created"
+                "audit_log.created",
+                "system.error",
+                "system.warning"
             ],
             "x-enum-varnames": [
                 "EventInviteSent",
@@ -9144,7 +9148,9 @@
                 "EventTransactionCreated",
                 "EventTransactionUpdated",
                 "EventDocumentUploaded",
-                "EventAuditLogCreated"
+                "EventAuditLogCreated",
+                "EventSystemError",
+                "EventSystemWarning"
             ]
         },
         "notification.Notification": {

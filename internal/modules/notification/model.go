@@ -44,7 +44,9 @@ const (
 	EventDocumentUploaded   EventType = "document.uploaded"
 
 	// System → Admin
-	EventAuditLogCreated EventType = "audit_log.created"
+	EventAuditLogCreated  EventType = "audit_log.created"
+	EventSystemError      EventType = "system.error"
+	EventSystemWarning    EventType = "system.warning"
 )
 
 type EntityType string
@@ -56,6 +58,7 @@ const (
 	EntityDocument    EntityType = "document"
 	EntityInvite      EntityType = "invite"
 	EntityAuditLog    EntityType = "audit_log"
+	EntitySystem      EntityType = "system"
 )
 
 type Channel string

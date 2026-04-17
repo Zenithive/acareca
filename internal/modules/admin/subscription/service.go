@@ -50,16 +50,25 @@ func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscript
 		}
 		productID, err = s.stripeClient.CreateProduct(req.Name, desc)
 		if err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "subscription.create_stripe_product",
+				err, "", req.Name, auditctx.EntitySubscription, auditctx.ModuleAdmin,
+			)
 			return nil, fmt.Errorf("stripe create product: %w", err)
 		}
 		priceID, err = s.stripeClient.CreatePrice(productID, int64(req.Price*100), "aud")
 		if err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "subscription.create_stripe_price",
+				err, "", req.Name, auditctx.EntitySubscription, auditctx.ModuleAdmin,
+			)
 			return nil, fmt.Errorf("stripe create price: %w", err)
 		}
 	}
 
 	created, err := s.repo.Create(ctx, sub)
 	if err != nil {
+		// High priority: DB failure during creation
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "subscription.db_create_failed",
+			err, "", req.Name, auditctx.EntitySubscription, auditctx.ModuleAdmin)
 		return nil, err
 	}
 
@@ -67,6 +76,9 @@ func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscript
 	if productID != "" && priceID != "" {
 		if err := s.repo.UpdateStripeIDs(ctx, created.ID, productID, priceID); err != nil {
 			log.Printf("ALERT: stripe product created but db update failed: product=%s price=%s err=%v", productID, priceID, err)
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "subscription.persist_stripe_ids",
+				err, "", intToStr(created.ID), auditctx.EntitySubscription, auditctx.ModuleAdmin,
+			)
 			return nil, err
 		}
 		created.StripeProductID = &productID
@@ -76,6 +88,7 @@ func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscript
 	// Seed permissions if provided in the request
 	if len(req.Permissions) > 0 {
 		if err := s.repo.BulkInsertPermissions(ctx, created.ID, req.Permissions); err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "subscription.seed_permissions", err, "", intToStr(created.ID), auditctx.EntitySubscription, auditctx.ModuleAdmin)
 			return nil, fmt.Errorf("seed permissions: %w", err)
 		}
 	}
@@ -166,6 +179,8 @@ func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateS
 				newDesc = *existing.Description
 			}
 			if err := s.stripeClient.UpdateProduct(*existing.StripeProductID, newName, newDesc); err != nil {
+				s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "subscription.stripe_sync_fail",
+					err, "", intToStr(id), auditctx.EntitySubscription, auditctx.ModuleAdmin)
 				return nil, fmt.Errorf("stripe update product: %w", err)
 			}
 		}
@@ -184,6 +199,8 @@ func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateS
 				return nil, fmt.Errorf("stripe archive price: %w", err)
 			}
 			if err := s.repo.UpdateStripeIDs(ctx, id, *existing.StripeProductID, newPriceID); err != nil {
+				s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, "subscription.db_out_of_sync",
+					err, "", intToStr(id), auditctx.EntitySubscription, auditctx.ModuleAdmin)
 				log.Printf("ALERT: stripe price updated but db update failed: product=%s price=%s err=%v", *existing.StripeProductID, newPriceID, err)
 				return nil, err
 			}

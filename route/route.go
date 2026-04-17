@@ -202,7 +202,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	notification.RegisterRoutes(nft, notificationHandler)
 
 	// ============ BILLING MODULE ============
-	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient)
+	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
 	// ============ SEED MODULE ============
 	seedSvc := seed.NewService(dbConn)

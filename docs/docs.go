@@ -9112,7 +9112,8 @@ const docTemplate = `{
                 "transaction",
                 "document",
                 "invite",
-                "audit_log"
+                "audit_log",
+                "system"
             ],
             "x-enum-varnames": [
                 "EntityClinic",
@@ -9120,7 +9121,8 @@ const docTemplate = `{
                 "EntityTransaction",
                 "EntityDocument",
                 "EntityInvite",
-                "EntityAuditLog"
+                "EntityAuditLog",
+                "EntitySystem"
             ]
         },
         "notification.EventType": {
@@ -9135,7 +9137,9 @@ const docTemplate = `{
                 "transaction.created",
                 "transaction.status_changed",
                 "document.uploaded",
-                "audit_log.created"
+                "audit_log.created",
+                "system.error",
+                "system.warning"
             ],
             "x-enum-varnames": [
                 "EventInviteSent",
@@ -9147,7 +9151,9 @@ const docTemplate = `{
                 "EventTransactionCreated",
                 "EventTransactionUpdated",
                 "EventDocumentUploaded",
-                "EventAuditLogCreated"
+                "EventAuditLogCreated",
+                "EventSystemError",
+                "EventSystemWarning"
             ]
         },
         "notification.Notification": {

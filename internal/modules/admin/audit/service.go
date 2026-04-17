@@ -10,12 +10,19 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
 	LogAsync(entry *LogEntry)
+	// LogSystemIssue records a system-level error or warning to the audit log and
+	// notifies all admins. level must be auditctx.ActionSystemError or ActionSystemWarning.
+	// It deduplicates: if an identical UNREAD notification exists for entityID+level it is skipped.
+	// If auditSvc itself fails it falls back to log.Printf to avoid infinite loops.
+	// Name resolution (actorID → "John Doe", entityID → "City Clinic") happens here — callers pass raw IDs only.
+	LogSystemIssue(ctx context.Context, level, action string, issueErr error, actorID, entityID, entityType, module string)
 	Query(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
 	Shutdown()
@@ -78,6 +85,135 @@ func (s *service) asyncWorker() {
 	close(s.done)
 }
 
+// LogSystemIssue records a system-level error or warning to the audit log and notifies all admins.
+func (s *service) LogSystemIssue(ctx context.Context, level, action string, issueErr error, actorID, entityID, entityType, module string) {
+	if issueErr == nil {
+		return
+	}
+	// Set Defaults
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if module == "" {
+		module = auditctx.ModuleSystem
+	}
+
+	// Resolve Names (Single place for lookups)
+	resolveCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	actorName := s.repo.ResolveActorName(resolveCtx, actorID)
+	entityLabel := s.repo.ResolveEntityLabel(resolveCtx, entityType, entityID)
+
+	// Build the HUMAN-READABLE message
+	detail := buildSystemIssueMessage(level, action, actorName, entityLabel, issueErr)
+
+	// Determine notification event type
+	var eventType notification.EventType
+	if level == auditctx.ActionSystemError {
+		eventType = notification.EventSystemError
+	} else {
+		eventType = notification.EventSystemWarning
+	}
+
+	// Deduplication Check (Prevent spamming admins with the same error)
+	parsedEntityID, _ := uuid.Parse(entityID)
+	if s.notificationService != nil && parsedEntityID != uuid.Nil {
+		if exists, _ := s.repo.HasActiveSystemNotification(resolveCtx, parsedEntityID, eventType); exists {
+			return
+		}
+	}
+
+	// Audit Log Entry
+	entry := &LogEntry{
+		Action:     level,
+		Module:     module,
+		EntityType: &entityType,
+		EntityID:   &entityID,
+		AfterState: map[string]interface{}{
+			"summary":   detail,
+			"raw_error": issueErr.Error(),
+		},
+	}
+
+	_ = s.repo.Insert(ctx, entry)
+
+	// Notify Admins
+	if s.notificationService != nil {
+		eventType := notification.EventSystemWarning
+		if level == auditctx.ActionSystemError {
+			eventType = notification.EventSystemError
+		}
+		// Send the clean 'detail' string as the notification body
+		go s.publishSystemIssueNotification(level, action, detail, parsedEntityID, eventType)
+	}
+}
+
+// buildSystemIssueMessage produces the single human-readable string shown on the admin panel.
+func buildSystemIssueMessage(level, action, actorName, entityName string, err error) string {
+	reason := err.Error()
+
+	if strings.Contains(reason, "attempted to access") {
+		return fmt.Sprintf("'%s' attempted to access %s '%s' they do not own",
+			actorName,
+			strings.ToLower(strings.Split(action, ".")[0]),
+			entityName,
+		)
+	}
+
+	return fmt.Sprintf("'%s' '%s' '%s': %v",
+		actorName, action, entityName, err)
+}
+
+// publishSystemIssueNotification fans out system error/warning notifications to all admins.
+func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType notification.EventType) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	adminIDs, err := s.repo.GetAdminIDs(ctx)
+	if err != nil || len(adminIDs) == 0 {
+		return
+	}
+
+	title := "System Warning"
+	if level == auditctx.ActionSystemError {
+		title = "System Error"
+	}
+
+	body, _ := json.Marshal(detail)
+	extraData := map[string]interface{}{"action": action}
+	notifPayload := notification.BuildNotificationPayload(title, body, nil, nil, &extraData)
+	payloadBytes, err := json.Marshal(notifPayload)
+	if err != nil {
+		log.Printf("ERROR: [SystemIssue] marshal payload: %v", err)
+		return
+	}
+
+	senderType := notification.ActorSystem
+	for _, adminID := range adminIDs {
+		req := notification.RqNotification{
+			ID:            uuid.New(),
+			RecipientID:   adminID,
+			RecipientType: notification.ActorAdmin,
+			SenderType:    &senderType,
+			EventType:     eventType,
+			EntityType:    notification.EntitySystem,
+			EntityID:      entityID,
+			Status:        notification.StatusUnread,
+			Payload:       payloadBytes,
+			Channels:      []notification.Channel{notification.ChannelInApp},
+			CreatedAt:     time.Now(),
+		}
+		go func(r notification.RqNotification) {
+			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer pCancel()
+			if err := s.notificationService.Publish(pCtx, r); err != nil {
+				log.Printf("ERROR: [SystemIssue] publish to admin %s: %v", r.RecipientID, err)
+			}
+		}(req)
+	}
+}
+
 // This runs in its own goroutine to avoid blocking the audit worker
 // publishAuditLogNotification sends notifications to all admin users about a new audit log
 func (s *service) publishAuditLogNotification(entry *LogEntry) {
@@ -97,7 +233,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		if err != nil {
 			log.Printf("ERROR: [Audit-Notification] Failed to get user name for ID %s: %v", *entry.UserID, err)
 		}
-	} else {
+	} else if entry.PracticeID != nil {
 		uID, err := s.repo.GetUserIDByPractitionerID(ctx, *entry.PracticeID)
 		if err != nil {
 			log.Printf("ERROR: [Audit-Notification] Failed to get user ID for practitioner ID %s: %v", *entry.PracticeID, err)
@@ -148,6 +284,13 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"accountant.invite_revoked":   "revoked invitation for accountant",
 		"invite.permission_assigned":  "assigned permissions to accountant",
 		"invite.permission_updated":   "updated permissions for accountant",
+
+		// Billing & Subscriptions (Success)
+		"subscription.created":          "created a new subscription plan",
+		"subscription.updated":          "updated subscription plan",
+		"subscription.deleted":          "deleted subscription plan",
+		"billing.payment_success":       "successfully processed payment for",
+		"billing.activation_successful": "successfully activated subscription for",
 	}
 	formattedAction, exists := actionVerbs[entry.Action]
 	if !exists {

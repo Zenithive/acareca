@@ -474,6 +474,9 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		if err := s.repo.DeletePermissionsByEntity(ctx, id, "CLINIC"); err != nil {
 			// Log the error but don't fail the request since the clinic is already deleted
 			fmt.Printf("Alert: Clinic %s deleted but permissions cleanup failed: %v\n", id, err)
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, "clinic.delete_permissions",
+				err, "", id.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
+			)
 		}
 		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
 
@@ -1111,6 +1114,9 @@ func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinic
 		// Query tbl_invite_permissions
 		permission, err := s.repo.GetAccountantPermission(ctx, finalAccountantID, clinicID)
 		if err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "clinic.check_permission",
+				err, finalAccountantID.String(), clinicID.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
+			)
 			// Return a clear error for the handler to map to 403 Forbidden
 			return uuid.Nil, fmt.Errorf("accountant access denied for clinic %s: %w", clinicID, err)
 		}
@@ -1133,6 +1139,10 @@ func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinic
 		return uuid.Nil, fmt.Errorf("database error checking ownership: %w", err)
 	}
 	if !exists {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "clinic.check_permission",
+			fmt.Errorf("practitioner %s attempted to access clinic %s they do not own", actorID, clinicID),
+			actorID.String(), clinicID.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
+		)
 		return uuid.Nil, fmt.Errorf("practitioner %s does not own clinic %s", actorID, clinicID)
 	}
 

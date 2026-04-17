@@ -2,6 +2,7 @@ package route
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/billing"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
@@ -18,11 +19,12 @@ func RegisterBillingRoutes(
 	practitionerRepo practitioner.Repository,
 	uSubRepo userSubscription.Repository,
 	stripeClient sharedstripe.StripeClient,
+	auditSvc audit.Service,
 ) {
 
 	billingRepo := billing.NewRepository(dbConn)
 
-	billingSvc := billing.NewService(billingRepo, practitionerRepo, uSubRepo, stripeClient)
+	billingSvc := billing.NewService(billingRepo, practitionerRepo, uSubRepo, stripeClient, auditSvc)
 
 	billingHandler := billing.NewHandler(billingSvc)
 

@@ -121,6 +121,8 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 		return nil
 	})
 	if err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.creation_failed",
+			err, "", req.Label, auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
 		return nil, err
 	}
 
@@ -169,6 +171,9 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 	if err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if req.IsActive != nil && *req.IsActive {
 			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
+				// Log as error: multiple active financial years
+				s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.deactivation_failed",
+					err, "", id.String(), auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
 				return fmt.Errorf("deactivate existing financial years: %w", err)
 			}
 			fy.IsActive = true
