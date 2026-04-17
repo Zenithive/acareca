@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 // InvitationStatus defines the allowed states for an invitation
@@ -145,17 +146,18 @@ var invitationSearchCols = []string{"email"}
 
 type Filter struct {
 	Status *string `form:"status"`
+	Role   string  `form:"-"`
 	common.Filter
 }
 
-func (filter *Filter) MapToFilter(pID, aID *uuid.UUID) common.Filter {
+func (filter *Filter) MapToFilter(actorID *uuid.UUID) common.Filter {
 	filters := map[string]interface{}{}
 
 	// Role-based security: Apply the correct ID based on who is asking
-	if pID != nil {
-		filters["practitioner_id"] = *pID
-	} else if aID != nil {
-		filters["entity_id"] = *aID
+	if actorID != nil && filter.Role == util.RolePractitioner {
+		filters["practitioner_id"] = *actorID
+	} else {
+		filters["entity_id"] = *actorID
 	}
 
 	if filter.Status != nil {

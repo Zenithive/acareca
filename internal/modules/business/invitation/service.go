@@ -28,7 +28,7 @@ type Service interface {
 	GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) (*RsInviteDetails, error)
 	ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error)
 	FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx, email string, entityID uuid.UUID) error
-	ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error)
+	ListInvitations(ctx context.Context, actorID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
 	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
@@ -490,7 +490,7 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 	return nil
 }
 
-func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *Filter) (*util.RsList, error) {
+func (s *service) ListInvitations(ctx context.Context, actorID *uuid.UUID, f *Filter) (*util.RsList, error) {
 	var baseURL string
 	if s.cfg.Env == "dev" {
 		baseURL = s.cfg.DevUrl
@@ -499,8 +499,8 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 	}
 
 	// Accountant path: query by email with practitioner details
-	if aID != nil {
-		email, err := s.repo.GetEmailByAccountantID(ctx, *aID)
+	if f.Role == util.RoleAccountant && actorID != nil {
+		email, err := s.repo.GetEmailByAccountantID(ctx, *actorID)
 		if err != nil {
 			return nil, fmt.Errorf("resolve accountant email: %w", err)
 		}
@@ -529,8 +529,8 @@ func (s *service) ListInvitations(ctx context.Context, pID, aID *uuid.UUID, f *F
 	}
 
 	// Practitioner path: same response structure for consistency
-	ft := f.MapToFilter(pID, nil)
-	listRows, err := s.repo.ListForPractitioner(ctx, *pID, ft)
+	ft := f.MapToFilter(actorID)
+	listRows, err := s.repo.ListForPractitioner(ctx, *actorID, ft)
 	if err != nil {
 		return nil, err
 	}

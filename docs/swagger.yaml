@@ -4800,6 +4800,127 @@ paths:
       summary: Update a form entry
       tags:
       - entry
+  /entry/coa-entries:
+    get:
+      description: Returns one row per COA with aggregated amounts and entry counts
+      parameters:
+      - description: Zero-based page index
+        in: query
+        name: page
+        type: integer
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by practitioner ID
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by COA ID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by tax type ID
+        in: query
+        name: tax_type_id
+        type: integer
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List grouped COA entries (parent grid)
+      tags:
+      - entry
+  /entry/coa-entries/{coa_id}/entries:
+    get:
+      description: Returns detailed entry rows for the expanded COA
+      parameters:
+      - description: COA ID
+        in: path
+        name: coa_id
+        required: true
+        type: string
+      - description: Zero-based page index
+        in: query
+        name: page
+        type: integer
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by practitioner ID
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by tax type ID
+        in: query
+        name: tax_type_id
+        type: integer
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List entries for a specific COA (child grid)
+      tags:
+      - entry
   /entry/transactions:
     get:
       description: Returns flat rows (one per entry value) enriched with clinic, form,

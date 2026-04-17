@@ -19,6 +19,10 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
+
+	// COA-grouped endpoints
+	ListCoaEntries(c *gin.Context)
+	ListCoaEntryDetails(c *gin.Context)
 	// GetFieldSummary(c *gin.Context)
 }
 
@@ -316,3 +320,92 @@ func (h *handler) ListTransactions(c *gin.Context) {
 
 // 	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
 // }
+
+// @Summary List grouped COA entries (parent grid)
+// @Description Returns one row per COA with aggregated amounts and entry counts
+// @Tags entry
+// @Produce json
+// @Param page query int false "Zero-based page index"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param practitioner_id query string false "Filter by practitioner ID"
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param coa_id query string false "Filter by COA ID"
+// @Param tax_type_id query int false "Filter by tax type ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/coa-entries [get]
+func (h *handler) ListCoaEntries(c *gin.Context) {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	filter.Role = role
+
+	result, err := h.svc.ListCoaEntries(c.Request.Context(), filter, actorID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "COA entries fetched successfully")
+}
+
+// @Summary List entries for a specific COA (child grid)
+// @Description Returns detailed entry rows for the expanded COA
+// @Tags entry
+// @Produce json
+// @Param coa_id path string true "COA ID"
+// @Param page query int false "Zero-based page index"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param practitioner_id query string false "Filter by practitioner ID"
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param tax_type_id query int false "Filter by tax type ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/coa-entries/{coa_id}/entries [get]
+func (h *handler) ListCoaEntryDetails(c *gin.Context) {
+	coaID := c.Param("coa_id")
+	if coaID == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("coa_id is required"))
+		return
+	}
+
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	filter.Role = role
+
+	result, err := h.svc.ListCoaEntryDetails(c.Request.Context(), coaID, filter, actorID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "COA entry details fetched successfully")
+}

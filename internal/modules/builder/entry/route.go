@@ -72,6 +72,14 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permChecker middleware.Perm
 		transactionRoutes.GET("/transactions", h.ListTransactions)
 	}
 
+	// COA-grouped routes: New endpoints for master-detail grid
+	coaRoutes := rg.Group("/coa-entries")
+	coaRoutes.Use(middleware.MethodBasedPermission(permChecker))
+	{
+		coaRoutes.GET("", h.ListCoaEntries)
+		coaRoutes.GET("/:coa_id/entries", h.ListCoaEntryDetails)
+	}
+
 	// ID-based routes: Entry permissions inherit from associated form
 	// Uses ChildEntityPermissionMiddleware which resolves entry ID → form version ID → form ID
 	// for permission checking (permissions are stored by form_id)

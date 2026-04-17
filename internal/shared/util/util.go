@@ -266,26 +266,26 @@ func GetEntityID(c *gin.Context) (uuid.UUID, bool) {
 }
 
 // Helper function to return pointers to Practitioner or Accountant IDs based on the user's role.
-func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
-	role := strings.ToUpper(c.GetString("role"))
+func GetRoleBasedID(c *gin.Context) (actorId *uuid.UUID, role string, ok bool) {
+	role = strings.ToUpper(c.GetString("role"))
 
 	switch role {
 	case RolePractitioner:
 		id, exists := GetPractitionerID(c)
 		if !exists || id == uuid.Nil {
-			return nil, nil, false
+			return nil, role, false
 		}
-		return &id, nil, true
+		return &id, role, true
 
 	case RoleAccountant:
 		id, exists := GetAccountantID(c)
 		if !exists || id == uuid.Nil {
-			return nil, nil, false
+			return nil, role, false
 		}
-		return nil, &id, true
+		return &id, role, true
 
 	default:
-		return nil, nil, false
+		return nil, role, false
 	}
 }
 

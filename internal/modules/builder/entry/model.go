@@ -174,8 +174,11 @@ type TransactionFilter struct {
 	TaxTypeID      *int16  `form:"tax_type_id"`
 	DateFrom       *string `form:"date_from"`
 	DateTo         *string `form:"date_to"`
+	StartDate      *string `form:"start_date"` // Alias for date_from (used by COA entries endpoints)
+	EndDate        *string `form:"end_date"`   // Alias for date_to (used by COA entries endpoints)
 	VersionID      *string `form:"version_id"`
 	Status         *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Role           string  `form:"-"`
 	common.Filter
 }
 
@@ -214,14 +217,27 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 	if f.Status != nil && *f.Status != "" {
 		filters["status"] = *f.Status
 	}
-	if f.DateFrom != nil && *f.DateFrom != "" {
-		filters["date_from"] = *f.DateFrom
-		operators["date_from"] = common.OpGt
+
+	// Support both date_from/date_to and start_date/end_date
+	// Priority: start_date/end_date (for COA endpoints) > date_from/date_to (for transactions endpoint)
+	dateFrom := f.DateFrom
+	if f.StartDate != nil && *f.StartDate != "" {
+		dateFrom = f.StartDate
 	}
-	if f.DateTo != nil && *f.DateTo != "" {
-		filters["date_to"] = *f.DateTo
-		operators["date_to"] = common.OpLt
+	if dateFrom != nil && *dateFrom != "" {
+		filters["start_date"] = *dateFrom
+		operators["start_date"] = common.OpGt
 	}
+
+	dateTo := f.DateTo
+	if f.EndDate != nil && *f.EndDate != "" {
+		dateTo = f.EndDate
+	}
+	if dateTo != nil && *dateTo != "" {
+		filters["end_date"] = *dateTo
+		operators["end_date"] = common.OpLt
+	}
+
 	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset, f.SortBy, f.OrderBy)
 }
 
@@ -270,4 +286,35 @@ type RsFieldSummary struct {
 	TotalNet       float64   `json:"total_net"`
 	TotalGst       float64   `json:"total_gst"`
 	TotalGross     float64   `json:"total_gross"`
+}
+
+// RsCoaEntry represents a grouped COA row for the parent grid
+type RsCoaEntry struct {
+	CoaID            string  `json:"coa_id"`
+	CoaName          string  `json:"coa_name"`
+	TotalNetAmount   float64 `json:"total_net_amount"`
+	TotalGrossAmount float64 `json:"total_gross_amount"`
+	EntryCount       int     `json:"entry_count"`
+}
+
+// RsCoaEntryDetail represents a detailed entry row for the child grid
+type RsCoaEntryDetail struct {
+	ID            string   `json:"id"`
+	EntryID       string   `json:"entry_id"`
+	FormFieldID   string   `json:"form_field_id"`
+	CoaID         string   `json:"coa_id"`
+	TaxTypeID     *int16   `json:"tax_type_id"`
+	FormID        string   `json:"form_id"`
+	ClinicID      string   `json:"clinic_id"`
+	VersionID     string   `json:"version_id"`
+	FormFieldName string   `json:"form_field_name"`
+	CoaName       string   `json:"coa_name"`
+	TaxTypeName   *string  `json:"tax_type_name"`
+	FormName      string   `json:"form_name"`
+	ClinicName    string   `json:"clinic_name"`
+	NetAmount     *float64 `json:"net_amount"`
+	GstAmount     *float64 `json:"gst_amount"`
+	GrossAmount   *float64 `json:"gross_amount"`
+	CreatedAt     string   `json:"created_at"`
+	UpdatedAt     *string  `json:"updated_at,omitempty"`
 }

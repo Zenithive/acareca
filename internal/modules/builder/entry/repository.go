@@ -29,6 +29,12 @@ type IRepository interface {
 	ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
 	CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
 
+	// COA-grouped endpoints
+	ListCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntry, error)
+	CountCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) (int, error)
+	ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntryDetail, error)
+	CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) (int, error)
+
 	// Transaction-based variants
 	CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
 	UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
@@ -553,4 +559,296 @@ func (r *Repository) GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.
 	}
 
 	return &summary, nil
+}
+
+// ListCoaEntries returns grouped COA rows with aggregated amounts and entry counts
+func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntry, error) {
+	var permissionClause string
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		permissionClause = ` AND fm.id IN (
+            SELECT entity_id FROM tbl_invite_permissions 
+            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+        )`
+	} else {
+		permissionClause = ` AND c.id IN (
+            SELECT id FROM tbl_clinic 
+            WHERE practitioner_id = ? AND deleted_at IS NULL
+        )`
+	}
+
+	// Map filter fields to use start_date/end_date instead of date_from/date_to
+	allowedColumns := map[string]string{
+		"clinic_id":       "e.clinic_id",
+		"form_id":         "fm.id",
+		"coa_id":          "coa.id",
+		"tax_type_id":     "at2.id",
+		"practitioner_id": "c.practitioner_id",
+		"start_date":      "ev.created_at",
+		"end_date":        "ev.created_at",
+	}
+
+	base := `
+		SELECT
+			coa.id          AS coa_id,
+			coa.name        AS coa_name,
+			COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
+			COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
+			COUNT(DISTINCT ev.id)             AS entry_count
+		FROM tbl_chart_of_accounts coa
+		INNER JOIN tbl_form_field              ff  ON ff.coa_id = coa.id         AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+		INNER JOIN tbl_form_entry_value        ev  ON ev.form_field_id = ff.id   AND ev.updated_at IS NULL
+		INNER JOIN tbl_form_entry              e   ON e.id = ev.entry_id         AND e.deleted_at IS NULL
+		INNER JOIN tbl_custom_form_version     fv  ON fv.id = e.form_version_id  AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
+		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
+		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause + `
+		GROUP BY coa.id, coa.name`
+
+	searchCols := []string{"coa.name"}
+	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
+	args := []any{actorID}
+	args = append(args, qArgs...)
+	q = r.db.Rebind(q)
+
+	type coaEntryRow struct {
+		CoaID            uuid.UUID `db:"coa_id"`
+		CoaName          string    `db:"coa_name"`
+		TotalNetAmount   float64   `db:"total_net_amount"`
+		TotalGrossAmount float64   `db:"total_gross_amount"`
+		EntryCount       int       `db:"entry_count"`
+	}
+
+	var rows []*coaEntryRow
+	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
+		return nil, fmt.Errorf("list coa entries: %w", err)
+	}
+
+	result := make([]*RsCoaEntry, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, &RsCoaEntry{
+			CoaID:            row.CoaID.String(),
+			CoaName:          row.CoaName,
+			TotalNetAmount:   row.TotalNetAmount,
+			TotalGrossAmount: row.TotalGrossAmount,
+			EntryCount:       row.EntryCount,
+		})
+	}
+	return result, nil
+}
+
+// CountCoaEntries returns the total number of grouped COA rows
+func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actorID *uuid.UUID, role string) (int, error) {
+	var permissionClause string
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		permissionClause = ` AND fm.id IN (
+            SELECT entity_id FROM tbl_invite_permissions
+            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+        )`
+	} else {
+		permissionClause = ` AND c.id IN (
+            SELECT id FROM tbl_clinic
+            WHERE practitioner_id = ? AND deleted_at IS NULL
+        )`
+	}
+
+	allowedColumns := map[string]string{
+		"clinic_id":       "e.clinic_id",
+		"form_id":         "fm.id",
+		"coa_id":          "coa.id",
+		"tax_type_id":     "at2.id",
+		"practitioner_id": "c.practitioner_id",
+		"start_date":      "ev.created_at",
+		"end_date":        "ev.created_at",
+	}
+
+	base := `
+		SELECT COUNT(DISTINCT coa.id)
+		FROM tbl_chart_of_accounts coa
+		INNER JOIN tbl_form_field              ff  ON ff.coa_id = coa.id         AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+		INNER JOIN tbl_form_entry_value        ev  ON ev.form_field_id = ff.id   AND ev.updated_at IS NULL
+		INNER JOIN tbl_form_entry              e   ON e.id = ev.entry_id         AND e.deleted_at IS NULL
+		INNER JOIN tbl_custom_form_version     fv  ON fv.id = e.form_version_id  AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
+		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
+		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause
+
+	searchCols := []string{"coa.name"}
+	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
+	args := []any{actorID}
+	args = append(args, qArgs...)
+	q = r.db.Rebind(q)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count coa entries: %w", err)
+	}
+	return total, nil
+}
+
+// ListCoaEntryDetails returns detailed entry rows for a specific COA
+func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
+	var permissionClause string
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		permissionClause = ` AND fm.id IN (
+            SELECT entity_id FROM tbl_invite_permissions 
+            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+        )`
+	} else {
+		permissionClause = ` AND c.id IN (
+            SELECT id FROM tbl_clinic 
+            WHERE practitioner_id = ? AND deleted_at IS NULL
+        )`
+	}
+
+	allowedColumns := map[string]string{
+		"clinic_id":       "e.clinic_id",
+		"form_id":         "fm.id",
+		"tax_type_id":     "at2.id",
+		"practitioner_id": "c.practitioner_id",
+		"start_date":      "ev.created_at",
+		"end_date":        "ev.created_at",
+		"created_at":      "ev.created_at",
+	}
+
+	base := `
+		SELECT
+			ev.id,
+			e.id            AS entry_id,
+			ff.id           AS form_field_id,
+			coa.id          AS coa_id,
+			at2.id          AS tax_type_id,
+			fm.id           AS form_id,
+			e.clinic_id,
+			e.form_version_id AS version_id,
+			ff.label        AS form_field_name,
+			coa.name        AS coa_name,
+			at2.name        AS tax_type_name,
+			fm.name         AS form_name,
+			c.name          AS clinic_name,
+			ev.net_amount,
+			ev.gst_amount,
+			ev.gross_amount,
+			ev.created_at,
+			ev.updated_at
+		FROM tbl_form_entry_value ev
+		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
+		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
+		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
+		WHERE ev.updated_at IS NULL AND coa.id = ?` + permissionClause
+
+	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
+	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
+	args := []any{coaID, actorID}
+	args = append(args, qArgs...)
+	q = r.db.Rebind(q)
+
+	type detailRow struct {
+		ID            uuid.UUID `db:"id"`
+		EntryID       uuid.UUID `db:"entry_id"`
+		FormFieldID   uuid.UUID `db:"form_field_id"`
+		CoaID         uuid.UUID `db:"coa_id"`
+		TaxTypeID     *int16    `db:"tax_type_id"`
+		FormID        uuid.UUID `db:"form_id"`
+		ClinicID      uuid.UUID `db:"clinic_id"`
+		VersionID     uuid.UUID `db:"version_id"`
+		FormFieldName string    `db:"form_field_name"`
+		CoaName       string    `db:"coa_name"`
+		TaxTypeName   *string   `db:"tax_type_name"`
+		FormName      string    `db:"form_name"`
+		ClinicName    string    `db:"clinic_name"`
+		NetAmount     *float64  `db:"net_amount"`
+		GstAmount     *float64  `db:"gst_amount"`
+		GrossAmount   *float64  `db:"gross_amount"`
+		CreatedAt     string    `db:"created_at"`
+		UpdatedAt     *string   `db:"updated_at"`
+	}
+
+	var rows []*detailRow
+	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
+		return nil, fmt.Errorf("list coa entry details: %w", err)
+	}
+
+	result := make([]*RsCoaEntryDetail, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, &RsCoaEntryDetail{
+			ID:            row.ID.String(),
+			EntryID:       row.EntryID.String(),
+			FormFieldID:   row.FormFieldID.String(),
+			CoaID:         row.CoaID.String(),
+			TaxTypeID:     row.TaxTypeID,
+			FormID:        row.FormID.String(),
+			ClinicID:      row.ClinicID.String(),
+			VersionID:     row.VersionID.String(),
+			FormFieldName: row.FormFieldName,
+			CoaName:       row.CoaName,
+			TaxTypeName:   row.TaxTypeName,
+			FormName:      row.FormName,
+			ClinicName:    row.ClinicName,
+			NetAmount:     row.NetAmount,
+			GstAmount:     row.GstAmount,
+			GrossAmount:   row.GrossAmount,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
+// CountCoaEntryDetails returns the total number of entry details for a specific COA
+func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID *uuid.UUID, role string) (int, error) {
+	var permissionClause string
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		permissionClause = ` AND fm.id IN (
+            SELECT entity_id FROM tbl_invite_permissions
+            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+        )`
+	} else {
+		permissionClause = ` AND c.id IN (
+            SELECT id FROM tbl_clinic
+            WHERE practitioner_id = ? AND deleted_at IS NULL
+        )`
+	}
+
+	allowedColumns := map[string]string{
+		"clinic_id":       "e.clinic_id",
+		"form_id":         "fm.id",
+		"tax_type_id":     "at2.id",
+		"practitioner_id": "c.practitioner_id",
+		"start_date":      "ev.created_at",
+		"end_date":        "ev.created_at",
+		"created_at":      "ev.created_at",
+	}
+
+	base := `
+		FROM tbl_form_entry_value ev
+		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
+		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
+		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
+		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
+		WHERE ev.updated_at IS NULL AND coa.id = ?` + permissionClause
+
+	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
+	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
+	args := []any{coaID, actorID}
+	args = append(args, qArgs...)
+	q = r.db.Rebind(q)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count coa entry details: %w", err)
+	}
+	return total, nil
 }
