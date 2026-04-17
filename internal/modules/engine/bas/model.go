@@ -328,6 +328,7 @@ type BASLineItemRow struct {
 	NetAmount     float64   `db:"net_amount"`
 	GstAmount     float64   `db:"gst_amount"`
 	GrossAmount   float64   `db:"gross_amount"`
+	CoaID         string    `db:"coa_id"`
 }
 
 type BASColumn struct {

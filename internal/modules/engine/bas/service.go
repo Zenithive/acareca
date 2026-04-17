@@ -319,7 +319,14 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	col.Sections.Income.Items = make([]BASLineItem, 0)
 	col.Sections.Expenses.Items = make([]BASLineItem, 0)
 
-	var g3, g8, a1, b1 BASAmount
+	type incomeAcc struct {
+		Name    string
+		Amounts BASAmount
+	}
+	incomeOrder := []string{} // To maintain order of appearance
+	incomeAccounts := map[string]*incomeAcc{}
+
+	var b1 BASAmount
 	var mgtFee, labWork, otherExp BASAmount
 
 	for _, r := range rows {
@@ -335,20 +342,18 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 
 		switch sectionType {
 		case "COLLECTION":
-			// Split by BAS category only (not by GST amount)
-			if BASCategory(r.BasCategory) == BASCategoryTaxable {
-				g8.Gross += r.GrossAmount
-				g8.GST += r.GstAmount
-				g8.Net += r.NetAmount
-				a1.Gross += r.GstAmount
-			} else {
-				g3.Gross += r.GrossAmount
-				g3.GST += r.GstAmount
-				g3.Net += r.NetAmount
+
+			//  Accumulate Individual COA Totals for Display
+			if _, seen := incomeAccounts[r.CoaID]; !seen {
+				incomeOrder = append(incomeOrder, r.CoaID)
+				incomeAccounts[r.CoaID] = &incomeAcc{Name: r.AccountName}
 			}
+			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
+			incomeAccounts[r.CoaID].Amounts.GST += r.GstAmount
+			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
+
 		case "COST", "OTHER_COST", "":
-			// Track 1B for ALL GST on purchases (matches vw_bas_summary)
-			// This includes TAXABLE and GST_FREE items with GST
+
 			b1.Gross += r.GstAmount
 
 			// Categorize by Account Name, not by BAS Category
@@ -380,25 +385,26 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		}
 	}
 
-	// Income Section
-	g3 = finalize(g3)
-	g8 = finalize(g8)
+	// --- 1. Income Section Construction & Calculation ---
+	var totalIncome BASAmount
+	for _, cid := range incomeOrder {
+		acc := incomeAccounts[cid]
+		finalAmounts := finalize(acc.Amounts)
 
-	totalIncome := BASAmount{
-		Gross: roundToTwo(g3.Gross + g8.Gross),
-		GST:   roundToTwo(g3.GST + g8.GST),
-		Net:   roundToTwo(g3.Net + g8.Net),
+		// Add to display items
+		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{
+			Name:    acc.Name,
+			Amounts: finalAmounts,
+		})
+
+		// Sum up for Net Profit/Loss calculation
+		totalIncome.Gross += finalAmounts.Gross
+		totalIncome.GST += finalAmounts.GST
+		totalIncome.Net += finalAmounts.Net
 	}
-	col.Sections.Income.Items = []BASLineItem{
-		{Name: "Income - GST Free (G3)", Amounts: g3},
-		{Name: "Income - GST", Amounts: g8},
-		{
-			Name: "1A GST on Sales",
-			Amounts: BASAmount{
-				Gross: a1.Gross, // Use a1 (only taxable GST), not totalIncome.GST
-			},
-		},
-	}
+
+	// Ensure total is rounded
+	totalIncome = finalize(totalIncome)
 
 	// Expenses Section
 	mgtFee = finalize(mgtFee)
@@ -415,14 +421,6 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
 		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
 		{Name: "Other Expenses (GST)", Amounts: otherExp},
-		// {Name: "Subtotal (non capital purchase)", Amounts: subtotalExpenses},
-		// {
-		// 	Name: "G11/1B GST on Purchases",
-		// 	Amounts: BASAmount{
-		// 		Gross: subtotalExpenses.Gross, // (G11) Total Spent
-		// 		GST:   b1.Gross,               // (1B) GST to claim
-		// 	},
-		// },
 	}
 
 	// Net Profit/Loss
@@ -437,7 +435,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 
 	// Totals
 	// Net GST Payable = 1A (GST on taxable sales) - 1B (GST on purchases)
-	col.NetGSTPayable = roundToTwo(a1.Gross - b1.Gross)
+	col.NetGSTPayable = roundToTwo(0 - b1.Gross)
 
 	return col
 }
