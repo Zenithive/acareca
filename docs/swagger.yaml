@@ -3628,14 +3628,11 @@ paths:
           type: string
         name: clinicId
         type: array
-      - collectionFormat: multi
-        description: Array of Quarter UUIDs
+      - description: Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)
         in: query
-        items:
-          type: string
         name: quarter_ids
         required: true
-        type: array
+        type: string
       - description: Restrict to a financial year by UUID
         in: query
         name: financial_year_id

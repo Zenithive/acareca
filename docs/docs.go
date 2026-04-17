@@ -2538,12 +2538,8 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Array of Quarter UUIDs",
+                        "type": "string",
+                        "description": "Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)",
                         "name": "quarter_ids",
                         "in": "query",
                         "required": true
