@@ -446,14 +446,15 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 
 			case method.TaxTreatmentManual:
 				if (f.SectionType) != nil && *f.SectionType == "COLLECTION" {
-					if entry.GstAmount != nil {
-						actualNetAmount = entry.NetAmount - *entry.GstAmount
-					}
+					// if entry.GstAmount != nil {
+					actualNetAmount = entry.NetAmount
+					// }
 				} else {
 					// For MANUAL tax type, use GROSS amount if provided, otherwise use net
 					actualNetAmount = entry.NetAmount
 				}
 			}
+
 		}
 
 		keyValues[f.FieldKey] = actualNetAmount
