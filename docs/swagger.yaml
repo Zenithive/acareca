@@ -792,6 +792,43 @@ definitions:
       total_sales_net:
         type: number
     type: object
+  calculation.PreviewSummary:
+    properties:
+      base_remuneration:
+        type: number
+      clinic_expense_gst:
+        type: number
+      commission:
+        description: IC-specific fields (from attachICCalculation)
+        type: number
+      gst_on_commission:
+        type: number
+      gst_on_remuneration:
+        type: number
+      gst_service_fee:
+        type: number
+      invoice_total:
+        type: number
+      net_amount:
+        description: Common fields
+        type: number
+      other_cost_deduction:
+        type: number
+      payment_received:
+        type: number
+      remitted_amount:
+        type: number
+      service_fee:
+        description: SERVICE_FEE method fields
+        type: number
+      super_component:
+        type: number
+      total_remuneration:
+        description: INDEPENDENT_CONTRACTOR method fields
+        type: number
+      total_service_fee:
+        type: number
+    type: object
   calculation.RqCalculateFromEntries:
     properties:
       entries:
@@ -809,6 +846,26 @@ definitions:
     - entries
     - form_id
     type: object
+  calculation.RqFormPreview:
+    properties:
+      clinic_id:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/calculation.RqPreviewEntry'
+        minItems: 1
+        type: array
+      form_version_id:
+        type: string
+      super_component:
+        maximum: 100
+        minimum: 0
+        type: number
+    required:
+    - clinic_id
+    - entries
+    - form_version_id
+    type: object
   calculation.RqLiveCalculate:
     properties:
       entries:
@@ -823,6 +880,19 @@ definitions:
     - form_version_id
     type: object
   calculation.RqLiveCalculateEntry:
+    properties:
+      form_field_id:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      net_amount:
+        type: number
+    required:
+    - form_field_id
+    type: object
+  calculation.RqPreviewEntry:
     properties:
       form_field_id:
         type: string
@@ -871,6 +941,25 @@ definitions:
         description: INCLUSIVE, EXCLUSIVE, MANUAL, ZERO
         type: string
     type: object
+  calculation.RsFormPreview:
+    properties:
+      all_fields:
+        items:
+          $ref: '#/definitions/calculation.RsPreviewFieldValue'
+        type: array
+      clinic_id:
+        type: string
+      clinic_name:
+        type: string
+      form_name:
+        type: string
+      form_version_id:
+        type: string
+      method:
+        type: string
+      summary:
+        $ref: '#/definitions/calculation.PreviewSummary'
+    type: object
   calculation.RsFormulaCalculate:
     properties:
       computed_fields:
@@ -887,6 +976,33 @@ definitions:
           $ref: '#/definitions/calculation.RsComputedFieldValue'
         type: array
       form_version_id:
+        type: string
+    type: object
+  calculation.RsPreviewFieldValue:
+    properties:
+      coa_id:
+        type: string
+      field_key:
+        type: string
+      form_field_id:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      is_computed:
+        type: boolean
+      is_highlighted:
+        type: boolean
+      label:
+        type: string
+      net_amount:
+        type: number
+      section_type:
+        type: string
+      sort_order:
+        type: integer
+      tax_type:
         type: string
     type: object
   calculation.RsTransactionRow:
@@ -4019,6 +4135,41 @@ paths:
       security:
       - BearerToken: []
       summary: Live calculation based on form version ID
+      tags:
+      - calculation
+  /calculate/preview:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.
+        Returns all field values with net/gst/gross breakdown and method-specific summary (SERVICE_FEE or INDEPENDENT_CONTRACTOR).
+        Pass form_version_id, clinic_id, and field entries with net_amount for each field.
+      parameters:
+      - description: Form version ID, clinic ID, and field entries
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.RqFormPreview'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.RsFormPreview'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Form preview with complete calculation
       tags:
       - calculation
   /clinic:

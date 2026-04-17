@@ -22,6 +22,7 @@ type Service interface {
 	CalculateFromEntries(ctx context.Context, req *RqCalculateFromEntries, actorID uuid.UUID, role string) (interface{}, error)
 	FormulaCalculate(ctx context.Context, formID uuid.UUID, req *RqFormulaCalculate) (*RsFormulaCalculate, error)
 	LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error)
+	FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error)
 	GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
 }
 
@@ -613,4 +614,437 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 
 func (s *service) GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
 	return s.repo.GetTransactionsByFormID(ctx, formID, actorID, role)
+}
+
+// FormPreview implements [Service] - provides complete form preview with all fields and calculation summary
+func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error) {
+	// Parse UUIDs
+	formVersionID, err := uuid.Parse(req.FormVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid form_version_id: %w", err)
+	}
+
+	clinicID, err := uuid.Parse(req.ClinicID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid clinic_id: %w", err)
+	}
+
+	// Get form version details
+	ver, err := s.versionSvc.GetVersionByFormID(ctx, formVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("get version: %w", err)
+	}
+
+	// Get form details
+	formDetail, err := s.formSvc.GetFormByID(ctx, ver.FormId)
+	if err != nil {
+		return nil, fmt.Errorf("get form: %w", err)
+	}
+
+	// Get all fields for this form version
+	fieldMap, err := s.fieldSvc.GetFieldMap(ctx, formVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("get field map: %w", err)
+	}
+
+	// Process entries and calculate values (similar to LiveCalculate)
+	keyValues := make(map[string]float64)
+	entryValuesByFieldID := make(map[uuid.UUID]*RsPreviewFieldValue)
+
+	// Initialize all non-computed fields with zero
+	for fieldID, f := range fieldMap {
+		if !f.IsComputed {
+			keyValues[f.FieldKey] = 0
+			entryValuesByFieldID[fieldID] = &RsPreviewFieldValue{
+				FormFieldID:   fieldID.String(),
+				FieldKey:      f.FieldKey,
+				Label:         f.Label,
+				IsComputed:    false,
+				SectionType:   f.SectionType,
+				TaxType:       f.TaxType,
+				SortOrder:     f.SortOrder,
+				IsHighlighted: f.IsHighlighted,
+			}
+			if f.CoaID != nil {
+				coaIDStr := f.CoaID.String()
+				entryValuesByFieldID[fieldID].CoaID = &coaIDStr
+			}
+		}
+	}
+
+	// Process each entry with tax calculations
+	for _, entry := range req.Entries {
+		fieldID, err := uuid.Parse(entry.FormFieldID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid form_field_id %s: %w", entry.FormFieldID, err)
+		}
+
+		f, ok := fieldMap[fieldID]
+		if !ok {
+			return nil, fmt.Errorf("field %s not found in form version", entry.FormFieldID)
+		}
+
+		if f.IsComputed {
+			continue
+		}
+
+		// Calculate actual net amount based on tax type
+		actualNetAmount := entry.NetAmount
+		var gstAmount *float64
+		var grossAmount *float64
+
+		if f.TaxType != nil && *f.TaxType != "" {
+			taxType := method.TaxTreatment(*f.TaxType)
+			switch taxType {
+			case method.TaxTreatmentInclusive:
+				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
+				if err != nil {
+					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+				}
+				actualNetAmount = taxResult.Amount
+				gst := taxResult.GstAmount
+				gross := taxResult.TotalAmount
+				gstAmount = &gst
+				grossAmount = &gross
+
+			case method.TaxTreatmentExclusive:
+				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
+				if err != nil {
+					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+				}
+				actualNetAmount = entry.NetAmount
+				gst := taxResult.GstAmount
+				gross := taxResult.TotalAmount
+				gstAmount = &gst
+				grossAmount = &gross
+
+			case method.TaxTreatmentManual:
+				if f.SectionType != nil && *f.SectionType == "COLLECTION" {
+					actualNetAmount = entry.NetAmount
+					if entry.GstAmount != nil {
+						gstAmount = entry.GstAmount
+						gross := entry.NetAmount + *entry.GstAmount
+						grossAmount = &gross
+					}
+				} else {
+					actualNetAmount = entry.NetAmount
+					gstAmount = entry.GstAmount
+					if entry.GstAmount != nil {
+						gross := entry.NetAmount + *entry.GstAmount
+						grossAmount = &gross
+					}
+				}
+
+			case method.TaxTreatmentZero:
+				actualNetAmount = entry.NetAmount
+				gross := entry.NetAmount
+				grossAmount = &gross
+			}
+		} else {
+			// No tax type
+			gross := entry.NetAmount
+			grossAmount = &gross
+		}
+
+		keyValues[f.FieldKey] = actualNetAmount
+
+		// Store the calculated values
+		net := actualNetAmount
+		entryValuesByFieldID[fieldID].NetAmount = &net
+		entryValuesByFieldID[fieldID].GstAmount = gstAmount
+		entryValuesByFieldID[fieldID].GrossAmount = grossAmount
+	}
+
+	// Build tax type map for computed fields
+	taxTypeByKey := make(map[string]string)
+	manualGSTByKey := make(map[string]float64)
+	for _, f := range fieldMap {
+		if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+			taxTypeByKey[f.FieldKey] = *f.TaxType
+		}
+	}
+
+	// Collect manually entered GST amounts for computed fields
+	for _, entry := range req.Entries {
+		if entry.GstAmount == nil {
+			continue
+		}
+		fieldID, err := uuid.Parse(entry.FormFieldID)
+		if err != nil {
+			continue
+		}
+		f, ok := fieldMap[fieldID]
+		if !ok || !f.IsComputed {
+			continue
+		}
+		if f.TaxType != nil && *f.TaxType == "MANUAL" {
+			manualGSTByKey[f.FieldKey] = *entry.GstAmount
+		}
+	}
+
+	// Compute section totals
+	sectionTotals := make(map[string]float64)
+	for fieldID, fieldValue := range entryValuesByFieldID {
+		f, ok := fieldMap[fieldID]
+		if !ok || f.IsComputed || f.SectionType == nil || *f.SectionType == "" {
+			continue
+		}
+		if fieldValue.NetAmount != nil {
+			sectionKey := "SECTION:" + *f.SectionType
+			sectionTotals[sectionKey] += *fieldValue.NetAmount
+		}
+	}
+
+	// Merge section totals into keyValues
+	for key, val := range sectionTotals {
+		keyValues[key] = val
+	}
+
+	// Evaluate formulas
+	computed, err := s.formulaSvc.EvalFormulas(ctx, formVersionID, keyValues, taxTypeByKey, manualGSTByKey)
+	if err != nil {
+		return nil, fmt.Errorf("eval formulas: %w", err)
+	}
+
+	// Process computed fields
+	for fieldID, val := range computed {
+		f, ok := fieldMap[fieldID]
+		if !ok || !f.IsComputed {
+			continue
+		}
+
+		netAmount := val
+		var gstAmount *float64
+		var grossAmount *float64
+
+		if f.TaxType != nil && *f.TaxType != "" {
+			if method.TaxTreatment(*f.TaxType) == method.TaxTreatmentManual {
+				var entryGST *float64
+				for _, entry := range req.Entries {
+					entryFieldID, _ := uuid.Parse(entry.FormFieldID)
+					if entryFieldID == fieldID && entry.GstAmount != nil {
+						entryGST = entry.GstAmount
+						break
+					}
+				}
+
+				if entryGST == nil {
+					gst := 0.0
+					gross := netAmount
+					gstAmount = &gst
+					grossAmount = &gross
+				} else {
+					gst := *entryGST
+					gross := netAmount + gst
+					gstAmount = &gst
+					grossAmount = &gross
+				}
+			} else {
+				taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
+				if err != nil {
+					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+				}
+				net := taxResult.Amount
+				gst := taxResult.GstAmount
+				gross := taxResult.TotalAmount
+				netAmount = net
+				gstAmount = &gst
+				grossAmount = &gross
+			}
+		} else {
+			gross := netAmount
+			grossAmount = &gross
+		}
+
+		coaIDStr := ""
+		if f.CoaID != nil {
+			coaIDStr = f.CoaID.String()
+		}
+
+		entryValuesByFieldID[fieldID] = &RsPreviewFieldValue{
+			FormFieldID:   fieldID.String(),
+			FieldKey:      f.FieldKey,
+			Label:         f.Label,
+			IsComputed:    true,
+			NetAmount:     &netAmount,
+			GstAmount:     gstAmount,
+			GrossAmount:   grossAmount,
+			SectionType:   f.SectionType,
+			TaxType:       f.TaxType,
+			CoaID:         &coaIDStr,
+			SortOrder:     f.SortOrder,
+			IsHighlighted: f.IsHighlighted,
+		}
+	}
+
+	// Build all fields array sorted by sort_order
+	allFields := make([]RsPreviewFieldValue, 0, len(entryValuesByFieldID))
+	for _, fieldValue := range entryValuesByFieldID {
+		allFields = append(allFields, *fieldValue)
+	}
+
+	// Sort by sort_order
+	for i := 0; i < len(allFields); i++ {
+		for j := i + 1; j < len(allFields); j++ {
+			if allFields[i].SortOrder > allFields[j].SortOrder {
+				allFields[i], allFields[j] = allFields[j], allFields[i]
+			}
+		}
+	}
+
+	// Calculate summary based on method
+	summary, err := s.calculatePreviewSummary(ctx, formDetail, allFields, fieldMap, req.SuperComponent)
+	if err != nil {
+		return nil, fmt.Errorf("calculate summary: %w", err)
+	}
+
+	return &RsFormPreview{
+		FormVersionID: formVersionID,
+		ClinicID:      clinicID,
+		Method:        formDetail.Method,
+		FormName:      formDetail.Name,
+		ClinicName:    "", // TODO: Fetch clinic name if needed
+		AllFields:     allFields,
+		Summary:       summary,
+	}, nil
+}
+
+// calculatePreviewSummary calculates the summary based on form method
+func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.RsFormDetail, allFields []RsPreviewFieldValue, fieldMap map[uuid.UUID]*field.RsFormField, superComponent *float64) (*PreviewSummary, error) {
+	var incomeSum, expenseSum, otherCostSum float64
+	var incomeGST, expenseGST float64
+	var paidByOwnerSum float64
+
+	// Aggregate amounts by section type
+	for _, fieldValue := range allFields {
+		if fieldValue.SectionType == nil || fieldValue.NetAmount == nil {
+			continue
+		}
+
+		fieldID, _ := uuid.Parse(fieldValue.FormFieldID)
+		f, ok := fieldMap[fieldID]
+		if !ok {
+			continue
+		}
+
+		switch *fieldValue.SectionType {
+		case "COLLECTION":
+			incomeSum += *fieldValue.NetAmount
+			if fieldValue.GstAmount != nil {
+				incomeGST += *fieldValue.GstAmount
+			}
+
+		case "COST":
+			if f.PaymentResponsibility != nil {
+				switch *f.PaymentResponsibility {
+				case "CLINIC":
+					expenseSum += *fieldValue.NetAmount
+					if fieldValue.GstAmount != nil {
+						expenseGST += *fieldValue.GstAmount
+					}
+				case "OWNER":
+					expenseSum += *fieldValue.NetAmount
+					paidByOwnerSum += *fieldValue.NetAmount
+				}
+			}
+
+		case "OTHER_COST":
+			otherCostSum += *fieldValue.NetAmount
+		}
+	}
+
+	netAmount := incomeSum - expenseSum - otherCostSum
+
+	summary := &PreviewSummary{
+		NetAmount: roundPreview(netAmount),
+	}
+
+	// Calculate based on method
+	switch formDetail.Method {
+	case "SERVICE_FEE":
+		// SERVICE_FEE calculation
+		clinicShare := float64(formDetail.ClinicShare)
+		serviceFee := netAmount * (clinicShare / 100)
+		gstServiceFee := serviceFee * 0.1
+		totalServiceFee := serviceFee + gstServiceFee
+		remittedAmount := netAmount - totalServiceFee - otherCostSum + paidByOwnerSum + incomeGST
+
+		sf := roundPreview(serviceFee)
+		gsf := roundPreview(gstServiceFee)
+		tsf := roundPreview(totalServiceFee)
+		ra := roundPreview(remittedAmount)
+		ceg := roundPreview(expenseGST)
+
+		summary.ServiceFee = &sf
+		summary.GstServiceFee = &gsf
+		summary.TotalServiceFee = &tsf
+		summary.RemittedAmount = &ra
+		summary.ClinicExpenseGST = &ceg
+
+	case "INDEPENDENT_CONTRACTOR":
+		// INDEPENDENT_CONTRACTOR calculation
+		ownerShare := float64(formDetail.OwnerShare)
+		totalRemuneration := netAmount * (ownerShare / 100)
+
+		superDecimal := 0.0
+		if superComponent != nil {
+			superDecimal = *superComponent / 100
+		}
+
+		commissionBase := totalRemuneration
+		var superAmount float64
+		if superDecimal > 0 {
+			superAmount = commissionBase * superDecimal
+		}
+
+		gstOnRemuneration := commissionBase * 0.10
+		invoiceTotal := commissionBase + gstOnRemuneration + superAmount
+
+		tr := roundPreview(totalRemuneration)
+		gor := roundPreview(gstOnRemuneration)
+		it := roundPreview(invoiceTotal)
+		ocd := roundPreview(otherCostSum)
+
+		summary.TotalRemuneration = &tr
+		summary.GstOnRemuneration = &gor
+		summary.InvoiceTotal = &it
+		summary.OtherCostDeduction = &ocd
+
+		if superDecimal > 0 {
+			sa := roundPreview(superAmount)
+			br := roundPreview(commissionBase)
+			summary.SuperComponent = &sa
+			summary.BaseRemuneration = &br
+		}
+
+		// IC-specific calculation (commission, gst on commission, payment received)
+		commission := commissionBase
+		gstOnCommission := gstOnRemuneration
+		paymentReceived := invoiceTotal
+
+		if formDetail.SuperComponent != nil && *formDetail.SuperComponent > 0 {
+			superAmt := commission * (*formDetail.SuperComponent / 100)
+			paymentReceived += superAmt
+		}
+
+		comm := roundPreview(commission)
+		gstComm := roundPreview(gstOnCommission)
+		pr := roundPreview(paymentReceived)
+
+		summary.Commission = &comm
+		summary.GstOnCommission = &gstComm
+		summary.PaymentReceived = &pr
+	}
+
+	return summary, nil
+}
+
+func roundPreview(v float64) float64 {
+	shifted := v * 100
+	if shifted < 0 {
+		shifted -= 0.5
+	} else {
+		shifted += 0.5
+	}
+	return float64(int(shifted)) / 100
 }

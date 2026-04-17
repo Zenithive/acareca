@@ -17,6 +17,7 @@ import (
 
 type IHandler interface {
 	LiveCalculate(c *gin.Context)
+	FormPreview(c *gin.Context)
 
 	// Legacy Code
 	Calculation(c *gin.Context)
@@ -64,6 +65,52 @@ func (h *handler) LiveCalculate(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "Live calculation completed successfully")
+}
+
+// FormPreview godoc
+// @Summary Form preview with complete calculation
+// @Description Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.
+// @Description Returns all field values with net/gst/gross breakdown and method-specific summary (SERVICE_FEE or INDEPENDENT_CONTRACTOR).
+// @Description Pass form_version_id, clinic_id, and field entries with net_amount for each field.
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body RqFormPreview true "Form version ID, clinic ID, and field entries"
+// @Success 200 {object} RsFormPreview
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate/preview [post]
+func (h *handler) FormPreview(c *gin.Context) {
+	var req RqFormPreview
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Get role and actor ID for permission checks
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	result, err := h.svc.FormPreview(c.Request.Context(), &req, actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "Form preview completed successfully")
 }
 
 //Legacy code

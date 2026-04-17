@@ -143,3 +143,73 @@ type transactionFlatRow struct {
 	CreatedAt     string    `db:"created_at"`
 	UpdatedAt     *string   `db:"updated_at"`
 }
+
+// Preview calculation structs
+// RqPreviewEntry represents a single field entry for preview calculation
+type RqPreviewEntry struct {
+	FormFieldID string   `json:"form_field_id" validate:"required,uuid"`
+	NetAmount   float64  `json:"net_amount"`
+	GstAmount   *float64 `json:"gst_amount,omitempty"`
+	GrossAmount *float64 `json:"gross_amount,omitempty"`
+}
+
+// RqFormPreview is the request for form preview calculation
+type RqFormPreview struct {
+	FormVersionID  string           `json:"form_version_id" validate:"required,uuid"`
+	ClinicID       string           `json:"clinic_id" validate:"required,uuid"`
+	Entries        []RqPreviewEntry `json:"entries" validate:"required,min=1,dive"`
+	SuperComponent *float64         `json:"super_component,omitempty" validate:"omitempty,min=0,max=100"`
+}
+
+// RsPreviewFieldValue represents a single field value in the preview response
+type RsPreviewFieldValue struct {
+	FormFieldID   string   `json:"form_field_id"`
+	FieldKey      string   `json:"field_key"`
+	Label         string   `json:"label"`
+	IsComputed    bool     `json:"is_computed"`
+	NetAmount     *float64 `json:"net_amount,omitempty"`
+	GstAmount     *float64 `json:"gst_amount,omitempty"`
+	GrossAmount   *float64 `json:"gross_amount,omitempty"`
+	SectionType   *string  `json:"section_type,omitempty"`
+	TaxType       *string  `json:"tax_type,omitempty"`
+	CoaID         *string  `json:"coa_id,omitempty"`
+	SortOrder     int      `json:"sort_order"`
+	IsHighlighted bool     `json:"is_highlighted"`
+}
+
+// RsFormPreview is the response for form preview calculation
+type RsFormPreview struct {
+	FormVersionID uuid.UUID             `json:"form_version_id"`
+	ClinicID      uuid.UUID             `json:"clinic_id"`
+	Method        string                `json:"method"`
+	FormName      string                `json:"form_name"`
+	ClinicName    string                `json:"clinic_name"`
+	AllFields     []RsPreviewFieldValue `json:"all_fields"`
+	Summary       *PreviewSummary       `json:"summary,omitempty"`
+}
+
+// PreviewSummary contains calculation summary based on form method
+type PreviewSummary struct {
+	// Common fields
+	NetAmount float64 `json:"net_amount"`
+
+	// SERVICE_FEE method fields
+	ServiceFee       *float64 `json:"service_fee,omitempty"`
+	GstServiceFee    *float64 `json:"gst_service_fee,omitempty"`
+	TotalServiceFee  *float64 `json:"total_service_fee,omitempty"`
+	RemittedAmount   *float64 `json:"remitted_amount,omitempty"`
+	ClinicExpenseGST *float64 `json:"clinic_expense_gst,omitempty"`
+
+	// INDEPENDENT_CONTRACTOR method fields
+	TotalRemuneration  *float64 `json:"total_remuneration,omitempty"`
+	BaseRemuneration   *float64 `json:"base_remuneration,omitempty"`
+	SuperComponent     *float64 `json:"super_component,omitempty"`
+	GstOnRemuneration  *float64 `json:"gst_on_remuneration,omitempty"`
+	InvoiceTotal       *float64 `json:"invoice_total,omitempty"`
+	OtherCostDeduction *float64 `json:"other_cost_deduction,omitempty"`
+
+	// IC-specific fields (from attachICCalculation)
+	Commission      *float64 `json:"commission,omitempty"`
+	GstOnCommission *float64 `json:"gst_on_commission,omitempty"`
+	PaymentReceived *float64 `json:"payment_received,omitempty"`
+}
