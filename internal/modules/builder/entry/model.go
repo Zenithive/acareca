@@ -142,6 +142,7 @@ type RsTransactionRow struct {
 	GrossAmount   *float64  `json:"gross_amount"`
 	CreatedAt     string    `json:"created_at"`
 	UpdatedAt     *string   `json:"updated_at,omitempty"`
+	Date          *string   `json:"date,omitempty"`
 }
 
 // RsTransactionDetail kept for backward compat (used by old RsTransaction).
@@ -257,6 +258,7 @@ type transactionFlatRow struct {
 	GrossAmount   *float64  `db:"gross_amount"`
 	CreatedAt     string    `db:"created_at"`
 	UpdatedAt     *string   `db:"updated_at"`
+	Date          *string   `db:"date"`
 }
 
 type RsFieldSummary struct {

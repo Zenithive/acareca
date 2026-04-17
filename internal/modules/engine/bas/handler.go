@@ -235,6 +235,8 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 		return
 	}
 
+	_ = f.MapToFilter()
+
 	result, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
