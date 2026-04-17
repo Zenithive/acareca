@@ -73,7 +73,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permChecker middleware.Perm
 	}
 
 	// COA-grouped routes: New endpoints for master-detail grid
-	coaRoutes := transactionRoutes.Group("/coa-entries")
+	coaRoutes := rg.Group("/coa-entries")
 	coaRoutes.Use(middleware.MethodBasedPermission(permChecker))
 	{
 		coaRoutes.GET("", h.ListCoaEntries)
