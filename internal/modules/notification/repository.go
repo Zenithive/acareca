@@ -28,6 +28,8 @@ type Repository interface {
 	MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error
 	MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel Channel, errMsg string) error
 	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error
+	// Deduplication check for system error/warning notifications
+	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
 }
 
 type repository struct {
@@ -232,4 +234,21 @@ func requireOneRow(res interface{ RowsAffected() (int64, error) }, errIfZero err
 		return errIfZero
 	}
 	return nil
+}
+
+// HasActiveSystemNotification checks if an UNREAD system notification already exists
+// for the given entityID + eventType to prevent duplicate alert fatigue.
+func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error) {
+	var count int
+	const q = `
+		SELECT COUNT(*) FROM tbl_notification
+		WHERE entity_id = $1
+		  AND event_type = $2
+		  AND entity_type = 'system'
+		  AND status = 'UNREAD'
+	`
+	if err := r.db.QueryRowContext(ctx, q, entityID, eventType).Scan(&count); err != nil {
+		return false, fmt.Errorf("check active system notification: %w", err)
+	}
+	return count > 0, nil
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
@@ -28,6 +29,7 @@ type service struct {
 	practitionerRepo practitioner.Repository
 	subRepo          subscription.Repository
 	stripeClient     sharedstripe.StripeClient
+	auditSvc         audit.Service
 }
 
 // NewService constructs a billing Service.
@@ -36,12 +38,14 @@ func NewService(
 	practitionerRepo practitioner.Repository,
 	subRepo subscription.Repository,
 	stripeClient sharedstripe.StripeClient,
+	audit audit.Service,
 ) Service {
 	return &service{
 		repo:             repo,
 		practitionerRepo: practitionerRepo,
 		subRepo:          subRepo,
 		stripeClient:     stripeClient,
+		auditSvc:         audit,
 	}
 }
 

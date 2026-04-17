@@ -96,7 +96,7 @@ func (f *BASFilter) MapToFilter() common.Filter {
 	operators := map[string]common.Operator{}
 
 	if f.QuarterIDs != nil && *f.QuarterIDs != "" {
-
+		f.parsedQuarterIDs = nil
 		idStrings := strings.Split(*f.QuarterIDs, ",")
 		for _, s := range idStrings {
 			parsedID, err := uuid.Parse(strings.TrimSpace(s))

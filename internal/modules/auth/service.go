@@ -191,6 +191,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	go func() {
 		if err := s.sendVerificationEmail(created.Email, created.FirstName, tokenID); err != nil {
 			fmt.Printf("[AUTH ERROR] Failed to send verification email: %v\n", err)
+			s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "auth.send_verification_email",
+				err, created.ID.String(), entityID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+			)
 		}
 	}()
 
@@ -273,6 +276,10 @@ func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken str
 
 	// Security check: Don't let User A log out User B's session
 	if sess.UserID != userID {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "session.unauthorized_logout",
+			errors.New("unauthorized session access attempt"),
+			userID.String(), sess.ID.String(), auditctx.EntitySession, auditctx.ModuleAuth,
+		)
 		return errors.New("unauthorized session access")
 	}
 
@@ -456,6 +463,9 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 	}
 
 	if _, err := s.repo.CreateSession(ctx, sess); err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.create_session",
+			err, user.ID.String(), user.ID.String(), auditctx.EntitySession, auditctx.ModuleAuth,
+		)
 		return nil, err
 	}
 
@@ -634,8 +644,10 @@ func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqC
 		return fmt.Errorf("hash new password: %w", err)
 	}
 
-	// Update new password in DB
 	if err := s.repo.UpdatePassword(ctx, user.ID, newHashedPassword); err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.update_password",
+			err, user.ID.String(), user.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+		)
 		return err
 	}
 
@@ -910,6 +922,9 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 	expiresAt := time.Now().Add(15 * time.Minute)
 	err = s.repo.SaveResetToken(ctx, user.ID.String(), tokenHash, expiresAt)
 	if err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.save_reset_token",
+			err, user.ID.String(), user.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+		)
 		return err
 	}
 

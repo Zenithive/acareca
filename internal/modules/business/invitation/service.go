@@ -138,6 +138,9 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	go func() {
 		if err := s.sendEmailViaResend(invite.Email, inviteLink, senderName); err != nil {
 			fmt.Printf("[ERROR] Failed to send invitation email: %v\n", err)
+			s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "invitation.send_email",
+				err, practitionerID.String(), invite.ID.String(), auditctx.EntityInvitation, auditctx.ModuleBusiness,
+			)
 		}
 	}()
 
@@ -460,6 +463,9 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 
 	// Update accountant_id in tbl_invite_permissions for all entries with this email to map permissions with accountant_id
 	if err := s.repo.LinkPermissionsToAccountantTx(ctx, tx, email, entityID); err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "invitation.link_permissions",
+			err, "", entityID.String(), auditctx.EntityPermission, auditctx.ModuleBusiness,
+		)
 		return fmt.Errorf("failed to link permissions: %w", err)
 	}
 
@@ -787,6 +793,9 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID 
 	}
 	// Save to DB and return finalDisplay
 	if err := s.repo.GrantEntityPermission(ctx, pID, dbAccID, &email, eID, eType, finalDisplay); err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "invitation.grant_permission",
+			err, pID.String(), eID.String(), auditctx.EntityPermission, auditctx.ModuleBusiness,
+		)
 		return nil, err
 	}
 

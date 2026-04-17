@@ -216,7 +216,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Tags         engine/bas
 // @Produce      json
 // @Param        clinicId          query  []string false "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)" collectionFormat(multi)
-// @Param        quarter_ids       query  []string true "Array of Quarter UUIDs" collectionFormat(multi)
+// @Param        quarter_ids       query  string true "Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)"
 // @Param        financial_year_id query  string  true "Restrict to a financial year by UUID"
 // @Success      200  {object}  RsBASPreparation
 // @Failure      400  {object}  response.RsError

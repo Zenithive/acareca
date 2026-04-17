@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -19,6 +20,9 @@ type Repository interface {
 	GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error)
 	GetUserName(ctx context.Context, id string) (string, error)
 	GetEntityName(ctx context.Context, table string, id string) (string, error)
+	ResolveActorName(ctx context.Context, id string) string
+	ResolveEntityLabel(ctx context.Context, entityType, id string) string
+	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error)
 }
 
 type repository struct {
@@ -167,4 +171,84 @@ func (r *repository) GetEntityName(ctx context.Context, table string, id string)
 		return "", err
 	}
 	return name, nil
+}
+
+// HasActiveSystemNotification checks for an existing UNREAD system notification for entityID + eventType in tbl_notification.
+func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error) {
+	var count int
+	const q = `
+		SELECT COUNT(*) FROM tbl_notification
+		WHERE entity_id = $1
+		  AND event_type = $2
+		  AND entity_type = 'system'
+		  AND status = 'UNREAD'
+	`
+	if err := r.db.QueryRowContext(ctx, q, entityID, eventType).Scan(&count); err != nil {
+		return false, fmt.Errorf("check active system notification: %w", err)
+	}
+	return count > 0, nil
+}
+
+// ResolveActorName resolves a human-readable name for any actor ID.
+func (r *repository) ResolveActorName(ctx context.Context, id string) string {
+	if id == "" {
+		return "Unknown"
+	}
+	// Try user table first (has first_name + last_name)
+	var name string
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email) FROM tbl_user WHERE id = $1`, id,
+	).Scan(&name); err == nil && name != "" {
+		return name
+	}
+	// Practitioner profile
+	var userID string
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT user_id FROM tbl_practitioner WHERE id = $1`, id,
+	).Scan(&userID); err == nil {
+		if err2 := r.db.QueryRowContext(ctx,
+			`SELECT COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email) FROM tbl_user WHERE id = $1`, userID,
+		).Scan(&name); err2 == nil && name != "" {
+			return name
+		}
+	}
+	// Accountant profile
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT user_id FROM tbl_accountant WHERE id = $1`, id,
+	).Scan(&userID); err == nil {
+		if err2 := r.db.QueryRowContext(ctx,
+			`SELECT COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email) FROM tbl_user WHERE id = $1`, userID,
+		).Scan(&name); err2 == nil && name != "" {
+			return name
+		}
+	}
+	return id // fallback to raw ID
+}
+
+// entityTypeToTable maps audit entity-type constants to their DB table names.
+var entityTypeToTable = map[string]string{
+	"tbl_clinic":            "tbl_clinic",
+	"clinic":                "tbl_clinic",
+	"tbl_chart_of_accounts": "tbl_chart_of_accounts",
+	"tbl_subscription":      "tbl_subscription",
+	"tbl_invitation":        "tbl_invitation",
+	"tbl_financial_year":    "tbl_financial_year",
+}
+
+// ResolveEntityLabel returns a display name for an entity.
+func (r *repository) ResolveEntityLabel(ctx context.Context, entityType, id string) string {
+	if id == "" {
+		return "Unknown"
+	}
+	table, ok := entityTypeToTable[entityType]
+	if !ok {
+		return id
+	}
+	var name string
+	if err := r.db.QueryRowContext(ctx,
+		fmt.Sprintf(`SELECT name FROM %s WHERE id = $1`, table), id,
+	).Scan(&name); err == nil && name != "" {
+		return name
+	}
+	return id
 }

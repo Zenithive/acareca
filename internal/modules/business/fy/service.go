@@ -19,6 +19,7 @@ type Service interface {
 	UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdateFYLabel) (*RsFinancialYear, error)
 	GetFinancialYears(ctx context.Context) ([]RsFinancialYear, error)
 	GetFinancialQuarters(ctx context.Context, financialYearID uuid.UUID) ([]RsFinancialQuarter, error)
+	ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYear, error)
 }
 
 type service struct {
@@ -121,6 +122,8 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 		return nil
 	})
 	if err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.creation_failed",
+			err, "", req.Label, auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
 		return nil, err
 	}
 
@@ -169,6 +172,9 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 	if err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if req.IsActive != nil && *req.IsActive {
 			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
+				// Log as error: multiple active financial years
+				s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.deactivation_failed",
+					err, "", id.String(), auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
 				return fmt.Errorf("deactivate existing financial years: %w", err)
 			}
 			fy.IsActive = true
@@ -251,6 +257,60 @@ func (s *service) GetFinancialQuarters(ctx context.Context, financialYearID uuid
 			EndDate:   quarter.EndDate,
 		})
 	}
+
+	return result, nil
+}
+
+func (s *service) ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYear, error) {
+	var updatedFY *FinancialYear
+
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Deactivate everything currently active
+		if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.activation_failed",
+				err, "", id.String(), auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
+			return err
+		}
+
+		// Fetch the target FY to ensure it exists
+		fy, err := s.repo.GetFinancialYearByID(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		// Set to active and update
+		fy.IsActive = true
+		updated, err := s.repo.UpdateFinancialYear(ctx, fy, tx)
+		if err != nil {
+			return err
+		}
+		updatedFY = updated
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := &RsFinancialYear{
+		ID:        updatedFY.ID,
+		Label:     updatedFY.Label,
+		StartDate: updatedFY.StartDate,
+		EndDate:   updatedFY.EndDate,
+	}
+
+	// Success Audit Log
+	meta := auditctx.GetMetadata(ctx)
+	idStr := id.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionFYActivated,
+		Module:     auditctx.ModuleBusiness,
+		EntityType: strPtr(auditctx.EntityFinancialYear),
+		EntityID:   &idStr,
+		AfterState: result,
+	})
 
 	return result, nil
 }

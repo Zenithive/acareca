@@ -15,6 +15,7 @@ type IHandler interface {
 	UpdateFYLabel(c *gin.Context)
 	GetFinancialYears(c *gin.Context)
 	GetFinancialQuarters(c *gin.Context)
+	ActivateFY(c *gin.Context)
 }
 
 type handler struct {
@@ -145,4 +146,35 @@ func (h *handler) GetFinancialQuarters(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, util.RsList{Items: quarters, Total: len(quarters)}, "Financial quarters fetched successfully")
+}
+
+// @Summary Activate a specific financial year
+// @Tags fy
+// @Produce json
+// @Param financial_year_id path string true "Financial Year UUID"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /admin/activate-fy/{financial_year_id} [patch]
+func (h *handler) ActivateFY(c *gin.Context) {
+	idParam := c.Param("financial_year_id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid financial year id"))
+		return
+	}
+
+	fy, err := h.svc.ActivateFY(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, fy, "Financial year activated successfully")
 }

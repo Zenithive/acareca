@@ -1534,6 +1534,7 @@ definitions:
     - document
     - invite
     - audit_log
+    - system
     type: string
     x-enum-varnames:
     - EntityClinic
@@ -1542,6 +1543,7 @@ definitions:
     - EntityDocument
     - EntityInvite
     - EntityAuditLog
+    - EntitySystem
   notification.EventType:
     enum:
     - invite.sent
@@ -1554,6 +1556,8 @@ definitions:
     - transaction.status_changed
     - document.uploaded
     - audit_log.created
+    - system.error
+    - system.warning
     type: string
     x-enum-varnames:
     - EventInviteSent
@@ -1566,6 +1570,8 @@ definitions:
     - EventTransactionUpdated
     - EventDocumentUploaded
     - EventAuditLogCreated
+    - EventSystemError
+    - EventSystemWarning
   notification.Notification:
     properties:
       createdAt:
@@ -2224,6 +2230,38 @@ paths:
       summary: List all accountants with their practitioners (Admin)
       tags:
       - admin-accountant
+  /admin/activate-fy/{financial_year_id}:
+    patch:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Activate a specific financial year
+      tags:
+      - fy
   /admin/analytics/accountant/overview:
     get:
       description: Returns accountant KPIs and invite status distribution
@@ -3628,14 +3666,11 @@ paths:
           type: string
         name: clinicId
         type: array
-      - collectionFormat: multi
-        description: Array of Quarter UUIDs
+      - description: Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)
         in: query
-        items:
-          type: string
         name: quarter_ids
         required: true
-        type: array
+        type: string
       - description: Restrict to a financial year by UUID
         in: query
         name: financial_year_id

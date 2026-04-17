@@ -319,6 +319,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/activate-fy/{financial_year_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fy"
+                ],
+                "summary": "Activate a specific financial year",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/analytics/accountant/overview": {
             "get": {
                 "security": [
@@ -2538,12 +2589,8 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Array of Quarter UUIDs",
+                        "type": "string",
+                        "description": "Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)",
                         "name": "quarter_ids",
                         "in": "query",
                         "required": true
@@ -9112,7 +9159,8 @@ const docTemplate = `{
                 "transaction",
                 "document",
                 "invite",
-                "audit_log"
+                "audit_log",
+                "system"
             ],
             "x-enum-varnames": [
                 "EntityClinic",
@@ -9120,7 +9168,8 @@ const docTemplate = `{
                 "EntityTransaction",
                 "EntityDocument",
                 "EntityInvite",
-                "EntityAuditLog"
+                "EntityAuditLog",
+                "EntitySystem"
             ]
         },
         "notification.EventType": {
@@ -9135,7 +9184,9 @@ const docTemplate = `{
                 "transaction.created",
                 "transaction.status_changed",
                 "document.uploaded",
-                "audit_log.created"
+                "audit_log.created",
+                "system.error",
+                "system.warning"
             ],
             "x-enum-varnames": [
                 "EventInviteSent",
@@ -9147,7 +9198,9 @@ const docTemplate = `{
                 "EventTransactionCreated",
                 "EventTransactionUpdated",
                 "EventDocumentUploaded",
-                "EventAuditLogCreated"
+                "EventAuditLogCreated",
+                "EventSystemError",
+                "EventSystemWarning"
             ]
         },
         "notification.Notification": {

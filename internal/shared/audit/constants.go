@@ -52,6 +52,7 @@ const (
 	ActionFYCreated           = "fy.created"
 	ActionFYUpdated           = "fy.updated"
 	ActionFYClosed            = "fy.closed"
+	ActionFYActivated         = "fy.activated"
 )
 
 // Action constants - Forms module
@@ -85,6 +86,7 @@ const (
 	EntityVerificationToken      = "tbl_verification_token"
 	EntityInvitation             = "tbl_invitation"
 	EntityPermission             = "tbl_invite_permissions"
+	EntitySystem                 = "system"
 )
 
 // Action Constants -Accountant module
@@ -101,4 +103,13 @@ const (
 const (
 	ActionPermissionAssigned = "invite.permission_assigned"
 	ActionPermissionUpdated  = "invite.permission_updated"
+)
+
+// Module constant - System
+const ModuleSystem = "system"
+
+// Action constants - System-level errors and warnings
+const (
+	ActionSystemError   = "system.error"
+	ActionSystemWarning = "system.warning"
 )
