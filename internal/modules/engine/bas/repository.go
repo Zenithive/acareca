@@ -229,14 +229,12 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
     `
 	args := []interface{}{clinicID}
 
-	// 2. Handle Quarter IDs
 	if len(f.parsedQuarterIDs) > 0 {
-		// sqlx.In replaces (?) with (?, ?, ?)
-		subQuery, qArgs, err := sqlx.In(" AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))", f.QuarterIDs)
-		if err == nil {
-			query += subQuery
-			args = append(args, qArgs...)
-		}
+		// Use IN (?) - sqlx.In will expand this (?) based on the length of the slice
+		query += " AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))"
+
+		// Append the actual slice of UUIDs. sqlx.In is designed to handle slices in the args list.
+		args = append(args, f.parsedQuarterIDs)
 	}
 
 	// 3. Handle Financial Year (Fall-through logic)
