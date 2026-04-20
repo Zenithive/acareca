@@ -285,15 +285,14 @@ func (h *handler) FormulaCalculate(c *gin.Context) {
 }
 
 // GetFormSummary godoc
-// @Summary      Get form summary by form ID
-// @Description  Fetches all individual entries/transactions for a specific form ID, including field names, COA details, and tax information.
+// @Summary      Get form summary by form ID (Grouped by COA)
+// @Description  Fetches a grouped list of Chart of Accounts with total amounts for a specific form.
 // @Tags         calculation
 // @Produce      json
-// @Param        id   path      string  true  "Form ID (UUID)"
-// @Success      200  {array}  RsTransactionRow "List of transactions"
-// @Failure      400  {object}  response.RsError
-// @Failure      401  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Param        id    path      string  true  "Form ID (UUID)"
+// @Success      200   {object}  util.RsList "Grouped COA summary"
+// @Failure      401   {object}  response.RsError
+// @Failure      500   {object}  response.RsError
 // @Security     BearerToken
 // @Router       /summary/{id} [get]
 func (h *handler) GetFormSummary(c *gin.Context) {
@@ -302,22 +301,13 @@ func (h *handler) GetFormSummary(c *gin.Context) {
 		return
 	}
 
-	// Extract security context
 	role := c.GetString("role")
-	var actorID uuid.UUID
-
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
+	actorID, ok := h.getActorID(c, role)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, fmt.Errorf("unauthorized access"))
 		return
 	}
 
-	// Call service and return the raw util.RsList
 	data, err := h.svc.GetFormSummary(c.Request.Context(), id.String(), actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -325,4 +315,12 @@ func (h *handler) GetFormSummary(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, data, "Form summary fetched successfully")
+}
+
+// Helper to extract actorID based on role
+func (h *handler) getActorID(c *gin.Context, role string) (uuid.UUID, bool) {
+	if strings.EqualFold(role, util.RoleAccountant) {
+		return util.GetAccountantID(c)
+	}
+	return util.GetPractitionerID(c)
 }

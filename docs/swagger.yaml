@@ -1059,47 +1059,6 @@ definitions:
       tax_type:
         type: string
     type: object
-  calculation.RsTransactionRow:
-    properties:
-      clinicID:
-        type: string
-      clinicName:
-        type: string
-      coaID:
-        type: string
-      coaName:
-        type: string
-      createdAt:
-        type: string
-      entryID:
-        type: string
-      formFieldID:
-        type: string
-      formFieldName:
-        type: string
-      formID:
-        type: string
-      formName:
-        type: string
-      grossAmount:
-        type: number
-      gstAmount:
-        type: number
-      id:
-        type: string
-      netAmount:
-        type: number
-      sectionType:
-        type: string
-      taxType:
-        type: string
-      taxTypeID:
-        type: integer
-      taxTypeName:
-        type: string
-      updatedAt:
-        type: string
-    type: object
   clinic.RqBulkDeleteClinic:
     properties:
       clinic_ids:
@@ -6721,8 +6680,8 @@ paths:
       - setting
   /summary/{id}:
     get:
-      description: Fetches all individual entries/transactions for a specific form
-        ID, including field names, COA details, and tax information.
+      description: Fetches a grouped list of Chart of Accounts with total amounts
+        for a specific form.
       parameters:
       - description: Form ID (UUID)
         in: path
@@ -6733,15 +6692,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: List of transactions
+          description: Grouped COA summary
           schema:
-            items:
-              $ref: '#/definitions/calculation.RsTransactionRow'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
+            $ref: '#/definitions/util.RsList'
         "401":
           description: Unauthorized
           schema:
@@ -6752,7 +6705,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Get form summary by form ID
+      summary: Get form summary by form ID (Grouped by COA)
       tags:
       - calculation
 schemes:

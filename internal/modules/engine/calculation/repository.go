@@ -2,16 +2,16 @@ package calculation
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
 type Repository interface {
-	GetTransactionsByFormID(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
+	ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error)
 }
 
 type repository struct {
@@ -22,86 +22,76 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) GetTransactionsByFormID(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
+// ListCoaEntries returns grouped COA rows with aggregated amounts and section types
+func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
-
-	// Handle Permissions based on Role
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-			SELECT entity_id FROM tbl_invite_permissions 
-			WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
-		)`
+		permissionClause = ` AND fm.id IN (SELECT entity_id FROM tbl_invite_permissions WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL)`
 	} else {
-		permissionClause = ` AND c.id IN (
-			SELECT id FROM tbl_clinic 
-			WHERE practitioner_id = ? AND deleted_at IS NULL
-		)`
+		permissionClause = ` AND c.id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)`
 	}
 
-	query := `
-		SELECT
-			ev.id,
-			e.id            AS entry_id,
-			ff.id           AS form_field_id,
-			ff.label        AS form_field_name,
-			ff.section_type AS section_type,
-			ff.tax_type     AS tax_type,
-			coa.id          AS coa_id,
-			coa.name        AS coa_name,
-			at2.id          AS tax_type_id,
-			at2.name        AS tax_type_name,
-			fm.id           AS form_id,
-			fm.name         AS form_name,
-			e.clinic_id,
-			c.name          AS clinic_name,
-			ev.net_amount,
-			ev.gst_amount,
-			ev.gross_amount,
-			ev.created_at,
-			ev.updated_at
-		FROM tbl_form_entry_value ev
-		INNER JOIN tbl_form_entry           e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field           ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts    coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
-		LEFT  JOIN tbl_account_tax          at2 ON at2.id = coa.account_tax_id
-		INNER JOIN tbl_custom_form_version  fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                 fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic               c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE fm.id = ? 
-		  AND e.deleted_at IS NULL 
-		  AND ev.updated_at IS NULL` + permissionClause
-
-	// Rebind for positional parameters ($1 vs ?)
-	query = r.db.Rebind(query)
-
-	var rows []*transactionFlatRow
-	// Arguments: 1. formID, 2. actorID (for permissionClause)
-	if err := r.db.SelectContext(ctx, &rows, query, formID, actorID); err != nil {
-		return nil, fmt.Errorf("list transactions by form: %w", err)
+	allowedColumns := map[string]string{
+		"clinic_id": "e.clinic_id",
+		"form_id":   "fm.id",
+		"coa_id":    "coa.id",
 	}
 
-	result := make([]*RsTransactionRow, 0, len(rows))
+	base := `
+        SELECT
+            coa.id                            AS coa_id,
+            coa.name                          AS coa_name,
+            ff.section_type                   AS section_type,
+            COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
+            COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
+            COUNT(DISTINCT ev.id)             AS entry_count
+        FROM tbl_chart_of_accounts coa
+        INNER JOIN tbl_form_field ff ON ff.coa_id = coa.id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+        INNER JOIN tbl_form_entry_value ev ON ev.form_field_id = ff.id AND ev.updated_at IS NULL
+        INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
+        INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
+        INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
+        INNER JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
+        WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE AND ff.section_type IS NOT NULL` + permissionClause
+
+	q, qArgs := common.BuildQuery(base, f, allowedColumns, []string{"coa.name"}, false)
+
+	groupBy := ` GROUP BY coa.id, coa.name, ff.section_type `
+
+	var finalQuery string
+	if strings.Contains(q, "ORDER BY") {
+		finalQuery = strings.Replace(q, "ORDER BY", groupBy+" ORDER BY", 1)
+	} else if strings.Contains(q, "LIMIT") {
+		finalQuery = strings.Replace(q, "LIMIT", groupBy+" LIMIT", 1)
+	} else {
+		finalQuery = q + groupBy
+	}
+
+	q = r.db.Rebind(finalQuery)
+	actualArgs := append([]any{actorID}, qArgs...)
+
+	var rows []struct {
+		CoaID            uuid.UUID `db:"coa_id"`
+		CoaName          string    `db:"coa_name"`
+		SectionType      string    `db:"section_type"`
+		TotalNetAmount   float64   `db:"total_net_amount"`
+		TotalGrossAmount float64   `db:"total_gross_amount"`
+		EntryCount       int       `db:"entry_count"`
+	}
+
+	if err := r.db.SelectContext(ctx, &rows, q, actualArgs...); err != nil {
+		return nil, err
+	}
+
+	result := make([]*RsCoaEntry, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, &RsTransactionRow{
-			ID:            row.ID,
-			EntryID:       row.EntryID,
-			FormFieldID:   row.FormFieldID,
-			FormFieldName: row.FormFieldName,
-			SectionType:   row.SectionType,
-			TaxType:       row.TaxType,
-			CoaID:         row.CoaID,
-			CoaName:       row.CoaName,
-			TaxTypeID:     row.TaxTypeID,
-			TaxTypeName:   row.TaxTypeName,
-			FormID:        row.FormID,
-			FormName:      row.FormName,
-			ClinicID:      row.ClinicID,
-			ClinicName:    row.ClinicName,
-			NetAmount:     row.NetAmount,
-			GstAmount:     row.GstAmount,
-			GrossAmount:   row.GrossAmount,
-			CreatedAt:     row.CreatedAt,
-			UpdatedAt:     row.UpdatedAt,
+		result = append(result, &RsCoaEntry{
+			CoaID:            row.CoaID.String(),
+			CoaName:          row.CoaName,
+			SectionType:      row.SectionType,
+			TotalNetAmount:   row.TotalNetAmount,
+			TotalGrossAmount: row.TotalGrossAmount,
+			EntryCount:       row.EntryCount,
 		})
 	}
 	return result, nil

@@ -3,6 +3,7 @@ package calculation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -12,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
@@ -613,8 +615,34 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 	}, nil
 }
 
-func (s *service) GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
-	return s.repo.GetTransactionsByFormID(ctx, formID, actorID, role)
+func (s *service) GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) (*RsCategorizedSummary, error) {
+	filters := map[string]interface{}{"form_id": formID}
+	limit, offset := 500, 0
+	f := common.NewFilter(nil, filters, nil, &limit, &offset, nil, nil)
+
+	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &RsCategorizedSummary{
+		Collection: make([]*RsCoaEntry, 0),
+		Costs:      make([]*RsCoaEntry, 0),
+		OtherCosts: make([]*RsCoaEntry, 0),
+	}
+
+	for _, item := range items {
+		switch strings.ToUpper(item.SectionType) {
+		case "COLLECTION":
+			summary.Collection = append(summary.Collection, item)
+		case "COST":
+			summary.Costs = append(summary.Costs, item)
+		default:
+			summary.OtherCosts = append(summary.OtherCosts, item)
+		}
+	}
+
+	return summary, nil
 }
 
 func FormulaMapInComputeField(req *RqFormPreview) map[string]*formula.ExprNode {
