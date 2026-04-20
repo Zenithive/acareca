@@ -70,12 +70,12 @@ func (h *handler) LiveCalculate(c *gin.Context) {
 // FormPreview godoc
 // @Summary Form preview with complete calculation
 // @Description Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.
-// @Description Returns all field values with net/gst/gross breakdown and method-specific summary (SERVICE_FEE or INDEPENDENT_CONTRACTOR).
-// @Description Pass form_version_id, clinic_id, and field entries with net_amount for each field.
+// @Description Used when creating a form to preview calculations before saving.
+// @Description Pass clinic_id, method, shares, field definitions, and field entries.
 // @Tags calculation
 // @Accept json
 // @Produce json
-// @Param request body RqFormPreview true "Form version ID, clinic ID, and field entries"
+// @Param request body RqFormPreview true "Form configuration, fields, and entries"
 // @Success 200 {object} RsFormPreview
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError

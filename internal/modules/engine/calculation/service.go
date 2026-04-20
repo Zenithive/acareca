@@ -618,73 +618,65 @@ func (s *service) GetFormSummary(ctx context.Context, formID string, actorID uui
 
 // FormPreview implements [Service] - provides complete form preview with all fields and calculation summary
 func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error) {
-	// Parse UUIDs
-	formVersionID, err := uuid.Parse(req.FormVersionID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid form_version_id: %w", err)
-	}
-
-	clinicID, err := uuid.Parse(req.ClinicID)
+	// Validate clinic_id
+	_, err := uuid.Parse(req.ClinicID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid clinic_id: %w", err)
 	}
 
-	// Get form version details
-	ver, err := s.versionSvc.GetVersionByFormID(ctx, formVersionID)
-	if err != nil {
-		return nil, fmt.Errorf("get version: %w", err)
+	// Merge formulas into fields
+	formulaMap := make(map[string]*formula.ExprNode)
+	for i := range req.Formulas {
+		f := &req.Formulas[i]
+		formulaMap[f.FieldKey] = f.Expression
 	}
 
-	// Get form details
-	formDetail, err := s.formSvc.GetFormByID(ctx, ver.FormId)
-	if err != nil {
-		return nil, fmt.Errorf("get form: %w", err)
+	// Apply formulas to computed fields
+	for i := range req.Fields {
+		field := &req.Fields[i]
+		if field.IsComputed && field.Formula == nil {
+			if expr, ok := formulaMap[field.FieldKey]; ok {
+				field.Formula = expr
+			}
+		}
 	}
 
-	// Get all fields for this form version
-	fieldMap, err := s.fieldSvc.GetFieldMap(ctx, formVersionID)
-	if err != nil {
-		return nil, fmt.Errorf("get field map: %w", err)
+	// Build field map from request fields
+	fieldKeyToField := make(map[string]*RqPreviewField)
+	for i := range req.Fields {
+		field := &req.Fields[i]
+		fieldKeyToField[field.FieldKey] = field
 	}
 
-	// Process entries and calculate values (similar to LiveCalculate)
+	// Process entries and calculate values
 	keyValues := make(map[string]float64)
-	entryValuesByFieldID := make(map[uuid.UUID]*RsPreviewFieldValue)
+	fieldResults := make(map[string]*RsPreviewFieldValue)
 
 	// Initialize all non-computed fields with zero
-	for fieldID, f := range fieldMap {
-		if !f.IsComputed {
-			keyValues[f.FieldKey] = 0
-			entryValuesByFieldID[fieldID] = &RsPreviewFieldValue{
-				FormFieldID:   fieldID.String(),
-				FieldKey:      f.FieldKey,
-				Label:         f.Label,
+	for _, field := range req.Fields {
+		if !field.IsComputed {
+			keyValues[field.FieldKey] = 0
+			fieldResults[field.FieldKey] = &RsPreviewFieldValue{
+				FieldKey:      field.FieldKey,
+				Label:         field.Label,
 				IsComputed:    false,
-				SectionType:   f.SectionType,
-				TaxType:       f.TaxType,
-				SortOrder:     f.SortOrder,
-				IsHighlighted: f.IsHighlighted,
-			}
-			if f.CoaID != nil {
-				coaIDStr := f.CoaID.String()
-				entryValuesByFieldID[fieldID].CoaID = &coaIDStr
+				SectionType:   field.SectionType,
+				TaxType:       field.TaxType,
+				CoaID:         field.CoaID,
+				SortOrder:     field.SortOrder,
+				IsHighlighted: field.IsHighlighted,
 			}
 		}
 	}
 
 	// Process each entry with tax calculations
-	for _, entry := range req.Entries {
-		fieldID, err := uuid.Parse(entry.FormFieldID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid form_field_id %s: %w", entry.FormFieldID, err)
-		}
-
-		f, ok := fieldMap[fieldID]
+	for _, entry := range req.Values {
+		field, ok := fieldKeyToField[entry.FieldKey]
 		if !ok {
-			return nil, fmt.Errorf("field %s not found in form version", entry.FormFieldID)
+			return nil, fmt.Errorf("field with key %s not found in field definitions", entry.FieldKey)
 		}
 
-		if f.IsComputed {
+		if field.IsComputed {
 			continue
 		}
 
@@ -693,13 +685,13 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 		var gstAmount *float64
 		var grossAmount *float64
 
-		if f.TaxType != nil && *f.TaxType != "" {
-			taxType := method.TaxTreatment(*f.TaxType)
+		if field.TaxType != nil && *field.TaxType != "" {
+			taxType := method.TaxTreatment(*field.TaxType)
 			switch taxType {
 			case method.TaxTreatmentInclusive:
 				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
 				if err != nil {
-					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+					return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
 				}
 				actualNetAmount = taxResult.Amount
 				gst := taxResult.GstAmount
@@ -710,7 +702,7 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 			case method.TaxTreatmentExclusive:
 				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
 				if err != nil {
-					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+					return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
 				}
 				actualNetAmount = entry.NetAmount
 				gst := taxResult.GstAmount
@@ -719,7 +711,7 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 				grossAmount = &gross
 
 			case method.TaxTreatmentManual:
-				if f.SectionType != nil && *f.SectionType == "COLLECTION" {
+				if field.SectionType != nil && *field.SectionType == "COLLECTION" {
 					actualNetAmount = entry.NetAmount
 					if entry.GstAmount != nil {
 						gstAmount = entry.GstAmount
@@ -746,52 +738,48 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 			grossAmount = &gross
 		}
 
-		keyValues[f.FieldKey] = actualNetAmount
+		keyValues[field.FieldKey] = actualNetAmount
 
 		// Store the calculated values
 		net := actualNetAmount
-		entryValuesByFieldID[fieldID].NetAmount = &net
-		entryValuesByFieldID[fieldID].GstAmount = gstAmount
-		entryValuesByFieldID[fieldID].GrossAmount = grossAmount
+		fieldResults[field.FieldKey].NetAmount = &net
+		fieldResults[field.FieldKey].GstAmount = gstAmount
+		fieldResults[field.FieldKey].GrossAmount = grossAmount
 	}
 
 	// Build tax type map for computed fields
 	taxTypeByKey := make(map[string]string)
 	manualGSTByKey := make(map[string]float64)
-	for _, f := range fieldMap {
-		if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
-			taxTypeByKey[f.FieldKey] = *f.TaxType
+	for _, field := range req.Fields {
+		if field.IsComputed && field.TaxType != nil && *field.TaxType != "" {
+			taxTypeByKey[field.FieldKey] = *field.TaxType
 		}
 	}
 
 	// Collect manually entered GST amounts for computed fields
-	for _, entry := range req.Entries {
+	for _, entry := range req.Values {
 		if entry.GstAmount == nil {
 			continue
 		}
-		fieldID, err := uuid.Parse(entry.FormFieldID)
-		if err != nil {
+		field, ok := fieldKeyToField[entry.FieldKey]
+		if !ok || !field.IsComputed {
 			continue
 		}
-		f, ok := fieldMap[fieldID]
-		if !ok || !f.IsComputed {
-			continue
-		}
-		if f.TaxType != nil && *f.TaxType == "MANUAL" {
-			manualGSTByKey[f.FieldKey] = *entry.GstAmount
+		if field.TaxType != nil && *field.TaxType == "MANUAL" {
+			manualGSTByKey[field.FieldKey] = *entry.GstAmount
 		}
 	}
 
 	// Compute section totals
 	sectionTotals := make(map[string]float64)
-	for fieldID, fieldValue := range entryValuesByFieldID {
-		f, ok := fieldMap[fieldID]
-		if !ok || f.IsComputed || f.SectionType == nil || *f.SectionType == "" {
+	for _, fieldResult := range fieldResults {
+		field, ok := fieldKeyToField[fieldResult.FieldKey]
+		if !ok || field.IsComputed || field.SectionType == nil || *field.SectionType == "" {
 			continue
 		}
-		if fieldValue.NetAmount != nil {
-			sectionKey := "SECTION:" + *f.SectionType
-			sectionTotals[sectionKey] += *fieldValue.NetAmount
+		if fieldResult.NetAmount != nil {
+			sectionKey := "SECTION:" + *field.SectionType
+			sectionTotals[sectionKey] += *fieldResult.NetAmount
 		}
 	}
 
@@ -800,16 +788,16 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 		keyValues[key] = val
 	}
 
-	// Evaluate formulas
-	computed, err := s.formulaSvc.EvalFormulas(ctx, formVersionID, keyValues, taxTypeByKey, manualGSTByKey)
+	// Evaluate formulas for computed fields
+	computed, err := s.evaluatePreviewFormulas(ctx, req.Fields, keyValues, taxTypeByKey, manualGSTByKey)
 	if err != nil {
 		return nil, fmt.Errorf("eval formulas: %w", err)
 	}
 
 	// Process computed fields
-	for fieldID, val := range computed {
-		f, ok := fieldMap[fieldID]
-		if !ok || !f.IsComputed {
+	for fieldKey, val := range computed {
+		field := fieldKeyToField[fieldKey]
+		if field == nil || !field.IsComputed {
 			continue
 		}
 
@@ -817,12 +805,11 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 		var gstAmount *float64
 		var grossAmount *float64
 
-		if f.TaxType != nil && *f.TaxType != "" {
-			if method.TaxTreatment(*f.TaxType) == method.TaxTreatmentManual {
+		if field.TaxType != nil && *field.TaxType != "" {
+			if method.TaxTreatment(*field.TaxType) == method.TaxTreatmentManual {
 				var entryGST *float64
-				for _, entry := range req.Entries {
-					entryFieldID, _ := uuid.Parse(entry.FormFieldID)
-					if entryFieldID == fieldID && entry.GstAmount != nil {
+				for _, entry := range req.Values {
+					if entry.FieldKey == fieldKey && entry.GstAmount != nil {
 						entryGST = entry.GstAmount
 						break
 					}
@@ -840,9 +827,9 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 					grossAmount = &gross
 				}
 			} else {
-				taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*f.TaxType), &method.Input{Amount: val})
+				taxResult, err := s.methodSvc.Calculate(ctx, method.TaxTreatment(*field.TaxType), &method.Input{Amount: val})
 				if err != nil {
-					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
+					return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
 				}
 				net := taxResult.Amount
 				gst := taxResult.GstAmount
@@ -856,30 +843,24 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 			grossAmount = &gross
 		}
 
-		coaIDStr := ""
-		if f.CoaID != nil {
-			coaIDStr = f.CoaID.String()
-		}
-
-		entryValuesByFieldID[fieldID] = &RsPreviewFieldValue{
-			FormFieldID:   fieldID.String(),
-			FieldKey:      f.FieldKey,
-			Label:         f.Label,
+		fieldResults[fieldKey] = &RsPreviewFieldValue{
+			FieldKey:      field.FieldKey,
+			Label:         field.Label,
 			IsComputed:    true,
 			NetAmount:     &netAmount,
 			GstAmount:     gstAmount,
 			GrossAmount:   grossAmount,
-			SectionType:   f.SectionType,
-			TaxType:       f.TaxType,
-			CoaID:         &coaIDStr,
-			SortOrder:     f.SortOrder,
-			IsHighlighted: f.IsHighlighted,
+			SectionType:   field.SectionType,
+			TaxType:       field.TaxType,
+			CoaID:         field.CoaID,
+			SortOrder:     field.SortOrder,
+			IsHighlighted: field.IsHighlighted,
 		}
 	}
 
 	// Build all fields array sorted by sort_order
-	allFields := make([]RsPreviewFieldValue, 0, len(entryValuesByFieldID))
-	for _, fieldValue := range entryValuesByFieldID {
+	allFields := make([]RsPreviewFieldValue, 0, len(fieldResults))
+	for _, fieldValue := range fieldResults {
 		allFields = append(allFields, *fieldValue)
 	}
 
@@ -893,24 +874,260 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 	}
 
 	// Calculate summary based on method
-	summary, err := s.calculatePreviewSummary(ctx, formDetail, allFields, fieldMap, req.SuperComponent)
+	summary, err := s.calculatePreviewSummaryFromRequest(ctx, req, allFields, fieldKeyToField)
 	if err != nil {
 		return nil, fmt.Errorf("calculate summary: %w", err)
 	}
 
 	return &RsFormPreview{
-		FormVersionID: formVersionID,
-		ClinicID:      clinicID,
-		Method:        formDetail.Method,
-		FormName:      formDetail.Name,
-		ClinicName:    "", // TODO: Fetch clinic name if needed
-		AllFields:     allFields,
-		Summary:       summary,
+		Method:     req.Method,
+		FormName:   "", // No form name yet since form is being created
+		ClinicName: "", // TODO: Fetch clinic name if needed
+		AllFields:  allFields,
+		Summary:    summary,
 	}, nil
 }
 
-// calculatePreviewSummary calculates the summary based on form method
-func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.RsFormDetail, allFields []RsPreviewFieldValue, fieldMap map[uuid.UUID]*field.RsFormField, superComponent *float64) (*PreviewSummary, error) {
+func roundPreview(v float64) float64 {
+	shifted := v * 100
+	if shifted < 0 {
+		shifted -= 0.5
+	} else {
+		shifted += 0.5
+	}
+	return float64(int(shifted)) / 100
+}
+
+// evaluatePreviewFormulas evaluates formulas for computed fields in preview mode
+func (s *service) evaluatePreviewFormulas(_ context.Context, fields []RqPreviewField, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[string]float64, error) {
+	// Collect computed fields with formulas
+	type computedField struct {
+		fieldKey string
+		expr     *formula.ExprNode
+		field    *RqPreviewField
+	}
+
+	computedFields := make([]computedField, 0)
+	fieldKeyToIdx := make(map[string]int)
+
+	for i := range fields {
+		field := &fields[i]
+		if field.IsComputed && field.Formula != nil {
+			fieldKeyToIdx[field.FieldKey] = len(computedFields)
+			computedFields = append(computedFields, computedField{
+				fieldKey: field.FieldKey,
+				expr:     field.Formula,
+				field:    field,
+			})
+		}
+	}
+
+	if len(computedFields) == 0 {
+		return make(map[string]float64), nil
+	}
+
+	// Build dependency graph for topological sorting
+	n := len(computedFields)
+	deps := make([][]int, n)
+
+	for i, cf := range computedFields {
+		if cf.expr != nil {
+			// Extract field dependencies from expression tree
+			fieldDeps := extractFieldDependencies(cf.expr)
+			for _, depKey := range fieldDeps {
+				if j, ok := fieldKeyToIdx[depKey]; ok && j != i {
+					deps[i] = append(deps[i], j)
+				}
+			}
+		}
+	}
+
+	// Topological sort to evaluate in dependency order
+	sorted := s.topoSort(n, deps)
+
+	// Evaluate formulas in topological order
+	vals := make(map[string]float64, len(keyValues))
+	for k, v := range keyValues {
+		vals[k] = v
+	}
+	
+	result := make(map[string]float64, n)
+
+	for _, i := range sorted {
+		cf := computedFields[i]
+
+		// Skip if no expression
+		if cf.expr == nil {
+			continue
+		}
+
+		// Evaluate the expression
+		val, err := s.evalExpression(cf.expr, vals)
+		if err != nil {
+			return nil, fmt.Errorf("formula for field %q: %w", cf.fieldKey, err)
+		}
+
+		result[cf.fieldKey] = val
+
+		// Feedback value: computed fields with tax type feed GROSS amount back for dependent formulas
+		feedbackVal := val
+		if taxType, hasTax := taxTypeByKey[cf.fieldKey]; hasTax {
+			switch taxType {
+			case "EXCLUSIVE":
+				feedbackVal = val * 1.1 // Add 10% GST
+			case "INCLUSIVE":
+				feedbackVal = val // Already gross
+			case "ZERO":
+				feedbackVal = val // No GST
+			case "MANUAL":
+				// For MANUAL, val is NET amount
+				// Add manually entered GST to get gross amount for dependent formulas
+				if gst, hasGST := manualGSTByKey[cf.fieldKey]; hasGST {
+					feedbackVal = val + gst // NET + GST = GROSS
+				} else {
+					feedbackVal = val // No GST provided, use NET
+				}
+			}
+		}
+		vals[cf.fieldKey] = feedbackVal
+	}
+
+	return result, nil
+}
+
+// topoSort returns indices in dependency-first order using Kahn's algorithm
+func (s *service) topoSort(n int, deps [][]int) []int {
+	// Build reverse adjacency: revAdj[j] = list of nodes that depend on j
+	revAdj := make([][]int, n)
+	inDegree := make([]int, n)
+	for i, d := range deps {
+		inDegree[i] = len(d)
+		for _, j := range d {
+			revAdj[j] = append(revAdj[j], i)
+		}
+	}
+
+	queue := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		if inDegree[i] == 0 {
+			queue = append(queue, i)
+		}
+	}
+
+	order := make([]int, 0, n)
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		order = append(order, curr)
+		for _, dependent := range revAdj[curr] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				queue = append(queue, dependent)
+			}
+		}
+	}
+	return order
+}
+
+// extractFieldDependencies extracts all field keys referenced in an expression tree
+func extractFieldDependencies(expr *formula.ExprNode) []string {
+	if expr == nil {
+		return nil
+	}
+
+	var deps []string
+	switch expr.Type {
+	case "field", "section":
+		if expr.Key != "" {
+			deps = append(deps, expr.Key)
+		}
+	case "operator":
+		deps = append(deps, extractFieldDependencies(expr.Left)...)
+		deps = append(deps, extractFieldDependencies(expr.Right)...)
+	}
+	return deps
+}
+
+// evalExpression evaluates an expression tree with given field values
+func (s *service) evalExpression(expr *formula.ExprNode, vals map[string]float64) (float64, error) {
+	if expr == nil {
+		return 0, fmt.Errorf("expression is nil")
+	}
+
+	switch expr.Type {
+	case "constant":
+		if expr.Value == nil {
+			return 0, fmt.Errorf("constant node has nil value")
+		}
+		return *expr.Value, nil
+
+	case "field":
+		if expr.Key == "" {
+			return 0, fmt.Errorf("field node has empty key")
+		}
+		v, ok := vals[expr.Key]
+		if !ok {
+			return 0, fmt.Errorf("field key %q not found in values", expr.Key)
+		}
+		return v, nil
+
+	case "section":
+		// SECTION aggregates all fields with matching section_type
+		// Section key format: "SECTION:COLLECTION", "SECTION:COST", "SECTION:OTHER_COST"
+		if expr.Key == "" {
+			return 0, fmt.Errorf("section node has empty key")
+		}
+		v, ok := vals[expr.Key]
+		if !ok {
+			return 0, fmt.Errorf("section key %q not found in values", expr.Key)
+		}
+		return v, nil
+
+	case "text":
+		// TEXT fields are non-numeric, return 0
+		return 0, nil
+
+	case "operator":
+		if expr.Op == "" {
+			return 0, fmt.Errorf("operator node has empty operator")
+		}
+		if expr.Left == nil || expr.Right == nil {
+			return 0, fmt.Errorf("operator %q missing children", expr.Op)
+		}
+
+		left, err := s.evalExpression(expr.Left, vals)
+		if err != nil {
+			return 0, err
+		}
+
+		right, err := s.evalExpression(expr.Right, vals)
+		if err != nil {
+			return 0, err
+		}
+
+		switch expr.Op {
+		case "+":
+			return left + right, nil
+		case "-":
+			return left - right, nil
+		case "*":
+			return left * right, nil
+		case "/":
+			if right == 0 {
+				return 0, fmt.Errorf("division by zero")
+			}
+			return left / right, nil
+		default:
+			return 0, fmt.Errorf("unknown operator %q", expr.Op)
+		}
+
+	default:
+		return 0, fmt.Errorf("unknown node type %q", expr.Type)
+	}
+}
+
+// calculatePreviewSummaryFromRequest calculates summary from request data
+func (s *service) calculatePreviewSummaryFromRequest(_ context.Context, req *RqFormPreview, allFields []RsPreviewFieldValue, fieldKeyToField map[string]*RqPreviewField) (*PreviewSummary, error) {
 	var incomeSum, expenseSum, otherCostSum float64
 	var incomeGST, expenseGST float64
 	var paidByOwnerSum float64
@@ -921,8 +1138,7 @@ func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.
 			continue
 		}
 
-		fieldID, _ := uuid.Parse(fieldValue.FormFieldID)
-		f, ok := fieldMap[fieldID]
+		field, ok := fieldKeyToField[fieldValue.FieldKey]
 		if !ok {
 			continue
 		}
@@ -930,13 +1146,14 @@ func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.
 		switch *fieldValue.SectionType {
 		case "COLLECTION":
 			incomeSum += *fieldValue.NetAmount
-			if fieldValue.GstAmount != nil {
+			// Only collect GST for MANUAL tax type fields
+			if field.TaxType != nil && *field.TaxType == "MANUAL" && fieldValue.GstAmount != nil {
 				incomeGST += *fieldValue.GstAmount
 			}
 
 		case "COST":
-			if f.PaymentResponsibility != nil {
-				switch *f.PaymentResponsibility {
+			if field.PaymentResponsibility != nil {
+				switch *field.PaymentResponsibility {
 				case "CLINIC":
 					expenseSum += *fieldValue.NetAmount
 					if fieldValue.GstAmount != nil {
@@ -953,17 +1170,17 @@ func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.
 		}
 	}
 
-	netAmount := incomeSum - expenseSum - otherCostSum
+	netAmount := incomeSum - expenseSum
 
 	summary := &PreviewSummary{
 		NetAmount: roundPreview(netAmount),
 	}
 
 	// Calculate based on method
-	switch formDetail.Method {
+	switch req.Method {
 	case "SERVICE_FEE":
 		// SERVICE_FEE calculation
-		clinicShare := float64(formDetail.ClinicShare)
+		clinicShare := float64(req.ClinicShare)
 		serviceFee := netAmount * (clinicShare / 100)
 		gstServiceFee := serviceFee * 0.1
 		totalServiceFee := serviceFee + gstServiceFee
@@ -983,12 +1200,12 @@ func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.
 
 	case "INDEPENDENT_CONTRACTOR":
 		// INDEPENDENT_CONTRACTOR calculation
-		ownerShare := float64(formDetail.OwnerShare)
+		ownerShare := float64(req.OwnerShare)
 		totalRemuneration := netAmount * (ownerShare / 100)
 
 		superDecimal := 0.0
-		if superComponent != nil {
-			superDecimal = *superComponent / 100
+		if req.SuperComponent != nil {
+			superDecimal = *req.SuperComponent / 100
 		}
 
 		commissionBase := totalRemuneration
@@ -1017,15 +1234,10 @@ func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.
 			summary.BaseRemuneration = &br
 		}
 
-		// IC-specific calculation (commission, gst on commission, payment received)
+		// IC-specific calculation
 		commission := commissionBase
 		gstOnCommission := gstOnRemuneration
 		paymentReceived := invoiceTotal
-
-		if formDetail.SuperComponent != nil && *formDetail.SuperComponent > 0 {
-			superAmt := commission * (*formDetail.SuperComponent / 100)
-			paymentReceived += superAmt
-		}
 
 		comm := roundPreview(commission)
 		gstComm := roundPreview(gstOnCommission)
@@ -1037,14 +1249,4 @@ func (s *service) calculatePreviewSummary(_ context.Context, formDetail *detail.
 	}
 
 	return summary, nil
-}
-
-func roundPreview(v float64) float64 {
-	shifted := v * 100
-	if shifted < 0 {
-		shifted -= 0.5
-	} else {
-		shifted += 0.5
-	}
-	return float64(int(shifted)) / 100
 }
