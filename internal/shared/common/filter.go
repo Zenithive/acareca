@@ -202,7 +202,7 @@ func NewFilter(search *string, filters map[string]interface{}, operators map[str
 
 	// 🔥 safe defaults
 	l, o := 10, 0
-	if limit != nil && *limit > 0 && *limit <= 100 {
+	if limit != nil && *limit > 0 && *limit <= 100000 {
 		l = *limit
 	}
 	if offset != nil && *offset >= 0 {
