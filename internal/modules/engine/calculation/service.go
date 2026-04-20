@@ -24,6 +24,7 @@ type Service interface {
 	LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error)
 	FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error)
 	GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
+	TaxCalculation(ctx context.Context, entry RqPreviewEntry, field *RqPreviewField) (*RqICCalculation, error)
 }
 
 type service struct {
@@ -616,22 +617,16 @@ func (s *service) GetFormSummary(ctx context.Context, formID string, actorID uui
 	return s.repo.GetTransactionsByFormID(ctx, formID, actorID, role)
 }
 
-// FormPreview implements [Service] - provides complete form preview with all fields and calculation summary
-func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error) {
-	// Validate clinic_id
-	_, err := uuid.Parse(req.ClinicID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid clinic_id: %w", err)
-	}
-
-	// Merge formulas into fields
+func FormulaMapInComputeField(req *RqFormPreview) map[string]*formula.ExprNode {
 	formulaMap := make(map[string]*formula.ExprNode)
 	for i := range req.Formulas {
 		f := &req.Formulas[i]
 		formulaMap[f.FieldKey] = f.Expression
 	}
+	return formulaMap
+}
 
-	// Apply formulas to computed fields
+func ApplyFormulaMap(req *RqFormPreview, formulaMap map[string]*formula.ExprNode) {
 	for i := range req.Fields {
 		field := &req.Fields[i]
 		if field.IsComputed && field.Formula == nil {
@@ -640,19 +635,17 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 			}
 		}
 	}
-
-	// Build field map from request fields
+}
+func MapWithFieldKey(req *RqFormPreview) map[string]*RqPreviewField {
 	fieldKeyToField := make(map[string]*RqPreviewField)
 	for i := range req.Fields {
 		field := &req.Fields[i]
 		fieldKeyToField[field.FieldKey] = field
 	}
+	return fieldKeyToField
+}
 
-	// Process entries and calculate values
-	keyValues := make(map[string]float64)
-	fieldResults := make(map[string]*RsPreviewFieldValue)
-
-	// Initialize all non-computed fields with zero
+func InitializedWithAllNonComputeField(req *RqFormPreview, keyValues map[string]float64, fieldResults map[string]*RsPreviewFieldValue) {
 	for _, field := range req.Fields {
 		if !field.IsComputed {
 			keyValues[field.FieldKey] = 0
@@ -668,6 +661,25 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 			}
 		}
 	}
+}
+
+// FormPreview implements [Service] - provides complete form preview with all fields and calculation summary
+func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error) {
+	// Validate clinic_id
+	_, err := uuid.Parse(req.ClinicID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid clinic_id: %w", err)
+	}
+
+	formulaMap := FormulaMapInComputeField(req)
+	ApplyFormulaMap(req, formulaMap)
+	fieldKeyToField := MapWithFieldKey(req)
+	// Process entries and calculate values
+
+	// Initialize all non-computed fields with zero
+	keyValues := make(map[string]float64)
+	fieldResults := make(map[string]*RsPreviewFieldValue)
+	InitializedWithAllNonComputeField(req, keyValues, fieldResults)
 
 	// Process each entry with tax calculations
 	for _, entry := range req.Values {
@@ -680,71 +692,75 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 			continue
 		}
 
+		s.TaxCalculation(ctx, entry, field)
+
 		// Calculate actual net amount based on tax type
-		actualNetAmount := entry.NetAmount
-		var gstAmount *float64
-		var grossAmount *float64
+		// actualNetAmount := entry.NetAmount
+		// var gstAmount *float64
+		// var grossAmount *float64
+		// if field.TaxType != nil && *field.TaxType != "" {
+		// 	taxType := method.TaxTreatment(*field.TaxType)
+		// 	switch taxType {
+		// 	case method.TaxTreatmentInclusive:
+		// 		taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
+		// 		if err != nil {
+		// 			return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
+		// 		}
+		// 		actualNetAmount = taxResult.Amount
+		// 		gst := taxResult.GstAmount
+		// 		gross := taxResult.TotalAmount
+		// 		gstAmount = &gst
+		// 		grossAmount = &gross
 
-		if field.TaxType != nil && *field.TaxType != "" {
-			taxType := method.TaxTreatment(*field.TaxType)
-			switch taxType {
-			case method.TaxTreatmentInclusive:
-				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
-				if err != nil {
-					return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
-				}
-				actualNetAmount = taxResult.Amount
-				gst := taxResult.GstAmount
-				gross := taxResult.TotalAmount
-				gstAmount = &gst
-				grossAmount = &gross
+		// 	case method.TaxTreatmentExclusive:
+		// 		taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
+		// 		if err != nil {
+		// 			return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
+		// 		}
+		// 		actualNetAmount = entry.NetAmount
+		// 		gst := taxResult.GstAmount
+		// 		gross := taxResult.TotalAmount
+		// 		gstAmount = &gst
+		// 		grossAmount = &gross
 
-			case method.TaxTreatmentExclusive:
-				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
-				if err != nil {
-					return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
-				}
-				actualNetAmount = entry.NetAmount
-				gst := taxResult.GstAmount
-				gross := taxResult.TotalAmount
-				gstAmount = &gst
-				grossAmount = &gross
+		// 	case method.TaxTreatmentManual:
+		// 		if field.SectionType != nil && *field.SectionType == "COLLECTION" {
+		// 			actualNetAmount = entry.NetAmount
+		// 			if entry.GstAmount != nil {
+		// 				gstAmount = entry.GstAmount
+		// 				gross := entry.NetAmount + *entry.GstAmount
+		// 				grossAmount = &gross
+		// 			}
+		// 		} else {
+		// 			actualNetAmount = entry.NetAmount
+		// 			gstAmount = entry.GstAmount
+		// 			if entry.GstAmount != nil {
+		// 				gross := entry.NetAmount + *entry.GstAmount
+		// 				grossAmount = &gross
+		// 			}
+		// 		}
 
-			case method.TaxTreatmentManual:
-				if field.SectionType != nil && *field.SectionType == "COLLECTION" {
-					actualNetAmount = entry.NetAmount
-					if entry.GstAmount != nil {
-						gstAmount = entry.GstAmount
-						gross := entry.NetAmount + *entry.GstAmount
-						grossAmount = &gross
-					}
-				} else {
-					actualNetAmount = entry.NetAmount
-					gstAmount = entry.GstAmount
-					if entry.GstAmount != nil {
-						gross := entry.NetAmount + *entry.GstAmount
-						grossAmount = &gross
-					}
-				}
+		// 	case method.TaxTreatmentZero:
+		// 		actualNetAmount = entry.NetAmount
+		// 		gross := entry.NetAmount
+		// 		grossAmount = &gross
+		// 	}
+		// } else {
+		// 	// No tax type
+		// 	gross := entry.NetAmount
+		// 	grossAmount = &gross
+		// }
 
-			case method.TaxTreatmentZero:
-				actualNetAmount = entry.NetAmount
-				gross := entry.NetAmount
-				grossAmount = &gross
-			}
-		} else {
-			// No tax type
-			gross := entry.NetAmount
-			grossAmount = &gross
+		data, err := s.TaxCalculation(ctx, entry, field)
+		if err != nil {
+			return nil, fmt.Errorf("tax calculation failed for field %s: %w", field.FieldKey, err)
 		}
-
-		keyValues[field.FieldKey] = actualNetAmount
-
-		// Store the calculated values
-		net := actualNetAmount
+		keyValues[field.FieldKey] = data.actualamount
+		// Store the calculated values — use displaynet for response, actualamount for formula feed
+		net := data.displaynet
 		fieldResults[field.FieldKey].NetAmount = &net
-		fieldResults[field.FieldKey].GstAmount = gstAmount
-		fieldResults[field.FieldKey].GrossAmount = grossAmount
+		fieldResults[field.FieldKey].GstAmount = data.gstamount
+		fieldResults[field.FieldKey].GrossAmount = data.grossamount
 	}
 
 	// Build tax type map for computed fields
@@ -777,10 +793,21 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 		if !ok || field.IsComputed || field.SectionType == nil || *field.SectionType == "" {
 			continue
 		}
-		if fieldResult.NetAmount != nil {
-			sectionKey := "SECTION:" + *field.SectionType
-			sectionTotals[sectionKey] += *fieldResult.NetAmount
+		// OTHER_COST uses the formula-feed value (keyValues) which is already GROSS for tax fields.
+		// COLLECTION and COST use NetAmount.
+		var amount float64
+		if *field.SectionType == "OTHER_COST" {
+			// keyValues already holds the correct value (GROSS for INCLUSIVE/EXCLUSIVE OTHER_COST)
+			if v, ok := keyValues[fieldResult.FieldKey]; ok {
+				amount = v
+			}
+		} else {
+			if fieldResult.NetAmount != nil {
+				amount = *fieldResult.NetAmount
+			}
 		}
+		sectionKey := "SECTION:" + *field.SectionType
+		sectionTotals[sectionKey] += amount
 	}
 
 	// Merge section totals into keyValues
@@ -888,6 +915,100 @@ func (s *service) FormPreview(ctx context.Context, req *RqFormPreview, actorID u
 	}, nil
 }
 
+func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, field *RqPreviewField) (*RqICCalculation, error) {
+	var payload RqICCalculation
+	payload.actualamount = entry.NetAmount
+	payload.displaynet = entry.NetAmount
+
+	if field.TaxType != nil && *field.TaxType != "" {
+		taxType := method.TaxTreatment(*field.TaxType)
+		switch taxType {
+		case method.TaxTreatmentInclusive:
+			// Frontend sends net_amount=NET, gst_amount=GST, gross_amount=GROSS
+			// Use provided values directly; fall back to derivation if gross not provided
+			var netVal, gstVal, grossVal float64
+			if entry.GrossAmount != nil {
+				grossVal = *entry.GrossAmount
+				netVal = entry.NetAmount
+				if entry.GstAmount != nil {
+					gstVal = *entry.GstAmount
+				} else {
+					gstVal = grossVal - netVal
+				}
+			} else {
+				// Derive from entered net_amount treated as gross
+				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
+				if err != nil {
+					return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
+				}
+				netVal = taxResult.Amount
+				gstVal = taxResult.GstAmount
+				grossVal = taxResult.TotalAmount
+			}
+			payload.displaynet = netVal
+			// Formula feed: OTHER_COST deductions use GROSS (full cost to deduct)
+			if field.SectionType != nil && *field.SectionType == "OTHER_COST" {
+				payload.actualamount = grossVal
+			} else {
+				payload.actualamount = netVal
+			}
+			payload.gstamount = &gstVal
+			payload.grossamount = &grossVal
+
+		case method.TaxTreatmentExclusive:
+			// Frontend sends net_amount=NET; derive GST and gross
+			taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
+			if err != nil {
+				return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
+			}
+			grossVal := taxResult.TotalAmount
+			if entry.GrossAmount != nil {
+				grossVal = *entry.GrossAmount
+			}
+			payload.displaynet = entry.NetAmount
+			// Formula feed: OTHER_COST deductions use GROSS (full cost to deduct)
+			if field.SectionType != nil && *field.SectionType == "OTHER_COST" {
+				payload.actualamount = grossVal
+			} else {
+				payload.actualamount = entry.NetAmount
+			}
+			gst := taxResult.GstAmount
+			payload.gstamount = &gst
+			payload.grossamount = &grossVal
+
+		case method.TaxTreatmentManual:
+			if field.SectionType != nil && *field.SectionType == "COLLECTION" {
+				payload.actualamount = entry.NetAmount
+				payload.displaynet = entry.NetAmount
+				if entry.GstAmount != nil {
+					payload.gstamount = entry.GstAmount
+					gross := entry.NetAmount + *entry.GstAmount
+					payload.grossamount = &gross
+				}
+			} else {
+				payload.actualamount = entry.NetAmount
+				payload.displaynet = entry.NetAmount
+				payload.gstamount = entry.GstAmount
+				if entry.GstAmount != nil {
+					gross := entry.NetAmount + *entry.GstAmount
+					payload.grossamount = &gross
+				}
+			}
+
+		case method.TaxTreatmentZero:
+			payload.actualamount = entry.NetAmount
+			payload.displaynet = entry.NetAmount
+			gross := entry.NetAmount
+			payload.grossamount = &gross
+		}
+	} else {
+		// No tax type
+		gross := entry.NetAmount
+		payload.grossamount = &gross
+	}
+	return &payload, nil
+}
+
 func roundPreview(v float64) float64 {
 	shifted := v * 100
 	if shifted < 0 {
@@ -899,7 +1020,7 @@ func roundPreview(v float64) float64 {
 }
 
 // evaluatePreviewFormulas evaluates formulas for computed fields in preview mode
-func (s *service) evaluatePreviewFormulas(_ context.Context, fields []RqPreviewField, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[string]float64, error) {
+func (s *service) evaluatePreviewFormulas(ctx context.Context, fields []RqPreviewField, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[string]float64, error) {
 	// Collect computed fields with formulas
 	type computedField struct {
 		fieldKey string
@@ -950,7 +1071,7 @@ func (s *service) evaluatePreviewFormulas(_ context.Context, fields []RqPreviewF
 	for k, v := range keyValues {
 		vals[k] = v
 	}
-	
+
 	result := make(map[string]float64, n)
 
 	for _, i := range sorted {
@@ -985,7 +1106,7 @@ func (s *service) evaluatePreviewFormulas(_ context.Context, fields []RqPreviewF
 				if gst, hasGST := manualGSTByKey[cf.fieldKey]; hasGST {
 					feedbackVal = val + gst // NET + GST = GROSS
 				} else {
-					feedbackVal = val // No GST provided, use NET
+					feedbackVal = val
 				}
 			}
 		}
@@ -1132,14 +1253,23 @@ func (s *service) calculatePreviewSummaryFromRequest(_ context.Context, req *RqF
 	var incomeGST, expenseGST float64
 	var paidByOwnerSum float64
 
-	// Aggregate amounts by section type
+	// Build slug→fieldValue map for direct lookup of computed fields by slug
+	slugToFieldValue := make(map[string]*RsPreviewFieldValue)
+	for i := range allFields {
+		fv := &allFields[i]
+		if f, ok := fieldKeyToField[fv.FieldKey]; ok && f.Slug != "" {
+			slugToFieldValue[f.Slug] = fv
+		}
+	}
+
+	// Aggregate amounts by section type (non-computed fields only)
 	for _, fieldValue := range allFields {
 		if fieldValue.SectionType == nil || fieldValue.NetAmount == nil {
 			continue
 		}
 
 		field, ok := fieldKeyToField[fieldValue.FieldKey]
-		if !ok {
+		if !ok || field.IsComputed {
 			continue
 		}
 
@@ -1179,12 +1309,35 @@ func (s *service) calculatePreviewSummaryFromRequest(_ context.Context, req *RqF
 	// Calculate based on method
 	switch req.Method {
 	case "SERVICE_FEE":
-		// SERVICE_FEE calculation
 		clinicShare := float64(req.ClinicShare)
 		serviceFee := netAmount * (clinicShare / 100)
 		gstServiceFee := serviceFee * 0.1
 		totalServiceFee := serviceFee + gstServiceFee
-		remittedAmount := netAmount - totalServiceFee - otherCostSum + paidByOwnerSum + incomeGST
+
+		// Use formula-evaluated "Total S&F Fee" net/gross amounts if available.
+		// The formula D = C * clinicShare% where C may differ from summary netAmount
+		// (e.g. C excludes B1 which is subtracted separately in E).
+		// Using the formula result ensures summary matches all_fields.
+		if sfFee, ok := slugToFieldValue["total_sf_fee"]; ok {
+			if sfFee.NetAmount != nil {
+				serviceFee = *sfFee.NetAmount
+			}
+			if sfFee.GstAmount != nil {
+				gstServiceFee = *sfFee.GstAmount
+			}
+			if sfFee.GrossAmount != nil {
+				totalServiceFee = *sfFee.GrossAmount
+			}
+		}
+
+		// Use formula-evaluated "Amount Remitted to Owner" directly if available.
+		// This ensures the summary matches the formula-computed field E shown in all_fields.
+		var remittedAmount float64
+		if remitted, ok := slugToFieldValue["amount_remitted_to_owner"]; ok && remitted.NetAmount != nil {
+			remittedAmount = *remitted.NetAmount
+		} else {
+			remittedAmount = netAmount - totalServiceFee - otherCostSum + paidByOwnerSum + incomeGST
+		}
 
 		sf := roundPreview(serviceFee)
 		gsf := roundPreview(gstServiceFee)

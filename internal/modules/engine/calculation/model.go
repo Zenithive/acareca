@@ -163,16 +163,17 @@ type RqPreviewFormula struct {
 
 // RqPreviewField represents a field definition for preview calculation
 type RqPreviewField struct {
-	FieldKey              string              `json:"key" validate:"required"`
-	Label                 string              `json:"label" validate:"required"`
-	IsComputed            bool                `json:"is_computed"`
-	Formula               *formula.ExprNode   `json:"formula,omitempty"`
-	SectionType           *string             `json:"section_type,omitempty"`
-	PaymentResponsibility *string             `json:"payment_responsibility,omitempty"`
-	TaxType               *string             `json:"tax_type,omitempty"`
-	CoaID                 *string             `json:"coa_id,omitempty"`
-	SortOrder             int                 `json:"sort_order"`
-	IsHighlighted         bool                `json:"is_highlighted"`
+	FieldKey              string            `json:"key" validate:"required"`
+	Slug                  string            `json:"slug,omitempty"`
+	Label                 string            `json:"label" validate:"required"`
+	IsComputed            bool              `json:"is_computed"`
+	Formula               *formula.ExprNode `json:"formula,omitempty"`
+	SectionType           *string           `json:"section_type,omitempty"`
+	PaymentResponsibility *string           `json:"payment_responsibility,omitempty"`
+	TaxType               *string           `json:"tax_type,omitempty"`
+	CoaID                 *string           `json:"coa_id,omitempty"`
+	SortOrder             int               `json:"sort_order"`
+	IsHighlighted         bool              `json:"is_highlighted"`
 }
 
 // RqFormPreview is the request for form preview calculation
@@ -235,4 +236,11 @@ type PreviewSummary struct {
 	Commission      *float64 `json:"commission,omitempty"`
 	GstOnCommission *float64 `json:"gst_on_commission,omitempty"`
 	PaymentReceived *float64 `json:"payment_received,omitempty"`
+}
+
+type RqICCalculation struct {
+	gstamount    *float64
+	grossamount  *float64
+	actualamount float64 // value fed into formula engine (GROSS for OTHER_COST tax fields)
+	displaynet   float64 // net amount shown in all_fields response
 }
