@@ -3,6 +3,7 @@ package calculation
 import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/entry"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 )
 
 type Method string
@@ -147,24 +148,48 @@ type transactionFlatRow struct {
 // Preview calculation structs
 // RqPreviewEntry represents a single field entry for preview calculation
 type RqPreviewEntry struct {
-	FormFieldID string   `json:"form_field_id" validate:"required,uuid"`
+	FieldKey    string   `json:"field_key" validate:"required"`
 	NetAmount   float64  `json:"net_amount"`
 	GstAmount   *float64 `json:"gst_amount,omitempty"`
 	GrossAmount *float64 `json:"gross_amount,omitempty"`
 }
 
+// RqPreviewFormula represents a formula definition
+type RqPreviewFormula struct {
+	FieldKey   string            `json:"field_key" validate:"required"`
+	Name       string            `json:"name" validate:"required"`
+	Expression *formula.ExprNode `json:"expression" validate:"required"`
+}
+
+// RqPreviewField represents a field definition for preview calculation
+type RqPreviewField struct {
+	FieldKey              string              `json:"key" validate:"required"`
+	Label                 string              `json:"label" validate:"required"`
+	IsComputed            bool                `json:"is_computed"`
+	Formula               *formula.ExprNode   `json:"formula,omitempty"`
+	SectionType           *string             `json:"section_type,omitempty"`
+	PaymentResponsibility *string             `json:"payment_responsibility,omitempty"`
+	TaxType               *string             `json:"tax_type,omitempty"`
+	CoaID                 *string             `json:"coa_id,omitempty"`
+	SortOrder             int                 `json:"sort_order"`
+	IsHighlighted         bool                `json:"is_highlighted"`
+}
+
 // RqFormPreview is the request for form preview calculation
 type RqFormPreview struct {
-	FormVersionID  string           `json:"form_version_id" validate:"required,uuid"`
-	ClinicID       string           `json:"clinic_id" validate:"required,uuid"`
-	Entries        []RqPreviewEntry `json:"entries" validate:"required,min=1,dive"`
-	SuperComponent *float64         `json:"super_component,omitempty" validate:"omitempty,min=0,max=100"`
+	ClinicID       string             `json:"clinic_id" validate:"required,uuid"`
+	Method         string             `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	OwnerShare     int                `json:"owner_share" validate:"required,min=0,max=100"`
+	ClinicShare    int                `json:"clinic_share" validate:"required,min=0,max=100"`
+	Fields         []RqPreviewField   `json:"fields" validate:"required,min=1,dive"`
+	Formulas       []RqPreviewFormula `json:"formulas,omitempty"`
+	Values         []RqPreviewEntry   `json:"values" validate:"omitempty,dive"`
+	SuperComponent *float64           `json:"super_component,omitempty" validate:"omitempty,min=0,max=100"`
 }
 
 // RsPreviewFieldValue represents a single field value in the preview response
 type RsPreviewFieldValue struct {
-	FormFieldID   string   `json:"form_field_id"`
-	FieldKey      string   `json:"field_key"`
+	FieldKey      string   `json:"key"`
 	Label         string   `json:"label"`
 	IsComputed    bool     `json:"is_computed"`
 	NetAmount     *float64 `json:"net_amount,omitempty"`
@@ -179,13 +204,11 @@ type RsPreviewFieldValue struct {
 
 // RsFormPreview is the response for form preview calculation
 type RsFormPreview struct {
-	FormVersionID uuid.UUID             `json:"form_version_id"`
-	ClinicID      uuid.UUID             `json:"clinic_id"`
-	Method        string                `json:"method"`
-	FormName      string                `json:"form_name"`
-	ClinicName    string                `json:"clinic_name"`
-	AllFields     []RsPreviewFieldValue `json:"all_fields"`
-	Summary       *PreviewSummary       `json:"summary,omitempty"`
+	Method     string                `json:"method"`
+	FormName   string                `json:"form_name"`
+	ClinicName string                `json:"clinic_name"`
+	AllFields  []RsPreviewFieldValue `json:"all_fields"`
+	Summary    *PreviewSummary       `json:"summary,omitempty"`
 }
 
 // PreviewSummary contains calculation summary based on form method

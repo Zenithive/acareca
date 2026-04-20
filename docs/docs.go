@@ -3057,7 +3057,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.\nReturns all field values with net/gst/gross breakdown and method-specific summary (SERVICE_FEE or INDEPENDENT_CONTRACTOR).\nPass form_version_id, clinic_id, and field entries with net_amount for each field.",
+                "description": "Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.\nUsed when creating a form to preview calculations before saving.\nPass clinic_id, method, shares, field definitions, and field entries.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3070,7 +3070,7 @@ const docTemplate = `{
                 "summary": "Form preview with complete calculation",
                 "parameters": [
                     {
-                        "description": "Form version ID, clinic ID, and field entries",
+                        "description": "Form configuration, fields, and entries",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -8401,27 +8401,55 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "clinic_id",
-                "entries",
-                "form_version_id"
+                "clinic_share",
+                "fields",
+                "method",
+                "owner_share"
             ],
             "properties": {
                 "clinic_id": {
                     "type": "string"
                 },
-                "entries": {
+                "clinic_share": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "fields": {
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/calculation.RqPreviewEntry"
+                        "$ref": "#/definitions/calculation.RqPreviewField"
                     }
                 },
-                "form_version_id": {
-                    "type": "string"
+                "formulas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RqPreviewFormula"
+                    }
+                },
+                "method": {
+                    "type": "string",
+                    "enum": [
+                        "INDEPENDENT_CONTRACTOR",
+                        "SERVICE_FEE"
+                    ]
+                },
+                "owner_share": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
                 },
                 "super_component": {
                     "type": "number",
                     "maximum": 100,
                     "minimum": 0
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RqPreviewEntry"
+                    }
                 }
             }
         },
@@ -8467,10 +8495,10 @@ const docTemplate = `{
         "calculation.RqPreviewEntry": {
             "type": "object",
             "required": [
-                "form_field_id"
+                "field_key"
             ],
             "properties": {
-                "form_field_id": {
+                "field_key": {
                     "type": "string"
                 },
                 "gross_amount": {
@@ -8481,6 +8509,64 @@ const docTemplate = `{
                 },
                 "net_amount": {
                     "type": "number"
+                }
+            }
+        },
+        "calculation.RqPreviewField": {
+            "type": "object",
+            "required": [
+                "key",
+                "label"
+            ],
+            "properties": {
+                "coa_id": {
+                    "type": "string"
+                },
+                "formula": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "is_computed": {
+                    "type": "boolean"
+                },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "payment_responsibility": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RqPreviewFormula": {
+            "type": "object",
+            "required": [
+                "expression",
+                "field_key",
+                "name"
+            ],
+            "properties": {
+                "expression": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "field_key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },
@@ -8544,16 +8630,10 @@ const docTemplate = `{
                         "$ref": "#/definitions/calculation.RsPreviewFieldValue"
                     }
                 },
-                "clinic_id": {
-                    "type": "string"
-                },
                 "clinic_name": {
                     "type": "string"
                 },
                 "form_name": {
-                    "type": "string"
-                },
-                "form_version_id": {
                     "type": "string"
                 },
                 "method": {
@@ -8598,12 +8678,6 @@ const docTemplate = `{
                 "coa_id": {
                     "type": "string"
                 },
-                "field_key": {
-                    "type": "string"
-                },
-                "form_field_id": {
-                    "type": "string"
-                },
                 "gross_amount": {
                     "type": "number"
                 },
@@ -8615,6 +8689,9 @@ const docTemplate = `{
                 },
                 "is_highlighted": {
                     "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
                 },
                 "label": {
                     "type": "string"
