@@ -603,13 +603,21 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
 		INNER JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause + `
-		GROUP BY coa.id, coa.name`
+		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause
 
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
+	groupByClause := ` GROUP BY coa.id, coa.name`
 	args := []any{actorID}
+
 	args = append(args, qArgs...)
+	if strings.Contains(q, "ORDER BY") {
+		q = strings.Replace(q, "ORDER BY", groupByClause+" ORDER BY", 1)
+	} else if strings.Contains(q, "LIMIT") {
+		q = strings.Replace(q, "LIMIT", groupByClause+" LIMIT", 1)
+	} else {
+		q += groupByClause
+	}
 	q = r.db.Rebind(q)
 
 	type coaEntryRow struct {
@@ -621,6 +629,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	}
 
 	var rows []*coaEntryRow
+
 	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, fmt.Errorf("list coa entries: %w", err)
 	}
