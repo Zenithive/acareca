@@ -176,7 +176,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	commonFilter := f.MapToFilter()
 
 	// Use clinic_id array from BASFilter
-	requestedClinicIDs := f.ClinicId
+	requestedClinicIDs := f.parsedClinicIDs
 
 	if isAccountant {
 
@@ -188,15 +188,12 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 		// If clinic_ids are provided, verify permission for each clinic
 		if len(requestedClinicIDs) > 0 {
 			for _, clinicID := range requestedClinicIDs {
-				if clinicID == nil {
-					continue
-				}
-				permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, *clinicID)
+				permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, clinicID)
 				if err != nil {
-					return nil, fmt.Errorf("permission denied for clinic %s: you are not associated with this clinic", clinicID.String())
+					return nil, fmt.Errorf("permission denied for clinic %s", clinicID)
 				}
 				ownerID = permission.PractitionerID
-				clinicIDs = append(clinicIDs, *clinicID)
+				clinicIDs = append(clinicIDs, clinicID)
 			}
 		} else {
 			// If no clinic_ids provided, get all clinics the accountant has access to
@@ -223,14 +220,11 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 		if len(requestedClinicIDs) > 0 {
 			// Verify the practitioner owns each requested clinic
 			for _, clinicID := range requestedClinicIDs {
-				if clinicID == nil {
-					continue
-				}
-				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, *clinicID, ownerID)
+				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicID, ownerID)
 				if err != nil {
 					return nil, fmt.Errorf("clinic %s not found or access denied", clinicID.String())
 				}
-				clinicIDs = append(clinicIDs, *clinicID)
+				clinicIDs = append(clinicIDs, clinicID)
 			}
 		} else {
 			// Get all clinics for this practitioner

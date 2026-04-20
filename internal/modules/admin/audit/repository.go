@@ -23,6 +23,7 @@ type Repository interface {
 	ResolveActorName(ctx context.Context, id string) string
 	ResolveEntityLabel(ctx context.Context, entityType, id string) string
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error)
+	GetInvitationEmail(ctx context.Context, invitationID string) (string, error)
 }
 
 type repository struct {
@@ -251,4 +252,14 @@ func (r *repository) ResolveEntityLabel(ctx context.Context, entityType, id stri
 		return name
 	}
 	return id
+}
+
+func (r *repository) GetInvitationEmail(ctx context.Context, invitationID string) (string, error) {
+	var email string
+	query := `SELECT email FROM tbl_invitation WHERE id = $1`
+	err := r.db.GetContext(ctx, &email, query, invitationID)
+	if err != nil {
+		return "", err
+	}
+	return email, nil
 }
