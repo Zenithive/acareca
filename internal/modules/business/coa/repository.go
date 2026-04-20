@@ -245,12 +245,12 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
 		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+	 JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.code = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
 	`
 	args := []interface{}{code, practitionerID}
 	if excludeID != nil {
-		query += ` AND id != $3`
+		query += ` AND coa.id != $3`
 		args = append(args, *excludeID)
 	}
 	query += ` LIMIT 1`
