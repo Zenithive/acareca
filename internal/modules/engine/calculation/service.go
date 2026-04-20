@@ -25,7 +25,7 @@ type Service interface {
 	FormulaCalculate(ctx context.Context, formID uuid.UUID, req *RqFormulaCalculate) (*RsFormulaCalculate, error)
 	LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsLiveCalculate, error)
 	FormPreview(ctx context.Context, req *RqFormPreview, actorID uuid.UUID, role string) (*RsFormPreview, error)
-	GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
+	GetFormSummary(ctx context.Context, formID string, actorID uuid.UUID, role string) (*RsCategorizedSummary, error)
 	TaxCalculation(ctx context.Context, entry RqPreviewEntry, field *RqPreviewField) (*RqICCalculation, error)
 }
 
