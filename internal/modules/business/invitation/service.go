@@ -107,25 +107,19 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		return nil, fmt.Errorf("failed to save invite: %w", err)
 	}
 
-	// We'll create a slice to hold the "finalized" permissions (after processing)
-	var processedPermissions []RqPermissionDetail
+	// Process and validate permissions
+	processedPerms := s.processPermissions(req.Permissions)
 
-	// Process and Save Permissions
-	for _, pDetail := range req.Permissions {
-		finalDisplay := s.processPermissions(pDetail.Permissions)
+	// Validate permissions
+	if err := ValidatePermissions(processedPerms); err != nil {
+		return nil, fmt.Errorf("invalid permissions: %w", err)
+	}
 
-		// We use the Email because the AccountantID doesn't exist yet
-		err := s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, &req.Email, pDetail.EntityID, pDetail.EntityType, finalDisplay)
-		if err != nil {
-			fmt.Printf("[ERROR] failed to save pending permission: %v\n", err)
-		}
-
-		// Add to our response slice
-		processedPermissions = append(processedPermissions, RqPermissionDetail{
-			EntityID:    pDetail.EntityID,
-			EntityType:  pDetail.EntityType,
-			Permissions: finalDisplay,
-		})
+	// Save permissions for this practitioner-accountant relationship
+	// Note: We use Email because AccountantID doesn't exist yet for new users
+	err = s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, &req.Email, uuid.Nil, "ACCOUNTANT", *processedPerms)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save permissions: %w", err)
 	}
 
 	// Commit DB changes
@@ -190,22 +184,20 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		UserAgent:   meta.UserAgent,
 	})
 
-	// Audit Log: Combined Permissions Assigned
-	if len(processedPermissions) > 0 {
-		permEntityType := auditctx.EntityPermission
-		s.auditSvc.LogAsync(&audit.LogEntry{
-			PracticeID:  &pIDStr,
-			UserID:      meta.UserID,
-			Module:      auditctx.ModuleBusiness,
-			Action:      auditctx.ActionPermissionAssigned,
-			EntityType:  &permEntityType,
-			EntityID:    &entityID,
-			BeforeState: nil,
-			AfterState:  processedPermissions,
-			IPAddress:   meta.IPAddress,
-			UserAgent:   meta.UserAgent,
-		})
-	}
+	// Audit Log: Permissions Assigned
+	permEntityType := auditctx.EntityPermission
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionPermissionAssigned,
+		EntityType:  &permEntityType,
+		EntityID:    &entityID,
+		BeforeState: nil,
+		AfterState:  processedPerms,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
 
 	return &RsInvitation{
 		ID:           invite.ID,
@@ -214,7 +206,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		InviteLink:   inviteLink,
 		Status:       invite.Status,
 		ExpiresAt:    invite.ExpiresAt,
-		Permissions:  processedPermissions,
+		Permissions:  processedPerms,
 	}, nil
 }
 
@@ -312,6 +304,8 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 		dbPerms = []RqPermissionDetail{} // Initialize to empty slice for JSON []
 	}
 
+	processedPerm := s.processPermissions(DefaultAccountantPermissions())
+
 	return &RsInviteDetails{
 		InvitationID: inv.ID,
 		Status:       inv.Status,
@@ -325,7 +319,7 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 			Email:     inv.SenderEmail,
 		},
 		SentTo:      recipient,
-		Permissions: dbPerms,
+		Permissions: processedPerm,
 	}, nil
 }
 
@@ -662,14 +656,8 @@ func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID 
 }
 
 func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error {
-	// Ensure they at least have "read" access even if the clinic didn't have it.
-	if !perms.All {
-		perms.Read = true
-	}
-
-	perms = s.processPermissions(perms)
-
-	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, nil, eID, eType, perms)
+	processedPerms := s.processPermissions(&perms)
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, nil, eID, eType, *processedPerms)
 }
 
 func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
@@ -769,15 +757,13 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID 
 		oldPerms, _ = s.repo.GetPermissionsByEmailAndEntity(ctx, pID, email, eID)
 	}
 
-	// Check if this is an "Empty" permission set
-	if !perms.All && !perms.Read && !perms.Create && !perms.Update && !perms.Delete {
-		// We return nil for the *Permissions and the error from the repo
-		err := s.repo.DeletePermission(ctx, pID, eID, aID, email)
-		return nil, err
-	}
-
 	// Process Permissions
-	finalDisplay := s.processPermissions(perms)
+	finalDisplay := s.processPermissions(&perms)
+
+	// Validate permissions
+	if err := ValidatePermissions(finalDisplay); err != nil {
+		return nil, fmt.Errorf("invalid permissions: %w", err)
+	}
 
 	var dbAccID *uuid.UUID
 	if aID != nil && *aID != uuid.Nil {
@@ -792,7 +778,7 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID 
 		}
 	}
 	// Save to DB and return finalDisplay
-	if err := s.repo.GrantEntityPermission(ctx, pID, dbAccID, &email, eID, eType, finalDisplay); err != nil {
+	if err := s.repo.GrantEntityPermission(ctx, pID, dbAccID, &email, eID, eType, *finalDisplay); err != nil {
 		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "invitation.grant_permission",
 			err, pID.String(), eID.String(), auditctx.EntityPermission, auditctx.ModuleBusiness,
 		)
@@ -819,31 +805,31 @@ func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID 
 		UserAgent:   meta.UserAgent,
 	})
 
-	return &finalDisplay, nil
+	return finalDisplay, nil
 }
 
 // Helper to centralize permission logic
-func (s *service) processPermissions(perms Permissions) Permissions {
-	finalDisplay := Permissions{}
-
-	if perms.All {
-		// If All is true, everything is true
-		finalDisplay = Permissions{All: true, Read: true, Create: true, Update: true, Delete: true}
-	} else {
-		finalDisplay.Read = true // Always grant read at minimum
-
-		if perms.Create {
-			finalDisplay.Create = true
-		}
-		if perms.Update {
-			finalDisplay.Update = true
-		}
-		if perms.Delete {
-			finalDisplay.Delete = true
-		}
+// Ensures write access implies read access for each feature
+func (s *service) processPermissions(perms *Permissions) *Permissions {
+	if perms == nil {
+		return DefaultAccountantPermissions()
 	}
 
-	return finalDisplay
+	// Ensure write implies read for each feature
+	if perms.SalesPurchases != nil && perms.SalesPurchases.Write && !perms.SalesPurchases.Read {
+		perms.SalesPurchases.Read = true
+	}
+	if perms.LockDates != nil && perms.LockDates.Write && !perms.LockDates.Read {
+		perms.LockDates.Read = true
+	}
+	if perms.Users != nil && perms.Users.Write && !perms.Users.Read {
+		perms.Users.Read = true
+	}
+	if perms.Reports != nil && perms.Reports.Write && !perms.Reports.Read {
+		perms.Reports.Read = true
+	}
+
+	return perms
 }
 
 // ListAccountantPermission implements [Service].

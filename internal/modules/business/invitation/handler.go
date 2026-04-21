@@ -3,7 +3,6 @@ package invitation
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -266,7 +265,7 @@ func (h *Handler) ListAccountantPermissions(c *gin.Context) {
 }
 
 // @Summary      Grant or Update permissions
-// @Description  Practitioner grants specific permissions (Read, Create, Update, Delete, All) to an accountant for a specific entity.
+// @Description  Practitioner grants specific permissions (read/write access for sales_purchases, lock_dates, users, reports) to an accountant.
 // @Tags         invitation
 // @Accept       json
 // @Produce      json
@@ -288,43 +287,37 @@ func (h *Handler) HandlePermissions(c *gin.Context) {
 		return
 	}
 
-	var results []interface{}
+	// Validate permissions
+	if err := ValidatePermissions(req.Permissions); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
 
-	// Loop through each permission detail in the request
-	for _, p := range req.Permissions {
-		// Normalize EntityType
-		p.EntityType = strings.ToUpper(p.EntityType)
+	var targetAID *uuid.UUID
+	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
+		targetAID = req.AccountantID
+	}
 
-		var targetAID *uuid.UUID
-		if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
-			targetAID = req.AccountantID
-		}
-
-		resPerms, err := h.svc.GrantEntityPermission(
-			c.Request.Context(),
-			practID,
-			targetAID,
-			p.EntityID,
-			req.Email,
-			p.EntityType,
-			p.Permissions,
-		)
-		if err != nil {
-			response.Error(c, http.StatusInternalServerError, err)
-			return
-		}
-
-		results = append(results, gin.H{
-			"entity_id":   p.EntityID,
-			"entity_type": p.EntityType,
-			"permissions": resPerms,
-		})
+	// Grant permissions for the accountant
+	resPerms, err := h.svc.GrantEntityPermission(
+		c.Request.Context(),
+		practID,
+		targetAID,
+		uuid.Nil, // No specific entity, permissions are for the accountant relationship
+		req.Email,
+		"ACCOUNTANT",
+		*req.Permissions,
+	)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
 	}
 
 	data := gin.H{
 		"accountant_id": req.AccountantID,
-		"results":       results,
+		"email":         req.Email,
+		"permissions":   resPerms,
 	}
 
-	response.JSON(c, http.StatusOK, data, "Permissions Processed Successfully")
+	response.JSON(c, http.StatusOK, data, "Permissions updated successfully")
 }
