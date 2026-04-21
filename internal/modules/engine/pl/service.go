@@ -13,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/xuri/excelize/v2"
 )
 
 type Service interface {
@@ -21,6 +22,7 @@ type Service interface {
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
 	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter) (*RsReport, error)
+	ExportPLReport(data *RsReport) (*excelize.File, error)
 }
 
 type service struct {
@@ -332,4 +334,175 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
+}
+
+func (s *service) ExportPLReport(data *RsReport) (*excelize.File, error) {
+	f := excelize.NewFile()
+	sheet := "Profit and Loss"
+	f.NewSheet(sheet)
+	f.DeleteSheet("Sheet1")
+
+	// --- STYLES ---
+
+	// Main Header
+	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+	})
+
+	// Section Title
+	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
+	})
+
+	// Style for Particulars/Names (Left Aligned)
+	styleDataLeft, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Family: "Calibri", Size: 10},
+		Alignment: &excelize.Alignment{Horizontal: "left"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Data Cell Grid (Currency)
+	styleDataGrid, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Family: "Calibri", Size: 10},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Group Total Style
+	styleGroupTotal, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Final Profit Style
+	styleProfit, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
+		},
+	})
+
+	styleProfitGreen, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "28a745"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
+		},
+	})
+
+	// --- RENDER HEADERS ---
+	f.SetCellValue(sheet, "A1", "Profit and Loss Report")
+	f.MergeCell(sheet, "A1", "B1")
+	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
+
+	currentRow := 3 // Default start if no date
+	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
+		f.SetCellValue(sheet, "A2", fmt.Sprintf("Period: %s to %s", data.ReportMetadata.DateFrom, data.ReportMetadata.DateUntil))
+		currentRow = 4
+	}
+
+	var totalIncomeCell, totalCOSCell, totalOtherCostsCell string
+
+	// Helper closure to render sections
+	renderGroup := func(title string, group RsReportGroup) string {
+
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
+
+		// Set the table filter
+		if len(group.Accounts) > 0 {
+			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(group.Accounts))
+			tableName := strings.ReplaceAll(title, " ", "_") + fmt.Sprintf("_%d", currentRow)
+
+			showHeaders := true
+			f.AddTable(sheet, &excelize.Table{
+				Range:         tableRange,
+				Name:          tableName,
+				StyleName:     "", // Keeps your custom colors
+				ShowHeaderRow: &showHeaders,
+			})
+		}
+
+		currentRow++
+
+		dataStartRow := currentRow
+		for _, acc := range group.Accounts {
+			// Column A: Account Name
+			f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), acc.CoaName)
+			f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataLeft)
+
+			// Column B: Total Value
+			f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), acc.TotalValue)
+			f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleDataGrid)
+			currentRow++
+		}
+		dataEndRow := currentRow - 1
+
+		totalCell := fmt.Sprintf("B%d", currentRow)
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL "+title)
+
+		if len(group.Accounts) > 0 {
+			formula := fmt.Sprintf("SUBTOTAL(109, B%d:B%d)", dataStartRow, dataEndRow)
+			f.SetCellFormula(sheet, totalCell, formula)
+		} else {
+			f.SetCellValue(sheet, totalCell, 0)
+		}
+
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("B%d", currentRow), styleGroupTotal)
+		currentRow += 2
+
+		return totalCell
+	}
+
+	// --- DATA SECTIONS ---
+	totalIncomeCell = renderGroup("INCOME", data.Income)
+	totalCOSCell = renderGroup("COST OF SALES", data.CostOfSales)
+
+	// --- GROSS PROFIT (Dynamic) ---
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "GROSS PROFIT")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
+
+	// Formula: Total Income - Cost of Sales
+	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("%s-%s", totalIncomeCell, totalCOSCell))
+	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
+	grossProfitCell := fmt.Sprintf("B%d", currentRow)
+	currentRow += 2
+
+	totalOtherCostsCell = renderGroup("OTHER COSTS", data.OtherCosts)
+
+	// --- NET PROFIT (Dynamic) ---
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET PROFIT")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
+
+	// Formula: Gross Profit - Other Costs
+	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("%s-%s", grossProfitCell, totalOtherCostsCell))
+	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
+
+	// --- FORMATTING ---
+	f.SetColWidth(sheet, "A", "A", 45)
+	f.SetColWidth(sheet, "B", "B", 20)
+
+	return f, nil
 }

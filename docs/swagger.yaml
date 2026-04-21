@@ -944,6 +944,8 @@ definitions:
         type: string
       section_type:
         type: string
+      slug:
+        type: string
       sort_order:
         type: integer
       tax_type:
@@ -6047,6 +6049,55 @@ paths:
       security:
       - BearerToken: []
       summary: P&L split by payment responsibility
+      tags:
+      - engine/pl
+  /pl/export:
+    get:
+      description: Generates and downloads a professional Excel file of the P&L report
+        using the specified filters.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: date_until
+        type: string
+      - description: Filter by COA UUID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by tax type
+        in: query
+        name: tax_type_id
+        type: string
+      - description: Filter by form UUID
+        in: query
+        name: form_id
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Profit_and_Loss_Report.xlsx
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export P&L report to Excel
       tags:
       - engine/pl
   /pl/fy-summary:
