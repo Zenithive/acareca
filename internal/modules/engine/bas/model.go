@@ -165,6 +165,14 @@ type BASReportFilter struct {
 	Month          *string `form:"month"`      // e.g. "January"
 }
 
+type BASExportFilter struct {
+	
+	PractitionerID  string   `form:"-"` // set from JWT
+	FinancialYearID *string  `form:"financial_year_id" binding:"required"`
+	QuarterIDs      []string `form:"quarter_id" binding:"required"`
+	Month           *string  `form:"month"`
+}
+
 // RsBASReport is the flat totals response for /bas/report.
 type RsBASReport struct {
 	G1  float64 `json:"G1"`

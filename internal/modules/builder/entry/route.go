@@ -7,14 +7,14 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
 	// Entries require sales_purchases permission
-	
+
 	// Version-based routes - Read operations
 	versionRead := rg.Group("/version/:version_id")
 	versionRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
 	{
 		versionRead.GET("", h.List)
 	}
-	
+
 	// Version-based routes - Write operations
 	versionWrite := rg.Group("/version/:version_id")
 	versionWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
@@ -35,6 +35,8 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 	{
 		coaRead.GET("", h.ListCoaEntries)
 		coaRead.GET("/:coa_id/entries", h.ListCoaEntryDetails)
+		coaRead.GET("/export", h.HandleExport)
+
 	}
 
 	// ID-based routes - Read operations
@@ -43,7 +45,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 	{
 		idRead.GET("", h.Get)
 	}
-	
+
 	// ID-based routes - Write operations
 	idWrite := rg.Group("/:id")
 	idWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
