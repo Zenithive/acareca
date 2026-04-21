@@ -80,6 +80,11 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 
 	realOwnerID := clinic.PractitionerID
 
+	// Validate lock date before creating entry
+	if err := s.validateLockDate(ctx, req.ClinicID, req.Date); err != nil {
+		return nil, err
+	}
+
 	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 		return nil, err
 	}
@@ -221,6 +226,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	}
 	beforeState := existing.ToRs(values)
 
+	// Validate lock date - check both existing date and new date if provided
+	dateToCheck := existing.Date
+	if req.Date != nil {
+		dateToCheck = req.Date
+	}
+	if err := s.validateLockDate(ctx, existing.ClinicID, dateToCheck); err != nil {
+		return nil, err
+	}
+
 	// PERMISSION CHECK (Accountant Only)
 	// if strings.EqualFold(role, util.RoleAccountant) {
 	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
@@ -307,6 +321,11 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	beforeState := existing.ToRs(values)
+
+	// Validate lock date before deleting entry
+	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date); err != nil {
+		return err
+	}
 
 	// PERMISSION CHECK (Accountant Only)
 	// if strings.EqualFold(role, util.RoleAccountant) {
@@ -1105,4 +1124,38 @@ func getString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// validateLockDate checks if the entry date is on or before the clinic's lock date.
+// Returns an error if the entry date violates the lock date restriction.
+func (s *Service) validateLockDate(ctx context.Context, clinicID uuid.UUID, entryDate *string) error {
+	// If no entry date provided, allow the operation
+	if entryDate == nil || *entryDate == "" {
+		return nil
+	}
+
+	// Get financial settings for the clinic
+	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, clinicID)
+	if err != nil {
+		return fmt.Errorf("failed to get financial settings: %w", err)
+	}
+
+	// If no financial settings or no lock date set, allow the operation
+	if financialSettings == nil || financialSettings.LockDate == nil {
+		return nil
+	}
+
+	// Parse the entry date
+	parsedEntryDate, err := time.Parse("2006-01-02", *entryDate)
+	if err != nil {
+		return fmt.Errorf("invalid entry date format: %w", err)
+	}
+
+	// Compare dates: if entry date is on or before lock date, reject the operation
+	lockDate := *financialSettings.LockDate
+	if parsedEntryDate.Before(lockDate) || parsedEntryDate.Equal(lockDate) {
+		return fmt.Errorf("cannot modify entries on or before the lock date (%s). This period has been locked for changes", lockDate.Format("2006-01-02"))
+	}
+
+	return nil
 }

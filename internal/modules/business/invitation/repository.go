@@ -34,6 +34,7 @@ type Repository interface {
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
 	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
+	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
 	GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
@@ -327,6 +328,36 @@ func (r *repository) GetPermissions(ctx context.Context, accountantID uuid.UUID,
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // No mapping means no permission
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(raw, &permissions); err != nil {
+		return nil, err
+	}
+
+	return &permissions, nil
+}
+
+// GetPermissionsByPractitionerAndAccountant gets permissions for an accountant-practitioner relationship
+func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error) {
+	var permissions Permissions
+	var raw json.RawMessage
+
+	query := `
+        SELECT permissions
+        FROM tbl_invite_permissions
+        WHERE practitioner_id = $1 
+          AND accountant_id = $2 
+          AND entity_type = 'ACCOUNTANT'
+          AND deleted_at IS NULL 
+        LIMIT 1
+    `
+
+	err := r.db.GetContext(ctx, &raw, query, practitionerID, accountantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
 		}
 		return nil, err
 	}

@@ -35,33 +35,6 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// permissionAdapter adapts invitation.Service to middleware.PermissionChecker
-type permissionAdapter struct {
-	invSvc invitation.Service
-}
-
-func (a *permissionAdapter) ListAccountantPermission(ctx context.Context, accId uuid.UUID) ([]middleware.PermissionItem, error) {
-	perms, _, err := a.invSvc.ListAccountantPermission(ctx, accId)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert []invitation.Permissions to []middleware.PermissionItem
-	result := make([]middleware.PermissionItem, 0, len(*perms))
-	for i := range *perms {
-		result = append(result, &(*perms)[i])
-	}
-	return result, nil
-}
-
-func (a *permissionAdapter) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (middleware.PermissionItem, error) {
-	perm, err := a.invSvc.GetPermissionsForAccountant(ctx, accountantID, entityID)
-	if err != nil {
-		return nil, err
-	}
-	return perm, nil
-}
-
 func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
 
 	// Initialize Stripe SDK
@@ -101,6 +74,19 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc)
 	invitationHandler := invitation.NewHandler(invitationSvc, accountant.NewRepository(dbConn))
 
+	// Create permission adapter for feature-based permissions
+	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
+	permAdapter := middleware.NewPermissionAdapterFromFuncs(
+		func(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (middleware.FeaturePermissions, error) {
+			perms, err := invitationSvc.GetPermissionsForAccountant(ctx, accountantID, practitionerID)
+			if err != nil || perms == nil {
+				return nil, err
+			}
+			return perms, nil // *Permissions implements FeaturePermissions
+		},
+		invitationSvc.IsAccountantLinkedToPractitioner,
+	)
+
 	// invite api
 	invite := v1.Group("/invite")
 	invite.POST("/process", invitationHandler.ProcessInvitation)
@@ -122,16 +108,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	clinicRepo := clinic.NewRepository(dbConn)
 	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
-
-	// Apply method-based permission middleware (GET=read, POST=create, PUT/PATCH=update, DELETE=delete)
-	permChecker := &permissionAdapter{invSvc: invitationSvc}
-	clinic.RegisterRoutes(v1, clinicHandler, cfg, permChecker)
+	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
 
 	// ============ COA SERVICE (cross-module dependency) ============
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
-	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg, permChecker)
+	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg, permAdapter)
 
 	// ============ PRACTITIONER SERVICE (cross-module dependency) ============
 	practitionerRepo := practitioner.NewRepository(dbConn)
@@ -157,7 +140,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc)
 	plHandler := pl.NewHandler(plSvc)
-	pl.RegisterRoutes(v1, plHandler, cfg)
+	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
 	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo)
