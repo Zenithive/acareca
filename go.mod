@@ -19,6 +19,7 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
+	github.com/xuri/excelize/v2 v2.10.1
 	golang.org/x/crypto v0.48.0
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/text v0.34.0
@@ -62,11 +63,16 @@ require (
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/richardlehane/mscfb v1.0.6 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
+	github.com/richardlehane/mscfb v1.0.6 // indirect
+	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
+	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
+	github.com/xuri/efp v0.0.1 // indirect
+	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/excelize/v2 v2.10.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
