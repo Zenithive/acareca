@@ -3780,6 +3780,45 @@ paths:
       summary: Verify user email address
       tags:
       - auth
+  /bas/activity-statement/report/export:
+    get:
+      description: Generates a formatted Excel BAS report.
+      parameters:
+      - description: Financial Year UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      - collectionFormat: multi
+        description: Quarter UUIDs (can pass multiple)
+        in: query
+        items:
+          type: string
+        name: quarter_id
+        required: true
+        type: array
+      - description: Full month name
+        in: query
+        name: month
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Export Business Activity Statement to Excel
+      tags:
+      - BAS
   /bas/bas-preparation:
     get:
       description: Returns a side-by-side comparison of BAS figures across selected
@@ -5085,6 +5124,51 @@ paths:
       summary: List entries for a specific COA (child grid)
       tags:
       - entry
+  /entry/coa-entries/export:
+    get:
+      description: Generates an Excel file (.xlsx) containing grouped transaction
+        records based on filters.
+      parameters:
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Search by account, field, or clinic name
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Excel file containing transaction report
+          schema:
+            type: file
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error during generation
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export transaction report to Excel
+      tags:
+      - reporting
   /entry/transactions:
     get:
       description: Returns flat rows (one per entry value) enriched with clinic, form,

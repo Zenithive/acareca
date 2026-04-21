@@ -317,4 +317,5 @@ type RsCoaEntryDetail struct {
 	GrossAmount   *float64 `json:"gross_amount"`
 	CreatedAt     string   `json:"created_at"`
 	UpdatedAt     *string  `json:"updated_at,omitempty"`
+	Date          *string  `json:"date,omitempty"`
 }

@@ -1,10 +1,12 @@
 package bas
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/xuri/excelize/v2"
 )
 
 // Service defines the business-logic layer for the BAS module.
@@ -23,6 +26,9 @@ type Service interface {
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
+	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
+	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 }
 
 type service struct {
@@ -437,4 +443,248 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 // Helper to round values after calculation
 func roundToTwo(val float64) float64 {
 	return math.Round(val*100) / 100
+}
+
+func ptrString(s string) *string {
+	return &s
+}
+
+type QuarterData struct {
+	Period PeriodInfo
+	Report *RsBASReport
+}
+
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
+	xl := excelize.NewFile()
+	defer xl.Close()
+
+	sheet := "Activity Statement"
+	dataSheet := "SourceData"
+	xl.SetSheetName("Sheet1", sheet)
+	xl.NewSheet(dataSheet)
+
+	// --- 1. Populate Hidden Data Sheet (The Lookup Table) ---
+	headers := []string{"Label", "G1", "1A", "G11", "1B", "Start", "End"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		xl.SetCellValue(dataSheet, cell, h)
+	}
+
+	for i, q := range quarters {
+		row := i + 2
+		g1, a1, g11, b1 := 0.0, 0.0, 0.0, 0.0
+		if q.Report != nil {
+			g1, a1, g11, b1 = q.Report.G1, q.Report.A1, q.Report.G11, q.Report.B1
+		}
+
+		xl.SetCellValue(dataSheet, fmt.Sprintf("A%d", row), q.Period.Label)
+		xl.SetCellValue(dataSheet, fmt.Sprintf("B%d", row), g1)
+		xl.SetCellValue(dataSheet, fmt.Sprintf("C%d", row), a1)
+		xl.SetCellValue(dataSheet, fmt.Sprintf("D%d", row), g11)
+		xl.SetCellValue(dataSheet, fmt.Sprintf("E%d", row), b1)
+		xl.SetCellValue(dataSheet, fmt.Sprintf("F%d", row), q.Period.From)
+		xl.SetCellValue(dataSheet, fmt.Sprintf("G%d", row), q.Period.To)
+	}
+	xl.SetSheetVisible(dataSheet, false)
+
+	// --- 2. Styles ---
+	headerStyle, _ := xl.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+	subHeaderStyle, _ := xl.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1F0F2"}, Pattern: 1},
+	})
+	labelStyle, _ := xl.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	currencyStyle, _ := xl.NewStyle(&excelize.Style{CustomNumFmt: ptrString("$#,##0.00")})
+	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+
+	// --- 3. Main Header & Quarter Dropdown (Simplified to single column) ---
+	xl.SetCellValue(sheet, "A1", "Activity Statement Information")
+	xl.SetCellValue(sheet, "B1", "BAS") // Renamed from "Current BAS"
+	xl.SetCellStyle(sheet, "A1", "B1", headerStyle)
+
+	// Create Dropdown in Cell B4
+	var qLabels []string
+	for _, q := range quarters {
+		qLabels = append(qLabels, q.Period.Label)
+	}
+	dv := excelize.NewDataValidation(true)
+	dv.Sqref = "B4"
+	dv.SetDropList(qLabels)
+	xl.AddDataValidation(sheet, dv)
+
+	if len(qLabels) > 0 {
+		xl.SetCellValue(sheet, "B4", qLabels[0])
+	}
+
+	// --- 4. Information Section ---
+	xl.SetCellValue(sheet, "A2", "Period start")
+	xl.SetCellFormula(sheet, "B2", fmt.Sprintf("=VLOOKUP(B4, %s!A:G, 6, FALSE)", dataSheet))
+
+	xl.SetCellValue(sheet, "A3", "Period end")
+	xl.SetCellFormula(sheet, "B3", fmt.Sprintf("=VLOOKUP(B4, %s!A:G, 7, FALSE)", dataSheet))
+
+	xl.SetCellValue(sheet, "A4", "Qtr")
+	xl.SetCellStyle(sheet, "A2", "A4", labelStyle)
+
+	// --- 5. GST Section ---
+	gstFields := []struct {
+		Label string
+		Col   int
+	}{
+		{"G1 (Total Sales)", 2},
+		{"1A (GST on Sales)", 3},
+		{"G11 (Total Purchases)", 4},
+		{"1B (GST on Purchases)", 5},
+	}
+
+	rowIdx := 6
+	for _, f := range gstFields {
+		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), f.Label)
+		xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), fmt.Sprintf("=VLOOKUP(B4, %s!A:G, %d, FALSE)", dataSheet, f.Col))
+		xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
+		rowIdx++
+	}
+
+	// --- 6. PAYG Tax Withheld Section ---
+	rowIdx++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "PAYG tax withheld")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), subHeaderStyle)
+	rowIdx++
+
+	paygWithheld := []string{
+		"Period start",
+		"Period end",
+		"W1 (Total Wages, salary and other payments)",
+		"W2 (Amount withheld from payments shown at W1)",
+		"W3 (Other amounts withheld)",
+		"W4 (Amount withheld where no ABN is quoted)",
+		"W5 (Total amounts withheld)",
+	}
+
+	for _, label := range paygWithheld {
+		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), label)
+		if label == "Period start" {
+			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "B2")
+		} else if label == "Period end" {
+			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "B3")
+		}
+		rowIdx++
+	}
+
+	// --- 7. PAYG Instalment Section ---
+	rowIdx++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "PAYG instalment")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), subHeaderStyle)
+	rowIdx++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "Option 1")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), labelStyle)
+	rowIdx++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "Option 2")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), labelStyle)
+	rowIdx++
+
+	// --- 8. GST Refund/Payable ---
+	rowIdx++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "GST Payable or (Refund)")
+	// Formula: 1A - 1B (Adjusted cells for single column layout)
+	// B7 is 1A, B9 is 1B based on rowIdx incrementing above
+	xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "=B7-B9")
+
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), totalRowStyle)
+	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
+	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), labelStyle)
+
+	xl.SetColWidth(sheet, "A", "A", 55)
+	xl.SetColWidth(sheet, "B", "B", 25)
+
+	return xl.WriteToBuffer()
+}
+
+type PeriodInfo struct {
+	From  string
+	To    string
+	Label string
+}
+
+func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr, prev PeriodInfo, err error) {
+	var start, end time.Time
+
+	// 1. Get Current Range
+	if f.QuarterID != nil {
+		qID, _ := uuid.Parse(*f.QuarterID)
+		fromStr, toStr, err := s.repo.GetQuarterDates(ctx, qID)
+		if err != nil {
+			return curr, prev, err
+		}
+		start, _ = time.Parse("2006-01-02", fromStr)
+		end, _ = time.Parse("2006-01-02", toStr)
+	} else if f.Month != nil {
+		start, end, err = util.GetMonthRange(*f.Month)
+		if err != nil {
+			return curr, prev, err
+		}
+	}
+
+	// 2. Custom Quarter Mapping for your project
+	// Jan-Mar: Q3 | Apr-Jun: Q4 | Jul-Sep: Q1 | Oct-Dec: Q2
+	getProjectQuarter := func(t time.Time) string {
+		month := t.Month()
+		var qNum int
+		var qMonths string
+
+		switch {
+		case month >= 1 && month <= 3:
+			qNum = 3
+			qMonths = "January-March"
+		case month >= 4 && month <= 6:
+			qNum = 4
+			qMonths = "April-June"
+		case month >= 7 && month <= 9:
+			qNum = 1
+			qMonths = "July-September"
+		case month >= 10 && month <= 12:
+			qNum = 2
+			qMonths = "October-December"
+		}
+		return fmt.Sprintf("Q%d (%s) %d", qNum, qMonths, t.Year())
+	}
+
+	// 3. Set Current Period
+	curr.From = start.Format("02-Jan-06")
+	curr.To = end.Format("02-Jan-06")
+	curr.Label = getProjectQuarter(start)
+
+	// 4. Set Previous Period (Preceding Quarter = Current Start - 3 Months)
+	// Example: If current is April (Q4), prevStart becomes January (Q3)
+	prevStart := start.AddDate(0, -3, 0)
+
+	// We calculate the end of that previous quarter
+	// (3 months from prevStart, then minus 1 day)
+	prevEnd := prevStart.AddDate(0, 3, 0).Add(-time.Hour * 24)
+
+	prev.From = prevStart.Format("02-Jan-06")
+	prev.To = prevEnd.Format("02-Jan-06")
+	prev.Label = getProjectQuarter(prevStart)
+
+	return curr, prev, nil
+}
+
+func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error) {
+	// 1. Call the repository method to fetch all quarters in the same financial year
+	quarters, err := s.repo.GetAllQuartersInYear(ctx, quarterID)
+	if err != nil {
+		// Log the error if you have a logger, then return
+		return nil, fmt.Errorf("service: failed to fetch quarters for year: %w", err)
+	}
+
+	// 2. Return the list (it will contain Q1, Q2, Q3, Q4)
+	return quarters, nil
 }

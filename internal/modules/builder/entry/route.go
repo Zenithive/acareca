@@ -78,6 +78,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permChecker middleware.Perm
 	{
 		coaRoutes.GET("", h.ListCoaEntries)
 		coaRoutes.GET("/:coa_id/entries", h.ListCoaEntryDetails)
+		coaRoutes.GET("/export", h.HandleExport)
 	}
 
 	// ID-based routes: Entry permissions inherit from associated form

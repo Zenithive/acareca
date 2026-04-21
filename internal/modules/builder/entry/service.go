@@ -1,6 +1,7 @@
 package entry
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"maps"
@@ -23,6 +24,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/xuri/excelize/v2"
 )
 
 type IService interface {
@@ -38,6 +40,8 @@ type IService interface {
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
+
+	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
 }
 
 type Service struct {
@@ -866,4 +870,239 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	var rs util.RsList
 	rs.MapToList(items, total, *f.Offset, *f.Limit)
 	return &rs, nil
+}
+
+/*
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {
+
+		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
+		if err != nil {
+			return nil, err
+		}
+
+		xl := excelize.NewFile()
+		defer xl.Close()
+		sheet := "Transactions"
+		xl.SetSheetName("Sheet1", sheet)
+
+		// 1. Define Styles
+		headerStyle, _ := xl.NewStyle(&excelize.Style{
+			Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#4F81BD"}, Pattern: 1},
+		})
+		groupStyle, _ := xl.NewStyle(&excelize.Style{
+			Font: &excelize.Font{Bold: true},
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
+		})
+		currencyStyle, _ := xl.NewStyle(&excelize.Style{
+			CustomNumFmt: ptrString("$#,##0.00"),
+		})
+
+		// Helpers to handle Pointers and Nils (Fixes 0xc000 and <nil> issues)
+		getFloat := func(f *float64) float64 {
+			if f == nil {
+				return 0.0
+			}
+			return *f
+		}
+		getString := func(s *string) string {
+			if s == nil {
+				return ""
+			}
+			return *s
+		}
+
+		// 2. Set Headers
+		headers := []string{"Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Date"}
+		for i, h := range headers {
+			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			xl.SetCellValue(sheet, cell, h)
+		}
+		xl.SetCellStyle(sheet, "A1", "H1", headerStyle)
+
+		currRow := 2
+		for _, g := range groups {
+			// 3. Write Group Header Row (Using 'g' variable)
+			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), g.CoaName)
+			xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), g.TotalNetAmount)
+			xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), g.TotalGrossAmount)
+
+			// Apply Grey Background and Currency Style to the Group Row
+			xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("H%d", currRow), groupStyle)
+			xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), currencyStyle)
+			currRow++
+
+			// 4. Fetch Details for this specific COA
+			coaUUID, _ := uuid.Parse(g.CoaID)
+			details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+			if err != nil {
+				continue
+			}
+
+			// 5. Write Individual Transactions (Using 'd' variable)
+			for _, d := range details {
+				xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), "  "+d.FormFieldName) // Indented
+				xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), getString(d.TaxTypeName))
+				xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), d.FormName)
+				xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), d.ClinicName)
+
+				// Numeric values with currency styling
+				xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), getFloat(d.NetAmount))
+				xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), getFloat(d.GstAmount))
+				xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), getFloat(d.GrossAmount))
+				xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), currencyStyle)
+
+				// ... (other fields)
+
+				// Safely convert *string to string
+				dateVal := getString(d.Date)
+
+				// Clean up the timestamp "T00:00:00Z"
+				if strings.Contains(dateVal, "T") {
+					dateVal = strings.Split(dateVal, "T")[0]
+				}
+				xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), dateVal)
+				currRow++
+			}
+			currRow++ // Empty spacer row after each group
+		}
+
+		// 6. Adjust column widths
+		xl.SetColWidth(sheet, "A", "A", 35)
+		xl.SetColWidth(sheet, "B", "D", 20)
+		xl.SetColWidth(sheet, "E", "H", 15)
+
+		return xl.WriteToBuffer()
+	}
+*/
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {
+	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
+	if err != nil {
+		return nil, err
+	}
+
+	xl := excelize.NewFile()
+	defer xl.Close()
+	sheet := "Transactions"
+	xl.SetSheetName("Sheet1", sheet)
+
+	// 1. Define Styles
+	headerStyle, _ := xl.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4F81BD"}, Pattern: 1},
+	})
+	groupHeaderStyle, _ := xl.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
+	})
+
+	normalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
+		CustomNumFmt: ptrString("$#,##0.00"),
+	})
+
+	// Bold style for the bottom total row
+	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1E1E1"}, Pattern: 1},
+	})
+	totalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
+		CustomNumFmt: ptrString("$#,##0.00"),
+	})
+
+	// Helpers to handle Pointers and Nils (Fixes 0xc000 and <nil> issues)
+	getFloat := func(f *float64) float64 {
+		if f == nil {
+			return 0.0
+		}
+		return *f
+	}
+	getString := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+
+	// 2. Set Headers
+	headers := []string{"Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Date"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		xl.SetCellValue(sheet, cell, h)
+	}
+	xl.SetCellStyle(sheet, "A1", "H1", headerStyle)
+
+	currRow := 2
+	for _, g := range groups {
+		// --- 3. Write Group Header (Title only, Amounts blank) ---
+		xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), g.CoaName)
+		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("H%d", currRow), groupHeaderStyle)
+		currRow++
+
+		// 4. Fetch Details
+		coaUUID, _ := uuid.Parse(g.CoaID)
+		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+		if err != nil {
+			continue
+		}
+
+		// 5. Write Individual Transactions
+		for _, d := range details {
+			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), "  "+d.FormFieldName)
+			xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), getString(d.TaxTypeName))
+			xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), d.FormName)
+			xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), d.ClinicName)
+
+			xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), getFloat(d.NetAmount))
+			xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), getFloat(d.GstAmount))
+			xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), getFloat(d.GrossAmount))
+			xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), normalCurrencyStyle)
+
+			// dateVal := getString(d.Date)
+			// if strings.Contains(dateVal, "T") {
+			// 	dateVal = strings.Split(dateVal, "T")[0]
+			// }
+			// xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), dateVal)
+
+			xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), d.CreatedAt)
+			currRow++
+		}
+
+		// --- 6. Write TOTAL Row (Amounts only, no label) ---
+		// We leave column A blank or just styled
+		xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), g.TotalNetAmount)
+		xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), g.TotalGrossAmount)
+
+		// Apply Bold + Currency Style
+		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("H%d", currRow), totalRowStyle)
+
+		xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("E%d", currRow), totalCurrencyStyle)
+		xl.SetCellStyle(sheet, fmt.Sprintf("G%d", currRow), fmt.Sprintf("G%d", currRow), totalCurrencyStyle)
+		//xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), currencyStyle)
+
+		currRow += 2 // Space before next group
+	}
+
+	// 7. Add AutoFilter to the header row (A1 to H1)
+	if err := xl.AutoFilter(sheet, "A1:H1", nil); err != nil {
+		return nil, err
+	}
+
+	xl.SetColWidth(sheet, "A", "A", 35)
+	xl.SetColWidth(sheet, "B", "D", 20)
+	xl.SetColWidth(sheet, "E", "H", 15)
+
+	return xl.WriteToBuffer()
+}
+
+func ptrString(s string) *string {
+	return &s
+}
+
+func getString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
