@@ -56,10 +56,11 @@ type Service struct {
 	formulaSvc     formula.IService
 	fieldSvc       field.IService
 	invitationSvc  invitation.Service
+	detailRepo     detail.IRepository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo}
 }
 
 // Create implements [IService].
@@ -801,7 +802,7 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	formName := "Form"
 	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
 	if err == nil {
-		form, err := s.detailSvc.GetByID(ctx, ver.FormId, actorUserID, *meta.UserType)
+		form, err := s.detailRepo.GetByID(ctx, ver.FormId)
 		if err == nil {
 			formName = form.Name
 		}
@@ -828,7 +829,6 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	if err == nil {
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
-
 	// Record Event
 	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 		ID:             uuid.New(),

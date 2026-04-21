@@ -220,6 +220,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	var err error
 	// Fetch Admins
 	adminIDs, err := s.repo.GetAdminIDs(ctx)
 	if err != nil || len(adminIDs) == 0 {
@@ -228,22 +229,34 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 
 	// Get User Name
 	userName := "User"
-	if entry.UserID != nil {
+
+	// Define invitation-specific actions
+	isInvitationAction := entry.Action == "accountant.invite_accepted" ||
+		entry.Action == "accountant.invite_rejected" ||
+		entry.Action == "accountant.invite_expired" ||
+		entry.Action == "accountant.invite_completed"
+
+	if isInvitationAction && entry.EntityID != nil {
+		// Try to fetch email from tbl_invitation to identify the accountant
+		email, err := s.repo.GetInvitationEmail(ctx, *entry.EntityID)
+		if err == nil && email != "" {
+			userName = email
+		} else if entry.UserID != nil {
+			// Fallback to UserID if invitation lookup fails
+			userName, _ = s.repo.GetUserName(ctx, *entry.UserID)
+		}
+	} else if entry.UserID != nil {
+		// Standard path: prioritize the direct Actor (UserID)
 		userName, err = s.repo.GetUserName(ctx, *entry.UserID)
 		if err != nil {
 			log.Printf("ERROR: [Audit-Notification] Failed to get user name for ID %s: %v", *entry.UserID, err)
 		}
 	} else if entry.PracticeID != nil {
+		// Fallback for system/practice level actions
 		uID, err := s.repo.GetUserIDByPractitionerID(ctx, *entry.PracticeID)
-		if err != nil {
-			log.Printf("ERROR: [Audit-Notification] Failed to get user ID for practitioner ID %s: %v", *entry.PracticeID, err)
-		} else {
-			userName, err = s.repo.GetUserName(ctx, uID)
-			if err != nil {
-				log.Printf("ERROR: [Audit-Notification] Failed to get user name for ID %s: %v", uID, err)
-			}
+		if err == nil {
+			userName, _ = s.repo.GetUserName(ctx, uID)
 		}
-
 	}
 
 	// Format the Action into a generic sentence

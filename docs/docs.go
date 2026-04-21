@@ -7058,14 +7058,14 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Fetches all individual entries/transactions for a specific form ID, including field names, COA details, and tax information.",
+                "description": "Fetches a grouped list of Chart of Accounts with total amounts for a specific form.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "calculation"
                 ],
-                "summary": "Get form summary by form ID",
+                "summary": "Get form summary by form ID (Grouped by COA)",
                 "parameters": [
                     {
                         "type": "string",
@@ -7077,18 +7077,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of transactions",
+                        "description": "Grouped COA summary",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/calculation.RsTransactionRow"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "$ref": "#/definitions/util.RsList"
                         }
                     },
                     "401": {
@@ -8706,68 +8697,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "tax_type": {
-                    "type": "string"
-                }
-            }
-        },
-        "calculation.RsTransactionRow": {
-            "type": "object",
-            "properties": {
-                "clinicID": {
-                    "type": "string"
-                },
-                "clinicName": {
-                    "type": "string"
-                },
-                "coaID": {
-                    "type": "string"
-                },
-                "coaName": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "entryID": {
-                    "type": "string"
-                },
-                "formFieldID": {
-                    "type": "string"
-                },
-                "formFieldName": {
-                    "type": "string"
-                },
-                "formID": {
-                    "type": "string"
-                },
-                "formName": {
-                    "type": "string"
-                },
-                "grossAmount": {
-                    "type": "number"
-                },
-                "gstAmount": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "netAmount": {
-                    "type": "number"
-                },
-                "sectionType": {
-                    "type": "string"
-                },
-                "taxType": {
-                    "type": "string"
-                },
-                "taxTypeID": {
-                    "type": "integer"
-                },
-                "taxTypeName": {
-                    "type": "string"
-                },
-                "updatedAt": {
                     "type": "string"
                 }
             }

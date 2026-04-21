@@ -98,51 +98,19 @@ type RsLiveCalculate struct {
 	ComputedFields []RsComputedFieldValue `json:"computed_fields"`
 }
 
-// RsTransactionRow represents a single row of transaction data for a form entry value.
-type RsTransactionRow struct {
-	ID            uuid.UUID `db:"id"`
-	EntryID       uuid.UUID `db:"entry_id"`
-	FormFieldID   uuid.UUID `db:"form_field_id"`
-	FormFieldName string    `db:"form_field_name"`
-	SectionType   *string   `db:"section_type"`
-	TaxType       *string   `db:"tax_type"`
-	CoaID         uuid.UUID `db:"coa_id"`
-	CoaName       string    `db:"coa_name"`
-	TaxTypeID     *int16    `db:"tax_type_id"`
-	TaxTypeName   *string   `db:"tax_type_name"`
-	FormID        uuid.UUID `db:"form_id"`
-	FormName      string    `db:"form_name"`
-	ClinicID      uuid.UUID `db:"clinic_id"`
-	ClinicName    string    `db:"clinic_name"`
-	NetAmount     *float64  `db:"net_amount"`
-	GstAmount     *float64  `db:"gst_amount"`
-	GrossAmount   *float64  `db:"gross_amount"`
-	CreatedAt     string    `db:"created_at"`
-	UpdatedAt     *string   `db:"updated_at"`
+type RsCoaEntry struct {
+	CoaID            string  `json:"coa_id" db:"coa_id"`
+	CoaName          string  `json:"coa_name" db:"coa_name"`
+	SectionType      string  `json:"section_type" db:"section_type"`
+	TotalNetAmount   float64 `json:"total_net_amount" db:"total_net_amount"`
+	TotalGrossAmount float64 `json:"total_gross_amount" db:"total_gross_amount"`
+	EntryCount       int     `json:"entry_count" db:"entry_count"`
 }
 
-// transactionFlatRow is used internally for SQL scanning.
-// It uses *pointers for nullable fields to avoid scanning errors.
-type transactionFlatRow struct {
-	ID            uuid.UUID `db:"id"`
-	EntryID       uuid.UUID `db:"entry_id"`
-	FormFieldID   uuid.UUID `db:"form_field_id"`
-	FormFieldName string    `db:"form_field_name"`
-	SectionType   *string   `db:"section_type"`
-	TaxType       *string   `db:"tax_type"`
-	CoaID         uuid.UUID `db:"coa_id"`
-	CoaName       string    `db:"coa_name"`
-	TaxTypeID     *int16    `db:"tax_type_id"`
-	TaxTypeName   *string   `db:"tax_type_name"`
-	FormID        uuid.UUID `db:"form_id"`
-	FormName      string    `db:"form_name"`
-	ClinicID      uuid.UUID `db:"clinic_id"`
-	ClinicName    string    `db:"clinic_name"`
-	NetAmount     *float64  `db:"net_amount"`
-	GstAmount     *float64  `db:"gst_amount"`
-	GrossAmount   *float64  `db:"gross_amount"`
-	CreatedAt     string    `db:"created_at"`
-	UpdatedAt     *string   `db:"updated_at"`
+type RsCategorizedSummary struct {
+	Collection []*RsCoaEntry `json:"collection"`
+	Costs      []*RsCoaEntry `json:"costs"`
+	OtherCosts []*RsCoaEntry `json:"other_costs"`
 }
 
 // Preview calculation structs
@@ -163,16 +131,17 @@ type RqPreviewFormula struct {
 
 // RqPreviewField represents a field definition for preview calculation
 type RqPreviewField struct {
-	FieldKey              string              `json:"key" validate:"required"`
-	Label                 string              `json:"label" validate:"required"`
-	IsComputed            bool                `json:"is_computed"`
-	Formula               *formula.ExprNode   `json:"formula,omitempty"`
-	SectionType           *string             `json:"section_type,omitempty"`
-	PaymentResponsibility *string             `json:"payment_responsibility,omitempty"`
-	TaxType               *string             `json:"tax_type,omitempty"`
-	CoaID                 *string             `json:"coa_id,omitempty"`
-	SortOrder             int                 `json:"sort_order"`
-	IsHighlighted         bool                `json:"is_highlighted"`
+	FieldKey              string            `json:"key" validate:"required"`
+	Slug                  string            `json:"slug,omitempty"`
+	Label                 string            `json:"label" validate:"required"`
+	IsComputed            bool              `json:"is_computed"`
+	Formula               *formula.ExprNode `json:"formula,omitempty"`
+	SectionType           *string           `json:"section_type,omitempty"`
+	PaymentResponsibility *string           `json:"payment_responsibility,omitempty"`
+	TaxType               *string           `json:"tax_type,omitempty"`
+	CoaID                 *string           `json:"coa_id,omitempty"`
+	SortOrder             int               `json:"sort_order"`
+	IsHighlighted         bool              `json:"is_highlighted"`
 }
 
 // RqFormPreview is the request for form preview calculation
@@ -235,4 +204,11 @@ type PreviewSummary struct {
 	Commission      *float64 `json:"commission,omitempty"`
 	GstOnCommission *float64 `json:"gst_on_commission,omitempty"`
 	PaymentReceived *float64 `json:"payment_received,omitempty"`
+}
+
+type RqICCalculation struct {
+	gstamount    *float64
+	grossamount  *float64
+	actualamount float64 // value fed into formula engine (GROSS for OTHER_COST tax fields)
+	displaynet   float64 // net amount shown in all_fields response
 }
