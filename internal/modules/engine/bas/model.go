@@ -81,15 +81,14 @@ type BASMonthlyRow struct {
 }
 
 type BASFilter struct {
-	// ClinicId        []*uuid.UUID `form:"clinicId"`
 	ClinicIds       *string `form:"clinic_ids"`
 	FromDate        *string `form:"from_date"`         // YYYY-MM-DD
 	ToDate          *string `form:"to_date"`           // YYYY-MM-DD
 	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
 	QuarterIDs      *string `form:"quarter_ids"`       // UUIDs of tbl_financial_quarter
 
-	parsedQuarterIDs []uuid.UUID
-	parsedClinicIDs  []uuid.UUID
+	ParsedQuarterIDs []uuid.UUID
+	ParsedClinicIDs  []uuid.UUID
 }
 
 // MapToFilter returns the BASFilter as a common.Filter, omitting nil values.
@@ -98,44 +97,32 @@ func (f *BASFilter) MapToFilter() common.Filter {
 	operators := map[string]common.Operator{}
 
 	if f.QuarterIDs != nil && *f.QuarterIDs != "" {
-		f.parsedQuarterIDs = nil
+		f.ParsedQuarterIDs = nil
 		idStrings := strings.Split(*f.QuarterIDs, ",")
 		for _, s := range idStrings {
 			parsedID, err := uuid.Parse(strings.TrimSpace(s))
 			if err == nil {
-				f.parsedQuarterIDs = append(f.parsedQuarterIDs, parsedID)
+				f.ParsedQuarterIDs = append(f.ParsedQuarterIDs, parsedID)
 			}
 		}
 
-		if len(f.parsedQuarterIDs) > 0 {
-			filters["quarter_ids"] = f.parsedQuarterIDs
+		if len(f.ParsedQuarterIDs) > 0 {
+			filters["quarter_ids"] = f.ParsedQuarterIDs
 		}
 	}
 
 	if f.ClinicIds != nil && *f.ClinicIds != "" {
-		f.parsedClinicIDs = nil
+		f.ParsedClinicIDs = nil
 		cStrings := strings.Split(*f.ClinicIds, ",")
 		for _, s := range cStrings {
 			if parsedID, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
-				f.parsedClinicIDs = append(f.parsedClinicIDs, parsedID)
+				f.ParsedClinicIDs = append(f.ParsedClinicIDs, parsedID)
 			}
 		}
-		if len(f.parsedClinicIDs) > 0 {
-			filters["clinic_ids"] = f.parsedClinicIDs
+		if len(f.ParsedClinicIDs) > 0 {
+			filters["clinic_ids"] = f.ParsedClinicIDs
 		}
 	}
-
-	// if len(*f.ClinicIds) > 0 {
-	// 	ids := make([]uuid.UUID, 0, len(*f.ClinicIds))
-	// 	for _, cid := range *f.ClinicIds {
-	// 		if cid != nil {
-	// 			ids = append(ids, *cid)
-	// 		}
-	// 	}
-	// 	if len(ids) > 0 {
-	// 		filters["clinicId"] = ids
-	// 	}
-	// }
 
 	if f.FromDate != nil {
 		filters["from_date"] = *f.FromDate

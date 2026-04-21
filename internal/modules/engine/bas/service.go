@@ -14,6 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/xuri/excelize/v2"
 )
 
 // Service defines the business-logic layer for the BAS module.
@@ -23,6 +24,9 @@ type Service interface {
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
+	// ExportBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter, w io.Writer) error
+	// ExportBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter, w io.Writer) error
+	ExportBASPreparation(data *RsBASPreparation) (*excelize.File, error)
 }
 
 type service struct {
@@ -176,7 +180,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	commonFilter := f.MapToFilter()
 
 	// Use clinic_id array from BASFilter
-	requestedClinicIDs := f.parsedClinicIDs
+	requestedClinicIDs := f.ParsedClinicIDs
 
 	if isAccountant {
 
@@ -261,8 +265,8 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	var finalizedRowsForTotal []*BASLineItemRow
 
 	// --- Iterate over SELECTED Quarters first ---
-	if len(f.parsedQuarterIDs) > 0 {
-		for _, qID := range f.parsedQuarterIDs {
+	if len(f.ParsedQuarterIDs) > 0 {
+		for _, qID := range f.ParsedQuarterIDs {
 
 			// Get metadata by ID (Always works even if no transactions)
 			qInfo, err := s.repo.GetQuarterInfoByID(ctx, qID)
@@ -437,4 +441,260 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 // Helper to round values after calculation
 func roundToTwo(val float64) float64 {
 	return math.Round(val*100) / 100
+}
+
+func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, error) {
+	f := excelize.NewFile()
+	sheet := "Quarterly BAS Preparation"
+	f.NewSheet(sheet)
+	f.DeleteSheet("Sheet1")
+
+	// --- STYLES ---
+
+	// Top Headers (Q1, Q2, etc.) - Light Blue, Bold, Black Borders
+	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 11},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Standard Grid Style (Used for all data cells)
+	styleDataGrid, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Family: "Calibri", Size: 10},
+		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00;$0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "left"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Standard Table Grid Style (Used for all table data cells)
+	styleTableGrid, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Family: "Calibri", Size: 10},
+		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00;$0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Section Titles (INCOME / EXPENSES) - Bold, Underline, Large
+	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Underline: "single", Family: "Calibri", Size: 12},
+	})
+
+	// Net Profit/Loss
+	styleNetProfit, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "000000"},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Net Profit/Loss (Green cell background)
+	styleNetProfitCol, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Color: "28a745"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Net GST Payable
+	styleGSTTotal, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
+		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00"; return &s }(),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// Net GST Payable (Red Text)
+	styleGSTPayableCol, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Color: "dc3545"},
+		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+
+	// --- DATA PREPARATION ---
+	allCols := append(data.Columns, data.GrandTotal)
+
+	// --- RENDER HEADERS ---
+	f.SetCellValue(sheet, "A2", "Financial Year Ending: 30 June")
+	f.SetCellStyle(sheet, "A2", "A2", styleHeaderBlue)
+
+	for i := range allCols {
+		cIdx := 1 + (i * 4)
+		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+		midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
+		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+
+		// Top Quarter Header
+		f.MergeCell(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol))
+		f.SetCellValue(sheet, fmt.Sprintf("%s5", startCol), allCols[i].Quarter.Name)
+		f.SetCellStyle(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol), styleHeaderBlue)
+
+		// Sub Headers
+		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), "Gross")
+		f.SetCellValue(sheet, fmt.Sprintf("%s6", midCol), "GST")
+		f.SetCellValue(sheet, fmt.Sprintf("%s6", endCol), "Net")
+		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
+	}
+
+	// --- INCOME SECTION ---
+	currentRow := 7
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
+	currentRow++
+
+	incomeRows := s.getUniqueNamesFromSection(allCols, "income")
+	for _, name := range incomeRows {
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), name)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataGrid)
+
+		for i := range allCols {
+			cIdx := 1 + (i * 4)
+			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+
+			// Always apply borders
+			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
+			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Income.Items, name, styleTableGrid)
+		}
+		currentRow++
+	}
+
+	// --- EXPENSES SECTION ---
+	currentRow += 1
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "EXPENSES")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
+	currentRow++
+
+	expenseRows := s.getUniqueNamesFromSection(allCols, "expenses")
+	for _, name := range expenseRows {
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), name)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataGrid)
+
+		for i := range allCols {
+			cIdx := 1 + (i * 4)
+			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+
+			// Force $0.00 by initializing with 0
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
+			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
+			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Expenses.Items, name, styleTableGrid)
+		}
+		currentRow++
+	}
+
+	// --- SUMMARY SECTION ---
+	currentRow += 2
+
+	// Net Profit Row (Green Background)
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net Profit/Loss")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleNetProfit)
+
+	for i, col := range allCols {
+		cIdx := 1 + (i * 4)
+		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+
+		if len(col.Sections.NetProfitLoss.Items) > 0 {
+			// Force $0.00 by initializing with 0
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), col.Sections.NetProfitLoss.Items[0].Amounts.Net)
+			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleNetProfitCol)
+		}
+	}
+
+	currentRow++
+	currentRow++
+
+	// Net GST Payable Row (Red Text)
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net GST Payable")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleGSTTotal)
+
+	for i, col := range allCols {
+		cIdx := 1 + (i * 4)
+		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+
+		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleGSTPayableCol)
+		f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), col.NetGSTPayable)
+	}
+
+	// --- FILTERS ---
+	lastCol, _ := excelize.ColumnNumberToName(1 + (len(allCols) * 4))
+	f.AutoFilter(sheet, fmt.Sprintf("A6:%s%d", lastCol, currentRow), nil)
+
+	// --- FINAL DIMENSIONS ---
+	f.SetColWidth(sheet, "A", "A", 45)
+	for col := 2; col <= 1+(len(allCols)*4); col++ {
+		name, _ := excelize.ColumnNumberToName(col)
+		// Check if it's a spacer column (the blank column between Qs)
+		if (col-1)%4 == 0 {
+			f.SetColWidth(sheet, name, name, 3) // Narrow spacer
+		} else {
+			f.SetColWidth(sheet, name, name, 15) // Standard data width
+		}
+	}
+
+	return f, nil
+}
+
+func (s *service) writeFormattedAmounts(f *excelize.File, sheet string, startIdx, row int, items []BASLineItem, name string, styleID int) {
+	for _, item := range items {
+		if item.Name == name {
+			g, _ := excelize.ColumnNumberToName(startIdx + 1)
+			t, _ := excelize.ColumnNumberToName(startIdx + 2)
+			n, _ := excelize.ColumnNumberToName(startIdx + 3)
+
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", g, row), item.Amounts.Gross)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", t, row), item.Amounts.GST)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", n, row), item.Amounts.Net)
+
+			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", g, row), fmt.Sprintf("%s%d", n, row), styleID)
+			return
+		}
+	}
+}
+
+func (s *service) getUniqueNamesFromSection(allCols []BASColumn, section string) []string {
+	m := make(map[string]bool)
+	var names []string
+	for _, col := range allCols {
+		var items []BASLineItem
+		if section == "income" {
+			items = col.Sections.Income.Items
+		} else {
+			items = col.Sections.Expenses.Items
+		}
+		for _, itm := range items {
+			if itm.Name != "" && !m[itm.Name] {
+				m[itm.Name] = true
+				names = append(names, itm.Name)
+			}
+		}
+	}
+	return names
 }

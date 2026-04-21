@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ type IHandler interface {
 	GetMonthly(c *gin.Context)
 	GetReport(c *gin.Context)
 	GetBASPreparation(c *gin.Context)
+	ExportBASPreparation(c *gin.Context)
 }
 
 type handler struct {
@@ -215,7 +217,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Description  Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics. Multiple clinicId values can be provided to aggregate specific clinics.
 // @Tags         engine/bas
 // @Produce      json
-// @Param        clinicId          query  []string false "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)" collectionFormat(multi)
+// @Param   clinic_ids         query    string  false  "Comma-separated Clinic UUIDs"
 // @Param        quarter_ids       query  string true "Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)"
 // @Param        financial_year_id query  string  true "Restrict to a financial year by UUID"
 // @Success      200  {object}  RsBASPreparation
@@ -244,4 +246,47 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "BAS preparation data fetched")
+}
+
+// ExportBASPreparation godoc
+// @Summary      Export Quarterly BAS Preparation
+// @Description  Generates an Excel file matching the shared template using GetBASPreparation data.
+// @Tags         engine/bas
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param        clinic_ids        query    string  false  "Clinic UUIDs"
+// @Param        quarter_ids       query    string  true   "Quarter UUIDs"
+// @Param        financial_year_id query    string  true   "FY UUID"
+// @Success      200 {file} binary
+// @Router       /bas/bas-preparation/export [get]
+// @Security     BearerToken
+func (h *handler) ExportBASPreparation(c *gin.Context) {
+	actorID, ok := util.GetUserID(c)
+	if !ok {
+		return
+	}
+
+	var f BASFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	_ = f.MapToFilter()
+
+	// Get the exact data structure you shared
+	data, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	file, err := h.svc.ExportBASPreparation(data)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.xlsx", time.Now().Format("2006-01-02"))
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	file.Write(c.Writer)
 }

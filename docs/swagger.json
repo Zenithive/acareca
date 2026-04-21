@@ -2576,13 +2576,9 @@
                 "summary": "Full BAS Preparation Report",
                 "parameters": [
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)",
-                        "name": "clinicId",
+                        "type": "string",
+                        "description": "Comma-separated Clinic UUIDs",
+                        "name": "clinic_ids",
                         "in": "query"
                     },
                     {
@@ -2617,6 +2613,53 @@
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/bas-preparation/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates an Excel file matching the shared template using GetBASPreparation data.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Export Quarterly BAS Preparation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUIDs",
+                        "name": "clinic_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "FY UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
                         }
                     }
                 }

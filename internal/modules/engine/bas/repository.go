@@ -230,16 +230,16 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
     `
 	args := []interface{}{clinicID}
 
-	if len(f.parsedQuarterIDs) > 0 {
+	if len(f.ParsedQuarterIDs) > 0 {
 		// Use IN (?) - sqlx.In will expand this (?) based on the length of the slice
 		query += " AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))"
 
 		// Append the actual slice of UUIDs. sqlx.In is designed to handle slices in the args list.
-		args = append(args, f.parsedQuarterIDs)
+		args = append(args, f.ParsedQuarterIDs)
 	}
 
 	// 3. Handle Financial Year (Fall-through logic)
-	if len(f.parsedQuarterIDs) == 0 && f.FinancialYearID != nil {
+	if len(f.ParsedQuarterIDs) == 0 && f.FinancialYearID != nil {
 		query += ` AND period_quarter BETWEEN (
                 SELECT start_date FROM tbl_financial_year WHERE id = ?
             ) AND (

@@ -3787,14 +3787,10 @@ paths:
         provided in query params, aggregates data across all clinics. Multiple clinicId
         values can be provided to aggregate specific clinics.
       parameters:
-      - collectionFormat: multi
-        description: Clinic UUIDs (optional - aggregates all clinics if not provided,
-          can specify multiple)
+      - description: Comma-separated Clinic UUIDs
         in: query
-        items:
-          type: string
-        name: clinicId
-        type: array
+        name: clinic_ids
+        type: string
       - description: Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)
         in: query
         name: quarter_ids
@@ -3823,6 +3819,37 @@ paths:
       security:
       - BearerToken: []
       summary: Full BAS Preparation Report
+      tags:
+      - engine/bas
+  /bas/bas-preparation/export:
+    get:
+      description: Generates an Excel file matching the shared template using GetBASPreparation
+        data.
+      parameters:
+      - description: Clinic UUIDs
+        in: query
+        name: clinic_ids
+        type: string
+      - description: Quarter UUIDs
+        in: query
+        name: quarter_ids
+        required: true
+        type: string
+      - description: FY UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      security:
+      - BearerToken: []
+      summary: Export Quarterly BAS Preparation
       tags:
       - engine/bas
   /bas/clinic/{clinic_id}/by-account:
