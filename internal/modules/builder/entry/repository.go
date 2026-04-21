@@ -687,8 +687,8 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
 	args := []any{actorID}
-	if strings.Contains(q, "COUNT(*)") {
-		q = strings.Replace(q, "COUNT(*)", "COUNT(DISTINCT coa.id)", 1)
+	if strings.Contains(strings.ToUpper(q), "COUNT(*)") {
+		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT coa.id)")
 	}
 
 	args = append(args, qArgs...)
