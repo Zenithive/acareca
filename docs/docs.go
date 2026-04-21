@@ -5539,7 +5539,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Practitioner grants specific permissions (Read, Create, Update, Delete, All) to an accountant for a specific entity.",
+                "description": "Practitioner grants specific permissions (read/write access for sales_purchases, lock_dates, users, reports) to an accountant.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9702,23 +9702,31 @@ const docTemplate = `{
                 }
             }
         },
-        "invitation.Permissions": {
+        "invitation.AccessLevel": {
             "type": "object",
             "properties": {
-                "all": {
-                    "type": "boolean"
-                },
-                "create": {
-                    "type": "boolean"
-                },
-                "delete": {
-                    "type": "boolean"
-                },
                 "read": {
                     "type": "boolean"
                 },
-                "update": {
+                "write": {
                     "type": "boolean"
+                }
+            }
+        },
+        "invitation.Permissions": {
+            "type": "object",
+            "properties": {
+                "lock_dates": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
+                },
+                "reports": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
+                },
+                "sales_purchases": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
+                },
+                "users": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
                 }
             }
         },
@@ -9733,33 +9741,6 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
-                },
-                "permissions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/invitation.RqPermissionDetail"
-                    }
-                }
-            }
-        },
-        "invitation.RqPermissionDetail": {
-            "type": "object",
-            "required": [
-                "entity_id",
-                "entity_type",
-                "permissions"
-            ],
-            "properties": {
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string",
-                    "enum": [
-                        "CLINIC",
-                        "FORM",
-                        "ENTRY"
-                    ]
                 },
                 "permissions": {
                     "$ref": "#/definitions/invitation.Permissions"
@@ -9788,17 +9769,15 @@ const docTemplate = `{
         "invitation.RqSendInvitation": {
             "type": "object",
             "required": [
-                "email"
+                "email",
+                "permissions"
             ],
             "properties": {
                 "email": {
                     "type": "string"
                 },
                 "permissions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/invitation.RqPermissionDetail"
-                    }
+                    "$ref": "#/definitions/invitation.Permissions"
                 }
             }
         },

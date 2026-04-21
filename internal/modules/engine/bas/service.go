@@ -14,6 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/xuri/excelize/v2"
@@ -29,9 +30,7 @@ type Service interface {
 	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	// ExportBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter, w io.Writer) error
-	// ExportBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter, w io.Writer) error
-	ExportBASPreparation(data *RsBASPreparation) (*excelize.File, error)
+	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, filter *BASFilter) (*excelize.File, error)
 }
 
 type service struct {
@@ -39,10 +38,11 @@ type service struct {
 	accountantRepo accountant.Repository
 	auditSvc       audit.Service
 	clinicRepo     clinic.Repository
+	fyRepo         fy.Repository
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo}
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository) Service {
+	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo}
 }
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
@@ -692,9 +692,9 @@ func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID)
 	return quarters, nil
 }
 
-func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, error) {
+func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, filter *BASFilter) (*excelize.File, error) {
 	f := excelize.NewFile()
-	sheet := "Quarterly BAS Preparation"
+	sheet := "Quarterly BAS REPORT"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
 
@@ -736,7 +736,7 @@ func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, 
 
 	// Section Titles (INCOME / EXPENSES) - Bold, Underline, Large
 	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Underline: "single", Family: "Calibri", Size: 12},
+		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
 	})
 
 	// Net Profit/Loss
@@ -785,8 +785,19 @@ func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, 
 	// --- DATA PREPARATION ---
 	allCols := append(data.Columns, data.GrandTotal)
 
+	// Get Financial Year
+	parsedID, err := uuid.Parse(*filter.FinancialYearID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid financial year id: %w", err)
+	}
+
+	FY, err := s.fyRepo.GetFinancialYearByID(ctx, parsedID)
+	if err != nil {
+		return nil, err
+	}
+
 	// --- RENDER HEADERS ---
-	f.SetCellValue(sheet, "A2", "Financial Year Ending: 30 June")
+	f.SetCellValue(sheet, "A2", FY.Label)
 	f.SetCellStyle(sheet, "A2", "A2", styleHeaderBlue)
 
 	for i := range allCols {
@@ -807,11 +818,20 @@ func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, 
 		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
 	}
 
+	// Helper to track range for dynamic calculations
+	type SectionMeta struct {
+		StartRow int
+		EndRow   int
+	}
+	var incomeMeta, expenseMeta SectionMeta
+
 	// --- INCOME SECTION ---
 	currentRow := 7
+	incomeHeaderRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
 	currentRow++
+	incomeMeta.StartRow = currentRow
 
 	incomeRows := s.getUniqueNamesFromSection(allCols, "income")
 	for _, name := range incomeRows {
@@ -829,12 +849,29 @@ func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, 
 		}
 		currentRow++
 	}
+	incomeMeta.EndRow = currentRow - 1
+
+	// Create Income Table for Filtering
+	if len(incomeRows) > 0 {
+		// CHANGE: Range is now only Column A (A7 to A9)
+		tblRange := fmt.Sprintf("A%d:A%d", incomeHeaderRow, incomeMeta.EndRow)
+		showH := true
+
+		f.AddTable(sheet, &excelize.Table{
+			Range:         tblRange,
+			Name:          "IncomeTable",
+			StyleName:     "",
+			ShowHeaderRow: &showH,
+		})
+	}
 
 	// --- EXPENSES SECTION ---
 	currentRow += 1
+	expenseHeaderRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "EXPENSES")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
 	currentRow++
+	expenseMeta.StartRow = currentRow
 
 	expenseRows := s.getUniqueNamesFromSection(allCols, "expenses")
 	for _, name := range expenseRows {
@@ -854,14 +891,27 @@ func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, 
 		}
 		currentRow++
 	}
+	expenseMeta.EndRow = currentRow - 1
+
+	// Create Expenses Table for Filtering
+	if len(expenseRows) > 0 {
+		// CHANGE: Range is now only Column A
+		tblRange := fmt.Sprintf("A%d:A%d", expenseHeaderRow, expenseMeta.EndRow)
+		showH := true
+
+		f.AddTable(sheet, &excelize.Table{
+			Range:         tblRange,
+			Name:          "ExpenseTable",
+			StyleName:     "",
+			ShowHeaderRow: &showH,
+		})
+	}
 
 	// --- SUMMARY SECTION ---
 	currentRow += 2
-
-	// Net Profit Row (Green Background)
+	netProfitRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net Profit/Loss")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleNetProfit)
-
 	for i, col := range allCols {
 		cIdx := 1 + (i * 4)
 		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
@@ -878,33 +928,37 @@ func (s *service) ExportBASPreparation(data *RsBASPreparation) (*excelize.File, 
 
 	currentRow++
 	currentRow++
-
-	// Net GST Payable Row (Red Text)
+	netGSTRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net GST Payable")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleGSTTotal)
 
-	for i, col := range allCols {
+	// Apply Dynamic Formulas for each Quarter Column
+	for i := range allCols {
 		cIdx := 1 + (i * 4)
-		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+		gstCol, _ := excelize.ColumnNumberToName(cIdx + 2) // GST column
+		netCol, _ := excelize.ColumnNumberToName(cIdx + 3) // Net column
 
-		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleGSTPayableCol)
-		f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), col.NetGSTPayable)
+		// Net Profit Formula (Net Income - Net Expenses)
+		incomeSum := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", netCol, incomeMeta.StartRow, netCol, incomeMeta.EndRow)
+		expenseSum := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", netCol, expenseMeta.StartRow, netCol, expenseMeta.EndRow)
+		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netProfitRow), fmt.Sprintf("%s-%s", incomeSum, expenseSum))
+		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netProfitRow), fmt.Sprintf("%s%d", netCol, netProfitRow), styleNetProfitCol)
+
+		// Net GST Payable Formula (GST Income - GST Expenses)
+		incomeGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, incomeMeta.StartRow, gstCol, incomeMeta.EndRow)
+		expenseGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, expenseMeta.StartRow, gstCol, expenseMeta.EndRow)
+		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s-%s", incomeGST, expenseGST))
+		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
 	}
-
-	// --- FILTERS ---
-	lastCol, _ := excelize.ColumnNumberToName(1 + (len(allCols) * 4))
-	f.AutoFilter(sheet, fmt.Sprintf("A6:%s%d", lastCol, currentRow), nil)
 
 	// --- FINAL DIMENSIONS ---
 	f.SetColWidth(sheet, "A", "A", 45)
 	for col := 2; col <= 1+(len(allCols)*4); col++ {
 		name, _ := excelize.ColumnNumberToName(col)
-		// Check if it's a spacer column (the blank column between Qs)
 		if (col-1)%4 == 0 {
-			f.SetColWidth(sheet, name, name, 3) // Narrow spacer
+			f.SetColWidth(sheet, name, name, 3)
 		} else {
-			f.SetColWidth(sheet, name, name, 15) // Standard data width
+			f.SetColWidth(sheet, name, name, 15)
 		}
 	}
 

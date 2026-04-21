@@ -1578,18 +1578,23 @@ definitions:
       label:
         type: string
     type: object
-  invitation.Permissions:
+  invitation.AccessLevel:
     properties:
-      all:
-        type: boolean
-      create:
-        type: boolean
-      delete:
-        type: boolean
       read:
         type: boolean
-      update:
+      write:
         type: boolean
+    type: object
+  invitation.Permissions:
+    properties:
+      lock_dates:
+        $ref: '#/definitions/invitation.AccessLevel'
+      reports:
+        $ref: '#/definitions/invitation.AccessLevel'
+      sales_purchases:
+        $ref: '#/definitions/invitation.AccessLevel'
+      users:
+        $ref: '#/definitions/invitation.AccessLevel'
     type: object
   invitation.RqGrantPermission:
     properties:
@@ -1598,27 +1603,8 @@ definitions:
       email:
         type: string
       permissions:
-        items:
-          $ref: '#/definitions/invitation.RqPermissionDetail'
-        type: array
-    required:
-    - permissions
-    type: object
-  invitation.RqPermissionDetail:
-    properties:
-      entity_id:
-        type: string
-      entity_type:
-        enum:
-        - CLINIC
-        - FORM
-        - ENTRY
-        type: string
-      permissions:
         $ref: '#/definitions/invitation.Permissions'
     required:
-    - entity_id
-    - entity_type
     - permissions
     type: object
   invitation.RqProcessAction:
@@ -1639,11 +1625,10 @@ definitions:
       email:
         type: string
       permissions:
-        items:
-          $ref: '#/definitions/invitation.RqPermissionDetail'
-        type: array
+        $ref: '#/definitions/invitation.Permissions'
     required:
     - email
+    - permissions
     type: object
   notification.ActorType:
     enum:
@@ -5808,8 +5793,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Practitioner grants specific permissions (Read, Create, Update,
-        Delete, All) to an accountant for a specific entity.
+      description: Practitioner grants specific permissions (read/write access for
+        sales_purchases, lock_dates, users, reports) to an accountant.
       parameters:
       - description: Permission Details
         in: body

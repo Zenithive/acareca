@@ -375,7 +375,7 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	file, err := h.svc.ExportBASPreparation(data)
+	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
