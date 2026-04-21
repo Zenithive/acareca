@@ -24,6 +24,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -1016,7 +1017,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	})
 
 	normalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
-		CustomNumFmt: ptrString("$#,##0.00"),
+		CustomNumFmt: lo.ToPtr("$#,##0.00"),
 	})
 
 	// Bold style for the bottom total row
@@ -1027,7 +1028,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	totalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
 		Font:         &excelize.Font{Bold: true},
 		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
-		CustomNumFmt: ptrString("$#,##0.00"),
+		CustomNumFmt: lo.ToPtr("$#,##0.00"),
 	})
 
 	// Helpers to handle Pointers and Nils (Fixes 0xc000 and <nil> issues)
@@ -1113,17 +1114,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	xl.SetColWidth(sheet, "E", "H", 15)
 
 	return xl.WriteToBuffer()
-}
-
-func ptrString(s string) *string {
-	return &s
-}
-
-func getString(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // validateLockDate checks if the entry date is on or before the clinic's lock date.
