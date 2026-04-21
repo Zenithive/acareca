@@ -37,19 +37,19 @@ type Invitation struct {
 
 // RqSendInvitation is the input for creating a new invitation
 type RqSendInvitation struct {
-	Email       string               `json:"email" validate:"required,email"`
-	Permissions []RqPermissionDetail `json:"permissions"`
+	Email       string       `json:"email" validate:"required,email"`
+	Permissions *Permissions `json:"permissions" validate:"required"`
 }
 
 // RsInvitation is the response after an invitation is created
 type RsInvitation struct {
-	ID           uuid.UUID            `json:"id"`
-	Email        string               `json:"email"`
-	AccountantID *uuid.UUID           `json:"accountant_id"`
-	InviteLink   string               `json:"invite_link"`
-	Status       InvitationStatus     `json:"status"`
-	ExpiresAt    time.Time            `json:"expires_at"`
-	Permissions  []RqPermissionDetail `json:"permissions"`
+	ID           uuid.UUID        `json:"id"`
+	Email        string           `json:"email"`
+	AccountantID *uuid.UUID       `json:"accountant_id"`
+	InviteLink   string           `json:"invite_link"`
+	Status       InvitationStatus `json:"status"`
+	ExpiresAt    time.Time        `json:"expires_at"`
+	Permissions  *Permissions     `json:"permissions"`
 }
 
 type UserDetails struct {
@@ -59,15 +59,15 @@ type UserDetails struct {
 }
 
 type RsInviteDetails struct {
-	InvitationID uuid.UUID            `json:"invitation_id"`
-	Status       InvitationStatus     `json:"status"`
-	IsFound      bool                 `json:"is_found"`
-	SentBy       UserDetails          `json:"sent_by"`
-	SentTo       UserDetails          `json:"sent_to"`
-	SenderRole   string               `json:"sender_role"`
-	AccountantID *uuid.UUID           `json:"id"`
-	Email        string               `json:"email"`
-	Permissions  []RqPermissionDetail `json:"permissions"`
+	InvitationID uuid.UUID        `json:"invitation_id"`
+	Status       InvitationStatus `json:"status"`
+	IsFound      bool             `json:"is_found"`
+	SentBy       UserDetails      `json:"sent_by"`
+	SentTo       UserDetails      `json:"sent_to"`
+	SenderRole   string           `json:"sender_role"`
+	AccountantID *uuid.UUID       `json:"id"`
+	Email        string           `json:"email"`
+	Permissions  *Permissions     `json:"permissions"`
 }
 
 // RsInviteProcess helps the frontend navigate after a link click
@@ -184,51 +184,93 @@ func (filter *Filter) MapToFilterAccountant() common.Filter {
 	return f
 }
 
+// Permissions represents feature-based permissions with read/write access
 type Permissions struct {
-	Read   bool `json:"read,omitempty"`
-	Create bool `json:"create,omitempty"`
-	Update bool `json:"update,omitempty"`
-	Delete bool `json:"delete,omitempty"`
-	All    bool `json:"all,omitempty"`
+	SalesPurchases *AccessLevel `json:"sales_purchases,omitempty"`
+	LockDates      *AccessLevel `json:"lock_dates,omitempty"`
+	Users          *AccessLevel `json:"users,omitempty"`
+	Reports        *AccessLevel `json:"reports,omitempty"`
 }
 
-// Helper to check a specific action
-func (p *Permissions) HasAccess(action string) bool {
-	if p == nil {
-		return false // prevents nil pointer dereference if Permissions is null in the database
-	}
+// AccessLevel represents read/write access for a feature
+type AccessLevel struct {
+	Read  bool `json:"read"`
+	Write bool `json:"write"`
+}
 
-	if p.All {
+// IsEmpty checks if permissions are empty
+func (p *Permissions) IsEmpty() bool {
+	if p == nil {
 		return true
 	}
-	switch strings.ToLower(action) {
-	case "create":
-		return p.Create
-	case "read":
-		return p.Read
-	case "update":
-		return p.Update
-	case "delete":
-		return p.Delete
-	default:
+	return p.SalesPurchases == nil &&
+		p.LockDates == nil &&
+		p.Users == nil &&
+		p.Reports == nil
+}
+
+// HasReadAccess checks if read access is granted for a feature
+func (p *Permissions) HasReadAccess(feature string) bool {
+	if p == nil {
 		return false
+	}
+
+	access := p.getAccessByName(feature)
+	return access != nil && access.Read
+}
+
+// HasWriteAccess checks if write access is granted for a feature
+func (p *Permissions) HasWriteAccess(feature string) bool {
+	if p == nil {
+		return false
+	}
+
+	access := p.getAccessByName(feature)
+	return access != nil && access.Write
+}
+
+// HasAccess checks if any access (read or write) is granted for a feature
+// Kept for backward compatibility
+func (p *Permissions) HasAccess(feature string) bool {
+	return p.HasReadAccess(feature) || p.HasWriteAccess(feature)
+}
+
+// getAccessByName returns access level by feature name
+func (p *Permissions) getAccessByName(feature string) *AccessLevel {
+	if p == nil {
+		return nil
+	}
+
+	switch strings.ToLower(feature) {
+	case "sales_purchases", "salespurchases":
+		return p.SalesPurchases
+	case "lock_dates", "lockdates":
+		return p.LockDates
+	case "users", "user":
+		return p.Users
+	case "reports", "report":
+		return p.Reports
+	default:
+		return nil
 	}
 }
 
 // RqGrantPermission is the input for granting/updating permissions
 type RqGrantPermission struct {
-	AccountantID *uuid.UUID           `json:"accountant_id,omitempty"`
-	Email        string               `json:"email" validate:"omitempty,email"`
-	Permissions  []RqPermissionDetail `json:"permissions" validate:"required,dive"`
+	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
+	Email        string       `json:"email" validate:"omitempty,email"`
+	Permissions  *Permissions `json:"permissions" validate:"required"`
 }
 
 // RqUpdatePermissions is the input for updating permissions
 type RqUpdatePermissions struct {
-	AccountantID uuid.UUID            `json:"accountant_id" validate:"required"`
-	Permissions  []RqPermissionDetail `json:"permissions" validate:"required,dive"`
+	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
+	Email        string       `json:"email" validate:"required,email"`
+	Permissions  *Permissions `json:"permissions" validate:"required"`
 }
 
-// RqPermissionDetail is for individual entity permissions
+// RqPermissionDetail is deprecated - kept for backward compatibility
+// Use Permissions directly instead
 type RqPermissionDetail struct {
 	EntityID    uuid.UUID   `json:"entity_id" validate:"required"`
 	EntityType  string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
@@ -270,25 +312,35 @@ func (p Permissions) Value() (driver.Value, error) {
 	return json.Marshal(p)
 }
 
-// MarshalJSON ensures that if All is true, all individual flags appear as true in the API response.
-func (p Permissions) MarshalJSON() ([]byte, error) {
-	type Alias Permissions
-	if p.All {
-		return json.Marshal(&struct {
-			Read   bool `json:"read"`
-			Create bool `json:"create"`
-			Update bool `json:"update"`
-			Delete bool `json:"delete"`
-			All    bool `json:"all"`
-			Alias
-		}{
-			Read:   true,
-			Create: true,
-			Update: true,
-			Delete: true,
-			All:    true,
-			Alias:  (Alias)(p),
-		})
+// DefaultAccountantPermissions returns default permissions for accountants
+func DefaultAccountantPermissions() *Permissions {
+	return &Permissions{
+		SalesPurchases: &AccessLevel{Read: true, Write: false},
+		LockDates:      &AccessLevel{Read: true, Write: false},
+		Users:          &AccessLevel{Read: true, Write: false},
+		Reports:        &AccessLevel{Read: true, Write: false},
 	}
-	return json.Marshal((Alias)(p))
+}
+
+// ValidatePermissions ensures at least one permission is granted
+func ValidatePermissions(p *Permissions) error {
+	if p == nil || p.IsEmpty() {
+		return errors.New("at least one permission must be granted")
+	}
+
+	// Ensure write access implies read access
+	if p.SalesPurchases != nil && p.SalesPurchases.Write && !p.SalesPurchases.Read {
+		p.SalesPurchases.Read = true
+	}
+	if p.LockDates != nil && p.LockDates.Write && !p.LockDates.Read {
+		p.LockDates.Read = true
+	}
+	if p.Users != nil && p.Users.Write && !p.Users.Read {
+		p.Users.Read = true
+	}
+	if p.Reports != nil && p.Reports.Write && !p.Reports.Read {
+		p.Reports.Read = true
+	}
+
+	return nil
 }
