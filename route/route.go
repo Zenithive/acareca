@@ -136,6 +136,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
+	// ============ FY MODULE ============
+	fyRepo := fy.NewRepository(dbConn)
+	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
+	fyHandler := fy.NewHandler(fySvc)
+	fyGroup := v1.Group("/", middleware.Auth(cfg))
+	fy.RegisterRoutes(fyGroup, fyHandler)
+
 	// ============ ENGINE MODULES (P&L, BAS) ============
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc)
@@ -143,7 +150,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
-	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo)
+	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
 	bas.RegisterRoutes(v1, basHandler, cfg)
 
@@ -153,13 +160,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	settingSvc := setting.NewService(dbConn, settingRepo, auditSvc)
 	settingHandler := setting.NewHandler(settingSvc)
 	setting.RegisterRoutes(settingGroup, settingHandler, cfg)
-
-	// ============ FY MODULE ============
-	fyRepo := fy.NewRepository(dbConn)
-	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
-	fyHandler := fy.NewHandler(fySvc)
-	fyGroup := v1.Group("/", middleware.Auth(cfg))
-	fy.RegisterRoutes(fyGroup, fyHandler)
 
 	// ============ MODULE-SPECIFIC ROUTES ============
 	// Register admin routes

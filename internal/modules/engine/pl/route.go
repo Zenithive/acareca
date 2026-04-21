@@ -18,4 +18,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	pl.GET("/by-responsibility", h.GetByResponsibility)
 	pl.GET("/fy-summary", h.GetFYSummary)
 	pl.GET("/report", h.GetReport)
+	pl.GET("/export", h.ExportReport)
 }

@@ -2639,13 +2639,9 @@ const docTemplate = `{
                 "summary": "Full BAS Preparation Report",
                 "parameters": [
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Clinic UUIDs (optional - aggregates all clinics if not provided, can specify multiple)",
-                        "name": "clinicId",
+                        "type": "string",
+                        "description": "Comma-separated Clinic UUIDs",
+                        "name": "clinic_ids",
                         "in": "query"
                     },
                     {
@@ -2680,6 +2676,53 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/bas-preparation/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates an Excel file matching the shared template using GetBASPreparation data.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Export Quarterly BAS Preparation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUIDs",
+                        "name": "clinic_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "FY UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
                         }
                     }
                 }
@@ -5496,7 +5539,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Practitioner grants specific permissions (Read, Create, Update, Delete, All) to an accountant for a specific entity.",
+                "description": "Practitioner grants specific permissions (read/write access for sales_purchases, lock_dates, users, reports) to an accountant.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6006,6 +6049,81 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/pl.RsPLResponsibility"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates and downloads a professional Excel file of the P\u0026L report using the specified filters.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Export P\u0026L report to Excel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "date_until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by COA UUID",
+                        "name": "coa_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tax type",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form UUID",
+                        "name": "form_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Profit_and_Loss_Report.xlsx",
+                        "schema": {
+                            "type": "file"
                         }
                     },
                     "400": {
@@ -8663,6 +8781,9 @@ const docTemplate = `{
                 "section_type": {
                     "type": "string"
                 },
+                "slug": {
+                    "type": "string"
+                },
                 "sort_order": {
                     "type": "integer"
                 },
@@ -9581,23 +9702,31 @@ const docTemplate = `{
                 }
             }
         },
-        "invitation.Permissions": {
+        "invitation.AccessLevel": {
             "type": "object",
             "properties": {
-                "all": {
-                    "type": "boolean"
-                },
-                "create": {
-                    "type": "boolean"
-                },
-                "delete": {
-                    "type": "boolean"
-                },
                 "read": {
                     "type": "boolean"
                 },
-                "update": {
+                "write": {
                     "type": "boolean"
+                }
+            }
+        },
+        "invitation.Permissions": {
+            "type": "object",
+            "properties": {
+                "lock_dates": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
+                },
+                "reports": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
+                },
+                "sales_purchases": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
+                },
+                "users": {
+                    "$ref": "#/definitions/invitation.AccessLevel"
                 }
             }
         },
@@ -9612,33 +9741,6 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
-                },
-                "permissions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/invitation.RqPermissionDetail"
-                    }
-                }
-            }
-        },
-        "invitation.RqPermissionDetail": {
-            "type": "object",
-            "required": [
-                "entity_id",
-                "entity_type",
-                "permissions"
-            ],
-            "properties": {
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string",
-                    "enum": [
-                        "CLINIC",
-                        "FORM",
-                        "ENTRY"
-                    ]
                 },
                 "permissions": {
                     "$ref": "#/definitions/invitation.Permissions"
@@ -9667,17 +9769,15 @@ const docTemplate = `{
         "invitation.RqSendInvitation": {
             "type": "object",
             "required": [
-                "email"
+                "email",
+                "permissions"
             ],
             "properties": {
                 "email": {
                     "type": "string"
                 },
                 "permissions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/invitation.RqPermissionDetail"
-                    }
+                    "$ref": "#/definitions/invitation.Permissions"
                 }
             }
         },

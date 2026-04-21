@@ -1,7 +1,9 @@
 package pl
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
@@ -15,6 +17,7 @@ type IHandler interface {
 	GetByResponsibility(c *gin.Context)
 	GetFYSummary(c *gin.Context)
 	GetReport(c *gin.Context)
+	ExportReport(c *gin.Context)
 }
 
 type handler struct {
@@ -192,4 +195,59 @@ func (h *handler) GetReport(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "Profit and Loss report fetched successfully")
+}
+
+// ExportReport godoc
+// @Summary      Export P&L report to Excel
+// @Description  Generates and downloads a professional Excel file of the P&L report using the specified filters.
+// @Tags         engine/pl
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param        clinic_id    query    string  false  "Clinic UUID"
+// @Param        date_from    query    string  false  "Start date (YYYY-MM-DD)"
+// @Param        date_until   query    string  false  "End date (YYYY-MM-DD)"
+// @Param        coa_id       query    string  false  "Filter by COA UUID"
+// @Param        tax_type_id  query    string  false  "Filter by tax type"
+// @Param        form_id      query    string  false  "Filter by form UUID"
+// @Success      200          {file}   binary  "Profit_and_Loss_Report.xlsx"
+// @Failure      400          {object} response.RsError
+// @Failure      500          {object} response.RsError
+// @Security     BearerToken
+// @Router       /pl/export [get]
+func (h *handler) ExportReport(c *gin.Context) {
+	actorID, ok := util.GetUserID(c)
+	if !ok {
+		return
+	}
+
+	var f PLReportFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Fetch the structured data
+	reportData, err := h.svc.GetReport(c.Request.Context(), actorID, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Generate the Excel file using the service method
+	excelFile, err := h.svc.ExportPLReport(reportData)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Set headers for file download
+	fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Cache-Control", "no-cache")
+
+	// Stream the file to the response
+	if err := excelFile.Write(c.Writer); err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+	}
 }

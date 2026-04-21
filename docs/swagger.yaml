@@ -944,6 +944,8 @@ definitions:
         type: string
       section_type:
         type: string
+      slug:
+        type: string
       sort_order:
         type: integer
       tax_type:
@@ -1576,18 +1578,23 @@ definitions:
       label:
         type: string
     type: object
-  invitation.Permissions:
+  invitation.AccessLevel:
     properties:
-      all:
-        type: boolean
-      create:
-        type: boolean
-      delete:
-        type: boolean
       read:
         type: boolean
-      update:
+      write:
         type: boolean
+    type: object
+  invitation.Permissions:
+    properties:
+      lock_dates:
+        $ref: '#/definitions/invitation.AccessLevel'
+      reports:
+        $ref: '#/definitions/invitation.AccessLevel'
+      sales_purchases:
+        $ref: '#/definitions/invitation.AccessLevel'
+      users:
+        $ref: '#/definitions/invitation.AccessLevel'
     type: object
   invitation.RqGrantPermission:
     properties:
@@ -1596,27 +1603,8 @@ definitions:
       email:
         type: string
       permissions:
-        items:
-          $ref: '#/definitions/invitation.RqPermissionDetail'
-        type: array
-    required:
-    - permissions
-    type: object
-  invitation.RqPermissionDetail:
-    properties:
-      entity_id:
-        type: string
-      entity_type:
-        enum:
-        - CLINIC
-        - FORM
-        - ENTRY
-        type: string
-      permissions:
         $ref: '#/definitions/invitation.Permissions'
     required:
-    - entity_id
-    - entity_type
     - permissions
     type: object
   invitation.RqProcessAction:
@@ -1637,11 +1625,10 @@ definitions:
       email:
         type: string
       permissions:
-        items:
-          $ref: '#/definitions/invitation.RqPermissionDetail'
-        type: array
+        $ref: '#/definitions/invitation.Permissions'
     required:
     - email
+    - permissions
     type: object
   notification.ActorType:
     enum:
@@ -3826,14 +3813,10 @@ paths:
         provided in query params, aggregates data across all clinics. Multiple clinicId
         values can be provided to aggregate specific clinics.
       parameters:
-      - collectionFormat: multi
-        description: Clinic UUIDs (optional - aggregates all clinics if not provided,
-          can specify multiple)
+      - description: Comma-separated Clinic UUIDs
         in: query
-        items:
-          type: string
-        name: clinicId
-        type: array
+        name: clinic_ids
+        type: string
       - description: Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)
         in: query
         name: quarter_ids
@@ -3862,6 +3845,37 @@ paths:
       security:
       - BearerToken: []
       summary: Full BAS Preparation Report
+      tags:
+      - engine/bas
+  /bas/bas-preparation/export:
+    get:
+      description: Generates an Excel file matching the shared template using GetBASPreparation
+        data.
+      parameters:
+      - description: Clinic UUIDs
+        in: query
+        name: clinic_ids
+        type: string
+      - description: Quarter UUIDs
+        in: query
+        name: quarter_ids
+        required: true
+        type: string
+      - description: FY UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      security:
+      - BearerToken: []
+      summary: Export Quarterly BAS Preparation
       tags:
       - engine/bas
   /bas/clinic/{clinic_id}/by-account:
@@ -5779,8 +5793,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Practitioner grants specific permissions (Read, Create, Update,
-        Delete, All) to an accountant for a specific entity.
+      description: Practitioner grants specific permissions (read/write access for
+        sales_purchases, lock_dates, users, reports) to an accountant.
       parameters:
       - description: Permission Details
         in: body
@@ -6020,6 +6034,55 @@ paths:
       security:
       - BearerToken: []
       summary: P&L split by payment responsibility
+      tags:
+      - engine/pl
+  /pl/export:
+    get:
+      description: Generates and downloads a professional Excel file of the P&L report
+        using the specified filters.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: date_until
+        type: string
+      - description: Filter by COA UUID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by tax type
+        in: query
+        name: tax_type_id
+        type: string
+      - description: Filter by form UUID
+        in: query
+        name: form_id
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Profit_and_Loss_Report.xlsx
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export P&L report to Excel
       tags:
       - engine/pl
   /pl/fy-summary:
