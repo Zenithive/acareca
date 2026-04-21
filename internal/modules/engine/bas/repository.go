@@ -20,6 +20,7 @@ type Repository interface {
 	GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
+	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 }
 
 type repository struct {
@@ -306,4 +307,24 @@ func (r *repository) GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BAS
 		return nil, err
 	}
 	return &info, nil
+}
+
+func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID uuid.UUID) ([]BASQuarterInfo, error) {
+	var list []BASQuarterInfo
+	
+	query := `
+        SELECT 
+            id::text, 
+            label as name, 
+            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
+            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+        FROM tbl_financial_quarter 
+        WHERE financial_year_id = $1
+        ORDER BY start_date ASC
+		`
+	if err := r.db.SelectContext(ctx, &list, query, financialYearID); err != nil {
+		return nil, err
+	}
+	return list, nil
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ type IHandler interface {
 	GetMonthly(c *gin.Context)
 	GetReport(c *gin.Context)
 	GetBASPreparation(c *gin.Context)
+	ExportBASReport(c *gin.Context)
 }
 
 type handler struct {
@@ -244,4 +246,99 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "BAS preparation data fetched")
+}
+
+// ExportBASReport godoc
+// @Summary Export Business Activity Statement to Excel
+// @Description Generates a formatted Excel BAS report.
+// @Tags BAS
+// @Security BearerToken
+// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param financial_year_id query string true "Financial Year UUID"
+// @Param quarter_id query []string true "Quarter UUIDs (can pass multiple)" collectionFormat(multi)
+// @Param month query string false "Full month name"
+// @Success 200 {file} binary
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Router /bas/activity-statement/report/export [get]
+func (h *handler) ExportBASReport(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	actorID, _, ok := util.GetRoleBasedID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	var f BASExportFilter
+	if err := util.BindAndValidate(c, &f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	f.PractitionerID = actorID.String()
+
+	// 1. Fetch ALL 4 quarters for the selected Financial Year
+	fyID, _ := uuid.Parse(*f.FinancialYearID)
+	allQuarters, err := h.svc.GetAllQuartersInYear(ctx, fyID)
+	if err != nil || len(allQuarters) == 0 {
+		response.Error(c, http.StatusNotFound, errors.New("financial year quarters not found"))
+		return
+	}
+
+	// 2. REORDER: Move the requested QuarterID to the front of the slice
+	// This ensures Excel defaults to this quarter on open.
+	if len(f.QuarterIDs) > 0 {
+		targetID := f.QuarterIDs[0] // Treat the first ID in the URL as the priority
+		for i, q := range allQuarters {
+			if q.ID == targetID {
+				// Swap the target to the first position
+				allQuarters[0], allQuarters[i] = allQuarters[i], allQuarters[0]
+				break
+			}
+		}
+	}
+
+	var allQuartersData []QuarterData
+	var basePrevDates PeriodInfo
+
+	// 3. Loop through all quarters (now sorted with target at index 0)
+	for i, qInfo := range allQuarters {
+		tempID := qInfo.ID
+		origFilter := BASReportFilter{
+			PractitionerID: f.PractitionerID,
+			QuarterID:      &tempID,
+			Month:          f.Month,
+		}
+
+		report, _ := h.svc.GetReport(ctx, &origFilter)
+		if report == nil {
+			report = &RsBASReport{}
+		}
+
+		currD, prevD, err := h.svc.GetPeriodDates(ctx, &origFilter)
+		if err != nil {
+			continue
+		}
+
+		allQuartersData = append(allQuartersData, QuarterData{
+			Period: currD,
+			Report: report,
+		})
+
+		// The first item in our reordered slice is the user's default
+		if i == 0 {
+			basePrevDates = prevD
+		}
+	}
+
+	// 4. Export
+	buffer, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	fileName := fmt.Sprintf("BAS_Statement_%s.xlsx", time.Now().Format("2006-01-02"))
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
 }

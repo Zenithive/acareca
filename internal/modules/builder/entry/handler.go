@@ -2,8 +2,10 @@ package entry
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,6 +26,7 @@ type IHandler interface {
 	ListCoaEntries(c *gin.Context)
 	ListCoaEntryDetails(c *gin.Context)
 	// GetFieldSummary(c *gin.Context)
+	HandleExport(c *gin.Context)
 }
 
 type handler struct {
@@ -408,4 +411,55 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, result, "COA entry details fetched successfully")
+}
+
+// @Summary Export transaction report to Excel
+// @Description Generates an Excel file (.xlsx) containing grouped transaction records based on filters.
+// @Tags reporting
+// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Param search query string false "Search by account, field, or clinic name"
+// @Success 200 {file} binary "Excel file containing transaction report"
+// @Failure 400 {object} response.RsError "Invalid request parameters"
+// @Failure 500 {object} response.RsError "Internal server error during generation"
+// @Security BearerToken
+// @Router /entry/coa-entries/export [get]
+func (h *handler) HandleExport(c *gin.Context) {
+	// 1. Get ActorID and Role using your established helper
+	// This solves the 'user_id does not exist' panic
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	// 2. Bind the filters (Use the same TransactionFilter struct as ListCoaEntries)
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	filter.Role = role
+
+	// 3. Call the service to generate the Excel buffer
+	// Pass *actorID (dereferenced) and the role
+	buffer, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
+		return
+	}
+
+	// 4. Set Download Headers
+	fileName := fmt.Sprintf("Transaction_Report_%s.xlsx", time.Now().Format("2006-01-02_1504"))
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Cache-Control", "no-cache")
+
+	// 5. Write the binary data to the response
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
 }
