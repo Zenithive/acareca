@@ -26,32 +26,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// builderPermissionAdapter adapts invitation.Service to middleware.PermissionChecker
-type builderPermissionAdapter struct {
-	invSvc invitation.Service
-}
-
-func (a *builderPermissionAdapter) ListAccountantPermission(ctx context.Context, accId uuid.UUID) ([]middleware.PermissionItem, error) {
-	perms, _, err := a.invSvc.ListAccountantPermission(ctx, accId)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]middleware.PermissionItem, 0, len(*perms))
-	for i := range *perms {
-		result = append(result, &(*perms)[i])
-	}
-	return result, nil
-}
-
-func (a *builderPermissionAdapter) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (middleware.PermissionItem, error) {
-	perm, err := a.invSvc.GetPermissionsForAccountant(ctx, accountantID, entityID)
-	if err != nil {
-		return nil, err
-	}
-	return perm, nil
-}
-
 func RegisterBuilderRoutes(
 	v1 *gin.RouterGroup,
 	cfg *config.Config,
@@ -65,6 +39,19 @@ func RegisterBuilderRoutes(
 	eventsSvc events.Service,
 	invitationSvc invitation.Service,
 ) {
+	// Create permission adapter for feature-based permissions
+	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
+	permAdapter := middleware.NewPermissionAdapterFromFuncs(
+		func(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (middleware.FeaturePermissions, error) {
+			perms, err := invitationSvc.GetPermissionsForAccountant(ctx, accountantID, practitionerID)
+			if err != nil || perms == nil {
+				return nil, err
+			}
+			return perms, nil // *Permissions implements FeaturePermissions
+		},
+		invitationSvc.IsAccountantLinkedToPractitioner,
+	)
+
 	// Initialize repositories
 	clinicRepo := clinic.NewRepository(dbConn)
 	detailRepo := detail.NewRepository(dbConn)
@@ -83,9 +70,7 @@ func RegisterBuilderRoutes(
 
 	// Form routes
 	formGroup := v1.Group("/form", middleware.Auth(cfg), middleware.AuditContext())
-	permChecker := &builderPermissionAdapter{invSvc: invitationSvc}
-	formGroup.Use(middleware.MethodBasedPermission(permChecker))
-	form.RegisterRoutes(formGroup, formHandler, permChecker)
+	form.RegisterRoutes(formGroup, formHandler, permAdapter)
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
@@ -93,9 +78,7 @@ func RegisterBuilderRoutes(
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())
-	// DO NOT apply MethodBasedPermission here - let entry.RegisterRoutes handle middleware per route
-	// This is important because version/:version_id and :id routes need resolvers to map to form_id
-	entry.RegisterRoutes(entryGroup, entriesHandler, permChecker, entryRepo, versionSvc)
+	entry.RegisterRoutes(entryGroup, entriesHandler, permAdapter)
 
 	// Calculation routes
 	calculationGroup := v1.Group("")
@@ -103,5 +86,5 @@ func RegisterBuilderRoutes(
 	calculationRepo := calculation.NewRepository(dbConn)
 	calculationSvc := calculation.NewServiceWithFormula(calculationRepo, formSvc, versionSvc, fieldSvc, entriesSvc, formulaSvc)
 	calculationHandler := calculation.NewHandler(calculationSvc)
-	calculation.RegisterRoutes(calculationGroup, calculationHandler)
+	calculation.RegisterRoutes(calculationGroup, calculationHandler, permAdapter)
 }

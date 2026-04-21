@@ -6,9 +6,12 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
 	pl := rg.Group("/pl")
 	pl.Use(middleware.Auth(cfg))
+	
+	// P&L reports require reports permission (read-only)
+	pl.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureReports, middleware.ActionRead))
 
 	pl.GET("/summary", h.GetMonthlySummary)
 	pl.GET("/by-account", h.GetByAccount)

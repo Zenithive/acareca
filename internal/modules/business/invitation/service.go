@@ -33,7 +33,7 @@ type Service interface {
 	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 
-	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
+	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
@@ -651,8 +651,8 @@ func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string
 	return s.repo.GetByEmail(ctx, email)
 }
 
-func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error) {
-	return s.repo.GetPermissions(ctx, accountantID, entityID)
+func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error) {
+	return s.repo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
 }
 
 func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error {

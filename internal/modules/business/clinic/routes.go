@@ -6,18 +6,27 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permChecker middleware.PermissionChecker) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
 	clinic := rg.Group("/clinic")
-	clinic.Use(middleware.Auth(cfg), middleware.AuditContext())
+	clinic.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 
-	// Apply method-based permission middleware for all clinic routes
-	clinic.Use(middleware.MethodBasedPermission(permChecker))
+	// Clinic management requires sales_purchases permission
+	// Read operations
+	clinicRead := clinic.Group("")
+	clinicRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
+	{
+		clinicRead.GET("", h.List)
+		clinicRead.GET("/:id", h.GetByID)
+	}
 
-	clinic.POST("", h.Create)
-	clinic.GET("", h.List)
-	clinic.GET("/:id", h.GetByID)
-	clinic.PUT("/:id", h.Update)
-	clinic.PUT("/bulk-update", h.BulkUpdate)
-	clinic.DELETE("/:id", h.Delete)
-	clinic.DELETE("/bulk-delete", h.BulkDelete)
+	// Write operations
+	clinicWrite := clinic.Group("")
+	clinicWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
+	{
+		clinicWrite.POST("", h.Create)
+		clinicWrite.PUT("/:id", h.Update)
+		clinicWrite.PUT("/bulk-update", h.BulkUpdate)
+		clinicWrite.DELETE("/:id", h.Delete)
+		clinicWrite.DELETE("/bulk-delete", h.BulkDelete)
+	}
 }
