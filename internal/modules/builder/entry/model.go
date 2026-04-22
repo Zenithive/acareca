@@ -295,6 +295,8 @@ type RsCoaEntry struct {
 	TotalNetAmount   float64 `json:"total_net_amount"`
 	TotalGrossAmount float64 `json:"total_gross_amount"`
 	EntryCount       int     `json:"entry_count"`
+
+	Details []*RsCoaEntryDetail `json:"details,omitempty"` // <--- Added for export purpose
 }
 
 // RsCoaEntryDetail represents a detailed entry row for the child grid
