@@ -3,6 +3,7 @@ package invitation
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,7 +19,7 @@ type IHandler interface {
 	ListInvitations(c *gin.Context)
 	ResendInvitation(c *gin.Context)
 	RevokeInvitation(c *gin.Context)
-	HandlePermissions(c *gin.Context)
+	UpdatePermission(c *gin.Context)
 	ListPermissions(c *gin.Context)
 }
 
@@ -265,58 +266,45 @@ func (h *Handler) ListPermissions(c *gin.Context) {
 }
 
 // @Summary      Grant or Update permissions
-// @Description  Practitioner grants specific permissions (read/write access for sales_purchases, lock_dates, users, reports) to an accountant.
+// @Description  Practitioner grants or updates specific permissions (read/write access for sales_purchases, lock_dates, manage_users, reports_view_download) to an accountant.
 // @Tags         invitation
 // @Accept       json
 // @Produce      json
-// @Param        request body RqGrantPermission true "Permission Details"
+// @Param        request body RqUpdatePermissions true "Permission Details"
 // @Success      200 {object} response.RsBase
 // @Failure      400 {object} response.RsError
+// @Failure      403 {object} response.RsError
+// @Failure      500 {object} response.RsError
 // @Security     BearerToken
-// @Router       /invite/permissions [post]
-func (h *Handler) HandlePermissions(c *gin.Context) {
-	_, ok := util.GetPractitionerID(c)
+// @Router       /invite/permission [put]
+func (h *Handler) UpdatePermission(c *gin.Context) {
+	practID, ok := util.GetPractitionerID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
 
-	var req RqGrantPermission
+	var req RqUpdatePermissions
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// // Validate permissions
-	// if err := ValidatePermissions(req.Permissions); err != nil {
-	// 	response.Error(c, http.StatusBadRequest, err)
-	// 	return
-	// }
-
-	// var targetAID *uuid.UUID
-	// if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
-	// 	targetAID = req.AccountantID
-	// }
-
-	// Grant permissions for the accountant
-	// resPerms, err := h.svc.GrantEntityPermission(
-	// 	c.Request.Context(),
-	// 	practID,
-	// 	targetAID,
-	// 	uuid.Nil, // No specific entity, permissions are for the accountant relationship
-	// 	req.Email,
-	// 	"ACCOUNTANT",
-	// 	*req.Permissions,
-	// )
-	// if err != nil {
-	// 	response.Error(c, http.StatusInternalServerError, err)
-	// 	return
-	// }
+	// Update permissions
+	updatedPerms, err := h.svc.UpdatePermission(c.Request.Context(), practID, &req)
+	if err != nil {
+		if strings.Contains(err.Error(), "not linked") {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
 
 	data := gin.H{
 		"accountant_id": req.AccountantID,
 		"email":         req.Email,
-		// "permissions":   resPerms,
+		"permissions":   updatedPerms,
 	}
 
 	response.JSON(c, http.StatusOK, data, "Permissions updated successfully")

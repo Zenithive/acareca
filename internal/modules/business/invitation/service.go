@@ -34,11 +34,11 @@ type Service interface {
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 
 	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error)
+	UpdatePermission(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error
-	DeletePermission(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error
+	DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	// GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID *uuid.UUID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error)
 	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*RsPermission, error)
 }
 
@@ -617,6 +617,79 @@ func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string
 
 func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error) {
 	return s.repo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
+}
+
+func (s *service) UpdatePermission(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error) {
+	// Validate permissions
+	if err := req.Permissions.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid permissions: %w", err)
+	}
+
+	// Determine if we're updating by accountant_id or email
+	var accountantID *uuid.UUID
+	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
+		accountantID = req.AccountantID
+	} else {
+		// Try to get accountant ID by email
+		accID, err := s.repo.GetAccountantIDByEmail(ctx, req.Email)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve accountant: %w", err)
+		}
+		accountantID = accID
+	}
+
+	// Check if the accountant is linked to this practitioner
+	// if accountantID != nil {
+	// 	isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, *accountantID)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to verify accountant link: %w", err)
+	// 	}
+	// 	if !isLinked {
+	// 		return nil, fmt.Errorf("accountant is not linked to this practitioner")
+	// 	}
+	// }
+
+	// Get old permissions for audit log
+	var oldPerms *Permissions
+	if accountantID != nil {
+		oldPerms, _ = s.repo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, *accountantID)
+	} else {
+		oldPerms, _ = s.repo.GetPermission(ctx, nil, practitionerID, &req.Email)
+	}
+
+	// Update permissions in a transaction
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, accountantID, req.Email, *req.Permissions)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update permissions: %w", err)
+	}
+
+	// Audit log
+	meta := auditctx.GetMetadata(ctx)
+	pIDStr := practitionerID.String()
+	entityType := auditctx.EntityPermission
+	var entityID string
+	if accountantID != nil {
+		entityID = accountantID.String()
+	} else {
+		entityID = req.Email
+	}
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  &pIDStr,
+		UserID:      meta.UserID,
+		Module:      auditctx.ModuleBusiness,
+		Action:      auditctx.ActionPermissionUpdated,
+		EntityType:  &entityType,
+		EntityID:    &entityID,
+		BeforeState: oldPerms,
+		AfterState:  req.Permissions,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return req.Permissions, nil
 }
 
 func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error {
