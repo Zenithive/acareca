@@ -33,9 +33,9 @@ type Repository interface {
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
-	ListPermission(ctx context.Context, f common.Filter) (RsPermission, error)
+	ListPermission(ctx context.Context, f common.Filter) (Permission, error)
 
-	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
+	GetPermission(ctx context.Context, accountantID *uuid.UUID, entityID uuid.UUID, email *string) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
 	// GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error
@@ -45,8 +45,7 @@ type Repository interface {
 	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
-	ListAccountantPermissions(ctx context.Context, f common.Filter) ([]AccountantPermissionRow, error)
-	CountAccountantPermissions(ctx context.Context, f common.Filter) (int, error)
+	CountPermission(ctx context.Context, f common.Filter) (int, error)
 	LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error
 	DeletePermission(ctx context.Context, pID uuid.UUID, entityID uuid.UUID, accID *uuid.UUID, email string) error
 	GetPermissionsByEmailAndEntity(ctx context.Context, pID uuid.UUID, email string, eID uuid.UUID) (*Permissions, error)
@@ -315,30 +314,48 @@ func (r *repository) CountByEmail(ctx context.Context, email string, f common.Fi
 }
 
 // GetPermissions checks if an accountant has access to a specific entity (Clinic or Form)
-func (r *repository) GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error) {
-	var permissions Permissions
-	var raw json.RawMessage
+func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID, practitionerID uuid.UUID, email *string) (*Permissions, error) {
+	var rows []Permission
 
-	// We check for a mapping where the accountant is linked to the entity
-	query := `
-        SELECT permissions
-        FROM tbl_invite_permissions
-        WHERE accountant_id = $1 AND entity_id = $2 AND deleted_at IS NULL LIMIT 1
-    `
-	// var raw []byte
-	err := r.db.GetContext(ctx, &raw, query, accountantID, entityID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // No mapping means no permission
+	if accountantID != nil && *accountantID != uuid.Nil {
+		query := `
+			SELECT permission_name, can_read, can_write
+			FROM tbl_invite_permissions
+			WHERE practitioner_id = $1 AND accountant_id = $2
+		`
+		if err := r.db.SelectContext(ctx, &rows, query, practitionerID, accountantID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("get permission by accountant: %w", err)
 		}
-		return nil, err
+	} else if email != nil && *email != "" {
+		query := `
+			SELECT permission_name, can_read, can_write
+			FROM tbl_invite_permissions
+			WHERE practitioner_id = $1 AND email = $2
+		`
+		if err := r.db.SelectContext(ctx, &rows, query, practitionerID, email); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("get permission by email: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("either accountant_id or email must be provided")
 	}
 
-	if err := json.Unmarshal(raw, &permissions); err != nil {
-		return nil, err
+	if len(rows) == 0 {
+		return nil, nil
 	}
 
-	return &permissions, nil
+	// Map rows back into Permissions struct
+	perms := &Permissions{}
+	for _, row := range rows {
+		perms.FromRow(row)
+	}
+
+	return perms, nil
 }
 
 // GetPermissionsByPractitionerAndAccountant gets permissions for an accountant-practitioner relationship
@@ -517,22 +534,30 @@ func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UU
 	return err
 }
 
-func (r *repository) ListAccountantPermissions(ctx context.Context, f common.Filter) ([]AccountantPermissionRow, error) {
-	// Base should be clean
-	base := `SELECT id, entity_id, entity_type, practitioner_id, accountant_id, permissions, created_at, updated_at FROM tbl_invite_permissions`
+func (r *repository) ListPermission(ctx context.Context, f common.Filter) (Permission, error) {
+	base := `SELECT 
+		id, 
+		practitioner_id, 
+		accountant_id, 
+		email, 
+		permission_name, 
+		can_read, 
+		can_write, 
+		created_at, 
+		updated_at 
+	FROM tbl_invite_permissions`
 
 	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
 
-	var perms []AccountantPermissionRow
-	// Rebind ensures all ? are converted to $1, $2, etc. correctly
+	var perms Permission
 	if err := r.db.SelectContext(ctx, &perms, r.db.Rebind(query), filterArgs...); err != nil {
-		return nil, fmt.Errorf("list accountant permissions repo: %w", err)
+		return perms, fmt.Errorf("list accountant permissions repo: %w", err)
 	}
 
 	return perms, nil
 }
 
-func (r *repository) CountAccountantPermissions(ctx context.Context, f common.Filter) (int, error) {
+func (r *repository) CountPermission(ctx context.Context, f common.Filter) (int, error) {
 	base := `FROM tbl_invite_permissions`
 
 	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, true)

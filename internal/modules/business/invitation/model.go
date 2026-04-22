@@ -64,7 +64,7 @@ type RsInviteDetails struct {
 	SenderRole   string           `json:"sender_role"`
 	AccountantID *uuid.UUID       `json:"id"`
 	Email        string           `json:"email"`
-	Permissions  *Permissions     `json:"permissions"`
+	Permission   *Permissions     `json:"permissions"`
 }
 
 // RsInviteProcess helps the frontend navigate after a link click
@@ -173,13 +173,13 @@ var AllPermissions = []PermissionName{
 }
 
 type Permission struct {
-	Name        PermissionName `json:"name,omitempty"`
+	Name        PermissionName `db:"name,omitempty"`
 	AccessLevel AccessLevel    `json:"access_level"`
 }
 
 type AccessLevel struct {
-	Read  bool `json:"read"`
-	Write bool `json:"write"`
+	Read  bool `db:"read"`
+	Write bool `db:"write"`
 }
 
 type PermissionsData struct {
@@ -263,3 +263,18 @@ type RsPermission struct {
 }
 
 type RsPermissions map[PermissionName]AccessLevel
+
+func (p *Permission) ToRsPermission() *RsPermission {
+	return &RsPermission{
+		Permissions: Permissions{
+			p.Name: p.AccessLevel,
+		},
+	}
+}
+
+func (p Permissions) FromRow(row Permission) {
+	p[PermissionName(row.Name)] = AccessLevel{
+		Read:  row.AccessLevel.Read,
+		Write: row.AccessLevel.Write,
+	}
+}

@@ -10,5 +10,5 @@ func RegisterRoutes(invite *gin.RouterGroup, h IHandler) {
 	invite.DELETE("/:id/revoke", h.RevokeInvitation)
 	invite.GET("", h.ListInvitations)
 	invite.POST("/permissions", h.HandlePermissions)
-	invite.GET("/list-permissions", h.ListAccountantPermissions)
+	invite.GET("/list-permissions", h.ListPermissions)
 }

@@ -39,9 +39,7 @@ type Service interface {
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
 	// GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID *uuid.UUID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error)
-	ListAccountantPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*util.RsList, error)
-
-	ListAccountantPermission(ctx context.Context, accId uuid.UUID) (*[]Permissions, int, error)
+	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*RsPermission, error)
 }
 
 const (
@@ -267,17 +265,10 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 		isFound = true
 	}
 
-	// Fetch Permissions associated with this email
-	// _, err = s.repo.GetAllAccountantPermissions(ctx, inv.PractitionerID, inv.Email, accountantID)
-	// if err != nil {
-	// 	dbPerms = [] // Ensure it's not nil
-	// 	return nil, fmt.Errorf("failed to fetch permissions: %w", err)
-	// }
-	// if dbPerms == nil {
-	// 	dbPerms = []RqPermissionDetail{} // Initialize to empty slice for JSON []
-	// }
-
-	// processedPerm := s.processPermissions(DefaultAccountantPermissions())
+	permissions, err := s.repo.GetPermission(ctx, accountantID, inv.PractitionerID, &inv.Email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch permissions: %w", err)
+	}
 
 	return &RsInviteDetails{
 		InvitationID: inv.ID,
@@ -291,8 +282,8 @@ func (s *service) GetInvitationDetails(ctx context.Context, inviteID uuid.UUID) 
 			LastName:  inv.SenderLastName,
 			Email:     inv.SenderEmail,
 		},
-		SentTo: recipient,
-		// Permissions: processedPerm,
+		SentTo:     recipient,
+		Permission: permissions,
 	}, nil
 }
 
@@ -644,53 +635,6 @@ func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, ac
 	return s.repo.GetFirstPractitionerLinkedToAccountant(ctx, accountantID)
 }
 
-func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, f *Filter) (*util.RsList, error) {
-
-	ft := f.MapToFilterAccountant()
-
-	// Add the mandatory filters to the filter object
-	ft.Where = append(ft.Where, common.Condition{
-		Field:    "accountant_id",
-		Operator: common.OpEq,
-		Value:    aID,
-	}, common.Condition{
-		Field:    "deleted_at",
-		Operator: common.OpIsNull,
-	})
-
-	res, err := s.repo.ListAccountantPermissions(ctx, ft)
-	if err != nil {
-		return nil, fmt.Errorf("list accountant permissions: %w", err)
-	}
-
-	var resultList []AccountantPermissionRes
-
-	for _, row := range res {
-
-		// 4. Map the row to the response struct
-		resultList = append(resultList, AccountantPermissionRes{
-			ID:             row.ID,
-			EntityID:       row.EntityID,
-			EntityType:     row.EntityType,
-			PractitionerID: row.PractitionerID,
-			AccountantID:   row.AccountantID,
-			Permissions:    row.Permissions,
-			CreatedAt:      row.CreatedAt,
-			UpdatedAt:      row.UpdatedAt,
-		})
-	}
-
-	total, err := s.repo.CountAccountantPermissions(ctx, ft)
-	if err != nil {
-		return nil, fmt.Errorf("count accountant permissions: %w", err)
-	}
-
-	var rsList util.RsList
-	rsList.MapToList(resultList, total, *ft.Offset, *ft.Limit)
-	return &rsList, nil
-
-}
-
 // func (s *service) GrantEntityPermission(ctx context.Context, pID uuid.UUID, aID *uuid.UUID, eID uuid.UUID, email string, eType string, perms Permissions) (*Permissions, error) {
 // 	associated := false
 
@@ -784,17 +728,16 @@ func (s *service) ListAccountantPermissions(ctx context.Context, aID uuid.UUID, 
 // Helper to centralize permission logic
 
 // ListAccountantPermission implements [Service].
-func (s *service) ListAccountantPermission(ctx context.Context, accId uuid.UUID) (*[]Permissions, int, error) {
+func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
 	var filter common.Filter
+	filter = f.MapToFilterAccountant()
 
-	permissionRows, err := s.repo.ListAccountantPermissions(ctx, filter)
+	permission, err := s.repo.ListPermission(ctx, filter)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	var perms []Permissions
-	for _, v := range permissionRows {
-		perms = append(perms, v.Permissions)
-	}
-	return &perms, 0, nil
+	rs := permission.ToRsPermission()
+
+	return rs, nil
 }

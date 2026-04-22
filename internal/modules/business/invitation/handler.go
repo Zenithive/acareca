@@ -19,7 +19,7 @@ type IHandler interface {
 	ResendInvitation(c *gin.Context)
 	RevokeInvitation(c *gin.Context)
 	HandlePermissions(c *gin.Context)
-	ListAccountantPermissions(c *gin.Context)
+	ListPermissions(c *gin.Context)
 }
 
 type Handler struct {
@@ -243,7 +243,7 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 // @Failure      500      {object}  response.RsError
 // @Security     BearerToken
 // @Router       /invite/list-permissions [get]
-func (h *Handler) ListAccountantPermissions(c *gin.Context) {
+func (h *Handler) ListPermissions(c *gin.Context) {
 	accId, ok := util.GetAccountantID(c)
 	if !ok {
 		return
@@ -255,7 +255,7 @@ func (h *Handler) ListAccountantPermissions(c *gin.Context) {
 		return
 	}
 	// 2. Call Service with the Accountant ID pointer
-	res, err := h.svc.ListAccountantPermissions(c.Request.Context(), accId, &reqFilter)
+	res, err := h.svc.ListPermissions(c.Request.Context(), accId, &reqFilter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
