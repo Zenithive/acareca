@@ -401,11 +401,6 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	// fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.xlsx", time.Now().Format("2006-01-02"))
-	// c.Header("Content-Disposition", "attachment; filename="+fileName)
-	// c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	// file.Write(c.Writer)
-
 	switch v := file.(type) {
 	case *excelize.File:
 		// Standard Excel Response
