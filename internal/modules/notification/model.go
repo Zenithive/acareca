@@ -44,9 +44,9 @@ const (
 	EventDocumentUploaded   EventType = "document.uploaded"
 
 	// System → Admin
-	EventAuditLogCreated  EventType = "audit_log.created"
-	EventSystemError      EventType = "system.error"
-	EventSystemWarning    EventType = "system.warning"
+	EventAuditLogCreated EventType = "audit_log.created"
+	EventSystemError     EventType = "system.error"
+	EventSystemWarning   EventType = "system.warning"
 )
 
 type EntityType string

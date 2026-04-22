@@ -71,7 +71,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
-	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc)
+	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
 	invitationHandler := invitation.NewHandler(invitationSvc, accountant.NewRepository(dbConn))
 
 	// Create permission adapter for feature-based permissions
@@ -82,7 +82,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 			if err != nil || perms == nil {
 				return nil, err
 			}
-			return perms, nil // *Permissions implements FeaturePermissions
+			return nil, nil // *Permissions implements FeaturePermissions
 		},
 		invitationSvc.IsAccountantLinkedToPractitioner,
 	)
