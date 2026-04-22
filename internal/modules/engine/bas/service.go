@@ -8,8 +8,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
@@ -27,10 +30,12 @@ type Service interface {
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
-	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string) (*bytes.Buffer, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, filter *BASFilter) (*excelize.File, error)
+	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
+	generateActivityPDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error)
 }
 
 type service struct {
@@ -457,7 +462,35 @@ type QuarterData struct {
 	Report *RsBASReport
 }
 
-func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string) (*bytes.Buffer, string, error) {
+	// 1. Branching Logic
+	if strings.ToLower(exportType) == "pdf" {
+		// Wrap data for template
+		data := struct {
+			Quarters []QuarterData
+			Prev     PeriodInfo
+		}{
+			Quarters: quarters,
+			Prev:     prevDates,
+		}
+
+		buf, err := s.generateActivityPDFWithChrome(ctx, data)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to generate activity pdf: %w", err)
+		}
+		return buf, "application/pdf", nil
+	}
+
+	// 2. Default to Excel logic
+	buf, err := s.generateActivityExcelReport(ctx, quarters, prevDates)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate activity excel: %w", err)
+	}
+
+	return buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
+}
+func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
+
 	xl := excelize.NewFile()
 	defer xl.Close()
 
@@ -609,6 +642,164 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	xl.SetColWidth(sheet, "B", "B", 25)
 
 	return xl.WriteToBuffer()
+}
+
+const activityTemplate = `
+<html>
+<head>
+<style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
+    th, td { border: 1px solid #bfbfbf; padding: 8px; word-wrap: break-word; }
+    
+    .header { background-color: #4EA7B3; color: white; font-weight: bold; text-align: center; }
+    .sub-header { background-color: #E1F0F2; font-weight: bold; color: #2A5D63; }
+    .label { font-weight: bold; width: 70%; }
+    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; }
+    .total-row { background-color: #4EA7B3; color: white; font-weight: bold; }
+    
+    .indent { padding-left: 25px; font-weight: normal; }
+</style>
+</head>
+<body>
+    {{$q := index .Quarters 0}}
+    
+    <table>
+        <tr>
+            <td class="header">Activity Statement Information</td>
+            <td class="header">BAS</td>
+        </tr>
+        <tr>
+            <td class="label">Period start</td>
+            <td>{{$q.Period.From}}</td>
+        </tr>
+        <tr>
+            <td class="label">Period end</td>
+            <td>{{$q.Period.To}}</td>
+        </tr>
+        <tr>
+            <td class="label">Qtr</td>
+            <td>{{$q.Period.Label}}</td>
+        </tr>
+    </table>
+
+    <table>
+        <tr class="sub-header"><td colspan="2">GST Section</td></tr>
+        <tr>
+            <td class="label">G1 (Total Sales)</td>
+            <td class="amount">${{printf "%.2f" $q.Report.G1}}</td>
+        </tr>
+        <tr>
+            <td class="label">1A (GST on Sales)</td>
+            <td class="amount">${{printf "%.2f" $q.Report.A1}}</td>
+        </tr>
+        <tr>
+            <td class="label">G11 (Total Purchases)</td>
+            <td class="amount">${{printf "%.2f" $q.Report.G11}}</td>
+        </tr>
+        <tr>
+            <td class="label">1B (GST on Purchases)</td>
+            <td class="amount">${{printf "%.2f" $q.Report.B1}}</td>
+        </tr>
+    </table>
+
+    <table>
+        <tr class="sub-header"><td colspan="2">PAYG tax withheld</td></tr>
+        <tr>
+            <td class="label">Period start</td>
+            <td>{{$q.Period.From}}</td>
+        </tr>
+        <tr>
+            <td class="label">Period end</td>
+            <td>{{$q.Period.To}}</td>
+        </tr>
+        <tr>
+            <td class="label">W1 (Total Wages, salary and other payments)</td>
+           
+        </tr>
+        <tr>
+            <td class="label">W2 (Amount withheld from payments shown at W1)</td>
+            
+        </tr>
+        <tr>
+            <td class="label">W3 (Other amounts withheld)</td>
+            
+        </tr>
+        <tr>
+            <td class="label">W4 (Amount withheld where no ABN is quoted)</td>
+            
+        </tr>
+        <tr>
+            <td class="label">W5 (Total amounts withheld)</td>
+           
+        </tr>
+    </table>
+
+    <table>
+        <tr class="sub-header"><td colspan="2">PAYG instalment</td></tr>
+        <tr>
+            <td class="label">Option 1</td>
+            
+        </tr>
+        <tr>
+            <td class="label">Option 2</td>
+            
+        </tr>
+    </table>
+
+    <table>
+        <tr class="total-row">
+            <td class="label">GST Payable or (Refund)</td>
+            <td class="amount">${{calcRefund $q.Report.A1 $q.Report.B1}}</td>
+        </tr>
+    </table>
+</body>
+</html>
+`
+
+func (s *service) generateActivityPDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error) {
+	tmpl, err := template.New("activity").Funcs(template.FuncMap{
+		"calcRefund": func(a1, b1 float64) string {
+			return fmt.Sprintf("%.2f", a1-b1)
+		},
+	}).Parse(activityTemplate)
+	if err != nil {
+		return nil, err
+	}
+
+	var htmlBuf bytes.Buffer
+	if err := tmpl.Execute(&htmlBuf, data); err != nil {
+		return nil, err
+	}
+
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.NoSandbox,
+		chromedp.Headless,
+	)
+
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+	taskCtx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	var pdfBuffer []byte
+	err = chromedp.Run(taskCtx,
+		chromedp.Navigate("about:blank"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			frameTree, _ := page.GetFrameTree().Do(ctx)
+			return page.SetDocumentContent(frameTree.Frame.ID, htmlBuf.String()).Do(ctx)
+		}),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			buf, _, err := page.PrintToPDF().WithPrintBackground(true).Do(ctx)
+			pdfBuffer = buf
+			return err
+		}),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewBuffer(pdfBuffer), nil
 }
 
 type PeriodInfo struct {

@@ -417,6 +417,7 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 // @Description Generates an Excel file (.xlsx) containing grouped transaction records based on filters.
 // @Tags reporting
 // @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param export_type query string false "Export format: 'pdf' or 'excel' (default: excel)" Enums(pdf, excel)
 // @Param clinic_id query string false "Filter by clinic ID"
 // @Param form_id query string false "Filter by form ID"
 // @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
@@ -428,15 +429,17 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 // @Security BearerToken
 // @Router /entry/coa-entries/export [get]
 func (h *handler) HandleExport(c *gin.Context) {
-	// 1. Get ActorID and Role using your established helper
-	// This solves the 'user_id does not exist' panic
+	// 1. Auth check
 	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
 
-	// 2. Bind the filters (Use the same TransactionFilter struct as ListCoaEntries)
+	// 2. Get export type from query (default to excel)
+	exportType := c.DefaultQuery("export_type", "excel")
+
+	// 3. Bind filters
 	var filter TransactionFilter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -444,22 +447,27 @@ func (h *handler) HandleExport(c *gin.Context) {
 	}
 	filter.Role = role
 
-	// 3. Call the service to generate the Excel buffer
-	// Pass *actorID (dereferenced) and the role
-	buffer, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role)
+	// 4. Call Service (Service now returns buffer, contentType, and error)
+	buffer, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return
 	}
 
-	// 4. Set Download Headers
-	fileName := fmt.Sprintf("Transaction_Report_%s.xlsx", time.Now().Format("2006-01-02_1504"))
+	// 5. Determine File Extension
+	ext := ".xlsx"
+	if strings.ToLower(exportType) == "pdf" {
+		ext = ".pdf"
+	}
 
+	fileName := fmt.Sprintf("Transaction_Report_%s%s", time.Now().Format("2006-01-02_1504"), ext)
+
+	// 6. Set Headers
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
-	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Type", contentType)
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Header("Cache-Control", "no-cache")
 
-	// 5. Write the binary data to the response
-	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
+	// 7. Write Data
+	c.Data(http.StatusOK, contentType, buffer.Bytes())
 }
