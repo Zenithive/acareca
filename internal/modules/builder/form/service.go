@@ -99,20 +99,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			return createErr
 		}
 
-		// Grant the Accountant permission to the newly created form if creator is accountant
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && ownerID != realOwnerID {
-			// If the accountant who created the form is different from the clinic owner, grant them permission
-			// Get their permissions for the clinic
-			perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, ownerID, d.ClinicID)
-			if err == nil && perms != nil {
-				// Grant the same permissions for the newly created form
-				err = s.invitationSvc.GrantEntityPermissionTx(ctx, tx, realOwnerID, ownerID, created.ID, "FORM", *perms)
-				if err != nil {
-					fmt.Printf("Warning: failed to grant permissions for new form: %v\n", err)
-				}
-			}
-		}
-
 		if len(d.Fields) == 0 {
 			return nil
 		}

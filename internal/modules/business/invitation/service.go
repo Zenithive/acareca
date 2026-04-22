@@ -34,7 +34,7 @@ type Service interface {
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 
 	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error)
-	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
@@ -96,21 +96,13 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		ExpiresAt:      time.Now().AddDate(0, 0, s.inviteConfig.ExpirationDays),
 	}
 
-	// Process and validate permissions
-	// processedPerms := s.processPermissions(req.Permissions)
-
-	// // Validate permissions
-	// if err := ValidatePermissions(processedPerms); err != nil {
-	// 	return nil, fmt.Errorf("invalid permissions: %w", err)
-	// }
-
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
 		if err := s.repo.CreateTx(ctx, tx, invite); err != nil {
 			return fmt.Errorf("failed to save invite: %w", err)
 		}
 
-		err = s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, *req.Permissions)
+		err = s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, invite.Email, *req.Permissions)
 		if err != nil {
 			return fmt.Errorf("failed to save permissions: %w", err)
 		}
@@ -636,9 +628,8 @@ func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID 
 	return s.repo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
 }
 
-func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID, eID uuid.UUID, eType string, perms Permissions) error {
-	// processedPerms := s.processPermissions(&perms)
-	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, nil)
+func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error {
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, email, perms)
 }
 
 func (s *service) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {

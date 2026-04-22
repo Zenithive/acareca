@@ -103,31 +103,6 @@ type RqProcessAction struct {
 	Action  string    `json:"action" validate:"required,oneof=ACCEPT REJECT"`
 }
 
-// AccountantPermissionRow represents the raw database row
-type AccountantPermissionRow struct {
-	ID             uuid.UUID   `db:"id" json:"id"`
-	EntityID       uuid.UUID   `db:"entity_id" json:"entity_id"`
-	EntityType     string      `db:"entity_type" json:"entity_type"`
-	PractitionerID uuid.UUID   `db:"practitioner_id" json:"practitioner_id"`
-	AccountantID   uuid.UUID   `db:"accountant_id" json:"accountant_id"`
-	Permissions    Permissions `db:"permissions" json:"permissions"`
-	CreatedAt      time.Time   `db:"created_at" json:"created_at"`
-	UpdatedAt      time.Time   `db:"updated_at" json:"updated_at"`
-	DeletedAt      *time.Time  `db:"deleted_at" json:"deleted_at,omitempty"`
-}
-
-// AccountantPermissionRes represents what the user sees
-type AccountantPermissionRes struct {
-	ID             uuid.UUID   `json:"id"`
-	EntityID       uuid.UUID   `json:"entity_id"`
-	EntityType     string      `json:"entity_type"`
-	PractitionerID uuid.UUID   `json:"practitioner_id"`
-	AccountantID   uuid.UUID   `json:"accountant_id"`
-	Permissions    Permissions `json:"permissions"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-}
-
 // FILTERS
 var invitationColumns = map[string]string{
 	"email":           "email",
@@ -268,3 +243,23 @@ type RqUpdatePermissions struct {
 	Email        string       `json:"email" validate:"required,email"`
 	Permissions  *Permissions `json:"permissions" validate:"required"`
 }
+
+type InvitationPermission struct {
+	ID             uuid.UUID   `json:"id"`
+	PractitionerID uuid.UUID   `json:"practitioner_id"`
+	AccountantID   uuid.UUID   `json:"accountant_id"`
+	Permissions    Permissions `json:"permissions"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
+type RsPermission struct {
+	ID             uuid.UUID   `json:"id"`
+	PractitionerID uuid.UUID   `json:"practitioner_id"`
+	AccountantID   uuid.UUID   `json:"accountant_id"`
+	Permissions    Permissions `json:"permissions"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
+type RsPermissions map[PermissionName]AccessLevel

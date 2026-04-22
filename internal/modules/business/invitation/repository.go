@@ -33,10 +33,12 @@ type Repository interface {
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
+	ListPermission(ctx context.Context, f common.Filter) (RsPermission, error)
+
 	GetPermissions(ctx context.Context, accountantID uuid.UUID, entityID uuid.UUID) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
 	// GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
-	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, perms Permissions) error
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error
 	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
@@ -368,35 +370,47 @@ func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Conte
 
 	return &permissions, nil
 }
-func (r *repository) GrantEntityPermissionTx(
-	ctx context.Context,
-	tx *sqlx.Tx,
-	pID uuid.UUID,
-	accID *uuid.UUID,
-	perms Permissions,
-) error {
-	query := `
-		INSERT INTO tbl_invite_permissions (
-			id, practitioner_id, accountant_id, permission_name, can_read, can_write, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-		ON CONFLICT (practitioner_id, accountant_id, permission_name)
-		DO UPDATE SET
-			can_read   = EXCLUDED.can_read,
-			can_write  = EXCLUDED.can_write,
-			updated_at = NOW();`
 
-	fmt.Println("row perms", perms)
-	for _, row := range perms.ToRows() {
-		fmt.Println("row", row)
-		if _, err := tx.ExecContext(ctx, query,
-			uuid.New(),
-			pID,
-			accID,
-			row.Name,
-			row.AccessLevel.Read,
-			row.AccessLevel.Write,
-		); err != nil {
-			return fmt.Errorf("failed to upsert permission %q: %w", row.Name, err)
+func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error {
+	if accID != nil && *accID != uuid.Nil {
+		query := `
+			INSERT INTO tbl_invite_permissions
+				(id, practitioner_id, accountant_id, permission_name, can_read, can_write, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW())`
+
+		for _, row := range perms.ToRows() {
+			if _, err := tx.ExecContext(ctx, query,
+				uuid.New(),
+				pID,
+				accID,
+				row.Name,
+				row.AccessLevel.Read,
+				row.AccessLevel.Write,
+			); err != nil {
+				return fmt.Errorf("failed to upsert permission %q: %w", row.Name, err)
+			}
+		}
+	} else {
+		if email == "" {
+			return fmt.Errorf("email required when accountant ID is absent")
+		}
+
+		query := `
+			INSERT INTO tbl_invite_permissions
+				(id, practitioner_id, email, permission_name, can_read, can_write, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW())`
+
+		for _, row := range perms.ToRows() {
+			if _, err := tx.ExecContext(ctx, query,
+				uuid.New(),
+				pID,
+				email,
+				row.Name,
+				row.AccessLevel.Read,
+				row.AccessLevel.Write,
+			); err != nil {
+				return fmt.Errorf("failed to upsert permission %q: %w", row.Name, err)
+			}
 		}
 	}
 
