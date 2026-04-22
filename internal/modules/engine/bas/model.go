@@ -153,10 +153,9 @@ type BASReportFilter struct {
 }
 
 type BASExportFilter struct {
-	
 	PractitionerID  string   `form:"-"` // set from JWT
 	FinancialYearID *string  `form:"financial_year_id" binding:"required"`
-	QuarterIDs      []string `form:"quarter_id" binding:"required"`
+	QuarterIDs      []string `form:"quarter_id" `
 	Month           *string  `form:"month"`
 }
 

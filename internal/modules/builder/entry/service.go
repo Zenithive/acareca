@@ -1101,32 +1101,88 @@ const reportTemplate = `
 <html>
 <head>
 <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th, td { border: 1px solid #bfbfbf; padding: 6px; overflow: hidden; }
+    /* 1. Page Setup - Landscape gives more horizontal room */
+    @page {
+        size: A4 landscape;
+        margin: 1cm;
+    }
+
+    body { 
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+        font-size: 9pt; 
+        color: #666;
+        margin: 0;
+        padding: 0;
+    }
+
+    table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        table-layout: fixed; 
+        margin-bottom: 30px;
+    }
+
+    /* 2. Enhanced Spacing for Cells */
+    th, td { 
+        border: 1px solid #d1d1d1; 
+        padding: 10px 6px; /* Increased vertical padding */
+        line-height: 1.4;
+        word-wrap: break-word;
+        vertical-align: middle;
+    }
     
-    /* Header Style - Matching Excel headerStyle */
-    th { background-color: #4EA7B3; color: white; text-align: center; font-weight: bold; }
+    /* 3. Header Style */
+    th { 
+        background-color: #4EA7B3; 
+        color: white; 
+        text-align: center; 
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 8.5pt;
+        letter-spacing: 0.5px;
+    }
     
-    /* Group Header - Matching groupHeaderStyle */
-    .group-row { background-color: #DAEEF3"; font-weight: bold; }
+    /* 4. Group Header Styling */
+    .group-row { 
+        background-color: #DAEEF3; 
+        font-weight: bold; 
+        color: #2A5D63;
+        font-size: 10pt;
+    }
     
-    /* Total Row - Matching totalRowStyle */
-    .total-row { background-color: #E1E1E1; font-weight: bold; }
+    /* 5. Total Row Styling */
+    .total-row { 
+        background-color: #F2F2F2; 
+        font-weight: bold;
+        border-top: 2px solid #4EA7B3;
+    }
     
-    .amount { text-align: right; }
-    .indent { padding-left: 20px; }
+    .amount { 
+        text-align: right; 
+        font-family: 'Courier New', monospace; /* Monospaced fonts align decimals better */
+        font-weight: bold;
+    }
+
+    .indent { padding-left: 25px; }
     
-    /* Column Widths - Matching your xl.SetColWidth */
-    .col-1 { width: 35%; }
-    .col-2, .col-3, .col-4 { width: 10%; }
-    .col-5, .col-6, .col-7, .col-8 { width: 10%; }
+    /* 6. Optimized Column Widths for Landscape */
+    .col-1 { width: 22%; } /* Account / Field */
+    .col-2 { width: 12%; } /* Tax Type */
+    .col-3 { width: 15%; } /* Form */
+    .col-4 { width: 15%; } /* Clinic */
+    .col-5 { width: 10%; } /* Net */
+    .col-6 { width: 8%; }  /* GST */
+    .col-7 { width: 10%; } /* Gross */
+    .col-8 { width: 8%; }  /* Date */
+
+    .date-cell { font-size: 8pt; text-align: center; }
 </style>
 </head>
 <body>
     <table>
         <thead>
             <tr>
+			
                 <th class="col-1">Account / Field</th>
                 <th class="col-2">Tax Type</th>
                 <th class="col-3">Form</th>
@@ -1140,10 +1196,10 @@ const reportTemplate = `
         <tbody>
             {{range .Groups}}
                 <tr class="group-row">
-                    <td colspan="8">{{.CoaName}}</td>
+                    <td colspan="8" style="padding: 12px 10px;">{{.CoaName}}</td>
                 </tr>
                 {{range .Details}}
-                <tr>
+                <tr style="color: #000; font-weight: 500;">
                     <td class="indent">{{.FormFieldName}}</td>
                     <td>{{.TaxTypeName}}</td>
                     <td>{{.FormName}}</td>
@@ -1151,17 +1207,17 @@ const reportTemplate = `
                     <td class="amount">${{getFloat .NetAmount | printf "%.2f"}}</td>
                     <td class="amount">${{getFloat .GstAmount | printf "%.2f"}}</td>
                     <td class="amount">${{getFloat .GrossAmount | printf "%.2f"}}</td>
-                    <td>{{.CreatedAt}}</td>
+                    <td class="date-cell">{{.CreatedAt}}</td>
                 </tr>
                 {{end}}
                 <tr class="total-row">
-                    <td colspan="4">Total</td>
+                    <td colspan="4" style="text-align: right; padding-right: 15px;"></td>
                     <td class="amount">${{getFloat .TotalNetAmount | printf "%.2f"}}</td>
-                    <td></td>
+                    <td class="amount"></td>
                     <td class="amount">${{getFloat .TotalGrossAmount | printf "%.2f"}}</td>
                     <td></td>
                 </tr>
-                <tr style="border: none; height: 20px;"><td colspan="8" style="border: none;"></td></tr>
+                <tr style="border: none; height: 25px;"><td colspan="8" style="border: none;"></td></tr>
             {{end}}
         </tbody>
     </table>
