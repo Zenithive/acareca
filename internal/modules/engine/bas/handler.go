@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/xuri/excelize/v2"
 )
 
 // IHandler declares all HTTP entry points for the BAS module.
@@ -227,7 +229,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /bas/bas-preparation [get]
 func (h *handler) GetBASPreparation(c *gin.Context) {
-	actorID, ok := util.GetUserID(c) // User ID from JWT
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -240,7 +242,7 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 
 	_ = f.MapToFilter()
 
-	result, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, &f)
+	result, err := h.svc.GetBASPreparation(c.Request.Context(), *actorID, role, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -264,7 +266,8 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 func (h *handler) ExportBASReport(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	actorID, _, ok := util.GetRoleBasedID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, _ := util.GetUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
@@ -332,7 +335,7 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 	}
 
 	// 4. Export
-	buffer, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates)
+	buffer, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, *actorID, role, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -352,14 +355,20 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 // @Param        clinic_ids        query    string  false  "Clinic UUIDs"
 // @Param        quarter_ids       query    string  true   "Quarter UUIDs"
 // @Param        financial_year_id query    string  true   "FY UUID"
+// @Param        export_type 	   query    string  true   "Export Type: PDF | Excel"
 // @Success      200 {file} binary
 // @Router       /bas/bas-preparation/export [get]
 // @Security     BearerToken
 func (h *handler) ExportBASPreparation(c *gin.Context) {
-	actorID, ok := util.GetUserID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
+	UserID, ok := util.GetUserID(c)
 	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
+
+	// Get the export type from query params (default to excel)
+	exportType := strings.ToLower(c.DefaultQuery("export_type", "excel"))
 
 	var f BASFilter
 	if err := c.ShouldBindQuery(&f); err != nil {
@@ -369,20 +378,38 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 	_ = f.MapToFilter()
 
 	// Get the exact data structure you shared
-	data, err := h.svc.GetBASPreparation(c.Request.Context(), actorID, &f)
+	data, err := h.svc.GetBASPreparation(c.Request.Context(), *actorID, role, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, &f)
+	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, *actorID, role, UserID, &f, exportType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.xlsx", time.Now().Format("2006-01-02"))
-	c.Header("Content-Disposition", "attachment; filename="+fileName)
-	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	file.Write(c.Writer)
+	// fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.xlsx", time.Now().Format("2006-01-02"))
+	// c.Header("Content-Disposition", "attachment; filename="+fileName)
+	// c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	// file.Write(c.Writer)
+
+	switch v := file.(type) {
+	case *excelize.File:
+		// Standard Excel Response
+		fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.xlsx", time.Now().Format("2006-01-02"))
+		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		c.Header("Content-Disposition", "attachment; filename="+fileName)
+		v.Write(c.Writer)
+	case []byte:
+		// PDF Response
+		fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.pdf", time.Now().Format("2006-01-02"))
+		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Disposition", "attachment; filename="+fileName)
+		c.Writer.Write(v)
+
+	default:
+		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
+	}
 }

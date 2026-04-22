@@ -10,11 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/xuri/excelize/v2"
@@ -26,11 +30,12 @@ type Service interface {
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
-	GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error)
-	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
+	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter) (*RsBASPreparation, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, actorID uuid.UUID, role string, userID uuid.UUID) (*bytes.Buffer, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, filter *BASFilter) (*excelize.File, error)
+	// ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter) (*excelize.File, error)
+	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string) (interface{}, error)
 }
 
 type service struct {
@@ -39,10 +44,12 @@ type service struct {
 	auditSvc       audit.Service
 	clinicRepo     clinic.Repository
 	fyRepo         fy.Repository
+	eventsSvc      events.Service
+	authRepo       auth.Repository
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo}
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository) Service {
+	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo}
 }
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
@@ -164,18 +171,10 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 	}, nil
 }
 
-func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *BASFilter) (*RsBASPreparation, error) {
-	meta := auditctx.GetMetadata(ctx)
-
+func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter) (*RsBASPreparation, error) {
 	isAccountant := false
-	if meta.UserType != nil {
-		isAccountant = strings.EqualFold(*meta.UserType, util.RoleAccountant)
-	} else {
-
-		acc, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
-		if err == nil && acc != nil {
-			isAccountant = true
-		}
+	if role == util.RoleAccountant {
+		isAccountant = true
 	}
 
 	var ownerID uuid.UUID
@@ -188,16 +187,10 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 	requestedClinicIDs := f.ParsedClinicIDs
 
 	if isAccountant {
-
-		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
-		if err != nil {
-			return nil, fmt.Errorf("access denied: accountant profile not found")
-		}
-
 		// If clinic_ids are provided, verify permission for each clinic
 		if len(requestedClinicIDs) > 0 {
 			for _, clinicID := range requestedClinicIDs {
-				permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, clinicID)
+				permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicID)
 				if err != nil {
 					return nil, fmt.Errorf("permission denied for clinic %s", clinicID)
 				}
@@ -206,7 +199,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 			}
 		} else {
 			// If no clinic_ids provided, get all clinics the accountant has access to
-			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, accProfile.ID, commonFilter)
+			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
 			}
@@ -220,11 +213,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, f *B
 			}
 		}
 	} else {
-		pID, er := s.clinicRepo.GetPractitionerIDByUserID(ctx, actorID.String())
-		if er != nil {
-			return nil, fmt.Errorf("practitioner profile not found")
-		}
-		ownerID = *pID
+		ownerID = actorID
 
 		if len(requestedClinicIDs) > 0 {
 			// Verify the practitioner owns each requested clinic
@@ -457,7 +446,7 @@ type QuarterData struct {
 	Report *RsBASReport
 }
 
-func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, actorID uuid.UUID, role string, userID uuid.UUID) (*bytes.Buffer, error) {
 	xl := excelize.NewFile()
 	defer xl.Close()
 
@@ -465,6 +454,8 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	dataSheet := "SourceData"
 	xl.SetSheetName("Sheet1", sheet)
 	xl.NewSheet(dataSheet)
+
+	parsedActorID := actorID.String()
 
 	// --- 1. Populate Hidden Data Sheet (The Lookup Table) ---
 	headers := []string{"Label", "G1", "1A", "G11", "1B", "Start", "End"}
@@ -608,6 +599,25 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	xl.SetColWidth(sheet, "A", "A", 55)
 	xl.SetColWidth(sheet, "B", "B", 25)
 
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionActivityStatementExported,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Activity Statement",
+			"quarters":    quarters,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
 	return xl.WriteToBuffer()
 }
 
@@ -692,11 +702,13 @@ func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID)
 	return quarters, nil
 }
 
-func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, filter *BASFilter) (*excelize.File, error) {
+func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Quarterly BAS REPORT"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
+
+	parsedActorID := actorID.String()
 
 	// --- STYLES ---
 
@@ -806,9 +818,29 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
 		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
 
+		// --- Quarter Name FORMATTING ---
+		headerValue := allCols[i].Quarter.Name
+
+		// Only attempt to format if it's an actual quarter (skip for the "Total" column)
+		if allCols[i].Quarter.StartDate != "" {
+			// Parse the year
+			t, err := time.Parse("2006-01-02", allCols[i].Quarter.StartDate)
+			yearStr := ""
+			if err == nil {
+				yearStr = fmt.Sprintf("%d", t.Year())
+			}
+
+			// Combine to: Quarter Name (Display Range) Year
+			headerValue = fmt.Sprintf("%s (%s) %s",
+				allCols[i].Quarter.Name,
+				allCols[i].Quarter.DisplayRange,
+				yearStr,
+			)
+		}
+
 		// Top Quarter Header
 		f.MergeCell(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol))
-		f.SetCellValue(sheet, fmt.Sprintf("%s5", startCol), allCols[i].Quarter.Name)
+		f.SetCellValue(sheet, fmt.Sprintf("%s5", startCol), headerValue)
 		f.SetCellStyle(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol), styleHeaderBlue)
 
 		// Sub Headers
@@ -962,6 +994,54 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		}
 	}
 
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionBASReportExported,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityBASReport),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type":    "Quarterly BAS Report",
+			"financial_year": filter.FinancialYearID,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	if role == util.RoleAccountant {
+		// Fetching user details
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		// Record the Shared Event
+		err = s.eventsSvc.Record(ctx, events.SharedEvent{
+			ID: uuid.New(),
+			// PractitionerID: practitionerID,
+			AccountantID: actorID,
+			ActorID:      actorID,
+			ActorName:    &fullName,
+			ActorType:    role,
+			EventType:    "bas_report.exported",
+			EntityType:   "REPORT",
+			EntityID:     actorID,
+			Description:  fmt.Sprintf("Accountant %s exported BAS Report", fullName),
+			Metadata:     events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID},
+			CreatedAt:    time.Now(),
+		})
+	}
+
+	if exportType == "pdf" {
+		return s.convertExcelToPDF(f, sheet, data, FY.Label)
+	}
+
 	return f, nil
 }
 
@@ -1000,4 +1080,163 @@ func (s *service) getUniqueNamesFromSection(allCols []BASColumn, section string)
 		}
 	}
 	return names
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
+// Helper to convert the Excel file to PDF bytes using Chromedp
+func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) ([]byte, error) {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, err
+	}
+
+	var b bytes.Buffer
+	b.WriteString("<html><head><style>")
+	b.WriteString(`
+		@page { size: A3 landscape; margin: 0.5cm; }
+		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 10px; }
+		table { border-collapse: collapse; table-layout: fixed; width: 100%; border: 1.2pt solid #000; }
+		td { border: 1px solid #000; padding: 4px 2px; font-size: 8.5pt; height: 22px; text-align: center; }
+		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; }
+		.fy-title { font-size: 16pt; font-weight: bold; background-color: #DAEEF3 !important; padding: 15px; border: 1.2pt solid #000; }
+		.section-title { font-weight: bold; font-size: 11pt; border: none; padding-top: 12px; text-align: left; }
+		.data-left { text-align: left; border: 1px solid #000; }
+		.text-right { text-align: right; }
+		.profit-green { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; }
+		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
+	`)
+	b.WriteString("</style></head><body><table>")
+
+	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
+	b.WriteString("<colgroup><col style='width: 16%;'>")
+	for i := 0; i < 15; i++ {
+		b.WriteString("<col style='width: 5.6%;'>")
+	}
+	b.WriteString("</colgroup>")
+
+	formatCurr := func(v float64) string { return fmt.Sprintf("$%.2f", v) }
+
+	for rIdx, row := range rows {
+		rowNum := rIdx + 1
+		if len(row) == 0 {
+			continue
+		}
+
+		// --- ROW 1: FINANCIAL YEAR ---
+		if rowNum == 1 {
+			// Use the passed FYLabel explicitly
+			b.WriteString(fmt.Sprintf("<tr><td colspan='16' class='section-title'>%s</td></tr>", FYLabel))
+			continue
+		}
+
+		// --- ROW 5: QUARTER NAMES ---
+		if rowNum == 5 {
+			b.WriteString("<tr><td class='header-blue'></td>") // Column A spacer
+			// We iterate through the columns and look specifically for the Quarter names
+			quarters := []string{"Q1 (Jul-Sep)", "Q2 (Oct-Dec)", "Q3 (Jan-Mar)", "Q4 (Apr-Jun)", "Grand Total"}
+			for _, qName := range quarters {
+				b.WriteString(fmt.Sprintf("<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>", qName))
+			}
+			b.WriteString("</tr>")
+			continue
+		}
+
+		// --- ROW 6: SUB-HEADERS (Gross, GST, Net) ---
+		if rowNum == 6 {
+			b.WriteString("<td class='header-blue'>Particulars</td>")
+			for i := 0; i < 5; i++ {
+				b.WriteString("<td class='header-blue'>Gross</td><td class='header-blue'>GST</td><td class='header-blue'>Net</td>")
+			}
+			b.WriteString("</tr>")
+			continue
+		}
+
+		// --- DATA ROWS ---
+		valA := row[0]
+
+		classA := "data-left"
+		if valA == "INCOME" || valA == "EXPENSES" {
+			classA = "section-title"
+			b.WriteString(fmt.Sprintf("<td colspan='16' class='%s'>%s</td></tr>", classA, valA))
+			continue
+		}
+
+		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td>", classA, valA))
+
+		// Combine data columns (4 quarters + 1 grand total)
+		allColumns := append(data.Columns, data.GrandTotal)
+
+		for _, col := range allColumns {
+			var g, gst, n float64
+			found := false
+
+			// Match Account from API Data
+			for _, item := range append(col.Sections.Income.Items, col.Sections.Expenses.Items...) {
+				if item.Name == valA {
+					g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
+					found = true
+					break
+				}
+			}
+
+			// Handle Special Rows
+			if valA == "Net Profit/Loss" && len(col.Sections.NetProfitLoss.Items) > 0 {
+				item := col.Sections.NetProfitLoss.Items[0]
+				g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
+				found = true
+			} else if valA == "Net GST Payable" {
+				gst = col.NetGSTPayable
+				found = true
+			}
+
+			cellClass := "text-right"
+			if valA == "Net Profit/Loss" {
+				cellClass += " profit-green"
+			}
+			if valA == "Net GST Payable" {
+				cellClass += " gst-red"
+			}
+
+			if found {
+				b.WriteString(fmt.Sprintf("<td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>",
+					cellClass, formatCurr(g), cellClass, formatCurr(gst), cellClass, formatCurr(n)))
+			} else {
+				for i := 0; i < 3; i++ {
+					b.WriteString("<td class='text-right'>$0.00</td>")
+				}
+			}
+		}
+		b.WriteString("</tr>")
+	}
+
+	b.WriteString("</table></body></html>")
+
+	// Render using Chromedp
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+
+	var buf []byte
+	err = chromedp.Run(ctx,
+		chromedp.Navigate("about:blank"),
+		// Set viewport wide enough to capture all columns at once
+		chromedp.EmulateViewport(1920, 1080),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			frameTree, _ := page.GetFrameTree().Do(ctx)
+			return page.SetDocumentContent(frameTree.Frame.ID, b.String()).Do(ctx)
+		}),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			var err error
+			buf, _, err = page.PrintToPDF().
+				WithPrintBackground(true).
+				WithLandscape(true).
+				WithPaperWidth(16.5). // A3 size
+				WithPaperHeight(11.7).
+				Do(ctx)
+			return err
+		}),
+	)
+	return buf, err
 }

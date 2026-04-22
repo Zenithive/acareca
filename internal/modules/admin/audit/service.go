@@ -17,11 +17,6 @@ import (
 type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
 	LogAsync(entry *LogEntry)
-	// LogSystemIssue records a system-level error or warning to the audit log and
-	// notifies all admins. level must be auditctx.ActionSystemError or ActionSystemWarning.
-	// It deduplicates: if an identical UNREAD notification exists for entityID+level it is skipped.
-	// If auditSvc itself fails it falls back to log.Printf to avoid infinite loops.
-	// Name resolution (actorID → "John Doe", entityID → "City Clinic") happens here — callers pass raw IDs only.
 	LogSystemIssue(ctx context.Context, level, action string, issueErr error, actorID, entityID, entityType, module string)
 	Query(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
@@ -304,6 +299,12 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"subscription.deleted":          "deleted subscription plan",
 		"billing.payment_success":       "successfully processed payment for",
 		"billing.activation_successful": "successfully activated subscription for",
+
+		// Report Export
+		"bas_report.exported":         "exported BAS Report",
+		"pl_report.exported":          "exported Profit Loss Report",
+		"activity_statement.exported": "exported Activity Statement",
+		"transactions.exported":       "exported Transactions",
 	}
 	formattedAction, exists := actionVerbs[entry.Action]
 	if !exists {

@@ -1,12 +1,15 @@
 package pl
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
@@ -22,7 +25,7 @@ type Service interface {
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
 	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter) (*RsReport, error)
-	ExportPLReport(data *RsReport) (*excelize.File, error)
+	ExportPLReport(data *RsReport, exportType string) (interface{}, error)
 }
 
 type service struct {
@@ -336,7 +339,7 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func (s *service) ExportPLReport(data *RsReport) (*excelize.File, error) {
+func (s *service) ExportPLReport(data *RsReport, exportType string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Profit and Loss"
 	f.NewSheet(sheet)
@@ -503,6 +506,136 @@ func (s *service) ExportPLReport(data *RsReport) (*excelize.File, error) {
 	// --- FORMATTING ---
 	f.SetColWidth(sheet, "A", "A", 45)
 	f.SetColWidth(sheet, "B", "B", 20)
+	f.UpdateLinkedValue()
+
+	// if exportType == "pdf" {
+	// 	return s.convertExcelToPDF(f, sheet)
+	// }
+
+	if exportType == "pdf" {
+		return s.convertExcelToPDF(f, sheet, data) // Pass the API data here
+	}
 
 	return f, nil
+}
+
+func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsReport) ([]byte, error) {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, err
+	}
+
+	var b bytes.Buffer
+	b.WriteString("<html><head><style>")
+	b.WriteString(`
+		@page { size: A4; margin: 1cm; }
+		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 20px; color: #333; }
+		table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+		td { padding: 6px 8px; font-size: 10pt; vertical-align: middle; }
+		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; font-size: 14pt; text-align: center; border: 1px solid #000; }
+		.period-text { font-size: 10pt; padding: 10px 0; font-style: italic; }
+		.section-title { font-weight: bold; font-size: 12pt; padding-top: 15px; }
+		.data-left { border: 0.5pt solid #000; text-align: left; }
+		.data-grid { border: 0.5pt solid #000; text-align: right; }
+		.group-total { background-color: #DAEEF3 !important; font-weight: bold; text-align: right; border: 0.5pt solid #000; }
+		.profit-label { background-color: #c4f0ce !important; font-weight: bold; border: 1.5pt solid #000; }
+		.profit-value { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; border: 1.5pt solid #000; }
+		.spacer { height: 15px; border: none; }
+	`)
+	b.WriteString("</style></head><body><table>")
+	b.WriteString("<colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
+
+	// Helper to format currency
+	formatCurr := func(v float64) string {
+		return fmt.Sprintf("$%.2f", v)
+	}
+
+	// Calculate totals from API data for PDF display
+	calcTotal := func(accounts []RsReportAccount) float64 {
+		var t float64
+		for _, a := range accounts {
+			t += a.TotalValue
+		}
+		return t
+	}
+
+	totalInc := calcTotal(data.Income.Accounts)
+	totalCOS := calcTotal(data.CostOfSales.Accounts)
+	totalOther := calcTotal(data.OtherCosts.Accounts)
+	grossProfit := totalInc - totalCOS
+	netProfit := grossProfit - totalOther
+
+	for rIdx, row := range rows {
+		rowNum := rIdx + 1
+		if len(row) == 0 {
+			b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
+			continue
+		}
+
+		valA := row[0]
+		var valB string
+		classA, classB := "", ""
+
+		// Identify the row type and override valB with API data
+		switch {
+		case rowNum == 1:
+			classA = "header-blue"
+			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='%s'>%s</td></tr>", classA, valA))
+			continue
+
+		case strings.HasPrefix(valA, "Period:"):
+			classA = "period-text"
+
+		case valA == "INCOME" || valA == "COST OF SALES" || valA == "OTHER COSTS":
+			classA = "section-title"
+
+		case valA == "TOTAL INCOME":
+			classA, classB = "group-total", "group-total"
+			valB = formatCurr(totalInc)
+
+		case valA == "TOTAL COST OF SALES":
+			classA, classB = "group-total", "group-total"
+			valB = formatCurr(totalCOS)
+
+		case valA == "TOTAL OTHER COSTS":
+			classA, classB = "group-total", "group-total"
+			valB = formatCurr(totalOther)
+
+		case valA == "GROSS PROFIT":
+			classA, classB = "profit-label", "profit-value"
+			valB = formatCurr(grossProfit)
+
+		case valA == "NET PROFIT":
+			classA, classB = "profit-label", "profit-value"
+			valB = formatCurr(netProfit)
+
+		default:
+			classA, classB = "data-left", "data-grid"
+			if len(row) > 1 {
+				valB = row[1]
+			} // Account values are already static in Excel rows
+		}
+
+		b.WriteString(fmt.Sprintf("<tr><td class='%s'>%s</td>", classA, valA))
+		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td></tr>", classB, valB))
+	}
+
+	b.WriteString("</table></body></html>")
+
+	// Render via Chromedp
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+	var buf []byte
+	err = chromedp.Run(ctx,
+		chromedp.Navigate("about:blank"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			lTree, _ := page.GetFrameTree().Do(ctx)
+			return page.SetDocumentContent(lTree.Frame.ID, b.String()).Do(ctx)
+		}),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			buf, _, err = page.PrintToPDF().WithPrintBackground(true).Do(ctx)
+			return err
+		}),
+	)
+	return buf, err
 }
