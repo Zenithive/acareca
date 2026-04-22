@@ -3873,6 +3873,11 @@ paths:
         name: financial_year_id
         required: true
         type: string
+      - description: 'Export Type: PDF | Excel'
+        in: query
+        name: export_type
+        required: true
+        type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
       responses:
@@ -6078,6 +6083,11 @@ paths:
       - description: Filter by form UUID
         in: query
         name: form_id
+        type: string
+      - description: 'Export Type: PDF | Excel'
+        in: query
+        name: export_type
+        required: true
         type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet

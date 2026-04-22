@@ -2726,6 +2726,13 @@ const docTemplate = `{
                         "name": "financial_year_id",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Export Type: PDF | Excel",
+                        "name": "export_type",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -6137,6 +6144,13 @@ const docTemplate = `{
                         "description": "Filter by form UUID",
                         "name": "form_id",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Export Type: PDF | Excel",
+                        "name": "export_type",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {

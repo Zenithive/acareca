@@ -1,13 +1,16 @@
 package pl
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/xuri/excelize/v2"
 )
 
 // IHandler declares all HTTP entry points for the P&L module.
@@ -208,6 +211,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Param        coa_id       query    string  false  "Filter by COA UUID"
 // @Param        tax_type_id  query    string  false  "Filter by tax type"
 // @Param        form_id      query    string  false  "Filter by form UUID"
+// @Param        export_type 	   query    string  true   "Export Type: PDF | Excel"
 // @Success      200          {file}   binary  "Profit_and_Loss_Report.xlsx"
 // @Failure      400          {object} response.RsError
 // @Failure      500          {object} response.RsError
@@ -218,6 +222,9 @@ func (h *handler) ExportReport(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	// Get the export type from query params (default to excel)
+	exportType := strings.ToLower(c.DefaultQuery("export_type", "excel"))
 
 	var f PLReportFilter
 	if err := c.ShouldBindQuery(&f); err != nil {
@@ -233,21 +240,28 @@ func (h *handler) ExportReport(c *gin.Context) {
 	}
 
 	// Generate the Excel file using the service method
-	excelFile, err := h.svc.ExportPLReport(reportData)
+	excelFile, err := h.svc.ExportPLReport(reportData, exportType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	// Set headers for file download
-	fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
-	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
-	c.Header("Content-Transfer-Encoding", "binary")
-	c.Header("Cache-Control", "no-cache")
+	switch v := excelFile.(type) {
+	case *excelize.File:
+		// Standard Excel Response
+		fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
+		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		c.Header("Content-Disposition", "attachment; filename="+fileName)
+		v.Write(c.Writer)
+	case []byte:
+		// PDF Response
+		fileName := fmt.Sprintf("Profit_and_Loss_%s.pdf", time.Now().Format("2006-01-02"))
+		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Disposition", "attachment; filename="+fileName)
+		c.Writer.Write(v)
 
-	// Stream the file to the response
-	if err := excelFile.Write(c.Writer); err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
+	default:
+		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
 	}
 }

@@ -113,3 +113,20 @@ const (
 	ActionSystemError   = "system.error"
 	ActionSystemWarning = "system.warning"
 )
+
+// Report Export Logs
+const ModuleReport = "report"
+
+const (
+	EntityBASReport         = "bas_report"
+	EntityPLReport          = "pl_report"
+	EntityActivityStatement = "activity_statement"
+	EntityTransactions      = "transactions"
+)
+
+const (
+	ActionBASReportExported         = "bas_report.exported"
+	ActionPLReportExported          = "pl_report.exported"
+	ActionActivityStatementExported = "activity_statement.exported"
+	ActitionTransactionsExported    = "transactions.exported"
+)
