@@ -291,7 +291,7 @@ func (h *Handler) UpdatePermission(c *gin.Context) {
 	}
 
 	// Update permissions
-	updatedPerms, err := h.svc.UpdatePermission(c.Request.Context(), practID, &req)
+	updatedPerms, err := h.svc.UpdatePermissions(c.Request.Context(), practID, &req)
 	if err != nil {
 		if strings.Contains(err.Error(), "not linked") {
 			response.Error(c, http.StatusForbidden, err)
