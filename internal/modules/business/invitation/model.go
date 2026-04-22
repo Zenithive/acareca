@@ -173,13 +173,13 @@ var AllPermissions = []PermissionName{
 }
 
 type Permission struct {
-	Name        PermissionName `db:"name,omitempty"`
+	Name        PermissionName `json:"name" db:"permission_name"`
 	AccessLevel AccessLevel    `json:"access_level"`
 }
 
 type AccessLevel struct {
-	Read  bool `db:"read"`
-	Write bool `db:"write"`
+	Read  bool `json:"read" db:"can_read"`
+	Write bool `json:"write" db:"can_write"`
 }
 
 type PermissionsData struct {
@@ -215,6 +215,19 @@ func (p *Permissions) ToRows() []Permission {
 	return rows
 }
 
+// FromRows converts database rows into a Permissions map
+func (p *Permissions) FromRows(rows []PermissionRow) {
+	if *p == nil {
+		*p = make(Permissions)
+	}
+	for _, row := range rows {
+		(*p)[row.PermissionName] = AccessLevel{
+			Read:  row.CanRead,
+			Write: row.CanWrite,
+		}
+	}
+}
+
 func (p Permissions) Validate() error {
 	for _, name := range AllPermissions {
 		if _, ok := p[name]; !ok {
@@ -230,6 +243,13 @@ func (p Permissions) Has(name PermissionName, write bool) bool {
 		return al.Write
 	}
 	return al.Read
+}
+
+// PermissionRow represents a single permission row from the database
+type PermissionRow struct {
+	PermissionName PermissionName `db:"permission_name"`
+	CanRead        bool           `db:"can_read"`
+	CanWrite       bool           `db:"can_write"`
 }
 
 type RqGrantPermission struct {

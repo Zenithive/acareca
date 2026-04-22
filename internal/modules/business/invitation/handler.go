@@ -81,7 +81,7 @@ func (h *Handler) GetInvitation(c *gin.Context) {
 		return
 	}
 
-	res, err := h.svc.GetInvitationDetails(c.Request.Context(), inviteID)
+	res, err := h.svc.GetInvitation(c.Request.Context(), inviteID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

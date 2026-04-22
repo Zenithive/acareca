@@ -551,7 +551,7 @@ func (s *service) List(ctx context.Context, filter Filter, actorID uuid.UUID, ro
 		FormName:  filter.FormName,
 		Status:    filter.Status,
 		Method:    filter.Method,
-		Filter:    filter.Filter, // Include the embedded common.Filter fields (Search, Limit, Offset, etc.)
+		Filter:    filter.Filter,
 	}, actorID, role)
 }
 
@@ -576,7 +576,7 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		}
 
 		// Delete associated permissions for this Form
-		if err := s.invitationSvc.DeletePermissionsByEntityTx(ctx, tx, formID); err != nil {
+		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
 			return err
 		}
 

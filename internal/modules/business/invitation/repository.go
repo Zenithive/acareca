@@ -3,7 +3,6 @@ package invitation
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -39,16 +38,14 @@ type Repository interface {
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
 	// GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error
-	DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
+	DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
 	CountPermission(ctx context.Context, f common.Filter) (int, error)
 	LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error
 	DeletePermission(ctx context.Context, pID uuid.UUID, entityID uuid.UUID, accID *uuid.UUID, email string) error
-	GetPermissionsByEmailAndEntity(ctx context.Context, pID uuid.UUID, email string, eID uuid.UUID) (*Permissions, error)
 	// GetAllAccountantPermissions(ctx context.Context, pID uuid.UUID, email string, accID *uuid.UUID) ([]RqPermissionDetail, error)
 	AccountantExists(ctx context.Context, id uuid.UUID) (bool, error)
 }
@@ -313,9 +310,9 @@ func (r *repository) CountByEmail(ctx context.Context, email string, f common.Fi
 	return total, nil
 }
 
-// GetPermissions checks if an accountant has access to a specific entity (Clinic or Form)
+// GetPermission checks if an accountant has access to a practitioner
 func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID, practitionerID uuid.UUID, email *string) (*Permissions, error) {
-	var rows []Permission
+	var rows []PermissionRow
 
 	if accountantID != nil && *accountantID != uuid.Nil {
 		query := `
@@ -349,31 +346,24 @@ func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID,
 		return nil, nil
 	}
 
-	// Map rows back into Permissions struct
-	perms := &Permissions{}
-	for _, row := range rows {
-		perms.FromRow(row)
-	}
+	perms := make(Permissions)
+	perms.FromRows(rows)
 
-	return perms, nil
+	return &perms, nil
 }
 
 // GetPermissionsByPractitionerAndAccountant gets permissions for an accountant-practitioner relationship
 func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error) {
-	var permissions Permissions
-	var raw json.RawMessage
+	var rows []PermissionRow
 
 	query := `
-        SELECT permissions
+        SELECT permission_name, can_read, can_write
         FROM tbl_invite_permissions
         WHERE practitioner_id = $1 
-          AND accountant_id = $2 
-          AND entity_type = 'ACCOUNTANT'
-          AND deleted_at IS NULL 
-        LIMIT 1
+          AND accountant_id = $2
     `
 
-	err := r.db.GetContext(ctx, &raw, query, practitionerID, accountantID)
+	err := r.db.SelectContext(ctx, &rows, query, practitionerID, accountantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -381,11 +371,15 @@ func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Conte
 		return nil, err
 	}
 
-	if err := json.Unmarshal(raw, &permissions); err != nil {
-		return nil, err
+	if len(rows) == 0 {
+		return nil, nil
 	}
 
-	return &permissions, nil
+	// Convert rows to Permissions map
+	perms := make(Permissions)
+	perms.FromRows(rows)
+
+	return &perms, nil
 }
 
 func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error {
@@ -434,23 +428,18 @@ func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, p
 	return nil
 }
 
-func (r *repository) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
-	query := `
-        UPDATE tbl_invite_permissions 
-        SET deleted_at = NOW(), updated_at = NOW() 
-        WHERE entity_id = $1 AND deleted_at IS NULL
-    `
+func (r *repository) DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
+	query := `DELETE FROM tbl_invite_permissions WHERE practitioner_id = $1`
 	_, err := tx.ExecContext(ctx, query, entityID)
 	if err != nil {
-		return fmt.Errorf("delete entity permissions: %w", err)
+		return fmt.Errorf("delete permissions by entity tx: %w", err)
 	}
+
 	return nil
 }
 
 func (r *repository) IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error) {
 	var exists bool
-	// Check if there exists an invitation relationship between the specific practitioner and accountant
-	// with a status that indicates an active relationship
 	query := `SELECT EXISTS(
 		SELECT 1 FROM tbl_invitation 
 		WHERE practitioner_id = $1 AND entity_id = $2 
@@ -464,8 +453,6 @@ func (r *repository) IsAccountantLinkedToPractitioner(ctx context.Context, pract
 	return exists, nil
 }
 
-// GetFirstPractitionerLinkedToAccountant returns the first/any practitioner linked to an accountant.
-// NOTE: In a many-to-many environment, this should be improved to accept a practitioner preference or context.
 // This is maintained for backward compatibility with handlers that need to resolve a practitioner for an accountant.
 func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
 	var practitionerID uuid.UUID
@@ -480,46 +467,11 @@ func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context,
 	return practitionerID, nil
 }
 
-func (r *repository) GrantEntityPermission(ctx context.Context, pID uuid.UUID, accID *uuid.UUID, email *string, eID uuid.UUID, eType string, perms Permissions) error {
-	var query string
-	if accID != nil {
-		// This branch runs ONLY if we have a real, non-zero Accountant ID
-		query = `
-			INSERT INTO tbl_invite_permissions (
-				id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-			ON CONFLICT (practitioner_id, accountant_id, entity_id, entity_type) 
-			WHERE accountant_id IS NOT NULL AND deleted_at IS NULL
-			DO UPDATE SET 
-				permissions = EXCLUDED.permissions,
-				updated_at = NOW(),
-				deleted_at = NULL;`
-	} else {
-		// This branch runs for "Invited" status (accID is NULL)
-		query = `
-			INSERT INTO tbl_invite_permissions (
-				id, practitioner_id, accountant_id, email, entity_id, entity_type, permissions, created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-			ON CONFLICT (practitioner_id, email, entity_id, entity_type) 
-			WHERE accountant_id IS NULL AND deleted_at IS NULL
-			DO UPDATE SET 
-				permissions = EXCLUDED.permissions,
-				updated_at = NOW(),
-				deleted_at = NULL;`
-	}
-
-	// Double check: if accID is nil here, $3 will be NULL in Postgres.
-	_, err := r.db.ExecContext(ctx, query, uuid.New(), pID, accID, email, eID, eType, perms)
-	return err
-}
-
 func (r *repository) DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error {
 	query := `
-        UPDATE tbl_invite_permissions 
-        SET deleted_at = NOW(), updated_at = NOW() 
+        DELETE FROM tbl_invite_permissions 
         WHERE practitioner_id = $1 
-          AND accountant_id = $2 
-          AND deleted_at IS NULL
+          AND accountant_id = $2
     `
 	_, err := tx.ExecContext(ctx, query, practitionerID, accountantID)
 	if err != nil {
@@ -580,105 +532,9 @@ func (r *repository) LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx
 	return err
 }
 
-// func (r *repository) GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error) {
-// 	var rows []AccountantPermissionRow
-
-// 	query := `
-//     SELECT entity_id, entity_type, permissions
-//     FROM tbl_invite_permissions
-//     WHERE practitioner_id = $1
-//     AND (email = $2 OR accountant_id = (SELECT id FROM tbl_accountant WHERE email = $2))
-//     AND deleted_at IS NULL`
-
-// 	err := r.db.SelectContext(ctx, &rows, query, pID, email)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var details []RqPermissionDetail
-// 	for _, row := range rows {
-// 		details = append(details, RqPermissionDetail{
-// 			EntityID:    row.EntityID,
-// 			EntityType:  row.EntityType,
-// 			Permissions: row.Permissions,
-// 		})
-// 	}
-// 	return details, nil
-// }
-
 func (r *repository) DeletePermission(ctx context.Context, pID uuid.UUID, entityID uuid.UUID, accID *uuid.UUID, email string) error {
-	query := `
-		UPDATE tbl_invite_permissions 
-		SET deleted_at = NOW() 
-		WHERE practitioner_id = $1 
-		AND entity_id = $2 
-		AND (
-			(accountant_id IS NOT NULL AND accountant_id = $3) 
-			OR 
-			(email IS NOT NULL AND email = $4)
-		)
-		AND deleted_at IS NULL`
-
-	_, err := r.db.ExecContext(ctx, query, pID, entityID, accID, email)
-	return err
+	return fmt.Errorf("DeletePermission is deprecated: use DeleteAllPermissionsForAccountantTx instead")
 }
-
-func (r *repository) GetPermissionsByEmailAndEntity(ctx context.Context, pID uuid.UUID, email string, eID uuid.UUID) (*Permissions, error) {
-	var p Permissions
-	query := `
-        SELECT permissions 
-        FROM tbl_invite_permissions 
-        WHERE practitioner_id = $1 AND email = $2 AND entity_id = $3 
-        AND deleted_at IS NULL LIMIT 1`
-
-	err := r.db.GetContext(ctx, &p, query, pID, email, eID)
-	if err != nil {
-		return nil, err
-	}
-	return &p, nil
-}
-
-// func (r *repository) GetAllAccountantPermissions(ctx context.Context, pID uuid.UUID, email string, accID *uuid.UUID) ([]RqPermissionDetail, error) {
-// 	var rows []AccountantPermissionRow
-
-// 	query := `
-// 		SELECT
-// 			entity_id,
-// 			entity_type,
-// 			permissions
-// 		FROM tbl_invite_permissions
-// 		WHERE practitioner_id = $1
-// 		AND (
-// 			(email <> '' AND email = $2)
-// 			OR
-// 			(accountant_id IS NOT NULL AND accountant_id = $3)
-// 		)
-// 		AND deleted_at IS NULL
-// 		ORDER BY entity_type, created_at DESC`
-
-// 	// Use a zero UUID for the parameter if accID is nil to avoid driver errors
-// 	targetID := uuid.Nil
-// 	if accID != nil {
-// 		targetID = *accID
-// 	}
-
-// 	err := r.db.SelectContext(ctx, &rows, query, pID, email, targetID)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Initialize to empty slice so the JSON response is [] instead of null
-// 	details := make([]RqPermissionDetail, 0)
-// 	for _, row := range rows {
-// 		details = append(details, RqPermissionDetail{
-// 			EntityID:    row.EntityID,
-// 			EntityType:  row.EntityType,
-// 			Permissions: row.Permissions,
-// 		})
-// 	}
-
-// 	return details, nil
-// }
 
 func (r *repository) AccountantExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	var exists bool
