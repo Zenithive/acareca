@@ -3771,6 +3771,13 @@ paths:
     get:
       description: Generates a formatted Excel BAS report.
       parameters:
+      - description: 'Export format: ''pdf'' or ''excel'' (default: excel)'
+        enum:
+        - pdf
+        - excel
+        in: query
+        name: export_type
+        type: string
       - description: Financial Year UUID
         in: query
         name: financial_year_id
@@ -5148,6 +5155,13 @@ paths:
       description: Generates an Excel file (.xlsx) containing grouped transaction
         records based on filters.
       parameters:
+      - description: 'Export format: ''pdf'' or ''excel'' (default: excel)'
+        enum:
+        - pdf
+        - excel
+        in: query
+        name: export_type
+        type: string
       - description: Filter by clinic ID
         in: query
         name: clinic_id

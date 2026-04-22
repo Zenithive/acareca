@@ -257,6 +257,7 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 // @Tags BAS
 // @Security BearerToken
 // @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param export_type query string false "Export format: 'pdf' or 'excel' (default: excel)" Enums(pdf, excel)
 // @Param financial_year_id query string true "Financial Year UUID"
 // @Param quarter_id query []string true "Quarter UUIDs (can pass multiple)" collectionFormat(multi)
 // @Param month query string false "Full month name"
@@ -273,6 +274,9 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		return
 	}
 
+	// 1. Get Export Type from query
+	exportType := c.DefaultQuery("export_type", "excel")
+
 	var f BASExportFilter
 	if err := util.BindAndValidate(c, &f); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -280,7 +284,7 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 	}
 	f.PractitionerID = actorID.String()
 
-	// 1. Fetch ALL 4 quarters for the selected Financial Year
+	// 2. Fetch ALL 4 quarters for the selected Financial Year
 	fyID, _ := uuid.Parse(*f.FinancialYearID)
 	allQuarters, err := h.svc.GetAllQuartersInYear(ctx, fyID)
 	if err != nil || len(allQuarters) == 0 {
@@ -288,13 +292,11 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		return
 	}
 
-	// 2. REORDER: Move the requested QuarterID to the front of the slice
-	// This ensures Excel defaults to this quarter on open.
+	// 3. REORDER: Move the requested QuarterID to the front
 	if len(f.QuarterIDs) > 0 {
-		targetID := f.QuarterIDs[0] // Treat the first ID in the URL as the priority
+		targetID := f.QuarterIDs[0]
 		for i, q := range allQuarters {
 			if q.ID == targetID {
-				// Swap the target to the first position
 				allQuarters[0], allQuarters[i] = allQuarters[i], allQuarters[0]
 				break
 			}
@@ -304,7 +306,7 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 	var allQuartersData []QuarterData
 	var basePrevDates PeriodInfo
 
-	// 3. Loop through all quarters (now sorted with target at index 0)
+	// 4. Populate Data Loop
 	for i, qInfo := range allQuarters {
 		tempID := qInfo.ID
 		origFilter := BASReportFilter{
@@ -328,23 +330,32 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 			Report: report,
 		})
 
-		// The first item in our reordered slice is the user's default
 		if i == 0 {
 			basePrevDates = prevD
 		}
 	}
 
-	// 4. Export
-	buffer, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, *actorID, role, userID)
+	// 5. Call Service with exportType (Expect 3 return values)
+	buffer, contentType, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, exportType, *actorID, role, userID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
+		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return
 	}
 
-	fileName := fmt.Sprintf("BAS_Statement_%s.xlsx", time.Now().Format("2006-01-02"))
-	c.Header("Content-Disposition", "attachment; filename="+fileName)
-	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
+	// 6. Set Dynamic Filename and Headers
+	ext := ".xlsx"
+	if strings.ToLower(exportType) == "pdf" {
+		ext = ".pdf"
+	}
+	fileName := fmt.Sprintf("BAS_Statement_%s%s", time.Now().Format("2006-01-02"), ext)
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Cache-Control", "no-cache")
+
+	// 7. Write Data to Response
+	c.Data(http.StatusOK, contentType, buffer.Bytes())
 }
 
 // ExportBASPreparation godoc

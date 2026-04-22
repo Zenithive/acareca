@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"maps"
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
@@ -42,7 +45,10 @@ type IService interface {
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 
-	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
+	//ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
+	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string) (*bytes.Buffer, string, error)
+	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
+	generatePDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error)
 }
 
 type Service struct {
@@ -892,110 +898,51 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	return &rs, nil
 }
 
-/*
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {
-
-		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
-		if err != nil {
-			return nil, err
-		}
-
-		xl := excelize.NewFile()
-		defer xl.Close()
-		sheet := "Transactions"
-		xl.SetSheetName("Sheet1", sheet)
-
-		// 1. Define Styles
-		headerStyle, _ := xl.NewStyle(&excelize.Style{
-			Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
-			Fill: excelize.Fill{Type: "pattern", Color: []string{"#4F81BD"}, Pattern: 1},
-		})
-		groupStyle, _ := xl.NewStyle(&excelize.Style{
-			Font: &excelize.Font{Bold: true},
-			Fill: excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
-		})
-		currencyStyle, _ := xl.NewStyle(&excelize.Style{
-			CustomNumFmt: ptrString("$#,##0.00"),
-		})
-
-		// Helpers to handle Pointers and Nils (Fixes 0xc000 and <nil> issues)
-		getFloat := func(f *float64) float64 {
-			if f == nil {
-				return 0.0
-			}
-			return *f
-		}
-		getString := func(s *string) string {
-			if s == nil {
-				return ""
-			}
-			return *s
-		}
-
-		// 2. Set Headers
-		headers := []string{"Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Date"}
-		for i, h := range headers {
-			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-			xl.SetCellValue(sheet, cell, h)
-		}
-		xl.SetCellStyle(sheet, "A1", "H1", headerStyle)
-
-		currRow := 2
-		for _, g := range groups {
-			// 3. Write Group Header Row (Using 'g' variable)
-			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), g.CoaName)
-			xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), g.TotalNetAmount)
-			xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), g.TotalGrossAmount)
-
-			// Apply Grey Background and Currency Style to the Group Row
-			xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("H%d", currRow), groupStyle)
-			xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), currencyStyle)
-			currRow++
-
-			// 4. Fetch Details for this specific COA
-			coaUUID, _ := uuid.Parse(g.CoaID)
-			details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
-			if err != nil {
-				continue
-			}
-
-			// 5. Write Individual Transactions (Using 'd' variable)
-			for _, d := range details {
-				xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), "  "+d.FormFieldName) // Indented
-				xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), getString(d.TaxTypeName))
-				xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), d.FormName)
-				xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), d.ClinicName)
-
-				// Numeric values with currency styling
-				xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), getFloat(d.NetAmount))
-				xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), getFloat(d.GstAmount))
-				xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), getFloat(d.GrossAmount))
-				xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), currencyStyle)
-
-				// ... (other fields)
-
-				// Safely convert *string to string
-				dateVal := getString(d.Date)
-
-				// Clean up the timestamp "T00:00:00Z"
-				if strings.Contains(dateVal, "T") {
-					dateVal = strings.Split(dateVal, "T")[0]
-				}
-				xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), dateVal)
-				currRow++
-			}
-			currRow++ // Empty spacer row after each group
-		}
-
-		// 6. Adjust column widths
-		xl.SetColWidth(sheet, "A", "A", 35)
-		xl.SetColWidth(sheet, "B", "D", 20)
-		xl.SetColWidth(sheet, "E", "H", 15)
-
-		return xl.WriteToBuffer()
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string) (*bytes.Buffer, string, error) {
+	// 1. Fetch Shared Data
+	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
+	if err != nil {
+		return nil, "", err
 	}
-*/
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {
+
+	for _, g := range groups {
+		coaUUID, _ := uuid.Parse(g.CoaID)
+		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+		if err != nil {
+			continue // Or handle error
+		}
+		g.Details = details // <--- This matches the field in the struct
+	}
+
+	// 2. Handle PDF Export
+	if strings.ToLower(exportType) == "pdf" {
+		// Wrap the groups in an anonymous struct so the template can find "Groups"
+		data := struct {
+			Groups interface{}
+		}{
+			Groups: groups,
+		}
+
+		buf, err := s.generatePDFWithChrome(ctx, data)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to generate pdf: %w", err)
+		}
+		return buf, "application/pdf", nil
+	}
+
+	// 3. Handle Excel Export
+	// We cannot return s.generateExcelReport directly because it only returns 2 values
+	// whereas this function requires 3.
+	buf, err := s.generateExcelReport(ctx, f, actorID, role)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate excel: %w", err)
+	}
+
+	// Explicitly return the 3 values: buffer, MIME type, and nil error
+	return buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
+}
+
+func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {
 	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 	if err != nil {
 		return nil, err
@@ -1009,11 +956,11 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	// 1. Define Styles
 	headerStyle, _ := xl.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4F81BD"}, Pattern: 1},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
 	})
 	groupHeaderStyle, _ := xl.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
 	})
 
 	normalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
@@ -1148,4 +1095,172 @@ func (s *Service) validateLockDate(ctx context.Context, clinicID uuid.UUID, entr
 	}
 
 	return nil
+}
+
+const reportTemplate = `
+<html>
+<head>
+<style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #bfbfbf; padding: 6px; overflow: hidden; }
+    
+    /* Header Style - Matching Excel headerStyle */
+    th { background-color: #4EA7B3; color: white; text-align: center; font-weight: bold; }
+    
+    /* Group Header - Matching groupHeaderStyle */
+    .group-row { background-color: #DAEEF3"; font-weight: bold; }
+    
+    /* Total Row - Matching totalRowStyle */
+    .total-row { background-color: #E1E1E1; font-weight: bold; }
+    
+    .amount { text-align: right; }
+    .indent { padding-left: 20px; }
+    
+    /* Column Widths - Matching your xl.SetColWidth */
+    .col-1 { width: 35%; }
+    .col-2, .col-3, .col-4 { width: 10%; }
+    .col-5, .col-6, .col-7, .col-8 { width: 10%; }
+</style>
+</head>
+<body>
+    <table>
+        <thead>
+            <tr>
+                <th class="col-1">Account / Field</th>
+                <th class="col-2">Tax Type</th>
+                <th class="col-3">Form</th>
+                <th class="col-4">Clinic</th>
+                <th class="col-5">Net Amount</th>
+                <th class="col-6">GST Amount</th>
+                <th class="col-7">Gross Amount</th>
+                <th class="col-8">Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Groups}}
+                <tr class="group-row">
+                    <td colspan="8">{{.CoaName}}</td>
+                </tr>
+                {{range .Details}}
+                <tr>
+                    <td class="indent">{{.FormFieldName}}</td>
+                    <td>{{.TaxTypeName}}</td>
+                    <td>{{.FormName}}</td>
+                    <td>{{.ClinicName}}</td>
+                    <td class="amount">${{getFloat .NetAmount | printf "%.2f"}}</td>
+                    <td class="amount">${{getFloat .GstAmount | printf "%.2f"}}</td>
+                    <td class="amount">${{getFloat .GrossAmount | printf "%.2f"}}</td>
+                    <td>{{.CreatedAt}}</td>
+                </tr>
+                {{end}}
+                <tr class="total-row">
+                    <td colspan="4">Total</td>
+                    <td class="amount">${{getFloat .TotalNetAmount | printf "%.2f"}}</td>
+                    <td></td>
+                    <td class="amount">${{getFloat .TotalGrossAmount | printf "%.2f"}}</td>
+                    <td></td>
+                </tr>
+                <tr style="border: none; height: 20px;"><td colspan="8" style="border: none;"></td></tr>
+            {{end}}
+        </tbody>
+    </table>
+</body>
+</html>
+`
+
+type CoaGroup struct {
+	CoaID            string       `json:"coa_id"`
+	CoaName          string       `json:"coa_name"`
+	TotalNetAmount   float64      `json:"total_net_amount"`
+	TotalGrossAmount float64      `json:"total_gross_amount"`
+	Details          []*CoaDetail `json:"details"` // We will nest the details here
+}
+
+// CoaDetail represents the individual transaction lines
+type CoaDetail struct {
+	FormFieldName string    `json:"form_field_name"`
+	TaxTypeName   *string   `json:"tax_type_name"` // Pointer to handle nulls
+	FormName      string    `json:"form_name"`
+	ClinicName    string    `json:"clinic_name"`
+	NetAmount     *float64  `json:"net_amount"`
+	GstAmount     *float64  `json:"gst_amount"`
+	GrossAmount   *float64  `json:"gross_amount"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// Helper to handle nil floats for the template
+func getFloat(f *float64) float64 {
+	if f == nil {
+		return 0.0
+	}
+	return *f
+}
+
+func (s *Service) generatePDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error) {
+	tmpl, err := template.New("pdf").Funcs(template.FuncMap{
+		"getFloat": func(f *float64) float64 {
+			if f == nil {
+				return 0.0
+			}
+			return *f
+		},
+	}).Parse(reportTemplate) // Ensure this name matches your const string
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	var htmlBuf bytes.Buffer
+	// Pass the 'data' struct directly here
+	if err := tmpl.Execute(&htmlBuf, data); err != nil {
+		return nil, fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	// 2. Setup Chromedp Options (Headless and No-Sandbox are critical for Docker/Linux)
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.NoSandbox,
+		chromedp.Headless,
+		chromedp.DisableGPU,
+	)
+
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	taskCtx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	// 3. Run Chromedp Tasks
+	var pdfBuffer []byte
+	err = chromedp.Run(taskCtx,
+		chromedp.Navigate("about:blank"),
+		// Set the HTML content directly in the browser
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			frameTree, err := page.GetFrameTree().Do(ctx)
+			if err != nil {
+				return err
+			}
+			return page.SetDocumentContent(frameTree.Frame.ID, htmlBuf.String()).Do(ctx)
+		}),
+		// Print to PDF with PrintBackground enabled (for colors)
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			buf, _, err := page.PrintToPDF().
+				WithPrintBackground(true). // Crucial for header colors
+				WithLandscape(true).       // Landscape matches Excel feel
+				WithPaperWidth(11.7).      // A4 Width
+				WithPaperHeight(8.3).      // A4 Height
+				Do(ctx)
+			if err != nil {
+				return err
+			}
+			pdfBuffer = buf
+			return nil
+		}),
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("chromedp failed: %w", err)
+	}
+
+	return bytes.NewBuffer(pdfBuffer), nil
 }

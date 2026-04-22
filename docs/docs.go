@@ -2579,6 +2579,16 @@ const docTemplate = `{
                 "summary": "Export Business Activity Statement to Excel",
                 "parameters": [
                     {
+                        "enum": [
+                            "pdf",
+                            "excel"
+                        ],
+                        "type": "string",
+                        "description": "Export format: 'pdf' or 'excel' (default: excel)",
+                        "name": "export_type",
+                        "in": "query"
+                    },
+                    {
                         "type": "string",
                         "description": "Financial Year UUID",
                         "name": "financial_year_id",
@@ -4454,6 +4464,16 @@ const docTemplate = `{
                 ],
                 "summary": "Export transaction report to Excel",
                 "parameters": [
+                    {
+                        "enum": [
+                            "pdf",
+                            "excel"
+                        ],
+                        "type": "string",
+                        "description": "Export format: 'pdf' or 'excel' (default: excel)",
+                        "name": "export_type",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Filter by clinic ID",
