@@ -16,7 +16,7 @@ type Service interface {
 }
 
 type service struct {
-	repo    Repository
+	repo     Repository
 	notifier *sharednotification.Hub
 }
 

@@ -1,10 +1,7 @@
 package invitation
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"errors"
-	"strings"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -184,163 +181,90 @@ func (filter *Filter) MapToFilterAccountant() common.Filter {
 	return f
 }
 
-// Permissions represents feature-based permissions with read/write access
-type Permissions struct {
-	SalesPurchases *AccessLevel `json:"sales_purchases,omitempty"`
-	LockDates      *AccessLevel `json:"lock_dates,omitempty"`
-	Users          *AccessLevel `json:"users,omitempty"`
-	Reports        *AccessLevel `json:"reports,omitempty"`
+type PermissionName string
+
+const (
+	PermSalesPurchases      PermissionName = "sales_purchases"
+	PermLockDates           PermissionName = "lock_dates"
+	PermManageUsers         PermissionName = "manage_users"
+	PermReportsViewDownload PermissionName = "reports_view_download"
+)
+
+var AllPermissions = []PermissionName{
+	PermSalesPurchases,
+	PermLockDates,
+	PermManageUsers,
+	PermReportsViewDownload,
 }
 
-// AccessLevel represents read/write access for a feature
+type Permission struct {
+	Name        PermissionName `json:"name,omitempty"`
+	AccessLevel AccessLevel    `json:"access_level"`
+}
+
 type AccessLevel struct {
 	Read  bool `json:"read"`
 	Write bool `json:"write"`
 }
 
-// IsEmpty checks if permissions are empty
-func (p *Permissions) IsEmpty() bool {
-	if p == nil {
-		return true
-	}
-	return p.SalesPurchases == nil &&
-		p.LockDates == nil &&
-		p.Users == nil &&
-		p.Reports == nil
+type PermissionsData struct {
+	SalesPurchases      Permission
+	LockDates           Permission
+	ManageUsers         Permission
+	ReportsViewDownload Permission
 }
 
-// HasReadAccess checks if read access is granted for a feature
-func (p *Permissions) HasReadAccess(feature string) bool {
-	if p == nil {
-		return false
-	}
+// func (p PermissionsData) toRows() []Permission {
+// 	return []Permission{
+// 		{Name: "sales_purchases", AccessLevel: AccessLevel{Read: p.SalesPurchases.AccessLevel.Read, Write: p.SalesPurchases.AccessLevel.Write}},
+// 		{Name: "lock_dates", AccessLevel: AccessLevel{Read: p.LockDates.AccessLevel.Read, Write: p.LockDates.AccessLevel.Write}},
+// 		{Name: "manage_users", AccessLevel: AccessLevel{Read: p.ManageUsers.AccessLevel.Read, Write: p.ManageUsers.AccessLevel.Write}},
+// 		{Name: "reports_view_download", AccessLevel: AccessLevel{Read: p.ReportsViewDownload.AccessLevel.Read, Write: p.ReportsViewDownload.AccessLevel.Write}},
+// 	}
+// }
 
-	access := p.getAccessByName(feature)
-	return access != nil && access.Read
+type Permissions map[PermissionName]AccessLevel
+
+func (p Permissions) Get(name PermissionName) AccessLevel {
+	return p[name]
 }
 
-// HasWriteAccess checks if write access is granted for a feature
-func (p *Permissions) HasWriteAccess(feature string) bool {
-	if p == nil {
-		return false
+func (p *Permissions) ToRows() []Permission {
+	rows := make([]Permission, 0, len(AllPermissions))
+	for _, name := range AllPermissions {
+		rows = append(rows, Permission{
+			Name:        name,
+			AccessLevel: p.Get(name),
+		})
 	}
-
-	access := p.getAccessByName(feature)
-	return access != nil && access.Write
+	return rows
 }
 
-// HasAccess checks if any access (read or write) is granted for a feature
-// Kept for backward compatibility
-func (p *Permissions) HasAccess(feature string) bool {
-	return p.HasReadAccess(feature) || p.HasWriteAccess(feature)
+func (p Permissions) Validate() error {
+	for _, name := range AllPermissions {
+		if _, ok := p[name]; !ok {
+			return fmt.Errorf("missing permission: %q", name)
+		}
+	}
+	return nil
 }
 
-// getAccessByName returns access level by feature name
-func (p *Permissions) getAccessByName(feature string) *AccessLevel {
-	if p == nil {
-		return nil
+func (p Permissions) Has(name PermissionName, write bool) bool {
+	al := p.Get(name)
+	if write {
+		return al.Write
 	}
-
-	switch strings.ToLower(feature) {
-	case "sales_purchases", "salespurchases":
-		return p.SalesPurchases
-	case "lock_dates", "lockdates":
-		return p.LockDates
-	case "users", "user":
-		return p.Users
-	case "reports", "report":
-		return p.Reports
-	default:
-		return nil
-	}
+	return al.Read
 }
 
-// RqGrantPermission is the input for granting/updating permissions
 type RqGrantPermission struct {
 	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
 	Email        string       `json:"email" validate:"omitempty,email"`
 	Permissions  *Permissions `json:"permissions" validate:"required"`
 }
 
-// RqUpdatePermissions is the input for updating permissions
 type RqUpdatePermissions struct {
 	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
 	Email        string       `json:"email" validate:"required,email"`
 	Permissions  *Permissions `json:"permissions" validate:"required"`
-}
-
-// RqPermissionDetail is deprecated - kept for backward compatibility
-// Use Permissions directly instead
-type RqPermissionDetail struct {
-	EntityID    uuid.UUID   `json:"entity_id" validate:"required"`
-	EntityType  string      `json:"entity_type" validate:"required,oneof=CLINIC FORM ENTRY"`
-	Permissions Permissions `json:"permissions" validate:"required"`
-}
-
-// Make it satisfy the sql.Scanner interface (Database -> Go)
-func (p *Permissions) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-
-	var bytes []byte
-	switch v := value.(type) {
-	case []byte:
-		bytes = v
-	case string:
-		bytes = []byte(v)
-	default:
-		return errors.New("type assertion to []byte/string failed")
-	}
-
-	// First attempt: Standard Unmarshal
-	err := json.Unmarshal(bytes, p)
-	if err != nil {
-		// Second attempt: Check if it's a double-encoded string (common in messy migrations)
-		var s string
-		if err2 := json.Unmarshal(bytes, &s); err2 == nil {
-			return json.Unmarshal([]byte(s), p)
-		}
-		return err // Return original error if fallback also fails
-	}
-
-	return nil
-}
-
-// Make it satisfy the driver.Valuer interface (Go -> Database)
-func (p Permissions) Value() (driver.Value, error) {
-	return json.Marshal(p)
-}
-
-// DefaultAccountantPermissions returns default permissions for accountants
-func DefaultAccountantPermissions() *Permissions {
-	return &Permissions{
-		SalesPurchases: &AccessLevel{Read: true, Write: false},
-		LockDates:      &AccessLevel{Read: true, Write: false},
-		Users:          &AccessLevel{Read: true, Write: false},
-		Reports:        &AccessLevel{Read: true, Write: false},
-	}
-}
-
-// ValidatePermissions ensures at least one permission is granted
-func ValidatePermissions(p *Permissions) error {
-	if p == nil || p.IsEmpty() {
-		return errors.New("at least one permission must be granted")
-	}
-
-	// Ensure write access implies read access
-	if p.SalesPurchases != nil && p.SalesPurchases.Write && !p.SalesPurchases.Read {
-		p.SalesPurchases.Read = true
-	}
-	if p.LockDates != nil && p.LockDates.Write && !p.LockDates.Read {
-		p.LockDates.Read = true
-	}
-	if p.Users != nil && p.Users.Write && !p.Users.Read {
-		p.Users.Read = true
-	}
-	if p.Reports != nil && p.Reports.Write && !p.Reports.Read {
-		p.Reports.Read = true
-	}
-
-	return nil
 }

@@ -47,7 +47,7 @@ func RegisterBuilderRoutes(
 			if err != nil || perms == nil {
 				return nil, err
 			}
-			return perms, nil // *Permissions implements FeaturePermissions
+			return nil, nil // *Permissions implements FeaturePermissions
 		},
 		invitationSvc.IsAccountantLinkedToPractitioner,
 	)

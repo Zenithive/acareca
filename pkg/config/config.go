@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -55,5 +56,15 @@ func NewConfig() *Config {
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
 		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
+	}
+}
+
+func (c *Config) GetBaseURL() (string, error) {
+	if c.Env == "" {
+		return "", fmt.Errorf("environment not set")
+	} else if c.Env == "production" {
+		return c.DevUrl, nil
+	} else {
+		return c.LocalUrl, nil
 	}
 }

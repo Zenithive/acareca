@@ -275,7 +275,7 @@ func (h *Handler) ListAccountantPermissions(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /invite/permissions [post]
 func (h *Handler) HandlePermissions(c *gin.Context) {
-	practID, ok := util.GetPractitionerID(c)
+	_, ok := util.GetPractitionerID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, nil)
 		return
@@ -287,36 +287,36 @@ func (h *Handler) HandlePermissions(c *gin.Context) {
 		return
 	}
 
-	// Validate permissions
-	if err := ValidatePermissions(req.Permissions); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
+	// // Validate permissions
+	// if err := ValidatePermissions(req.Permissions); err != nil {
+	// 	response.Error(c, http.StatusBadRequest, err)
+	// 	return
+	// }
 
-	var targetAID *uuid.UUID
-	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
-		targetAID = req.AccountantID
-	}
+	// var targetAID *uuid.UUID
+	// if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
+	// 	targetAID = req.AccountantID
+	// }
 
 	// Grant permissions for the accountant
-	resPerms, err := h.svc.GrantEntityPermission(
-		c.Request.Context(),
-		practID,
-		targetAID,
-		uuid.Nil, // No specific entity, permissions are for the accountant relationship
-		req.Email,
-		"ACCOUNTANT",
-		*req.Permissions,
-	)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
+	// resPerms, err := h.svc.GrantEntityPermission(
+	// 	c.Request.Context(),
+	// 	practID,
+	// 	targetAID,
+	// 	uuid.Nil, // No specific entity, permissions are for the accountant relationship
+	// 	req.Email,
+	// 	"ACCOUNTANT",
+	// 	*req.Permissions,
+	// )
+	// if err != nil {
+	// 	response.Error(c, http.StatusInternalServerError, err)
+	// 	return
+	// }
 
 	data := gin.H{
 		"accountant_id": req.AccountantID,
 		"email":         req.Email,
-		"permissions":   resPerms,
+		// "permissions":   resPerms,
 	}
 
 	response.JSON(c, http.StatusOK, data, "Permissions updated successfully")
