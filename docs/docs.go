@@ -2571,7 +2571,8 @@ const docTemplate = `{
                 ],
                 "description": "Generates a formatted Excel BAS report.",
                 "produces": [
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
                 ],
                 "tags": [
                     "BAS"
@@ -2699,7 +2700,8 @@ const docTemplate = `{
                 ],
                 "description": "Generates an Excel file matching the shared template using GetBASPreparation data.",
                 "produces": [
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
                 ],
                 "tags": [
                     "engine/bas"
@@ -4456,7 +4458,8 @@ const docTemplate = `{
                 ],
                 "description": "Generates an Excel file (.xlsx) containing grouped transaction records based on filters.",
                 "produces": [
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
                 ],
                 "tags": [
                     "reporting"
@@ -5558,14 +5561,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/invite/permissions": {
-            "post": {
+        "/invite/permission": {
+            "put": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "description": "Practitioner grants specific permissions (read/write access for sales_purchases, lock_dates, users, reports) to an accountant.",
+                "description": "Practitioner grants or updates specific permissions (read/write access for sales_purchases, lock_dates, manage_users, reports_view_download) to an accountant.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5583,7 +5586,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/invitation.RqGrantPermission"
+                            "$ref": "#/definitions/invitation.RqUpdatePermissions"
                         }
                     }
                 ],
@@ -5596,6 +5599,18 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9748,36 +9763,8 @@ const docTemplate = `{
         },
         "invitation.Permissions": {
             "type": "object",
-            "properties": {
-                "lock_dates": {
-                    "$ref": "#/definitions/invitation.AccessLevel"
-                },
-                "reports": {
-                    "$ref": "#/definitions/invitation.AccessLevel"
-                },
-                "sales_purchases": {
-                    "$ref": "#/definitions/invitation.AccessLevel"
-                },
-                "users": {
-                    "$ref": "#/definitions/invitation.AccessLevel"
-                }
-            }
-        },
-        "invitation.RqGrantPermission": {
-            "type": "object",
-            "required": [
-                "permissions"
-            ],
-            "properties": {
-                "accountant_id": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "permissions": {
-                    "$ref": "#/definitions/invitation.Permissions"
-                }
+            "additionalProperties": {
+                "$ref": "#/definitions/invitation.AccessLevel"
             }
         },
         "invitation.RqProcessAction": {
@@ -9806,6 +9793,24 @@ const docTemplate = `{
                 "permissions"
             ],
             "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/invitation.Permissions"
+                }
+            }
+        },
+        "invitation.RqUpdatePermissions": {
+            "type": "object",
+            "required": [
+                "email",
+                "permissions"
+            ],
+            "properties": {
+                "accountant_id": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },

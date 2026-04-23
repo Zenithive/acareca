@@ -1,6 +1,7 @@
 package entry
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
@@ -416,7 +417,7 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 // @Summary Export transaction report to Excel
 // @Description Generates an Excel file (.xlsx) containing grouped transaction records based on filters.
 // @Tags reporting
-// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param export_type query string false "Export format: 'pdf' or 'excel' (default: excel)" Enums(pdf, excel)
 // @Param clinic_id query string false "Filter by clinic ID"
 // @Param form_id query string false "Filter by form ID"
@@ -448,19 +449,26 @@ func (h *handler) HandleExport(c *gin.Context) {
 	filter.Role = role
 
 	// 4. Call Service (Service now returns buffer, contentType, and error)
-	buffer, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType)
+	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return
 	}
 
-	// 5. Determine File Extension
-	ext := ".xlsx"
-	if strings.ToLower(exportType) == "pdf" {
-		ext = ".pdf"
+	if contentType == "text/html" {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Disposition", "inline")
+		c.String(http.StatusOK, result.(string))
+		return
 	}
 
-	fileName := fmt.Sprintf("Transaction_Report_%s%s", time.Now().Format("2006-01-02_1504"), ext)
+	buf, ok := result.(*bytes.Buffer)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export data format"))
+		return
+	}
+
+	fileName := fmt.Sprintf("Transaction_Report_%s.xlsx", time.Now().Format("2006-01-02_1504"))
 
 	// 6. Set Headers
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
@@ -469,5 +477,5 @@ func (h *handler) HandleExport(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 
 	// 7. Write Data
-	c.Data(http.StatusOK, contentType, buffer.Bytes())
+	c.Data(http.StatusOK, contentType, buf.Bytes())
 }

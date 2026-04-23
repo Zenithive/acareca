@@ -1586,26 +1586,8 @@ definitions:
         type: boolean
     type: object
   invitation.Permissions:
-    properties:
-      lock_dates:
-        $ref: '#/definitions/invitation.AccessLevel'
-      reports:
-        $ref: '#/definitions/invitation.AccessLevel'
-      sales_purchases:
-        $ref: '#/definitions/invitation.AccessLevel'
-      users:
-        $ref: '#/definitions/invitation.AccessLevel'
-    type: object
-  invitation.RqGrantPermission:
-    properties:
-      accountant_id:
-        type: string
-      email:
-        type: string
-      permissions:
-        $ref: '#/definitions/invitation.Permissions'
-    required:
-    - permissions
+    additionalProperties:
+      $ref: '#/definitions/invitation.AccessLevel'
     type: object
   invitation.RqProcessAction:
     properties:
@@ -1622,6 +1604,18 @@ definitions:
     type: object
   invitation.RqSendInvitation:
     properties:
+      email:
+        type: string
+      permissions:
+        $ref: '#/definitions/invitation.Permissions'
+    required:
+    - email
+    - permissions
+    type: object
+  invitation.RqUpdatePermissions:
+    properties:
+      accountant_id:
+        type: string
       email:
         type: string
       permissions:
@@ -3796,6 +3790,7 @@ paths:
         type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
       responses:
         "200":
           description: OK
@@ -3879,6 +3874,7 @@ paths:
         type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
       responses:
         "200":
           description: OK
@@ -5183,6 +5179,7 @@ paths:
         type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
       responses:
         "200":
           description: Excel file containing transaction report
@@ -5807,19 +5804,20 @@ paths:
       summary: List Accountant Permissions
       tags:
       - invitation
-  /invite/permissions:
-    post:
+  /invite/permission:
+    put:
       consumes:
       - application/json
-      description: Practitioner grants specific permissions (read/write access for
-        sales_purchases, lock_dates, users, reports) to an accountant.
+      description: Practitioner grants or updates specific permissions (read/write
+        access for sales_purchases, lock_dates, manage_users, reports_view_download)
+        to an accountant.
       parameters:
       - description: Permission Details
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/invitation.RqGrantPermission'
+          $ref: '#/definitions/invitation.RqUpdatePermissions'
       produces:
       - application/json
       responses:
@@ -5829,6 +5827,14 @@ paths:
             $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
       security:

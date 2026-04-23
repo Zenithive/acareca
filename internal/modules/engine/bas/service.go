@@ -11,8 +11,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
@@ -32,12 +30,10 @@ type Service interface {
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter) (*RsBASPreparation, error)
-	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (*bytes.Buffer, string, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (interface{}, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	// ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter) (*excelize.File, error)
 	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
-	generateActivityPDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error)
 	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string) (interface{}, error)
 }
 
@@ -449,7 +445,7 @@ type QuarterData struct {
 	Report *RsBASReport
 }
 
-func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (*bytes.Buffer, string, error) {
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (interface{}, string, error) {
 	parsedActorID := actorID.String()
 	// 1. Branching Logic
 	if strings.ToLower(exportType) == "pdf" {
@@ -462,17 +458,17 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 			Prev:     prevDates,
 		}
 
-		buf, err := s.generateActivityPDFWithChrome(ctx, data)
+		htmlContent, err := s.generateActivityHTML(data)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to generate activity pdf: %w", err)
+			return "", "", fmt.Errorf("failed to generate activity html: %w", err)
 		}
-		return buf, "application/pdf", nil
+		return htmlContent, "text/html", nil
 	}
 
 	// 2. Default to Excel logic
 	buf, err := s.generateActivityExcelReport(ctx, quarters, prevDates)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate activity excel: %w", err)
+		return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
 	}
 
 	// --- AUDIT LOG ---
@@ -496,6 +492,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 
 	return buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
 }
+
 func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
 
 	xl := excelize.NewFile()
@@ -771,49 +768,31 @@ const activityTemplate = `
 </html>
 `
 
-func (s *service) generateActivityPDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error) {
+func (s *service) generateActivityHTML(data interface{}) (string, error) {
 	tmpl, err := template.New("activity").Funcs(template.FuncMap{
 		"calcRefund": func(a1, b1 float64) string {
 			return fmt.Sprintf("%.2f", a1-b1)
 		},
 	}).Parse(activityTemplate)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var htmlBuf bytes.Buffer
+
+	// Print button that only shows on screen, not on the PDF/Printout
+	b := `<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
+	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
+	<style>@media print{.no-print{display:none}}</style></div>`
+
 	if err := tmpl.Execute(&htmlBuf, data); err != nil {
-		return nil, err
+		return "", err
 	}
 
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.NoSandbox,
-		chromedp.Headless,
-	)
+	// Merge the button with the template content
+	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
-	taskCtx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	var pdfBuffer []byte
-	err = chromedp.Run(taskCtx,
-		chromedp.Navigate("about:blank"),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			frameTree, _ := page.GetFrameTree().Do(ctx)
-			return page.SetDocumentContent(frameTree.Frame.ID, htmlBuf.String()).Do(ctx)
-		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err := page.PrintToPDF().WithPrintBackground(true).Do(ctx)
-			pdfBuffer = buf
-			return err
-		}),
-	)
-
-	if err != nil {
-		return nil, err
-	}
-	return bytes.NewBuffer(pdfBuffer), nil
+	return finalHTML, nil
 }
 
 type PeriodInfo struct {
@@ -1233,10 +1212,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		})
 	}
 
-	// if exportType == "pdf" {
-	// 	return s.convertExcelToPDF(f, sheet, data, FY.Label)
-	// }
-
 	if exportType == "pdf" {
 		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label)
 		if err != nil {
@@ -1364,11 +1339,22 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 
 			// Dynamic quarters from API
 			for _, col := range data.Columns {
-				label := col.Quarter.Name
-				label += " ("
-				label += col.Quarter.DisplayRange
-				label += ")"
+				// Extract the Year from the startDate
+				yearDisplay := ""
+				if col.Quarter.StartDate != "" {
+					// Parse the "2025-07-01" format
+					t, err := time.Parse("2006-01-02", col.Quarter.StartDate)
+					if err == nil {
+						yearDisplay = fmt.Sprintf(" %d", t.Year())
+					}
+				}
 
+				// Build the label: Quarter name (Display Range) Year
+				label := fmt.Sprintf("%s (%s) %s",
+					col.Quarter.Name,
+					col.Quarter.DisplayRange,
+					yearDisplay,
+				)
 				b.WriteString(fmt.Sprintf(
 					"<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>",
 					label,

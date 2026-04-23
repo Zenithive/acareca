@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
@@ -508,21 +506,18 @@ func (s *service) ExportPLReport(data *RsReport, exportType string) (interface{}
 	f.SetColWidth(sheet, "B", "B", 20)
 	f.UpdateLinkedValue()
 
-	// if exportType == "pdf" {
-	// 	return s.convertExcelToPDF(f, sheet)
-	// }
-
 	if exportType == "pdf" {
-		return s.convertExcelToPDF(f, sheet, data) // Pass the API data here
+		// Return HTML string
+		return s.generateHTMLString(f, sheet, data)
 	}
 
 	return f, nil
 }
 
-func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsReport) ([]byte, error) {
+func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsReport) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var b bytes.Buffer
@@ -542,8 +537,14 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 		.profit-value { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; border: 1.5pt solid #000; }
 		.spacer { height: 15px; border: none; }
 	`)
-	b.WriteString("</style></head><body><table>")
-	b.WriteString("<colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
+	b.WriteString("</style></head><body>")
+
+	// Print button that only shows on screen, not on the PDF/Printout
+	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
+	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
+	<style>@media print{.no-print{display:none}}</style></div>`)
+
+	b.WriteString("<table><colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
 
 	// Helper to format currency
 	formatCurr := func(v float64) string {
@@ -622,20 +623,5 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 
 	b.WriteString("</table></body></html>")
 
-	// Render via Chromedp
-	ctx, cancel := chromedp.NewContext(context.Background())
-	defer cancel()
-	var buf []byte
-	err = chromedp.Run(ctx,
-		chromedp.Navigate("about:blank"),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			lTree, _ := page.GetFrameTree().Do(ctx)
-			return page.SetDocumentContent(lTree.Frame.ID, b.String()).Do(ctx)
-		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err = page.PrintToPDF().WithPrintBackground(true).Do(ctx)
-			return err
-		}),
-	)
-	return buf, err
+	return b.String(), err
 }
