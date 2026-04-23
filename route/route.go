@@ -67,9 +67,22 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo, notificationSvc)
 
+	// Initialize accountant service (needed by invitation)
+	accountantRepo := accountant.NewRepository(dbConn)
+	accountantSvc := accountant.NewService(accountantRepo)
+
+	// Initialize practitioner service dependencies
+	practitionerRepo := practitioner.NewRepository(dbConn)
+	userSubscriptionRepo := userSubscription.NewRepository(dbConn)
+	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
+	coaRepo := coa.NewRepository(dbConn)
+	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
+	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
+	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo)
+
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
-	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
+	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, practitionerSvc, accountantSvc, dbConn)
 	invitationHandler := invitation.NewHandler(invitationSvc)
 
 	// Create permission adapter for feature-based permissions
@@ -109,27 +122,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
 	// ============ COA SERVICE (cross-module dependency) ============
-	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
 	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
 
-	// ============ PRACTITIONER SERVICE (cross-module dependency) ============
-	practitionerRepo := practitioner.NewRepository(dbConn)
-
-	userSubscriptionRepo := userSubscription.NewRepository(dbConn)
-	userSubscriptionSvc := userSubscription.NewService(userSubscriptionRepo)
-
 	// ============ AUTH SERVICE (depends on practitioner, accountant, admin) ============
-	// Initialize practitioner and accountant services for auth
-	accountantRepo := accountant.NewRepository(dbConn)
-	accountantSvc := accountant.NewService(accountantRepo)
-
-	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
-	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
-	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo)
-
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
