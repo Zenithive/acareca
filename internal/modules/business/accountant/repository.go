@@ -107,7 +107,7 @@ func (r *repository) GetAllUsers(ctx context.Context, userID string) ([]RsAccoun
             ), '[]'::jsonb) AS clinics
         FROM tbl_user u
         INNER JOIN tbl_accountant a ON u.id = a.user_id
-        INNER JOIN tbl_invitation i ON i.entity_id = a.id
+        INNER JOIN tbl_invitation i ON i.accountant_id = a.id
         WHERE a.id = $1                   
           AND i.status = 'COMPLETED'
           AND u.deleted_at IS NULL 
@@ -139,7 +139,7 @@ func (r *repository) GetClinicsForAccountant(ctx context.Context, accountantID s
             )), '[]'::jsonb) FROM tbl_clinic_contact cc WHERE cc.clinic_id = c.id) as contacts
         FROM tbl_clinic c
         INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
-        WHERE i.entity_id = $1 
+        WHERE i.accountant_id = $1 
           AND c.deleted_at IS NULL
     `
 	err := r.db.SelectContext(ctx, &clinics, query, accountantID)
@@ -165,7 +165,7 @@ func (r *repository) GetFormsForAccountant(ctx context.Context, accountantID str
 		FROM tbl_form f
 		INNER JOIN tbl_clinic c ON f.clinic_id = c.id
 		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
-		WHERE i.entity_id = $1 
+		WHERE i.accountant_id = $1 
 		  AND f.deleted_at IS NULL 
 		  AND c.deleted_at IS NULL
 		ORDER BY f.created_at DESC
@@ -180,44 +180,44 @@ func (r *repository) GetFormsForAccountant(ctx context.Context, accountantID str
 func (r *repository) GetSummary(ctx context.Context, accountantID string, ft common.Filter) (*Summary, error) {
 	summary := &Summary{}
 
+	// Get total clinics via invitation relationship
 	err := r.db.GetContext(ctx, &summary.TotalClinics,
 		`SELECT COUNT(DISTINCT c.id) 
          FROM tbl_clinic c
-         INNER JOIN tbl_invite_permissions p ON c.id = p.entity_id
-         WHERE p.accountant_id = $1 
-           AND p.entity_type = 'CLINIC'
-           AND p.deleted_at IS NULL
+         INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+         WHERE i.accountant_id = $1 
+           AND i.status = 'COMPLETED'
            AND c.deleted_at IS NULL`, accountantID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get total forms associated with this accountant's clinics
+	// Get total forms via invitation relationship
 	err = r.db.GetContext(ctx, &summary.TotalForms,
 		`SELECT COUNT(DISTINCT f.id) 
 		FROM tbl_form f
-		INNER JOIN tbl_invite_permissions p ON p.entity_id = f.id
-		WHERE p.accountant_id = $1 
-		  AND p.entity_type = 'FORM'
-		  AND p.deleted_at IS NULL
-		  AND f.deleted_at IS NULL`, accountantID)
+		INNER JOIN tbl_clinic c ON f.clinic_id = c.id
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.accountant_id = $1 
+		  AND i.status = 'COMPLETED'
+		  AND f.deleted_at IS NULL 
+		  AND c.deleted_at IS NULL`, accountantID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get total transactions (form entries) for this accountant's clinics
+	// Get total transactions via invitation relationship
 	err = r.db.GetContext(ctx, &summary.TotalTransactions,
 		`SELECT COUNT(DISTINCT e.id) 
      FROM tbl_form_entry e
-     -- 1. Get the parent form via the version
      INNER JOIN tbl_custom_form_version cfv ON e.form_version_id = cfv.id
      INNER JOIN tbl_form f ON cfv.form_id = f.id
-     -- 2. Join permissions specifically on the Form entity
-     INNER JOIN tbl_invite_permissions p ON p.entity_id = f.id
-     WHERE p.accountant_id = $1 
-       AND p.entity_type = 'FORM'
-       AND p.deleted_at IS NULL
+     INNER JOIN tbl_clinic c ON f.clinic_id = c.id
+     INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+     WHERE i.accountant_id = $1 
+       AND i.status = 'COMPLETED'
        AND f.deleted_at IS NULL
+       AND c.deleted_at IS NULL
        AND e.deleted_at IS NULL`, accountantID)
 	if err != nil {
 		return nil, err
@@ -227,7 +227,7 @@ func (r *repository) GetSummary(ctx context.Context, accountantID string, ft com
 	err = r.db.GetContext(ctx, &summary.TotalPractitioners,
 		`SELECT COUNT(DISTINCT practitioner_id) 
 		FROM tbl_invitation 
-		WHERE entity_id = $1 
+		WHERE accountant_id = $1 
 		  AND status = 'COMPLETED'`, accountantID)
 	if err != nil {
 		return nil, err
@@ -251,24 +251,14 @@ func (r *repository) GetRecentTransactions(ctx context.Context, accountantID str
 		FROM tbl_form_entry_value fev
 		INNER JOIN tbl_form_entry fe ON fev.entry_id = fe.id
 		INNER JOIN tbl_clinic c ON fe.clinic_id = c.id
-		-- Link the Entry to its parent Form via the Version table
 		INNER JOIN tbl_custom_form_version cfv ON fe.form_version_id = cfv.id
-		-- Join permissions: Check ONLY for Form or specific Entry access
-		INNER JOIN tbl_invite_permissions p ON (
-			(p.entity_id = cfv.form_id AND p.entity_type = 'FORM') OR
-			(p.entity_id = fe.id AND p.entity_type = 'ENTRY')
-		)
-		WHERE p.accountant_id = $1 
-		  AND (
-			  (p.permissions->>'read')::boolean = true 
-			  OR (p.permissions->>'all')::boolean = true
-			  OR (p.permissions->>'create')::boolean = true
-			  OR (p.permissions->>'update')::boolean = true
-			  OR (p.permissions->>'delete')::boolean = true
-		  )
-		  AND p.deleted_at IS NULL
+		INNER JOIN tbl_form f ON cfv.form_id = f.id
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.accountant_id = $1 
+		  AND i.status = 'COMPLETED'
 		  AND fe.deleted_at IS NULL
 		  AND c.deleted_at IS NULL
+		  AND f.deleted_at IS NULL
 		GROUP BY fev.id, fe.clinic_id, c.name, fev.gross_amount, fev.created_at, fe.status
 		ORDER BY fev.created_at DESC
 	`
@@ -300,7 +290,7 @@ func (r *repository) GetPractitioners(ctx context.Context, accountantID string, 
 		JOIN tbl_user u ON p.user_id = u.id
 		LEFT JOIN tbl_clinic c ON c.practitioner_id = p.id
 		INNER JOIN tbl_invitation i ON i.practitioner_id = p.id
-		WHERE i.entity_id = $1 
+		WHERE i.accountant_id = $1 
 		  AND i.status = 'COMPLETED'
 		GROUP BY p.id, u.first_name, u.last_name, u.email, u.deleted_at
 		ORDER BY p.created_at DESC
@@ -330,17 +320,9 @@ func (r *repository) GetClinics(ctx context.Context, accountantID string, ft com
 			c.created_at
 		FROM tbl_clinic c
 		LEFT JOIN tbl_clinic_address ca ON c.id = ca.clinic_id AND ca.is_primary = true
-		INNER JOIN tbl_invite_permissions p ON c.id = p.entity_id
-		WHERE p.accountant_id = $1 
-		  AND p.entity_type = 'CLINIC'
-		  AND (
-			  (p.permissions->>'read')::boolean = true 
-			  OR (p.permissions->>'all')::boolean = true
-			  OR (p.permissions->>'create')::boolean = true
-			  OR (p.permissions->>'update')::boolean = true
-			  OR (p.permissions->>'delete')::boolean = true
-		  )
-		  AND p.deleted_at IS NULL
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.accountant_id = $1 
+		  AND i.status = 'COMPLETED'
 		  AND c.deleted_at IS NULL
 		ORDER BY c.created_at DESC
 	`
@@ -370,21 +352,11 @@ func (r *repository) GetForms(ctx context.Context, accountantID string, ft commo
 		FROM tbl_form f
 		LEFT JOIN tbl_custom_form_version cfv ON f.id = cfv.form_id AND cfv.is_active = true
 		INNER JOIN tbl_clinic c ON f.clinic_id = c.id
-		-- Join permissions: Check if accountant has access to the Form
-		INNER JOIN tbl_invite_permissions p ON (
-			(p.entity_id = f.id AND p.entity_type = 'FORM') 
-		)
-		WHERE p.accountant_id = $1 
-		  AND (
-			  (p.permissions->>'read')::boolean = true 
-			  OR (p.permissions->>'all')::boolean = true
-			  OR (p.permissions->>'create')::boolean = true
-			  OR (p.permissions->>'update')::boolean = true
-			  OR (p.permissions->>'delete')::boolean = true
-		  )
+		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+		WHERE i.accountant_id = $1 
+		  AND i.status = 'COMPLETED'
 		  AND f.deleted_at IS NULL
 		  AND c.deleted_at IS NULL
-		  AND p.deleted_at IS NULL
 		ORDER BY f.created_at DESC
 	`
 

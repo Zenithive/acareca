@@ -184,9 +184,9 @@ func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid
 	var permissionClause string
 	// 1. Define the permission check (Same as your Transactions logic)
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions 
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation 
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (
@@ -226,9 +226,9 @@ func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid
 func (r *Repository) CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error) {
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions 
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation 
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (
@@ -318,10 +318,10 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// ONLY show transactions for FORMS the accountant is explicitly invited to
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions 
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		// Show transactions for all practitioners the accountant is invited to
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation 
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		// Show transactions for all clinics owned by the PRACTITIONER
@@ -401,9 +401,9 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter, act
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (
@@ -566,9 +566,9 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions 
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation 
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (
@@ -652,9 +652,9 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (
@@ -706,9 +706,9 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions 
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation 
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (
@@ -820,9 +820,9 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, 
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (
-            SELECT entity_id FROM tbl_invite_permissions
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+		permissionClause = ` AND c.practitioner_id IN (
+            SELECT practitioner_id FROM tbl_invitation
+            WHERE accountant_id = ? AND status = 'COMPLETED'
         )`
 	} else {
 		permissionClause = ` AND c.id IN (

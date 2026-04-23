@@ -10,23 +10,12 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	clinic := rg.Group("/clinic")
 	clinic.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 
-	// Clinic management requires sales_purchases permission
-	// Read operations
-	clinicRead := clinic.Group("")
-	clinicRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
-	{
-		clinicRead.GET("", h.List)
-		clinicRead.GET("/:id", h.GetByID)
-	}
-
-	// Write operations
-	clinicWrite := clinic.Group("")
-	clinicWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
-	{
-		clinicWrite.POST("", h.Create)
-		clinicWrite.PUT("/:id", h.Update)
-		clinicWrite.PUT("/bulk-update", h.BulkUpdate)
-		clinicWrite.DELETE("/:id", h.Delete)
-		clinicWrite.DELETE("/bulk-delete", h.BulkDelete)
-	}
+	// All clinic operations - no permission checks
+	clinic.GET("", h.List)
+	clinic.GET("/:id", h.GetByID)
+	clinic.POST("", h.Create)
+	clinic.PUT("/:id", h.Update)
+	clinic.PUT("/bulk-update", h.BulkUpdate)
+	clinic.DELETE("/:id", h.Delete)
+	clinic.DELETE("/bulk-delete", h.BulkDelete)
 }
