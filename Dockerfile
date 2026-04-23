@@ -32,7 +32,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 
 # ── Runtime stage ─────────────────────────────────────────────
-FROM scratch
+# FROM scratch
+FROM alpine:3.19
 
 WORKDIR /
 

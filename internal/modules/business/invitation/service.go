@@ -646,7 +646,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		if accountantID != nil && *accountantID != *req.AccountantID {
 			// The provided ID doesn't match the actual accountant ID
 			// This might be an entity_id from invitation table, ignore it and use what we found
-			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n", 
+			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n",
 				req.AccountantID.String(), accountantID.String(), req.Email)
 		}
 	}
@@ -737,15 +737,15 @@ func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, ac
 
 // ListAccountantPermission implements [Service].
 func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
-	var filter common.Filter
-	filter = f.MapToFilterAccountant()
+	filter := f.MapToFilterAccountant()
 
-	permission, err := s.repo.ListPermission(ctx, filter)
+	perms, err := s.repo.ListPermission(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	rs := permission.ToRsPermission()
-
-	return rs, nil
+	return &RsPermission{
+		AccountantID: accId,
+		Permissions:  perms,
+	}, nil
 }

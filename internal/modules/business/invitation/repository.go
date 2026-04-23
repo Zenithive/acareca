@@ -32,7 +32,7 @@ type Repository interface {
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
-	ListPermission(ctx context.Context, f common.Filter) (Permission, error)
+	ListPermission(ctx context.Context, f common.Filter) (Permissions, error)
 
 	GetPermission(ctx context.Context, accountantID *uuid.UUID, entityID uuid.UUID, email *string) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
@@ -486,25 +486,22 @@ func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UU
 	return err
 }
 
-func (r *repository) ListPermission(ctx context.Context, f common.Filter) (Permission, error) {
+func (r *repository) ListPermission(ctx context.Context, f common.Filter) (Permissions, error) {
 	base := `SELECT 
-		id, 
-		practitioner_id, 
-		accountant_id, 
-		email, 
-		permission_name, 
-		can_read, 
-		can_write, 
-		created_at, 
-		updated_at 
-	FROM tbl_invite_permissions`
+        permission_name, 
+        can_read, 
+        can_write 
+    FROM tbl_invite_permissions`
 
 	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
 
-	var perms Permission
-	if err := r.db.SelectContext(ctx, &perms, r.db.Rebind(query), filterArgs...); err != nil {
-		return perms, fmt.Errorf("list accountant permissions repo: %w", err)
+	var rows []PermissionRow
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), filterArgs...); err != nil {
+		return nil, fmt.Errorf("list accountant permissions repo: %w", err)
 	}
+
+	perms := make(Permissions)
+	perms.FromRows(rows)
 
 	return perms, nil
 }
