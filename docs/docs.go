@@ -6461,6 +6461,105 @@ const docTemplate = `{
                 }
             }
         },
+        "/practitioner/lock-date": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieve the current financial lock date for the authenticated practitioner.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "practitioner-lock-date"
+                ],
+                "summary": "Get Practitioner Lock Date",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Set or remove (by sending null) the financial lock date for the authenticated practitioner.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "practitioner-lock-date"
+                ],
+                "summary": "Update Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "Lock Date Update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_business_practitioner.UpdateLockDateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/practitioner/subscription": {
             "get": {
                 "security": [
@@ -9746,6 +9845,24 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_practitioner.UpdateLockDateRequest": {
+            "type": "object",
+            "properties": {
+                "lock_date": {
+                    "description": "Use *time.Time to allow null values for removing the lock date",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_business_practitioner.UpdateLockDateRequest": {
+            "type": "object",
+            "properties": {
+                "lock_date": {
+                    "description": "Use *time.Time to allow null values for removing the lock date",
                     "type": "string"
                 }
             }

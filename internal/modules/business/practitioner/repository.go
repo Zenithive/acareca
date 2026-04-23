@@ -2,6 +2,7 @@ package practitioner
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -25,6 +26,9 @@ type Repository interface {
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
+	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
+
+	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
 }
 
 type repository struct {
@@ -147,9 +151,9 @@ func (r *repository) ListPractitionersForAccountant(ctx context.Context, account
 		  AND i.accountant_id = ?
 		  AND i.status = 'COMPLETED'
 	`
-	
+
 	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, false)
-	
+
 	// Prepend accountantID to filterArgs
 	args := append([]interface{}{accountantID}, filterArgs...)
 
@@ -170,9 +174,9 @@ func (r *repository) CountPractitionersForAccountant(ctx context.Context, accoun
           AND i.accountant_id = ?
           AND i.status = 'COMPLETED'
     `
-	
+
 	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, true)
-	
+
 	// Prepend accountantID to filterArgs
 	args := append([]interface{}{accountantID}, filterArgs...)
 
@@ -234,4 +238,53 @@ func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	}
 
 	return nil
+}
+
+func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
+	// 	query := `UPDATE tbl_financial_settings
+	// SET lock_date = $1, updated_at = NOW()
+	// WHERE practitioner_id = $2 AND financial_year_id = $3`
+
+	query := `
+        INSERT INTO tbl_financial_settings (practitioner_id, financial_year_id, lock_date, created_at, updated_at)
+        VALUES ($1, $2, 
+            CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'DD-MM-YYYY') END, 
+            NOW(), NOW())
+        ON CONFLICT (practitioner_id, financial_year_id) 
+        DO UPDATE SET 
+            lock_date = CASE WHEN EXCLUDED.lock_date IS NULL THEN NULL ELSE EXCLUDED.lock_date END,
+            updated_at = NOW()
+    `
+
+	result, err := r.db.ExecContext(ctx, query, lockDate, practitionerID, fyID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("practitioner not found")
+	}
+
+	return nil
+}
+
+func (r *repository) GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error) {
+	query := `
+		SELECT id, clinic_id, financial_year_id, lock_date, created_at, updated_at
+		FROM tbl_financial_settings
+		WHERE clinic_id = $1
+	`
+	var fs FinancialSettings
+	if err := r.db.QueryRowxContext(ctx, query, clinicID).StructScan(&fs); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get financial settings: %w", err)
+	}
+	return &fs, nil
 }
