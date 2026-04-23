@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -1234,8 +1233,16 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		})
 	}
 
+	// if exportType == "pdf" {
+	// 	return s.convertExcelToPDF(f, sheet, data, FY.Label)
+	// }
+
 	if exportType == "pdf" {
-		return s.convertExcelToPDF(f, sheet, data, FY.Label)
+		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label)
+		if err != nil {
+			return nil, err
+		}
+		return htmlContent, nil
 	}
 
 	return f, nil
@@ -1282,11 +1289,11 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// Helper to convert the Excel file to PDF bytes using Chromedp
-func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) ([]byte, error) {
+// Helper to convert the Excel file to PDF using HTML
+func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var b bytes.Buffer
@@ -1306,7 +1313,14 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 		.income-blue td {background-color: #DAEEF3 !important; }
 		.expense-blue td {background-color: #DAEEF3 !important; }
 	`)
-	b.WriteString("</style></head><body><table>")
+	b.WriteString("</style></head><body>")
+
+	// Print button that only shows on screen, not on the PDF/Printout
+	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
+	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
+	<style>@media print{.no-print{display:none}}</style></div>`)
+
+	b.WriteString("<table>")
 
 	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
 	totalCols := 1 + (len(data.Columns)+1)*3 // +1 for Total
@@ -1450,50 +1464,5 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 
 	b.WriteString("</table></body></html>")
 
-	//Create a path that we know exists and is writable
-	tempProfileDir := "/tmp/chromedp-profile"
-	if err := os.MkdirAll(tempProfileDir, 0777); err != nil {
-		// This will tell you exactly why the system can't see /tmp
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
-	}
-
-	// Render using Chromedp
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.ExecPath("/usr/bin/chromium-browser"), // Path for Alpine
-		chromedp.NoSandbox,
-		chromedp.DisableGPU,
-		chromedp.Headless,
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("remote-debugging-port", "9222"), // Helpful for container stability
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"),
-		chromedp.UserDataDir(tempProfileDir),
-	)
-
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancelAlloc()
-
-	ctx, cancelCtx := chromedp.NewContext(allocCtx)
-	defer cancelCtx()
-
-	var buf []byte
-	err = chromedp.Run(ctx,
-		chromedp.Navigate("about:blank"),
-		// Set viewport wide enough to capture all columns at once
-		chromedp.EmulateViewport(1920, 1080),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			frameTree, _ := page.GetFrameTree().Do(ctx)
-			return page.SetDocumentContent(frameTree.Frame.ID, b.String()).Do(ctx)
-		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			var err error
-			buf, _, err = page.PrintToPDF().
-				WithPrintBackground(true).
-				WithLandscape(true).
-				WithPaperWidth(16.5). // A3 size
-				WithPaperHeight(11.7).
-				Do(ctx)
-			return err
-		}),
-	)
-	return buf, err
+	return b.String(), err
 }
