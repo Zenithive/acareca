@@ -6516,19 +6516,12 @@ const docTemplate = `{
                 "summary": "Update Practitioner Lock Date",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Financial Year UUID",
-                        "name": "financial_year_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
                         "description": "Lock Date Update",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_business_practitioner.UpdateLockDateRequest"
+                            "$ref": "#/definitions/practitioner.UpdateLockDateRequest"
                         }
                     }
                 ],
@@ -9849,24 +9842,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_modules_admin_practitioner.UpdateLockDateRequest": {
-            "type": "object",
-            "properties": {
-                "lock_date": {
-                    "description": "Use *time.Time to allow null values for removing the lock date",
-                    "type": "string"
-                }
-            }
-        },
-        "internal_modules_business_practitioner.UpdateLockDateRequest": {
-            "type": "object",
-            "properties": {
-                "lock_date": {
-                    "description": "Use *time.Time to allow null values for removing the lock date",
-                    "type": "string"
-                }
-            }
-        },
         "invitation.AccessLevel": {
             "type": "object",
             "properties": {
@@ -10243,6 +10218,21 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "period_month": {
+                    "type": "string"
+                }
+            }
+        },
+        "practitioner.UpdateLockDateRequest": {
+            "type": "object",
+            "required": [
+                "financial_year_id"
+            ],
+            "properties": {
+                "financial_year_id": {
+                    "description": "Use *time.Time to allow null values for removing the lock date",
+                    "type": "string"
+                },
+                "lock_date": {
                     "type": "string"
                 }
             }
