@@ -1,19 +1,14 @@
 # ── Build stage ──────────────────────────────────────────────
-FROM golang:1.26-alpine AS builder
+# Use bullseye or bookworm (Debian) instead of Alpine to match runtime
+FROM golang:1.21-bookworm AS builder
 
 WORKDIR /app
 
-# Install git (needed for module downloads)
-RUN apk add --no-cache git
-
-# Create non-root user for runtime
-RUN adduser -D -u 1001 appuser
-
-# Cache dependencies — layer is reused unless go.mod/go.sum change
+# Cache dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Install swag (pinned for reproducibility)
+# Install swag
 RUN go install github.com/swaggo/swag/cmd/swag@v1.8.12
 
 # Copy source
@@ -22,35 +17,39 @@ COPY . .
 # Generate swagger docs
 RUN swag init -g cmd/api/main.go
 
-# Build fully static binary — stripped, trimmed, reproducible
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build \
-      -ldflags="-s -w -buildid=" \
-      -trimpath \
-      -o server \
-      ./cmd/api
-
+# Build binary
+# Note: We don't use CGO_ENABLED=0 if we want to use the system's root certs easily
+RUN GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o server ./cmd/api
 
 # ── Runtime stage ─────────────────────────────────────────────
-FROM scratch
+# DO NOT USE scratch. Use a slim Debian image so we can install Chromium.
+FROM debian:bookworm-slim
 
-WORKDIR /
+WORKDIR /app
 
-# Non-root user (carried from builder)
-COPY --from=builder /etc/passwd /etc/passwd
+# 1. Install Chromium and all necessary shared libraries for headless mode
+RUN apt-get update && apt-get install -y \
+    chromium \
+    ca-certificates \
+    fonts-liberation \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# SSL certificates (required for HTTPS outbound calls)
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# 2. Copy the binary from builder
+COPY --from=builder /app/server /app/server
+COPY --from=builder /app/migrations /app/migrations
 
-# Binary
-COPY --from=builder /app/server /server
-
-# Migrations (goose reads these at startup via db.RunMigrations)
-COPY --from=builder /app/migrations /migrations
-
-# Run as non-root
+# 3. Create a non-root user (Debian syntax)
+RUN useradd -u 1001 appuser
 USER appuser
 
 EXPOSE 8080
 
-ENTRYPOINT ["/server"]
+ENTRYPOINT ["/app/server"]
