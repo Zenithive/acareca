@@ -34,7 +34,7 @@ type Service interface {
 	GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error)
 
 	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error)
-	UpdatePermission(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error)
+	UpdatePermissions(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error)
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
@@ -619,7 +619,7 @@ func (s *service) GetPermissionsForAccountant(ctx context.Context, accountantID 
 	return s.repo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
 }
 
-func (s *service) UpdatePermission(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error) {
+func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error) {
 	// Validate permissions
 	if err := req.Permissions.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid permissions: %w", err)
@@ -627,27 +627,46 @@ func (s *service) UpdatePermission(ctx context.Context, practitionerID uuid.UUID
 
 	// Determine if we're updating by accountant_id or email
 	var accountantID *uuid.UUID
-	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
-		accountantID = req.AccountantID
-	} else {
-		// Try to get accountant ID by email
-		accID, err := s.repo.GetAccountantIDByEmail(ctx, req.Email)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve accountant: %w", err)
-		}
+	var useEmail bool
+
+	// First, try to resolve the accountant by email (most reliable)
+	accID, err := s.repo.GetAccountantIDByEmail(ctx, req.Email)
+	if err == nil && accID != nil {
+		// Accountant exists and is registered, use their ID
 		accountantID = accID
+		useEmail = false
+	} else {
+		// Accountant doesn't exist yet (pending invitation), use email
+		accountantID = nil
+		useEmail = true
 	}
 
-	// Check if the accountant is linked to this practitioner
-	// if accountantID != nil {
-	// 	isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, *accountantID)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to verify accountant link: %w", err)
-	// 	}
-	// 	if !isLinked {
-	// 		return nil, fmt.Errorf("accountant is not linked to this practitioner")
-	// 	}
-	// }
+	// If user provided accountant_id, verify it matches what we found
+	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
+		if accountantID != nil && *accountantID != *req.AccountantID {
+			// The provided ID doesn't match the actual accountant ID
+			// This might be an entity_id from invitation table, ignore it and use what we found
+			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n", 
+				req.AccountantID.String(), accountantID.String(), req.Email)
+		}
+	}
+
+	// Check if the accountant/email is linked to this practitioner via invitation
+	if accountantID != nil {
+		isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, *accountantID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify accountant link: %w", err)
+		}
+		if !isLinked {
+			return nil, fmt.Errorf("accountant is not linked to this practitioner")
+		}
+	} else {
+		// For pending invitations, check if there's an invitation for this email
+		inv, err := s.repo.GetByEmail(ctx, req.Email)
+		if err != nil || inv == nil || inv.PractitionerID != practitionerID {
+			return nil, fmt.Errorf("no invitation found for email %s from this practitioner", req.Email)
+		}
+	}
 
 	// Get old permissions for audit log
 	var oldPerms *Permissions
@@ -658,8 +677,14 @@ func (s *service) UpdatePermission(ctx context.Context, practitionerID uuid.UUID
 	}
 
 	// Update permissions in a transaction
-	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, accountantID, req.Email, *req.Permissions)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if useEmail {
+			// For pending invitations, pass nil accountant_id and the email
+			return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, nil, req.Email, *req.Permissions)
+		} else {
+			// For registered accountants, pass the accountant_id
+			return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, accountantID, req.Email, *req.Permissions)
+		}
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update permissions: %w", err)
