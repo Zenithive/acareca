@@ -305,7 +305,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 	var accountantID *uuid.UUID
 	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if req.Action == ActionReject {
-			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusRejected, inv.EntityID); err != nil {
+			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusRejected, inv.AccountantID); err != nil {
 				return err
 			}
 			res.Status = StatusRejected
@@ -528,8 +528,14 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return nil, fmt.Errorf("cannot resend: invitation is already %s", oldInv.Status)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, oldInv.ID, StatusResent, oldInv.AccountantID); err != nil {
-		return nil, fmt.Errorf("failed to invalidate old invitation: %w", err)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.UpdateStatus(ctx, tx, oldInv.ID, StatusResent, oldInv.AccountantID); err != nil {
+			return fmt.Errorf("failed to invalidate old invitation: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Resend invitation - log after successful resend
@@ -587,22 +593,20 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 	}
 
 	accountantID := *inv.AccountantID
-	tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+
+		if err := s.repo.UpdateStatus(ctx, tx, inviteID, StatusRevoked, inv.AccountantID); err != nil {
+			return fmt.Errorf("revoke invitation status update: %w", err)
+		}
+
+		if err := s.repo.DeleteAllPermissionsForAccountant(ctx, tx, practitionerID, accountantID); err != nil {
+			return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.AccountantID); err != nil {
-		return fmt.Errorf("revoke invitation status update: %w", err)
-	}
-
-	if err := s.repo.DeleteAllPermissionsForAccountantTx(ctx, tx, practitionerID, accountantID); err != nil {
-		return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit revocation: %w", err)
+		return err
 	}
 
 	s.logInvitationAction(ctx, inv, auditctx.ActionInviteRevoked, inv)

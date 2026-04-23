@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -28,7 +27,7 @@ type Repository interface {
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
-	ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissionss, error)
+	ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissions, error)
 	LinkPermissionsToAccountant(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error
 	GetPermission(ctx context.Context, accountantID *uuid.UUID, entityID uuid.UUID, email *string) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
@@ -549,18 +548,7 @@ func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*Invi
 
 	query, filterArgs := common.BuildQuery(base, f, permissionColumns, invitationSearchCols, false)
 
-	type PermRow struct {
-		InvitationID         uuid.UUID `db:"invitation_id"`
-		PractitionerID       uuid.UUID `db:"practitioner_id"`
-		AccountantID         uuid.UUID `db:"accountant_id"`
-		InvitationCreatedAt  time.Time `db:"invitation_created_at"`
-		PermissionsUpdatedAt time.Time `db:"permissions_updated_at"`
-		PermissionName       string    `db:"permission_name"`
-		CanRead              bool      `db:"can_read"`
-		CanWrite             bool      `db:"can_write"`
-	}
-
-	var rows []PermRow
+	var rows []PermissionRow
 	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), filterArgs...); err != nil {
 		return nil, fmt.Errorf("list accountant permissions repo: %w", err)
 	}
@@ -575,7 +563,7 @@ func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*Invi
 	// Use the first row for invitation details (all rows have same invitation data)
 	firstRow := rows[0]
 
-	perms := make(Permissions)
+	perms = make(Permissions)
 	for _, row := range rows {
 		perms[PermissionName(row.PermissionName)] = AccessLevel{
 			Read:  row.CanRead,
@@ -584,7 +572,7 @@ func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*Invi
 	}
 
 	return &InvitationWithPermissions{
-		ID:             firstRow.InvitationID,
+		ID:             firstRow.InvitationI,
 		PractitionerID: firstRow.PractitionerID,
 		AccountantID:   firstRow.AccountantID,
 		CreatedAt:      firstRow.InvitationCreatedAt,
