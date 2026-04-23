@@ -39,7 +39,7 @@ type Service interface {
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*RsPermission, error)
+	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) ([]map[string]interface{}, error)
 }
 
 const (
@@ -735,21 +735,27 @@ func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, ac
 
 // Helper to centralize permission logic
 
-// ListAccountantPermission implements [Service].
-func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
+// ListPermissions retrieves all permissions for an accountant across all practitioners
+func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) ([]map[string]interface{}, error) {
 	filter := f.MapToFilterAccountant()
-
-	invWithPerms, err := s.repo.ListPermission(ctx, filter)
+	
+	invWithPerms, err := s.repo.ListPermissions(ctx, accId, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	return &RsPermission{
-		ID:             invWithPerms.ID,
-		PractitionerID: invWithPerms.PractitionerID,
-		AccountantID:   invWithPerms.AccountantID,
-		Permissions:    invWithPerms.Permissions,
-		CreatedAt:      invWithPerms.CreatedAt,
-		UpdatedAt:      invWithPerms.UpdatedAt,
-	}, nil
+	// Convert to response format - each item should have the same structure
+	results := make([]map[string]interface{}, 0, len(invWithPerms))
+	for _, inv := range invWithPerms {
+		results = append(results, map[string]interface{}{
+			"id":              inv.ID,
+			"practitioner_id": inv.PractitionerID,
+			"accountant_id":   inv.AccountantID,
+			"permissions":     inv.Permissions,
+			"created_at":      inv.CreatedAt,
+			"updated_at":      inv.UpdatedAt,
+		})
+	}
+
+	return results, nil
 }
