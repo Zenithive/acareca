@@ -25,7 +25,7 @@ const (
 type Invitation struct {
 	ID             uuid.UUID        `json:"id" db:"id"`
 	PractitionerID uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
-	EntityID       *uuid.UUID       `json:"entity_id" db:"entity_id"`
+	AccountantID   *uuid.UUID       `json:"accountant_id" db:"accountant_id"`
 	Email          string           `json:"email" db:"email"`
 	Status         InvitationStatus `json:"status" db:"status"`
 	CreatedAt      time.Time        `json:"created_at" db:"created_at"`
@@ -81,7 +81,7 @@ type RsInvitationListItem struct {
 	ID                uuid.UUID        `json:"id" db:"id"`
 	PractitionerID    uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
 	PractitionerEmail string           `json:"practitioner_email" db:"practitioner_email"`
-	EntityID          *uuid.UUID       `json:"entity_id" db:"entity_id"`
+	AccountantID      *uuid.UUID       `json:"accountant_id" db:"accountant_id"` // Renamed from EntityID
 	Email             string           `json:"email" db:"email"`
 	Status            InvitationStatus `json:"status" db:"status"`
 	InviteLink        string           `json:"invite_link"`
@@ -97,6 +97,16 @@ type InvitationExtended struct {
 	SenderEmail     string `db:"sender_email"`
 }
 
+// InvitationWithPermissions contains invitation details with associated permissions
+type InvitationWithPermissions struct {
+	ID             uuid.UUID   `json:"id"`
+	PractitionerID uuid.UUID   `json:"practitioner_id"`
+	AccountantID   uuid.UUID   `json:"accountant_id"`
+	Permissions    Permissions `json:"permissions"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
 // RqProcessAction is the input for accepting or rejecting
 type RqProcessAction struct {
 	TokenID uuid.UUID `json:"token_id" validate:"required"`
@@ -109,7 +119,6 @@ var invitationColumns = map[string]string{
 	"status":          "status::text",
 	"created_at":      "created_at",
 	"practitioner_id": "practitioner_id",
-	"entity_id":       "entity_id",
 	"accountant_id":   "accountant_id",
 	"deleted_at":      "deleted_at",
 }
@@ -129,7 +138,7 @@ func (filter *Filter) MapToFilter(actorID *uuid.UUID) common.Filter {
 	if actorID != nil && filter.Role == util.RolePractitioner {
 		filters["practitioner_id"] = *actorID
 	} else {
-		filters["entity_id"] = *actorID
+		filters["accountant_id"] = *actorID
 	}
 
 	if filter.Status != nil {

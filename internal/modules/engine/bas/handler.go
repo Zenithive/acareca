@@ -1,6 +1,7 @@
 package bas
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
@@ -256,7 +257,7 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 // @Description Generates a formatted Excel BAS report.
 // @Tags BAS
 // @Security BearerToken
-// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param export_type query string false "Export format: 'pdf' or 'excel' (default: excel)" Enums(pdf, excel)
 // @Param financial_year_id query string true "Financial Year UUID"
 // @Param quarter_id query []string false "Quarter UUIDs (can pass multiple)" collectionFormat(multi)
@@ -342,33 +343,33 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 	}
 
 	// 5. Call Service with exportType (Expect 3 return values)
-	buffer, contentType, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, exportType, *actorID, role, userID)
+	result, contentType, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, exportType, *actorID, role, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return
 	}
 
-	// 6. Set Dynamic Filename and Headers
-	ext := ".xlsx"
-	if strings.ToLower(exportType) == "pdf" {
-		ext = ".pdf"
+	if contentType == "text/html" {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Disposition", "inline")
+		c.String(http.StatusOK, result.(string))
+		return
 	}
-	fileName := fmt.Sprintf("BAS_Statement_%s%s", time.Now().Format("2006-01-02"), ext)
 
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	//  Default Excel handling
+	buf := result.(*bytes.Buffer)
+	fileName := fmt.Sprintf("BAS_Statement_%s.xlsx", time.Now().Format("2006-01-02"))
 	c.Header("Content-Type", contentType)
-	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
 	c.Header("Cache-Control", "no-cache")
-
-	// 7. Write Data to Response
-	c.Data(http.StatusOK, contentType, buffer.Bytes())
+	c.Data(http.StatusOK, contentType, buf.Bytes())
 }
 
 // ExportBASPreparation godoc
 // @Summary      Export Quarterly BAS Preparation
 // @Description  Generates an Excel file matching the shared template using GetBASPreparation data.
 // @Tags         engine/bas
-// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param        clinic_ids        query    string  false  "Clinic UUIDs"
 // @Param        quarter_ids       query    string  true   "Quarter UUIDs"
 // @Param        financial_year_id query    string  true   "FY UUID"
@@ -407,11 +408,6 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	// fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.xlsx", time.Now().Format("2006-01-02"))
-	// c.Header("Content-Disposition", "attachment; filename="+fileName)
-	// c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	// file.Write(c.Writer)
-
 	switch v := file.(type) {
 	case *excelize.File:
 		// Standard Excel Response
@@ -419,12 +415,12 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 		c.Header("Content-Disposition", "attachment; filename="+fileName)
 		v.Write(c.Writer)
-	case []byte:
-		// PDF Response
-		fileName := fmt.Sprintf("Quarterly_BAS_Preparation_%s.pdf", time.Now().Format("2006-01-02"))
-		c.Header("Content-Type", "application/pdf")
-		c.Header("Content-Disposition", "attachment; filename="+fileName)
-		c.Writer.Write(v)
+
+	case string:
+		// HTML Response for PDF
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Disposition", "inline") // opens in new tab
+		c.String(http.StatusOK, v)
 
 	default:
 		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))

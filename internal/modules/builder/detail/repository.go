@@ -68,11 +68,12 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 	var permissionClause string
 
 	if role == "ACCOUNTANT" {
-		// Filter by permissions table mapping
+		// Accountant has access to all forms from practitioners they're invited to
 		permissionClause = `
-        AND f.id IN (
-            SELECT entity_id FROM tbl_invite_permissions 
-            WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL
+        AND f.clinic_id IN (
+            SELECT c.id FROM tbl_clinic c
+            INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+            WHERE i.accountant_id = ? AND i.status = 'COMPLETED' AND c.deleted_at IS NULL
         )`
 	} else {
 		// Filter by practitioner's clinics
@@ -133,7 +134,11 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 func (r *Repository) CountForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) (int, error) {
 	permissionClause := `AND f.clinic_id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)`
 	if role == "ACCOUNTANT" {
-		permissionClause = `AND f.id IN (SELECT entity_id FROM tbl_invite_permissions WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL)`
+		permissionClause = `AND f.clinic_id IN (
+			SELECT c.id FROM tbl_clinic c
+			INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+			WHERE i.accountant_id = ? AND i.status = 'COMPLETED' AND c.deleted_at IS NULL
+		)`
 	}
 
 	base := `FROM tbl_form f WHERE f.deleted_at IS NULL ` + permissionClause

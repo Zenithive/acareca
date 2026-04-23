@@ -10,9 +10,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	pl := rg.Group("/pl")
 	pl.Use(middleware.Auth(cfg))
 	
-	// P&L reports require reports permission (read-only)
-	pl.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureReports, middleware.ActionRead))
-
+	// P&L reports - authentication required only
 	pl.GET("/summary", h.GetMonthlySummary)
 	pl.GET("/by-account", h.GetByAccount)
 	pl.GET("/by-responsibility", h.GetByResponsibility)

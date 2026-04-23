@@ -254,12 +254,12 @@ func (h *handler) ExportReport(c *gin.Context) {
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 		c.Header("Content-Disposition", "attachment; filename="+fileName)
 		v.Write(c.Writer)
-	case []byte:
-		// PDF Response
-		fileName := fmt.Sprintf("Profit_and_Loss_%s.pdf", time.Now().Format("2006-01-02"))
-		c.Header("Content-Type", "application/pdf")
-		c.Header("Content-Disposition", "attachment; filename="+fileName)
-		c.Writer.Write(v)
+
+	case string:
+		// HTML Response for PDF
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Disposition", "inline") // opens in new tab
+		c.String(http.StatusOK, v)
 
 	default:
 		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))

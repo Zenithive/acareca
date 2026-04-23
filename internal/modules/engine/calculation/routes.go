@@ -6,23 +6,12 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
-	// Calculations require sales_purchases permission (read-only for viewing, write for creating)
+	// All calculation operations - no permission checks
 	
-	// Read operations
-	calcRead := rg.Group("")
-	calcRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
-	{
-		calcRead.GET("/calculate/:id", h.Calculation)
-		calcRead.GET("/calculate/formula/:form_id", h.FormulaCalculate)
-		calcRead.GET("/summary/:id", h.GetFormSummary)
-	}
-	
-	// Write operations (creating calculations)
-	calcWrite := rg.Group("")
-	calcWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
-	{
-		calcWrite.POST("/calculate", h.CalculateFromEntries)
-		calcWrite.POST("/calculate/live", h.LiveCalculate)
-		calcWrite.POST("/calculate/preview", h.FormPreview)
-	}
+	rg.GET("/calculate/:id", h.Calculation)
+	rg.GET("/calculate/formula/:form_id", h.FormulaCalculate)
+	rg.GET("/summary/:id", h.GetFormSummary)
+	rg.POST("/calculate", h.CalculateFromEntries)
+	rg.POST("/calculate/live", h.LiveCalculate)
+	rg.POST("/calculate/preview", h.FormPreview)
 }

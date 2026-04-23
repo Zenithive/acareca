@@ -88,7 +88,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	invite := &Invitation{
 		ID:             uuid.New(),
 		PractitionerID: practitionerID,
-		EntityID:       existingAccID,
+		AccountantID:   existingAccID,
 		Email:          strings.ToLower(strings.TrimSpace(req.Email)),
 		Status:         StatusSent,
 		ExpiresAt:      time.Now().AddDate(0, 0, s.inviteConfig.ExpirationDays),
@@ -123,7 +123,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		}
 	}()
 
-	common.PublishNotification(ctx, s.notification, invite.EntityID, practitionerID, invite,
+	common.PublishNotification(ctx, s.notification, invite.AccountantID, practitionerID, invite,
 		func(inv *Invitation) common.NotificationMeta {
 			return common.NotificationMeta{
 				EntityID:      inv.ID,
@@ -531,7 +531,7 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return nil, fmt.Errorf("cannot resend: invitation is already %s", oldInv.Status)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, oldInv.ID, StatusResent, oldInv.EntityID); err != nil {
+	if err := s.repo.UpdateStatus(ctx, oldInv.ID, StatusResent, oldInv.AccountantID); err != nil {
 		return nil, fmt.Errorf("failed to invalidate old invitation: %w", err)
 	}
 
@@ -588,14 +588,14 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return ErrCannotRevokeStatus
 	}
 
-	accountantID := *inv.EntityID
+	accountantID := *inv.AccountantID
 	tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.EntityID); err != nil {
+	if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.AccountantID); err != nil {
 		return fmt.Errorf("revoke invitation status update: %w", err)
 	}
 
@@ -646,7 +646,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		if accountantID != nil && *accountantID != *req.AccountantID {
 			// The provided ID doesn't match the actual accountant ID
 			// This might be an entity_id from invitation table, ignore it and use what we found
-			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n", 
+			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n",
 				req.AccountantID.String(), accountantID.String(), req.Email)
 		}
 	}
@@ -737,15 +737,19 @@ func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, ac
 
 // ListAccountantPermission implements [Service].
 func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
-	var filter common.Filter
-	filter = f.MapToFilterAccountant()
+	filter := f.MapToFilterAccountant()
 
-	permission, err := s.repo.ListPermission(ctx, filter)
+	invWithPerms, err := s.repo.ListPermission(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	rs := permission.ToRsPermission()
-
-	return rs, nil
+	return &RsPermission{
+		ID:             invWithPerms.ID,
+		PractitionerID: invWithPerms.PractitionerID,
+		AccountantID:   invWithPerms.AccountantID,
+		Permissions:    invWithPerms.Permissions,
+		CreatedAt:      invWithPerms.CreatedAt,
+		UpdatedAt:      invWithPerms.UpdatedAt,
+	}, nil
 }

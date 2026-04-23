@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
@@ -46,9 +44,8 @@ type IService interface {
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 
 	//ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
-	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string) (*bytes.Buffer, string, error)
+	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string) (interface{}, string, error)
 	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
-	generatePDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error)
 }
 
 type Service struct {
@@ -898,7 +895,7 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	return &rs, nil
 }
 
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string) (*bytes.Buffer, string, error) {
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string) (interface{}, string, error) {
 	// 1. Fetch Shared Data
 	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 	if err != nil {
@@ -914,20 +911,15 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		g.Details = details // <--- This matches the field in the struct
 	}
 
-	// 2. Handle PDF Export
+	// 2. Handle HTML Export
 	if strings.ToLower(exportType) == "pdf" {
-		// Wrap the groups in an anonymous struct so the template can find "Groups"
-		data := struct {
-			Groups interface{}
-		}{
-			Groups: groups,
-		}
+		data := struct{ Groups interface{} }{Groups: groups}
 
-		buf, err := s.generatePDFWithChrome(ctx, data)
+		htmlContent, err := s.generateTransactionHTML(data) // Call new helper
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to generate pdf: %w", err)
+			return nil, "", fmt.Errorf("failed to generate html: %w", err)
 		}
-		return buf, "application/pdf", nil
+		return htmlContent, "text/html", nil
 	}
 
 	// 3. Handle Excel Export
@@ -1253,7 +1245,7 @@ func getFloat(f *float64) float64 {
 	return *f
 }
 
-func (s *Service) generatePDFWithChrome(ctx context.Context, data interface{}) (*bytes.Buffer, error) {
+func (s *Service) generateTransactionHTML(data interface{}) (string, error) {
 	tmpl, err := template.New("pdf").Funcs(template.FuncMap{
 		"getFloat": func(f *float64) float64 {
 			if f == nil {
@@ -1261,62 +1253,23 @@ func (s *Service) generatePDFWithChrome(ctx context.Context, data interface{}) (
 			}
 			return *f
 		},
-	}).Parse(reportTemplate) // Ensure this name matches your const string
+	}).Parse(reportTemplate)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse template: %w", err)
+		return "", err
 	}
 
 	var htmlBuf bytes.Buffer
-	// Pass the 'data' struct directly here
 	if err := tmpl.Execute(&htmlBuf, data); err != nil {
-		return nil, fmt.Errorf("failed to execute template: %w", err)
+		return "", err
 	}
 
-	// 2. Setup Chromedp Options (Headless and No-Sandbox are critical for Docker/Linux)
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.NoSandbox,
-		chromedp.Headless,
-		chromedp.DisableGPU,
-	)
+	// Print button that only shows on screen, not on the PDF/Printout
+	b := `<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
+	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
+	<style>@media print{.no-print{display:none}}</style></div>`
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
+	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
 
-	taskCtx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	// 3. Run Chromedp Tasks
-	var pdfBuffer []byte
-	err = chromedp.Run(taskCtx,
-		chromedp.Navigate("about:blank"),
-		// Set the HTML content directly in the browser
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			frameTree, err := page.GetFrameTree().Do(ctx)
-			if err != nil {
-				return err
-			}
-			return page.SetDocumentContent(frameTree.Frame.ID, htmlBuf.String()).Do(ctx)
-		}),
-		// Print to PDF with PrintBackground enabled (for colors)
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err := page.PrintToPDF().
-				WithPrintBackground(true). // Crucial for header colors
-				WithLandscape(true).       // Landscape matches Excel feel
-				WithPaperWidth(11.7).      // A4 Width
-				WithPaperHeight(8.3).      // A4 Height
-				Do(ctx)
-			if err != nil {
-				return err
-			}
-			pdfBuffer = buf
-			return nil
-		}),
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("chromedp failed: %w", err)
-	}
-
-	return bytes.NewBuffer(pdfBuffer), nil
+	return finalHTML, nil
 }

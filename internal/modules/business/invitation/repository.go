@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -32,7 +33,7 @@ type Repository interface {
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
-	ListPermission(ctx context.Context, f common.Filter) (Permission, error)
+	ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissions, error)
 
 	GetPermission(ctx context.Context, accountantID *uuid.UUID, entityID uuid.UUID, email *string) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
@@ -59,9 +60,9 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) Create(ctx context.Context, inv *Invitation) error {
-	query := `INSERT INTO tbl_invitation (id, practitioner_id, entity_id, email, status, expires_at) 
+	query := `INSERT INTO tbl_invitation (id, practitioner_id, accountant_id, email, status, expires_at) 
               VALUES ($1, $2, $3, $4, $5, $6)`
-	_, err := r.db.ExecContext(ctx, query, inv.ID, inv.PractitionerID, inv.EntityID, inv.Email, inv.Status, inv.ExpiresAt)
+	_, err := r.db.ExecContext(ctx, query, inv.ID, inv.PractitionerID, inv.AccountantID, inv.Email, inv.Status, inv.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to create invitation: %w", err)
 	}
@@ -69,9 +70,9 @@ func (r *repository) Create(ctx context.Context, inv *Invitation) error {
 }
 
 func (r *repository) CreateTx(ctx context.Context, tx *sqlx.Tx, inv *Invitation) error {
-	query := `INSERT INTO tbl_invitation (id, practitioner_id, entity_id, email, status, expires_at) 
+	query := `INSERT INTO tbl_invitation (id, practitioner_id, accountant_id, email, status, expires_at) 
               VALUES ($1, $2, $3, $4, $5, $6)`
-	_, err := tx.ExecContext(ctx, query, inv.ID, inv.PractitionerID, inv.EntityID, inv.Email, inv.Status, inv.ExpiresAt)
+	_, err := tx.ExecContext(ctx, query, inv.ID, inv.PractitionerID, inv.AccountantID, inv.Email, inv.Status, inv.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to create invitation: %w", err)
 	}
@@ -104,9 +105,9 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*Invitation,
 	return inv, nil
 }
 
-func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error {
-	query := `UPDATE tbl_invitation SET status = $1, entity_id = $2 WHERE id = $3`
-	_, err := r.db.ExecContext(ctx, query, status, entityID, id)
+func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status InvitationStatus, accountantID *uuid.UUID) error {
+	query := `UPDATE tbl_invitation SET status = $1, accountant_id = $2 WHERE id = $3`
+	_, err := r.db.ExecContext(ctx, query, status, accountantID, id)
 	return err
 }
 
@@ -164,7 +165,7 @@ func (r *repository) GetUserIDByEmail(ctx context.Context, email string) (*uuid.
 }
 
 func (r *repository) List(ctx context.Context, f common.Filter) ([]*Invitation, error) {
-	base := `SELECT id, practitioner_id, entity_id, email, status, created_at, expires_at FROM tbl_invitation`
+	base := `SELECT id, practitioner_id, accountant_id, email, status, created_at, expires_at FROM tbl_invitation`
 
 	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
 
@@ -263,7 +264,7 @@ func (r *repository) GetPractitionerEmailByID(ctx context.Context, practitionerI
 }
 
 func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error) {
-	base := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.entity_id, i.email, i.status, i.created_at, i.expires_at
+	base := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.accountant_id, i.email, i.status, i.created_at, i.expires_at
 	         FROM tbl_invitation i
 	         JOIN tbl_practitioner p ON i.practitioner_id = p.id
 	         JOIN tbl_user u ON p.user_id = u.id`
@@ -278,7 +279,7 @@ func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uui
 }
 
 func (r *repository) ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error) {
-	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.entity_id, i.email, i.status, i.created_at, i.expires_at
+	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.accountant_id, i.email, i.status, i.created_at, i.expires_at
 	          FROM tbl_invitation i
 	          JOIN tbl_practitioner p ON i.practitioner_id = p.id
 	          JOIN tbl_user u ON p.user_id = u.id
@@ -312,34 +313,51 @@ func (r *repository) CountByEmail(ctx context.Context, email string, f common.Fi
 
 // GetPermission checks if an accountant has access to a practitioner
 func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID, practitionerID uuid.UUID, email *string) (*Permissions, error) {
-	var rows []PermissionRow
-
+	var invitationID uuid.UUID
+	
+	// First, get the invitation ID
 	if accountantID != nil && *accountantID != uuid.Nil {
-		query := `
-			SELECT permission_name, can_read, can_write
-			FROM tbl_invite_permissions
-			WHERE practitioner_id = $1 AND accountant_id = $2
-		`
-		if err := r.db.SelectContext(ctx, &rows, query, practitionerID, accountantID); err != nil {
+		query := `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
+		err := r.db.GetContext(ctx, &invitationID, query, practitionerID, accountantID)
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, nil
 			}
-			return nil, fmt.Errorf("get permission by accountant: %w", err)
+			return nil, fmt.Errorf("get invitation by accountant: %w", err)
 		}
 	} else if email != nil && *email != "" {
-		query := `
-			SELECT permission_name, can_read, can_write
-			FROM tbl_invite_permissions
-			WHERE practitioner_id = $1 AND email = $2
-		`
-		if err := r.db.SelectContext(ctx, &rows, query, practitionerID, email); err != nil {
+		query := `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND email = $2 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
+		err := r.db.GetContext(ctx, &invitationID, query, practitionerID, email)
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, nil
 			}
-			return nil, fmt.Errorf("get permission by email: %w", err)
+			return nil, fmt.Errorf("get invitation by email: %w", err)
 		}
 	} else {
 		return nil, fmt.Errorf("either accountant_id or email must be provided")
+	}
+
+	// Now get the permissions for this invitation
+	type PermRow struct {
+		PermissionName string `db:"name"`
+		CanRead        bool   `db:"can_read"`
+		CanWrite       bool   `db:"can_write"`
+	}
+	
+	var rows []PermRow
+	query := `
+		SELECT p.name, ip.can_read, ip.can_write
+		FROM tbl_invite_permissions ip
+		JOIN tbl_permission p ON ip.permission_id = p.id
+		WHERE ip.invitation_id = $1
+	`
+	
+	if err := r.db.SelectContext(ctx, &rows, query, invitationID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get permissions: %w", err)
 	}
 
 	if len(rows) == 0 {
@@ -347,23 +365,45 @@ func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID,
 	}
 
 	perms := make(Permissions)
-	perms.FromRows(rows)
+	for _, row := range rows {
+		perms[PermissionName(row.PermissionName)] = AccessLevel{
+			Read:  row.CanRead,
+			Write: row.CanWrite,
+		}
+	}
 
 	return &perms, nil
 }
 
 // GetPermissionsByPractitionerAndAccountant gets permissions for an accountant-practitioner relationship
 func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error) {
-	var rows []PermissionRow
+	// First, get the invitation ID
+	var invitationID uuid.UUID
+	query := `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
+	err := r.db.GetContext(ctx, &invitationID, query, practitionerID, accountantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get invitation: %w", err)
+	}
 
-	query := `
-        SELECT permission_name, can_read, can_write
-        FROM tbl_invite_permissions
-        WHERE practitioner_id = $1 
-          AND accountant_id = $2
-    `
-
-	err := r.db.SelectContext(ctx, &rows, query, practitionerID, accountantID)
+	// Now get the permissions
+	type PermRow struct {
+		PermissionName string `db:"name"`
+		CanRead        bool   `db:"can_read"`
+		CanWrite       bool   `db:"can_write"`
+	}
+	
+	var rows []PermRow
+	permQuery := `
+		SELECT p.name, ip.can_read, ip.can_write
+		FROM tbl_invite_permissions ip
+		JOIN tbl_permission p ON ip.permission_id = p.id
+		WHERE ip.invitation_id = $1
+	`
+	
+	err = r.db.SelectContext(ctx, &rows, permQuery, invitationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -375,64 +415,82 @@ func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Conte
 		return nil, nil
 	}
 
-	// Convert rows to Permissions map
 	perms := make(Permissions)
-	perms.FromRows(rows)
+	for _, row := range rows {
+		perms[PermissionName(row.PermissionName)] = AccessLevel{
+			Read:  row.CanRead,
+			Write: row.CanWrite,
+		}
+	}
 
 	return &perms, nil
 }
 
 func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error {
+	// First, get or verify the invitation
+	var invitationID uuid.UUID
+	var query string
+	
 	if accID != nil && *accID != uuid.Nil {
-		query := `
-			INSERT INTO tbl_invite_permissions
-				(id, practitioner_id, accountant_id, permission_name, can_read, can_write, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, NOW())`
-
-		for _, row := range perms.ToRows() {
-			if _, err := tx.ExecContext(ctx, query,
-				uuid.New(),
-				pID,
-				accID,
-				row.Name,
-				row.AccessLevel.Read,
-				row.AccessLevel.Write,
-			); err != nil {
-				return fmt.Errorf("failed to upsert permission %q: %w", row.Name, err)
-			}
+		query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 LIMIT 1`
+		err := tx.GetContext(ctx, &invitationID, query, pID, accID)
+		if err != nil {
+			return fmt.Errorf("invitation not found for accountant: %w", err)
 		}
 	} else {
 		if email == "" {
 			return fmt.Errorf("email required when accountant ID is absent")
 		}
+		query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND email = $2 LIMIT 1`
+		err := tx.GetContext(ctx, &invitationID, query, pID, email)
+		if err != nil {
+			return fmt.Errorf("invitation not found for email: %w", err)
+		}
+	}
 
-		query := `
-			INSERT INTO tbl_invite_permissions
-				(id, practitioner_id, email, permission_name, can_read, can_write, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, NOW())`
+	// Insert or update permissions
+	for _, row := range perms.ToRows() {
+		// Get permission_id from tbl_permission
+		var permissionID int
+		permQuery := `SELECT id FROM tbl_permission WHERE name = $1`
+		err := tx.GetContext(ctx, &permissionID, permQuery, string(row.Name))
+		if err != nil {
+			return fmt.Errorf("permission %q not found: %w", row.Name, err)
+		}
 
-		for _, row := range perms.ToRows() {
-			if _, err := tx.ExecContext(ctx, query,
-				uuid.New(),
-				pID,
-				email,
-				row.Name,
-				row.AccessLevel.Read,
-				row.AccessLevel.Write,
-			); err != nil {
-				return fmt.Errorf("failed to upsert permission %q: %w", row.Name, err)
-			}
+		// Upsert the permission
+		upsertQuery := `
+			INSERT INTO tbl_invite_permissions (id, invitation_id, permission_id, can_read, can_write, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+			ON CONFLICT (invitation_id, permission_id) 
+			DO UPDATE SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write, updated_at = NOW()
+		`
+		
+		_, err = tx.ExecContext(ctx, upsertQuery,
+			uuid.New(),
+			invitationID,
+			permissionID,
+			row.AccessLevel.Read,
+			row.AccessLevel.Write,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to upsert permission %q: %w", row.Name, err)
 		}
 	}
 
 	return nil
 }
 
-func (r *repository) DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
-	query := `DELETE FROM tbl_invite_permissions WHERE practitioner_id = $1`
-	_, err := tx.ExecContext(ctx, query, entityID)
+func (r *repository) DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error {
+	query := `
+		DELETE FROM tbl_invite_permissions 
+		WHERE invitation_id IN (
+			SELECT id FROM tbl_invitation WHERE practitioner_id = $1
+		)
+	`
+	_, err := tx.ExecContext(ctx, query, practitionerID)
 	if err != nil {
-		return fmt.Errorf("delete permissions by entity tx: %w", err)
+		return fmt.Errorf("delete permissions by practitioner tx: %w", err)
 	}
 
 	return nil
@@ -442,7 +500,7 @@ func (r *repository) IsAccountantLinkedToPractitioner(ctx context.Context, pract
 	var exists bool
 	query := `SELECT EXISTS(
 		SELECT 1 FROM tbl_invitation 
-		WHERE practitioner_id = $1 AND entity_id = $2 
+		WHERE practitioner_id = $1 AND accountant_id = $2 
 		AND status IN ('SENT', 'ACCEPTED', 'COMPLETED')
 		LIMIT 1
 	)`
@@ -456,7 +514,7 @@ func (r *repository) IsAccountantLinkedToPractitioner(ctx context.Context, pract
 // This is maintained for backward compatibility with handlers that need to resolve a practitioner for an accountant.
 func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
 	var practitionerID uuid.UUID
-	query := `SELECT practitioner_id FROM tbl_invitation WHERE entity_id = $1 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
+	query := `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = $1 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
 	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -470,8 +528,10 @@ func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context,
 func (r *repository) DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error {
 	query := `
         DELETE FROM tbl_invite_permissions 
-        WHERE practitioner_id = $1 
-          AND accountant_id = $2
+        WHERE invitation_id IN (
+			SELECT id FROM tbl_invitation 
+			WHERE practitioner_id = $1 AND accountant_id = $2
+		)
     `
 	_, err := tx.ExecContext(ctx, query, practitionerID, accountantID)
 	if err != nil {
@@ -480,37 +540,82 @@ func (r *repository) DeleteAllPermissionsForAccountantTx(ctx context.Context, tx
 	return nil
 }
 
-func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error {
-	query := `UPDATE tbl_invitation SET status = $1, entity_id = $2 WHERE id = $3`
-	_, err := tx.ExecContext(ctx, query, status, entityID, id)
+func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, accountantID *uuid.UUID) error {
+	query := `UPDATE tbl_invitation SET status = $1, accountant_id = $2 WHERE id = $3`
+	_, err := tx.ExecContext(ctx, query, status, accountantID, id)
 	return err
 }
 
-func (r *repository) ListPermission(ctx context.Context, f common.Filter) (Permission, error) {
+func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissions, error) {
+	// Define columns with table aliases to avoid ambiguity
+	permissionColumns := map[string]string{
+		"email":           "i.email",
+		"status":          "i.status::text",
+		"created_at":      "i.created_at",
+		"practitioner_id": "i.practitioner_id",
+		"accountant_id":   "i.accountant_id",
+	}
+	
 	base := `SELECT 
-		id, 
-		practitioner_id, 
-		accountant_id, 
-		email, 
-		permission_name, 
-		can_read, 
-		can_write, 
-		created_at, 
-		updated_at 
-	FROM tbl_invite_permissions`
+        i.id as invitation_id,
+        i.practitioner_id,
+        i.accountant_id,
+        i.created_at as invitation_created_at,
+        ip.updated_at as permissions_updated_at,
+        p.name as permission_name, 
+        ip.can_read, 
+        ip.can_write 
+    FROM tbl_invite_permissions ip
+	JOIN tbl_permission p ON ip.permission_id = p.id
+	JOIN tbl_invitation i ON ip.invitation_id = i.id`
 
-	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, false)
+	query, filterArgs := common.BuildQuery(base, f, permissionColumns, invitationSearchCols, false)
 
-	var perms Permission
-	if err := r.db.SelectContext(ctx, &perms, r.db.Rebind(query), filterArgs...); err != nil {
-		return perms, fmt.Errorf("list accountant permissions repo: %w", err)
+	type PermRow struct {
+		InvitationID          uuid.UUID `db:"invitation_id"`
+		PractitionerID        uuid.UUID `db:"practitioner_id"`
+		AccountantID          uuid.UUID `db:"accountant_id"`
+		InvitationCreatedAt   time.Time `db:"invitation_created_at"`
+		PermissionsUpdatedAt  time.Time `db:"permissions_updated_at"`
+		PermissionName        string    `db:"permission_name"`
+		CanRead               bool      `db:"can_read"`
+		CanWrite              bool      `db:"can_write"`
+	}
+	
+	var rows []PermRow
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), filterArgs...); err != nil {
+		return nil, fmt.Errorf("list accountant permissions repo: %w", err)
 	}
 
-	return perms, nil
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no permissions found")
+	}
+
+	// Use the first row for invitation details (all rows have same invitation data)
+	firstRow := rows[0]
+	
+	perms := make(Permissions)
+	for _, row := range rows {
+		perms[PermissionName(row.PermissionName)] = AccessLevel{
+			Read:  row.CanRead,
+			Write: row.CanWrite,
+		}
+	}
+
+	return &InvitationWithPermissions{
+		ID:             firstRow.InvitationID,
+		PractitionerID: firstRow.PractitionerID,
+		AccountantID:   firstRow.AccountantID,
+		CreatedAt:      firstRow.InvitationCreatedAt,
+		UpdatedAt:      firstRow.PermissionsUpdatedAt,
+		Permissions:    perms,
+	}, nil
 }
 
 func (r *repository) CountPermission(ctx context.Context, f common.Filter) (int, error) {
-	base := `FROM tbl_invite_permissions`
+	base := `FROM tbl_invite_permissions ip
+	JOIN tbl_permission p ON ip.permission_id = p.id
+	JOIN tbl_invitation i ON ip.invitation_id = i.id`
 
 	query, filterArgs := common.BuildQuery(base, f, invitationColumns, invitationSearchCols, true)
 
@@ -523,13 +628,10 @@ func (r *repository) CountPermission(ctx context.Context, f common.Filter) (int,
 }
 
 func (r *repository) LinkPermissionsToAccountantTx(ctx context.Context, tx *sqlx.Tx, email string, accountantID uuid.UUID) error {
-	query := `
-        UPDATE tbl_invite_permissions 
-        SET accountant_id = $1 
-        WHERE email = $2 AND accountant_id IS NULL
-    `
-	_, err := tx.ExecContext(ctx, query, accountantID, email)
-	return err
+	// This function is no longer needed with the new schema since permissions are linked to invitation_id
+	// The invitation already has the accountant_id, so permissions are automatically linked
+	// We just need to update the invitation's accountant_id, which is done elsewhere
+	return nil
 }
 
 func (r *repository) DeletePermission(ctx context.Context, pID uuid.UUID, entityID uuid.UUID, accID *uuid.UUID, email string) error {

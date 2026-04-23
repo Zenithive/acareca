@@ -26,7 +26,11 @@ func NewRepository(db *sqlx.DB) Repository {
 func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND fm.id IN (SELECT entity_id FROM tbl_invite_permissions WHERE accountant_id = ? AND entity_type = 'FORM' AND deleted_at IS NULL)`
+		// Accountant has access to all forms from practitioners they're invited to
+		permissionClause = ` AND c.practitioner_id IN (
+			SELECT practitioner_id FROM tbl_invitation 
+			WHERE accountant_id = ? AND status = 'COMPLETED'
+		)`
 	} else {
 		permissionClause = ` AND c.id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)`
 	}
