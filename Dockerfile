@@ -4,7 +4,14 @@ FROM golang:1.26-alpine AS builder
 WORKDIR /app
 
 # Install git (needed for module downloads)
-RUN apk add --no-cache git
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \ 
+    git 
 
 # Create temp dir
 RUN mkdir -p /tmp && chmod 1777 /tmp
