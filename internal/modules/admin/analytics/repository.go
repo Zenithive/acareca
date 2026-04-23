@@ -334,7 +334,7 @@ func (r *repository) GetPractitionerDetails(ctx context.Context, practitionerID 
 			return nil, fmt.Errorf("scan clinic: %w", err)
 		}
 
-		// Get accountants for this clinic
+		// Get accountants for this practitioner via invitation
 		accQuery := `
 			SELECT DISTINCT
 				a.id,
@@ -342,15 +342,14 @@ func (r *repository) GetPractitionerDetails(ctx context.Context, practitionerID 
 				u.email,
 				u.phone,
 				'read,update' as permissions
-			FROM tbl_invite_permissions ip
-			JOIN tbl_accountant a ON ip.accountant_id = a.id
+			FROM tbl_invitation i
+			JOIN tbl_accountant a ON i.accountant_id = a.id
 			JOIN tbl_user u ON a.user_id = u.id
-			WHERE ip.practitioner_id = $1
-				AND ip.entity_id = $2
-				AND ip.deleted_at IS NULL
+			WHERE i.practitioner_id = $1
+				AND i.status = 'COMPLETED'
 				AND a.deleted_at IS NULL
 		`
-		accRows, err := r.db.QueryxContext(ctx, accQuery, practitionerID, clinic.ID)
+		accRows, err := r.db.QueryxContext(ctx, accQuery, practitionerID)
 		if err != nil {
 			return nil, fmt.Errorf("get accountants: %w", err)
 		}
@@ -587,21 +586,24 @@ func (r *repository) batchGetClinicsWithAccountants(ctx context.Context, ids []u
 		return clinicMap, nil
 	}
 
-	// Get all accountants for these clinics in one query
+	// Get all accountants for these practitioners via invitations
+	// Map them back to clinics through practitioner_id
 	accQuery := `
 		SELECT DISTINCT
-			ip.entity_id as clinic_id,
+			c.id as clinic_id,
 			a.id,
 			u.first_name || ' ' || u.last_name as name,
 			u.email,
 			u.phone,
 			'read,update' as permissions
-		FROM tbl_invite_permissions ip
-		JOIN tbl_accountant a ON ip.accountant_id = a.id
+		FROM tbl_invitation i
+		JOIN tbl_accountant a ON i.accountant_id = a.id
 		JOIN tbl_user u ON a.user_id = u.id
-		WHERE ip.entity_id = ANY($1)
-			AND ip.deleted_at IS NULL
+		JOIN tbl_clinic c ON c.practitioner_id = i.practitioner_id
+		WHERE c.id = ANY($1)
+			AND i.status = 'COMPLETED'
 			AND a.deleted_at IS NULL
+			AND c.deleted_at IS NULL
 	`
 
 	accRows, err := r.db.QueryxContext(ctx, accQuery, allClinicIDs)

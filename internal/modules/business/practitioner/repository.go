@@ -144,7 +144,7 @@ func (r *repository) ListPractitionersForAccountant(ctx context.Context, account
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
 		JOIN tbl_invitation i ON i.practitioner_id = p.id 
 		WHERE p.deleted_at IS NULL
-		  AND i.entity_id = ?
+		  AND i.accountant_id = ?
 		  AND i.status = 'COMPLETED'
 	`
 	
@@ -167,7 +167,7 @@ func (r *repository) CountPractitionersForAccountant(ctx context.Context, accoun
         JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
         JOIN tbl_invitation i ON i.practitioner_id = p.id
         WHERE p.deleted_at IS NULL
-          AND i.entity_id = ?
+          AND i.accountant_id = ?
           AND i.status = 'COMPLETED'
     `
 	
