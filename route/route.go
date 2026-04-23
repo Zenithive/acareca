@@ -1,13 +1,11 @@
 package route
 
 import (
-	"context"
 	"log"
 
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	adminSubscription "github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
@@ -72,20 +70,20 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
-	invitationHandler := invitation.NewHandler(invitationSvc, accountant.NewRepository(dbConn))
+	invitationHandler := invitation.NewHandler(invitationSvc)
 
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
-	permAdapter := middleware.NewPermissionAdapterFromFuncs(
-		func(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (middleware.FeaturePermissions, error) {
-			perms, err := invitationSvc.GetPermissionsForAccountant(ctx, accountantID, practitionerID)
-			if err != nil || perms == nil {
-				return nil, err
-			}
-			return nil, nil // *Permissions implements FeaturePermissions
-		},
-		invitationSvc.IsAccountantLinkedToPractitioner,
-	)
+	// permAdapter := middleware.NewPermissionAdapterFromFuncs(
+	// 	func(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (middleware.FeaturePermissions, error) {
+	// 		perms, err := invitationSvc.GetPermissionsForAccountant(ctx, accountantID, practitionerID)
+	// 		if err != nil || perms == nil {
+	// 			return nil, err
+	// 		}
+	// 		return nil, nil // *Permissions implements FeaturePermissions
+	// 	},
+	// 	invitationSvc.IsAccountantLinkedToPractitioner,
+	// )
 
 	// invite api
 	invite := v1.Group("/invite")

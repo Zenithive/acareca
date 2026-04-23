@@ -1,10 +1,7 @@
 package route
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
@@ -41,16 +38,16 @@ func RegisterBuilderRoutes(
 ) {
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
-	permAdapter := middleware.NewPermissionAdapterFromFuncs(
-		func(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (middleware.FeaturePermissions, error) {
-			perms, err := invitationSvc.GetPermissionsForAccountant(ctx, accountantID, practitionerID)
-			if err != nil || perms == nil {
-				return nil, err
-			}
-			return nil, nil // *Permissions implements FeaturePermissions
-		},
-		invitationSvc.IsAccountantLinkedToPractitioner,
-	)
+	// permAdapter := middleware.NewPermissionAdapterFromFuncs(
+	// 	func(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (middleware.FeaturePermissions, error) {
+	// 		perms, err := invitationSvc.GetPermissionsForAccountant(ctx, accountantID, practitionerID)
+	// 		if err != nil || perms == nil {
+	// 			return nil, err
+	// 		}
+	// 		return nil, nil // *Permissions implements FeaturePermissions
+	// 	},
+	// 	invitationSvc.IsAccountantLinkedToPractitioner,
+	// )
 
 	// Initialize repositories
 	clinicRepo := clinic.NewRepository(dbConn)

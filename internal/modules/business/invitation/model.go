@@ -182,22 +182,6 @@ type AccessLevel struct {
 	Write bool `json:"write" db:"can_write"`
 }
 
-type PermissionsData struct {
-	SalesPurchases      Permission
-	LockDates           Permission
-	ManageUsers         Permission
-	ReportsViewDownload Permission
-}
-
-// func (p PermissionsData) toRows() []Permission {
-// 	return []Permission{
-// 		{Name: "sales_purchases", AccessLevel: AccessLevel{Read: p.SalesPurchases.AccessLevel.Read, Write: p.SalesPurchases.AccessLevel.Write}},
-// 		{Name: "lock_dates", AccessLevel: AccessLevel{Read: p.LockDates.AccessLevel.Read, Write: p.LockDates.AccessLevel.Write}},
-// 		{Name: "manage_users", AccessLevel: AccessLevel{Read: p.ManageUsers.AccessLevel.Read, Write: p.ManageUsers.AccessLevel.Write}},
-// 		{Name: "reports_view_download", AccessLevel: AccessLevel{Read: p.ReportsViewDownload.AccessLevel.Read, Write: p.ReportsViewDownload.AccessLevel.Write}},
-// 	}
-// }
-
 type Permissions map[PermissionName]AccessLevel
 
 func (p Permissions) Get(name PermissionName) AccessLevel {
@@ -252,25 +236,10 @@ type PermissionRow struct {
 	CanWrite       bool           `db:"can_write"`
 }
 
-type RqGrantPermission struct {
-	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
-	Email        string       `json:"email" validate:"omitempty,email"`
-	Permissions  *Permissions `json:"permissions" validate:"required"`
-}
-
 type RqUpdatePermissions struct {
 	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
 	Email        string       `json:"email" validate:"required,email"`
 	Permissions  *Permissions `json:"permissions" validate:"required"`
-}
-
-type InvitationPermission struct {
-	ID             uuid.UUID   `json:"id"`
-	PractitionerID uuid.UUID   `json:"practitioner_id"`
-	AccountantID   uuid.UUID   `json:"accountant_id"`
-	Permissions    Permissions `json:"permissions"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 type RsPermission struct {
@@ -282,19 +251,10 @@ type RsPermission struct {
 	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
-type RsPermissions map[PermissionName]AccessLevel
-
 func (p *Permission) ToRsPermission() *RsPermission {
 	return &RsPermission{
 		Permissions: Permissions{
 			p.Name: p.AccessLevel,
 		},
-	}
-}
-
-func (p Permissions) FromRow(row Permission) {
-	p[PermissionName(row.Name)] = AccessLevel{
-		Read:  row.AccessLevel.Read,
-		Write: row.AccessLevel.Write,
 	}
 }

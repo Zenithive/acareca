@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -24,12 +23,11 @@ type IHandler interface {
 }
 
 type Handler struct {
-	svc            Service
-	accountantRepo accountant.Repository
+	svc Service
 }
 
-func NewHandler(svc Service, accountantRepo accountant.Repository) IHandler {
-	return &Handler{svc: svc, accountantRepo: accountantRepo}
+func NewHandler(svc Service) IHandler {
+	return &Handler{svc: svc}
 }
 
 // @Summary      Send an invitation
@@ -149,7 +147,7 @@ func (h *Handler) ListInvitations(c *gin.Context) {
 	}
 	reqFilter.Role = role
 
-	res, err := h.svc.ListInvitations(c.Request.Context(), actorId, &reqFilter)
+	res, err := h.svc.ListInvitation(c.Request.Context(), actorId, &reqFilter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -255,7 +253,7 @@ func (h *Handler) ListPermissions(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	// 2. Call Service with the Accountant ID pointer
+
 	res, err := h.svc.ListPermissions(c.Request.Context(), accId, &reqFilter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
