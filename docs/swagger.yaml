@@ -3789,7 +3789,6 @@ paths:
         items:
           type: string
         name: quarter_id
-        required: true
         type: array
       - description: Full month name
         in: query

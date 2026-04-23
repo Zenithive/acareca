@@ -656,14 +656,14 @@ const activityTemplate = `
 <html>
 <head>
 <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #333; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #000; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
     th, td { border: 1px solid #bfbfbf; padding: 8px; word-wrap: break-word; }
     
     .header { background-color: #4EA7B3; color: white; font-weight: bold; text-align: center; }
     .sub-header { background-color: #E1F0F2; font-weight: bold; color: #2A5D63; }
     .label { font-weight: bold; width: 70%; }
-    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; }
+    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; font-weight: bold;}
     .total-row { background-color: #4EA7B3; color: white; font-weight: bold; }
     
     .indent { padding-left: 25px; font-weight: normal; }
@@ -723,22 +723,27 @@ const activityTemplate = `
         </tr>
         <tr>
             <td class="label">W1 (Total Wages, salary and other payments)</td>
+			<td>-</td>
            
         </tr>
         <tr>
             <td class="label">W2 (Amount withheld from payments shown at W1)</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">W3 (Other amounts withheld)</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">W4 (Amount withheld where no ABN is quoted)</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">W5 (Total amounts withheld)</td>
+			<td>-</td>
            
         </tr>
     </table>
@@ -747,10 +752,12 @@ const activityTemplate = `
         <tr class="sub-header"><td colspan="2">PAYG instalment</td></tr>
         <tr>
             <td class="label">Option 1</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">Option 2</td>
+			<td>-</td>
             
         </tr>
     </table>

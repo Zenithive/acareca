@@ -2603,8 +2603,7 @@ const docTemplate = `{
                         "collectionFormat": "multi",
                         "description": "Quarter UUIDs (can pass multiple)",
                         "name": "quarter_id",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     },
                     {
                         "type": "string",
