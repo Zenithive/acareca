@@ -32,6 +32,16 @@ type Invitation struct {
 	ExpiresAt      time.Time        `json:"expires_at" db:"expires_at"`
 }
 
+func (i *Invitation) ToRs() *RsInvitation {
+	return &RsInvitation{
+		ID:           i.ID,
+		Email:        i.Email,
+		AccountantID: i.AccountantID,
+		Status:       i.Status,
+		ExpiresAt:    i.ExpiresAt,
+	}
+}
+
 // RqSendInvitation is the input for creating a new invitation
 type RqSendInvitation struct {
 	Email       string       `json:"email" validate:"required,email"`

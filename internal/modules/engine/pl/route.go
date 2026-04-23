@@ -6,10 +6,10 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	pl := rg.Group("/pl")
 	pl.Use(middleware.Auth(cfg))
-	
+
 	// P&L reports - authentication required only
 	pl.GET("/summary", h.GetMonthlySummary)
 	pl.GET("/by-account", h.GetByAccount)

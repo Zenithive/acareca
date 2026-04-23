@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -17,6 +18,9 @@ type IService interface {
 	ListForms(ctx context.Context) ([]RsAccountantForm, error)
 	Analytics(ctx context.Context, filter *FilterAnalytics) (*RsAnalytics, error)
 	GetAccountantID(ctx context.Context) (string, error)
+
+	GetAccountantDetail(ctx context.Context, userId *uuid.UUID, accountantId *uuid.UUID, email *string) (*RsAccountantDetail, error)
+	ListAccountant(ctx context.Context, f common.Filter, count bool) (*util.RsList, error)
 }
 
 type service struct {
@@ -145,4 +149,20 @@ func (s *service) Analytics(ctx context.Context, filter *FilterAnalytics) (*RsAn
 		Clinics:            clinics,
 		Forms:              forms,
 	}, nil
+}
+
+// GetAccountantDetail implements [Service].
+func (s *service) GetAccountantDetail(ctx context.Context, userId *uuid.UUID, accountantId *uuid.UUID, email *string) (*RsAccountantDetail, error) {
+	return s.repo.GetAccountantDetail(ctx, userId, accountantId, email)
+}
+
+// ListAccountant implements [IService].
+func (s *service) ListAccountant(ctx context.Context, f common.Filter, count bool) (*util.RsList, error) {
+	acc, total, err := s.repo.ListAccountant(ctx, f, count)
+	if err != nil {
+		return nil, err
+	}
+	var rsList util.RsList
+	rsList.MapToList(acc, total, *f.Offset, *f.Limit)
+	return &rsList, nil
 }

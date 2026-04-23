@@ -2,6 +2,7 @@ package practitioner
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -25,6 +26,8 @@ type Repository interface {
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
+
+	GetPractitionerDetails(ctx context.Context, userID *uuid.UUID, practitionerID *uuid.UUID, email *string) (*RsPractitionerDetails, error)
 }
 
 type repository struct {
@@ -147,9 +150,9 @@ func (r *repository) ListPractitionersForAccountant(ctx context.Context, account
 		  AND i.accountant_id = ?
 		  AND i.status = 'COMPLETED'
 	`
-	
+
 	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, false)
-	
+
 	// Prepend accountantID to filterArgs
 	args := append([]interface{}{accountantID}, filterArgs...)
 
@@ -170,9 +173,9 @@ func (r *repository) CountPractitionersForAccountant(ctx context.Context, accoun
           AND i.accountant_id = ?
           AND i.status = 'COMPLETED'
     `
-	
+
 	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, true)
-	
+
 	// Prepend accountantID to filterArgs
 	args := append([]interface{}{accountantID}, filterArgs...)
 
@@ -234,4 +237,46 @@ func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	}
 
 	return nil
+}
+
+// GetPractitionerDetails implements [Repository].
+func (r *repository) GetPractitionerDetails(ctx context.Context, userID *uuid.UUID, practitionerID *uuid.UUID, email *string) (*RsPractitionerDetails, error) {
+
+	query := `
+		SELECT p.id, p.user_id, u.first_name, u.last_name, u.email, r.name AS role
+		FROM tbl_practitioner p
+		JOIN tbl_user u ON p.user_id = u.id
+		JOIN tbl_role r ON u.role_id = r.id
+		WHERE 1=1`
+
+	args := []interface{}{}
+	argCount := 1
+
+	if userID != nil {
+		query += fmt.Sprintf(" AND p.user_id = $%d", argCount)
+		args = append(args, *userID)
+		argCount++
+	}
+
+	if email != nil && *email != "" {
+		query += fmt.Sprintf(" AND u.email = $%d", argCount)
+		args = append(args, *email)
+	}
+
+	if practitionerID != nil {
+		query += fmt.Sprintf(" AND p.id = $%d", argCount)
+		args = append(args, *practitionerID)
+	}
+
+	query += " LIMIT 1"
+
+	var details PractitionerDetails
+	if err := r.db.GetContext(ctx, &details, query, args...); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get practitioner details repo: %w", err)
+	}
+
+	return details.ToRs(), nil
 }

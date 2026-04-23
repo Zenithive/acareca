@@ -6,7 +6,7 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	clinic := rg.Group("/clinic")
 	clinic.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 

@@ -2,8 +2,11 @@ package accountant
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -21,6 +24,9 @@ type Repository interface {
 	GetPractitioners(ctx context.Context, accountantID string, ft common.Filter) ([]Practitioner, error)
 	GetClinics(ctx context.Context, accountantID string, ft common.Filter) ([]Clinic, error)
 	GetForms(ctx context.Context, accountantID string, ft common.Filter) ([]Form, error)
+
+	GetAccountantDetail(ctx context.Context, userId *uuid.UUID, accountantId *uuid.UUID, email *string) (*RsAccountantDetail, error)
+	ListAccountant(ctx context.Context, f common.Filter, count bool) ([]*RsAccountant, int, error)
 }
 
 type repository struct {
@@ -371,4 +377,69 @@ func (r *repository) GetForms(ctx context.Context, accountantID string, ft commo
 	}
 
 	return forms, nil
+}
+
+// GetAccountantDetail implements [Repository].
+func (r *repository) GetAccountantDetail(ctx context.Context, userId *uuid.UUID, accountantId *uuid.UUID, email *string) (*RsAccountantDetail, error) {
+	query := `
+		SELECT p.id, p.user_id, u.first_name, u.last_name, u.email, r.name AS role
+		FROM tbl_accountant p
+		JOIN tbl_user u ON p.user_id = u.id AND u.deleted_at IS NULL
+		JOIN tbl_role r ON u.role_id = r.id
+		WHERE 1=1`
+
+	args := []interface{}{}
+	argCount := 1
+
+	if userId != nil {
+		query += fmt.Sprintf(" AND p.user_id = $%d", argCount)
+		args = append(args, *userId)
+		argCount++
+	}
+
+	if email != nil && *email != "" {
+		query += fmt.Sprintf(" AND u.email = $%d", argCount)
+		args = append(args, *email)
+	}
+
+	if accountantId != nil {
+		query += fmt.Sprintf(" AND p.id = $%d", argCount)
+		args = append(args, *accountantId)
+	}
+
+	query += " LIMIT 1"
+
+	var details AccountantDetails
+	if err := r.db.GetContext(ctx, &details, query, args...); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get accountant details repo: %w", err)
+	}
+
+	return details.ToRs(), nil
+}
+
+// ListAccountant implements [Repository].
+func (r *repository) ListAccountant(ctx context.Context, f common.Filter, count bool) ([]*RsAccountant, int, error) {
+	base := `SELECT id, user_id, verified FROM tbl_accountant WHERE deleted_at IS NULL`
+
+	var query string
+	var args []interface{}
+
+	if count {
+		query, args = common.BuildQuery("SELECT COUNT(*) FROM tbl_accountant WHERE deleted_at IS NULL", f, nil, nil, true)
+		var total int
+		if err := r.db.GetContext(ctx, &total, r.db.Rebind(query), args...); err != nil {
+			return nil, 0, fmt.Errorf("failed to count accountants: %w", err)
+		}
+		return []*RsAccountant{}, total, nil
+	}
+
+	query, args = common.BuildQuery(base, f, nil, nil, false)
+	var accountants []*RsAccountant
+	if err := r.db.SelectContext(ctx, &accountants, r.db.Rebind(query), args...); err != nil {
+		return nil, 0, fmt.Errorf("failed to list accountants: %w", err)
+	}
+	return accountants, len(accountants), nil
 }

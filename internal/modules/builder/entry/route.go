@@ -2,12 +2,11 @@ package entry
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	// All entry operations - no permission checks
-	
+
 	// Version-based routes
 	versionGroup := rg.Group("/version/:version_id")
 	{

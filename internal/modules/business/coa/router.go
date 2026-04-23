@@ -6,7 +6,7 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	// Public reference data - no auth required
 	rg.GET("/account-types", h.ListAccountTypes)
 	rg.GET("/account-types/:id", h.GetAccountType)
@@ -16,7 +16,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	// Chart of Accounts group - requires authentication only
 	accounts := rg.Group("/chart-of-account")
 	accounts.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
-	
+
 	// All operations - authentication required, no granular permissions
 	{
 		accounts.GET("", h.ListChartOfAccount)

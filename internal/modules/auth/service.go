@@ -52,6 +52,9 @@ type Service interface {
 	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
 
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error)
+	GetUserByEmail(ctx context.Context, email string) (*User, error)
+
 	ForgotPassword(ctx context.Context, req *RqForgotPassword) error
 	ResetPassword(ctx context.Context, req *RqResetPassword) error
 }
@@ -67,10 +70,10 @@ type service struct {
 	practitionerRepo practitioner.Repository
 	accountantSvc    accountant.IService
 	adminSvc         admin.IService
-	inviteRepo       invitation.Repository
+	inviteRepo       invitation.IRepository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.IRepository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -105,7 +108,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		return nil, errors.New("this email is registered but not verified. Please check your email to verify your account")
 	}
 
-	invite, err := s.invitationSvc.GetInvitationByEmailInternal(ctx, req.Email)
+	invite, err := s.invitationSvc.GetInvitationByEmail(ctx, nil, req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify invitation status: %w", err)
 	}
@@ -175,7 +178,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			if a == nil {
 				return errors.New("failed to retrieve accountant profile for invitation finalization")
 			}
-			err = s.invitationSvc.FinalizeRegistrationInternal(ctx, tx, created.Email, a.ID)
+			_, err := s.invitationSvc.GetInvitationByEmail(ctx, &a.ID, created.Email)
 			if err != nil {
 				return fmt.Errorf("[DEBUG] finalize invitation: %w", err)
 			}
@@ -965,4 +968,14 @@ func (s *service) isUserVerified(ctx context.Context, user *User) (bool, error) 
 		return false, fmt.Errorf("could not verify account status: %w", err)
 	}
 	return verified, nil
+}
+
+// GetUserByEmail implements [Service].
+func (s *service) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	return s.repo.FindByEmail(ctx, email)
+}
+
+// GetUserByID implements [Service].
+func (s *service) GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error) {
+	return s.repo.FindByID(ctx, userID)
 }

@@ -13,6 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -27,13 +29,14 @@ type Service interface {
 	SendInvite(ctx context.Context, practitionerID uuid.UUID, req *RqSendInvitation) (*RsInvitation, error)
 	GetInvitation(ctx context.Context, inviteID uuid.UUID) (*RsInviteDetails, error)
 	ProcessInvitation(ctx context.Context, req *RqProcessAction) (*RsInviteProcess, error)
-	FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx, email string, entityID uuid.UUID) error
 	ListInvitation(ctx context.Context, actorID *uuid.UUID, f *Filter) (*util.RsList, error)
 	ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error)
 	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 
 	UpdatePermissions(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error)
 	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*RsPermission, error)
+	GetInvitationByEmail(ctx context.Context, accountantID *uuid.UUID, email string) (*RsInvitation, error)
+	IsLinked(ctx context.Context, practitionerID *uuid.UUID, accountantID *uuid.UUID) (bool, error)
 }
 
 const (
@@ -42,21 +45,25 @@ const (
 )
 
 type service struct {
-	repo         Repository
+	repo         IRepository
 	cfg          *config.Config
 	inviteConfig util.InvitationConfig
 	notification notification.Service
 	auditSvc     audit.Service
+	pracSvc      practitioner.IService
+	accSvc       accountant.IService
 	db           *sqlx.DB
 }
 
-func NewService(repo Repository, cfg *config.Config, notification notification.Service, auditSvc audit.Service, db *sqlx.DB) Service {
+func NewService(repo IRepository, cfg *config.Config, notification notification.Service, auditSvc audit.Service, pracSvc practitioner.IService, accSvc accountant.IService, db *sqlx.DB) Service {
 	return &service{
 		repo:         repo,
 		cfg:          cfg,
 		inviteConfig: util.InviteDefaultConfig(),
 		notification: notification,
 		auditSvc:     auditSvc,
+		pracSvc:      pracSvc,
+		accSvc:       accSvc,
 		db:           db,
 	}
 }
@@ -68,7 +75,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	}
 
 	// Check if an accountant already exists for this email
-	existingAccID, err := s.repo.GetAccountantIDByEmail(ctx, req.Email)
+	existingAcc, err := s.accSvc.GetAccountantDetail(ctx, nil, nil, &req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing accountant: %w", err)
 	}
@@ -82,7 +89,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	invite := &Invitation{
 		ID:             uuid.New(),
 		PractitionerID: practitionerID,
-		AccountantID:   existingAccID,
+		AccountantID:   &existingAcc.ID,
 		Email:          strings.ToLower(strings.TrimSpace(req.Email)),
 		Status:         StatusSent,
 		ExpiresAt:      time.Now().AddDate(0, 0, s.inviteConfig.ExpirationDays),
@@ -94,7 +101,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 			return fmt.Errorf("failed to save invite: %w", err)
 		}
 
-		err = s.repo.GrantEntityPermission(ctx, tx, practitionerID, existingAccID, invite.Email, *req.Permissions)
+		err = s.repo.GrantEntityPermission(ctx, tx, practitionerID, &existingAcc.ID, invite.Email, *req.Permissions)
 		if err != nil {
 			return fmt.Errorf("failed to save permissions: %w", err)
 		}
@@ -167,7 +174,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	return &RsInvitation{
 		ID:           invite.ID,
 		Email:        invite.Email,
-		AccountantID: existingAccID,
+		AccountantID: &existingAcc.ID,
 		InviteLink:   inviteLink,
 		Status:       invite.Status,
 		ExpiresAt:    invite.ExpiresAt,
@@ -248,14 +255,16 @@ func (s *service) GetInvitation(ctx context.Context, inviteID uuid.UUID) (*RsInv
 
 	recipient := UserDetails{Email: inv.Email}
 
-	queryUser, _ := s.repo.GetUserDetailsByEmail(ctx, inv.Email)
+	user, err := s.pracSvc.GetPractitionerDetails(ctx, nil, nil, &inv.Email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get practitioner details: %w", err)
+	}
 	var accountantID *uuid.UUID
 	isFound := false
-	if queryUser != nil {
-		recipient.FirstName = queryUser.FirstName
-		recipient.LastName = queryUser.LastName
-		accID, _ := s.repo.GetAccountantIDByEmail(ctx, inv.Email)
-		accountantID = accID
+	if user != nil {
+		recipient.FirstName = user.FirstName
+		recipient.LastName = user.LastName
+		accountantID = &user.ID
 		isFound = true
 	}
 
@@ -315,12 +324,13 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		}
 
 		if req.Action == ActionAccept {
-			accountantID, err := s.repo.GetAccountantIDByEmail(ctx, inv.Email)
+			accountant, err := s.accSvc.GetAccountantDetail(ctx, nil, nil, &inv.Email)
 			if err != nil {
 				return fmt.Errorf("failed to check accountant existence: %w", err)
 			}
+			accountantID = &accountant.ID
 
-			if accountantID != nil {
+			if accountant.ID != uuid.Nil {
 				targetStatus = StatusCompleted
 				res.IsFound = true
 			} else {
@@ -397,113 +407,82 @@ func (s *service) logInvitationAction(ctx context.Context, inv *Invitation, acti
 	})
 }
 
-func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx, email string, entityID uuid.UUID) error {
-	inv, err := s.repo.GetByEmail(ctx, email)
-	if err != nil {
-		return err
-	}
-
-	if inv == nil {
-		return nil
-	}
-
-	if inv.Status != StatusAccepted && inv.Status != StatusSent {
-		return nil
-	}
-
-	// Update Invitation Status
-	if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusCompleted, &entityID); err != nil {
-		return err
-	}
-
-	// Update accountant_id in tbl_invite_permissions for all entries with this email to map permissions with accountant_id
-	if err := s.repo.LinkPermissionsToAccountant(ctx, tx, email, entityID); err != nil {
-		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "invitation.link_permissions",
-			err, "", entityID.String(), auditctx.EntityPermission, auditctx.ModuleBusiness,
-		)
-		return fmt.Errorf("failed to link permissions: %w", err)
-	}
-
-	// Audit log: invitation completed
-	meta := auditctx.GetMetadata(ctx)
-	pIDStr := inv.PractitionerID.String()
-	entityIDStr := inv.ID.String()
-	entityType := auditctx.EntityInvitation
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		//PracticeID: meta.PracticeID,
-		PracticeID:  &pIDStr,
-		UserID:      meta.UserID,
-		Module:      auditctx.ModuleBusiness,
-		Action:      auditctx.ActionInviteCompleted,
-		EntityType:  &entityType,
-		EntityID:    &entityIDStr,
-		BeforeState: inv,
-		AfterState:  "COMPLETED",
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
-	})
-	return nil
-}
-
 func (s *service) ListInvitation(ctx context.Context, actorID *uuid.UUID, f *Filter) (*util.RsList, error) {
-	var baseURL string
-	if s.cfg.Env == "dev" {
-		baseURL = s.cfg.DevUrl
-	} else {
-		baseURL = s.cfg.LocalUrl
+	if actorID == nil {
+		return nil, errors.New("actorID is required")
 	}
 
-	// Accountant path: query by email with practitioner details
-	if f.Role == util.RoleAccountant && actorID != nil {
-		email, err := s.repo.GetEmailByAccountantID(ctx, *actorID)
+	baseURL, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve base URL: %w", err)
+	}
+
+	if f.Role == util.RoleAccountant {
+		accountant, err := s.accSvc.GetAccountantDetail(ctx, nil, actorID, nil)
 		if err != nil {
-			return nil, fmt.Errorf("resolve accountant email: %w", err)
+			return nil, fmt.Errorf("resolve accountant details: %w", err)
 		}
 
 		ft := f.MapToFilterAccountant()
 
-		listRows, err := s.repo.ListForAccountant(ctx, email, ft)
+		list, _, err := s.repo.ListInvitations(ctx, ft, false)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list invitations for accountant: %w", err)
 		}
-		total, err := s.repo.CountByEmail(ctx, email, ft)
+		_, total, err := s.repo.ListInvitations(ctx, ft, true)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("count invitations for accountant: %w", err)
 		}
 
-		// Add invite links for SENT status
-		for _, row := range listRows {
-			if row.Status == StatusSent {
-				row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+		var rsRows []*RsInvitation
+		for _, row := range list {
+			if row.Email != accountant.Email {
+				continue
 			}
+			inv := row.ToRs()
+			if inv.Status == StatusSent {
+				inv.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+			}
+			rsRows = append(rsRows, inv)
 		}
 
 		var rsList util.RsList
-		rsList.MapToList(listRows, total, *ft.Offset, *ft.Limit)
+		rsList.MapToList(rsRows, total, *ft.Offset, *ft.Limit)
 		return &rsList, nil
 	}
 
-	// Practitioner path: same response structure for consistency
-	ft := f.MapToFilter(actorID)
-	listRows, err := s.repo.ListForPractitioner(ctx, *actorID, ft)
-	if err != nil {
-		return nil, err
-	}
-	total, err := s.repo.Count(ctx, ft)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add invite links for SENT status
-	for _, row := range listRows {
-		if row.Status == StatusSent {
-			row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+	if f.Role == util.RolePractitioner {
+		practitioner, err := s.pracSvc.GetPractitionerDetails(ctx, nil, actorID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("resolve practitioner details: %w", err)
 		}
+
+		ft := f.MapToFilter(&practitioner.ID)
+
+		list, _, err := s.repo.ListInvitations(ctx, ft, false)
+		if err != nil {
+			return nil, fmt.Errorf("list invitations for practitioner: %w", err)
+		}
+		_, total, err := s.repo.ListInvitations(ctx, ft, true)
+		if err != nil {
+			return nil, fmt.Errorf("count invitations for practitioner: %w", err)
+		}
+
+		var rsRows []*RsInvitation
+		for _, row := range list {
+			inv := row.ToRs()
+			if inv.Status == StatusSent {
+				inv.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+			}
+			rsRows = append(rsRows, inv)
+		}
+
+		var rsList util.RsList
+		rsList.MapToList(rsRows, total, *ft.Offset, *ft.Limit)
+		return &rsList, nil
 	}
 
-	var rsList util.RsList
-	rsList.MapToList(listRows, total, *ft.Offset, *ft.Limit)
-	return &rsList, nil
+	return nil, fmt.Errorf("unsupported role: %s", f.Role)
 }
 
 func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) (*RsInvitation, error) {
@@ -562,7 +541,7 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 }
 
 func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email string) error {
-	count, err := s.repo.CountDailyInvitesByEmail(ctx, pID, email)
+	count, err := s.repo.CountInvitesByEmail(ctx, pID, email)
 	if err != nil {
 		return fmt.Errorf("failed to check invitation limit: %w", err)
 	}
@@ -599,7 +578,7 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 			return fmt.Errorf("revoke invitation status update: %w", err)
 		}
 
-		if err := s.repo.DeleteAllPermissionsForAccountant(ctx, tx, practitionerID, accountantID); err != nil {
+		if err := s.repo.DeletePermission(ctx, tx, practitionerID, &accountantID, inv.Email); err != nil {
 			return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
 		}
 
@@ -624,10 +603,10 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 	var useEmail bool
 
 	// First, try to resolve the accountant by email (most reliable)
-	accID, err := s.repo.GetAccountantIDByEmail(ctx, req.Email)
-	if err == nil && accID != nil {
+	acc, err := s.accSvc.GetAccountantDetail(ctx, nil, nil, &req.Email)
+	if err == nil && acc.ID != uuid.Nil {
 		// Accountant exists and is registered, use their ID
-		accountantID = accID
+		accountantID = &acc.ID
 		useEmail = false
 	} else {
 		// Accountant doesn't exist yet (pending invitation), use email
@@ -647,7 +626,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 
 	// Check if the accountant/email is linked to this practitioner via invitation
 	if accountantID != nil {
-		isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, *accountantID)
+		isLinked, err := s.repo.IsUserLink(ctx, &practitionerID, accountantID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify accountant link: %w", err)
 		}
@@ -665,7 +644,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 	// Get old permissions for audit log
 	var oldPerms *Permissions
 	if accountantID != nil {
-		oldPerms, _ = s.repo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, *accountantID)
+		oldPerms, _ = s.repo.GetPermission(ctx, &practitionerID, *accountantID, nil)
 	} else {
 		oldPerms, _ = s.repo.GetPermission(ctx, nil, practitionerID, &req.Email)
 	}
@@ -711,8 +690,6 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 	return req.Permissions, nil
 }
 
-// Helper to centralize permission logic
-
 // ListAccountantPermission implements [Service].
 func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
 	filter := f.MapToFilterAccountant()
@@ -730,4 +707,18 @@ func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filte
 		CreatedAt:      invWithPerms.CreatedAt,
 		UpdatedAt:      invWithPerms.UpdatedAt,
 	}, nil
+}
+
+// GetInvitationByEmail implements [Service].
+func (s *service) GetInvitationByEmail(ctx context.Context, accountantID *uuid.UUID, email string) (*RsInvitation, error) {
+	inv, err := s.repo.GetInvitationByEmail(ctx, accountantID, email)
+	if err != nil {
+		return nil, err
+	}
+	return inv.ToRs(), nil
+}
+
+// IsLinked implements [Service].
+func (s *service) IsLinked(ctx context.Context, practitionerID *uuid.UUID, accountantID *uuid.UUID) (bool, error) {
+	return s.repo.IsUserLink(ctx, practitionerID, accountantID)
 }

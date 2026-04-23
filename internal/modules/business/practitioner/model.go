@@ -116,3 +116,32 @@ func (filter *Filter) MapToFilter() common.Filter {
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 	return f
 }
+
+type PractitionerDetails struct {
+	ID        uuid.UUID `db:"id"`
+	UserID    uuid.UUID `db:"user_id"`
+	FirstName string    `db:"first_name"`
+	LastName  string    `db:"last_name"`
+	Email     string    `db:"email"`
+	Role      string    `db:"role"`
+}
+
+func (p *PractitionerDetails) ToRs() *RsPractitionerDetails {
+	return &RsPractitionerDetails{
+		ID:        p.ID,
+		UserID:    p.UserID,
+		FirstName: p.FirstName,
+		LastName:  p.LastName,
+		Email:     p.Email,
+		Role:      p.Role,
+	}
+}
+
+type RsPractitionerDetails struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	FirstName string    `json:"first_name"`
+	LastName  string    `json:"last_name"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+}

@@ -576,9 +576,9 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		}
 
 		// Delete associated permissions for this Form
-		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
-			return err
-		}
+		// if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
+		// 	return err
+		// }
 
 		return nil
 	})

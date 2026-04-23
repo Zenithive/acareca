@@ -106,13 +106,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	clinicRepo := clinic.NewRepository(dbConn)
 	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
-	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
+	clinic.RegisterRoutes(v1, clinicHandler, cfg)
 
 	// ============ COA SERVICE (cross-module dependency) ============
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
 	coaHandler := coa.NewHandler(coaSvc)
-	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg, permAdapter)
+	coa.RegisterRoutes(v1.Group("/coa"), coaHandler, cfg)
 
 	// ============ PRACTITIONER SERVICE (cross-module dependency) ============
 	practitionerRepo := practitioner.NewRepository(dbConn)
@@ -145,7 +145,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc)
 	plHandler := pl.NewHandler(plSvc)
-	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
+	pl.RegisterRoutes(v1, plHandler, cfg)
 
 	basRepo := bas.NewRepository(dbConn)
 	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo)

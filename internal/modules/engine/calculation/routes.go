@@ -2,12 +2,11 @@ package calculation
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	// All calculation operations - no permission checks
-	
+
 	rg.GET("/calculate/:id", h.Calculation)
 	rg.GET("/calculate/formula/:form_id", h.FormulaCalculate)
 	rg.GET("/summary/:id", h.GetFormSummary)

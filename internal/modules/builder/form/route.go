@@ -2,10 +2,9 @@ package form
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	// All form operations - no permission checks
 	rg.GET("/:id", h.GetFormWithFields)
 	rg.GET("", h.List)

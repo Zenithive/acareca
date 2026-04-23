@@ -67,7 +67,7 @@ func RegisterBuilderRoutes(
 
 	// Form routes
 	formGroup := v1.Group("/form", middleware.Auth(cfg), middleware.AuditContext())
-	form.RegisterRoutes(formGroup, formHandler, permAdapter)
+	form.RegisterRoutes(formGroup, formHandler)
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
@@ -75,7 +75,7 @@ func RegisterBuilderRoutes(
 	entriesHandler := entry.NewHandler(entriesSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())
-	entry.RegisterRoutes(entryGroup, entriesHandler, permAdapter)
+	entry.RegisterRoutes(entryGroup, entriesHandler)
 
 	// Calculation routes
 	calculationGroup := v1.Group("")
@@ -83,5 +83,5 @@ func RegisterBuilderRoutes(
 	calculationRepo := calculation.NewRepository(dbConn)
 	calculationSvc := calculation.NewServiceWithFormula(calculationRepo, formSvc, versionSvc, fieldSvc, entriesSvc, formulaSvc)
 	calculationHandler := calculation.NewHandler(calculationSvc)
-	calculation.RegisterRoutes(calculationGroup, calculationHandler, permAdapter)
+	calculation.RegisterRoutes(calculationGroup, calculationHandler)
 }

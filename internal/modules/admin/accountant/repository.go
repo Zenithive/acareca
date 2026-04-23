@@ -48,7 +48,10 @@ func (r *repository) ListAccountantsWithPractitioners(ctx context.Context, f com
 }
 
 // buildListQuery constructs the SQL query for listing accountants
-func (r *repository) buildListQuery(f common.Filter) struct{ SQL string; Args []interface{} } {
+func (r *repository) buildListQuery(f common.Filter) struct {
+	SQL  string
+	Args []interface{}
+} {
 	baseQuery := `
 		SELECT 
 			a.id, a.user_id,
@@ -68,7 +71,10 @@ func (r *repository) buildListQuery(f common.Filter) struct{ SQL string; Args []
 
 	sql, args := common.BuildQuery(baseQuery, f, accountantColumns, accountantSearchCols, false)
 
-	return struct{ SQL string; Args []interface{} }{SQL: sql, Args: args}
+	return struct {
+		SQL  string
+		Args []interface{}
+	}{SQL: sql, Args: args}
 }
 
 // scanAccountants scans database rows and groups practitioners by accountant

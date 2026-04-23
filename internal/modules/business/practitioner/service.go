@@ -20,6 +20,8 @@ type IService interface {
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+
+	GetPractitionerDetails(ctx context.Context, userID *uuid.UUID, practitionerID *uuid.UUID, email *string) (*RsPractitionerDetails, error)
 }
 
 type service struct {
@@ -125,4 +127,9 @@ func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsLis
 	var rsList util.RsList
 	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
+}
+
+// GetPractitionerDetails implements [IService].
+func (s *service) GetPractitionerDetails(ctx context.Context, userID *uuid.UUID, practitionerID *uuid.UUID, email *string) (*RsPractitionerDetails, error) {
+	return s.repo.GetPractitionerDetails(ctx, userID, practitionerID, email)
 }
