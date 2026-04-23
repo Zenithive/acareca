@@ -6,6 +6,9 @@ WORKDIR /app
 # Install git (needed for module downloads)
 RUN apk add --no-cache git
 
+# Create temp dir
+RUN mkdir -p /tmp && chmod 1777 /tmp
+
 # Create non-root user for runtime
 RUN adduser -D -u 1001 appuser
 
