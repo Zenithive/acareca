@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -1449,6 +1450,13 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 
 	b.WriteString("</table></body></html>")
 
+	//Create a path that we know exists and is writable
+	tempProfileDir := "/tmp/chromedp-profile"
+	if err := os.MkdirAll(tempProfileDir, 0777); err != nil {
+		// This will tell you exactly why the system can't see /tmp
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+
 	// Render using Chromedp
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath("/usr/bin/chromium-browser"), // Path for Alpine
@@ -1456,7 +1464,9 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 		chromedp.DisableGPU,
 		chromedp.Headless,
 		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("remote-debugging-port", "9222"), // Helpful for container stability
 		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"),
+		chromedp.UserDataDir(tempProfileDir),
 	)
 
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
