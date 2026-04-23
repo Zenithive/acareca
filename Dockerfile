@@ -2,16 +2,8 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
-
 # Install git (needed for module downloads)
-RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \ 
-    git 
+RUN apk add --no-cache git
 
 # Create temp dir
 RUN mkdir -p /tmp && chmod 1777 /tmp
@@ -42,8 +34,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 
 # ── Runtime stage ─────────────────────────────────────────────
-# FROM scratch
 FROM alpine:3.19
+
+# MOVE THE INSTALLATION HERE
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# MOVE THE TMP DIR CREATION HERE
+RUN mkdir -p /tmp && chmod 1777 /tmp
 
 WORKDIR /
 
