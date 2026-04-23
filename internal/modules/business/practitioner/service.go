@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
+
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -20,6 +21,8 @@ type IService interface {
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+	GetLockDate(ctx context.Context, practitionerID uuid.UUID) (*string, error)
+	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 }
 
 type service struct {
@@ -125,4 +128,26 @@ func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsLis
 	var rsList util.RsList
 	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
+}
+
+// GetLockDate retrieves the lock date for a specific practitioner
+func (s *service) GetLockDate(ctx context.Context, practitionerID uuid.UUID) (*string, error) {
+	settings, err := s.repo.GetFinancialSettings(ctx, practitionerID)
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil {
+		return nil, nil
+	}
+	return settings.LockDate, nil
+}
+
+// UpdateLockDate updates or clears the lock date
+func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
+	// Business Logic: You might want to prevent setting a lock date too far in the future
+	if lockDate != nil && *lockDate != "" {
+		// Example: return fmt.Errorf("lock date cannot be more than 1 year in the future")
+	}
+
+	return s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
 }
