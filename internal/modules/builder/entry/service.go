@@ -1131,18 +1131,16 @@ const reportTemplate = `
 <html>
 <head>
 <style>
-    /* 1. Page Setup - Landscape gives more horizontal room */
     @page {
         size: A4 landscape;
         margin: 1cm;
     }
 
     body { 
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-        font-size: 9pt; 
-        color: #666;
+        font-family: 'sans-serif; 
+        font-size: 12pt; 
+        color: #000;
         margin: 0;
-        padding: 0;
     }
 
     table { 
@@ -1152,102 +1150,85 @@ const reportTemplate = `
         margin-bottom: 30px;
     }
 
-    /* 2. Enhanced Spacing for Cells */
     th, td { 
         border: 1px solid #d1d1d1; 
-        padding: 10px 6px; /* Increased vertical padding */
-        line-height: 1.4;
+        padding: 8px 6px;
         word-wrap: break-word;
         vertical-align: middle;
     }
     
-    /* 3. Header Style */
     th { 
         background-color: #4EA7B3; 
         color: white; 
         text-align: center; 
         font-weight: bold;
-        text-transform: uppercase;
-        font-size: 8.5pt;
-        letter-spacing: 0.5px;
+        font-size: 14pt; 
     }
     
-    /* 4. Group Header Styling */
     .group-row { 
         background-color: #DAEEF3; 
         font-weight: bold; 
         color: #2A5D63;
-        font-size: 10pt;
+        font-size: 13pt;
     }
     
-    /* 5. Total Row Styling */
+    /* Total Rows: Bold, Gray Background, Size 12pt */
     .total-row { 
-        background-color: #F2F2F2; 
+        background-color: #E1E1E1; 
         font-weight: bold;
-        border-top: 2px solid #4EA7B3;
+        font-size: 12pt;
     }
     
-    .amount { 
-        text-align: right; 
-        font-family: 'Courier New', monospace; /* Monospaced fonts align decimals better */
-        font-weight: bold;
-    }
+    .amount { text-align: right; }
+    .date-cell { text-align: center; }
 
-    .indent { padding-left: 25px; }
-    
-    /* 6. Optimized Column Widths for Landscape */
-    .col-1 { width: 22%; } /* Account / Field */
-    .col-2 { width: 12%; } /* Tax Type */
-    .col-3 { width: 15%; } /* Form */
-    .col-4 { width: 15%; } /* Clinic */
-    .col-5 { width: 10%; } /* Net */
-    .col-6 { width: 8%; }  /* GST */
-    .col-7 { width: 10%; } /* Gross */
-    .col-8 { width: 8%; }  /* Date */
-
-    .date-cell { font-size: 8pt; text-align: center; }
+    /* Column Widths */
+    .col-date { width: 12%; }
+    .col-acct { width: 20%; }
+    .col-tax  { width: 10%; }
+    .col-form { width: 15%; }
+    .col-clinic { width: 15%; }
+    .col-amt  { width: 9%; }
 </style>
 </head>
 <body>
     <table>
         <thead>
             <tr>
-			
-                <th class="col-1">Account / Field</th>
-                <th class="col-2">Tax Type</th>
-                <th class="col-3">Form</th>
-                <th class="col-4">Clinic</th>
-                <th class="col-5">Net Amount</th>
-                <th class="col-6">GST Amount</th>
-                <th class="col-7">Gross Amount</th>
-                <th class="col-8">Date</th>
+                <th class="col-date">Date</th>
+                <th class="col-acct">Account / Field</th>
+                <th class="col-tax">Tax Type</th>
+                <th class="col-form">Form</th>
+                <th class="col-clinic">Clinic</th>
+                <th class="col-amt">Net</th>
+                <th class="col-amt">GST</th>
+                <th class="col-amt">Gross</th>
             </tr>
         </thead>
         <tbody>
             {{range .Groups}}
                 <tr class="group-row">
-                    <td colspan="8" style="padding: 12px 10px;">{{.CoaName}}</td>
+                    <td colspan="8">{{.CoaName}}</td>
                 </tr>
                 {{range .Details}}
-                <tr style="color: #000; font-weight: 500;">
-                    <td class="indent">{{.FormFieldName}}</td>
+                <tr>
+                    <td class="date-cell">{{formatDate .CreatedAt}}</td>
+                    <td style="padding-left: 20px;">{{.FormFieldName}}</td>
                     <td>{{.TaxTypeName}}</td>
                     <td>{{.FormName}}</td>
                     <td>{{.ClinicName}}</td>
                     <td class="amount">${{getFloat .NetAmount | printf "%.2f"}}</td>
                     <td class="amount">${{getFloat .GstAmount | printf "%.2f"}}</td>
                     <td class="amount">${{getFloat .GrossAmount | printf "%.2f"}}</td>
-                    <td class="date-cell">{{.CreatedAt}}</td>
                 </tr>
                 {{end}}
                 <tr class="total-row">
-                    <td colspan="4" style="text-align: right; padding-right: 15px;"></td>
-                    <td class="amount">${{getFloat .TotalNetAmount | printf "%.2f"}}</td>
+                    <td colspan="5" style="text-align: left; padding-left: 10px;">Total {{.CoaName}}</td>
+                    <td class="amount">${{.TotalNetAmount | printf "%.2f"}}</td>
                     <td class="amount"></td>
-                    <td class="amount">${{getFloat .TotalGrossAmount | printf "%.2f"}}</td>
-                    <td></td>
+                    <td class="amount">${{.TotalGrossAmount | printf "%.2f"}}</td>
                 </tr>
-                <tr style="border: none; height: 25px;"><td colspan="8" style="border: none;"></td></tr>
+                <tr style="border: none; height: 20px;"><td colspan="8" style="border: none;"></td></tr>
             {{end}}
         </tbody>
     </table>
@@ -1290,6 +1271,21 @@ func (s *Service) generateTransactionHTML(data interface{}) (string, error) {
 				return 0.0
 			}
 			return *f
+		},
+		// Helper to format strings or time objects from specific format
+		"formatDate": func(t interface{}) string {
+			switch v := t.(type) {
+			case time.Time:
+				return v.Format("2006-01-02")
+			case string:
+				// If it's a full timestamp like "2026-04-20T10:00:00Z", just take the date part
+				if len(v) >= 10 {
+					return v[:10]
+				}
+				return v
+			default:
+				return ""
+			}
 		},
 	}).Parse(reportTemplate)
 
