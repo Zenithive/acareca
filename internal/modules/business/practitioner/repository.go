@@ -241,36 +241,36 @@ func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
 func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
-	// 	query := `UPDATE tbl_financial_settings
-	// SET lock_date = $1, updated_at = NOW()
-	// WHERE practitioner_id = $2 AND financial_year_id = $3`
 
-	query := `
-        INSERT INTO tbl_financial_settings (practitioner_id, financial_year_id, lock_date, created_at, updated_at)
-        VALUES ($1, $2, 
-            CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'DD-MM-YYYY') END, 
-            NOW(), NOW())
-        ON CONFLICT (practitioner_id, financial_year_id) 
-        DO UPDATE SET 
-            lock_date = CASE WHEN EXCLUDED.lock_date IS NULL THEN NULL ELSE EXCLUDED.lock_date END,
-            updated_at = NOW()
-    `
-
-	result, err := r.db.ExecContext(ctx, query, lockDate, practitionerID, fyID)
+	var exists bool
+	checkQuery := `
+		SELECT EXISTS(
+			SELECT 1 FROM tbl_financial_settings 
+			WHERE practitioner_id = $1 AND financial_year_id = $2
+		)`
+	err := r.db.QueryRowContext(ctx, checkQuery, practitionerID, fyID).Scan(&exists)
 	if err != nil {
 		return err
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
+	if exists {
+		// 2. If it exists, UPDATE it
+		updateQuery := `
+			UPDATE tbl_financial_settings 
+			SET 
+				lock_date = CASE WHEN $1::text IS NULL THEN NULL ELSE TO_DATE($1, 'DD-MM-YYYY') END, 
+				updated_at = NOW() 
+			WHERE practitioner_id = $2 AND financial_year_id = $3`
+		_, err = r.db.ExecContext(ctx, updateQuery, lockDate, practitionerID, fyID)
+	} else {
+		// 3. If it doesn't exist, INSERT it
+		insertQuery := `
+			INSERT INTO tbl_financial_settings (practitioner_id, financial_year_id, lock_date, created_at, updated_at)
+			VALUES ($1, $2, CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'DD-MM-YYYY') END, NOW(), NOW())`
+		_, err = r.db.ExecContext(ctx, insertQuery, practitionerID, fyID, lockDate)
 	}
 
-	if rowsAffected == 0 {
-		return errors.New("practitioner not found")
-	}
-
-	return nil
+	return err
 }
 
 func (r *repository) GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error) {
