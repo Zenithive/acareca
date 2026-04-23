@@ -13,6 +13,7 @@ import (
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+	"github.com/go-pdf/fpdf"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
@@ -1275,196 +1276,306 @@ func strPtr(s string) *string {
 }
 
 // Helper to convert the Excel file to PDF bytes using Chromedp
+// func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) ([]byte, error) {
+// 	rows, err := f.GetRows(sheetName)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	var b bytes.Buffer
+// 	b.WriteString("<html><head><style>")
+// 	b.WriteString(`
+// 		@page { size: A3 landscape; margin: 0.5cm; }
+// 		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 10px; }
+// 		table { border-collapse: collapse; table-layout: fixed; width: 100%; border: 1.2pt solid #000; }
+// 		td { border: 1px solid #000; padding: 4px 2px; font-size: 8.5pt; height: 22px; text-align: center; }
+// 		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; }
+// 		.fy-title { font-size: 16pt; font-weight: bold; background-color: #DAEEF3 !important; padding: 15px; border: 1.2pt solid #000; }
+// 		.section-title { font-weight: bold; font-size: 11pt; border: none; padding-top: 12px; text-align: left; }
+// 		.data-left { text-align: left; border: 1px solid #000; }
+// 		.text-right { text-align: right; }
+// 		.profit-green { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; }
+// 		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
+// 		.income-blue td {background-color: #DAEEF3 !important; }
+// 		.expense-blue td {background-color: #DAEEF3 !important; }
+// 	`)
+// 	b.WriteString("</style></head><body><table>")
+
+// 	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
+// 	totalCols := 1 + (len(data.Columns)+1)*3 // +1 for Total
+
+// 	b.WriteString("<colgroup>")
+// 	b.WriteString("<col style='width: 16%;'>")
+
+// 	colWidth := 84.0 / float64(totalCols-1)
+
+// 	for i := 0; i < totalCols-1; i++ {
+// 		b.WriteString(fmt.Sprintf("<col style='width: %.2f%%;'>", colWidth))
+// 	}
+
+// 	b.WriteString("</colgroup>")
+
+// 	formatCurr := func(v float64) string { return fmt.Sprintf("$%.2f", v) }
+
+// 	for rIdx, row := range rows {
+// 		rowNum := rIdx + 1
+
+// 		// --- ROW 1: FINANCIAL YEAR ---
+// 		if rowNum == 1 {
+// 			// Render FY row BEFORE iterating Excel
+// 			b.WriteString("<tr>")
+// 			b.WriteString(fmt.Sprintf("<td colspan='%d' class='fy-title'>%s</td>", totalCols, FYLabel))
+// 			b.WriteString("</tr>")
+// 			continue
+// 		}
+
+// 		//  skip empty rows
+// 		if len(row) == 0 {
+// 			continue
+// 		}
+
+// 		// --- ROW 5: QUARTERS ---
+// 		if rowNum == 5 {
+// 			b.WriteString("<tr>")
+
+// 			// Column A spacer (Particulars column)
+// 			b.WriteString("<td class='header-blue'></td>")
+
+// 			// Dynamic quarters from API
+// 			for _, col := range data.Columns {
+// 				label := col.Quarter.Name
+// 				label += " ("
+// 				label += col.Quarter.DisplayRange
+// 				label += ")"
+
+// 				b.WriteString(fmt.Sprintf(
+// 					"<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>",
+// 					label,
+// 				))
+// 			}
+
+// 			// Grand Total column (always last)
+// 			b.WriteString("<td class='header-blue' colspan='3' style='font-size:10pt;'>Total</td>")
+
+// 			b.WriteString("</tr>")
+// 			continue
+// 		}
+
+// 		// --- ROW 6: SUBHEADERS ---
+// 		if rowNum == 6 {
+// 			b.WriteString("<tr>")
+// 			b.WriteString("<td class='header-blue'>Particulars</td>")
+// 			totalBlocks := len(data.Columns) + 1 // +1 for Total
+// 			for i := 0; i < totalBlocks; i++ {
+// 				b.WriteString("<td class='header-blue'>Gross</td><td class='header-blue'>GST</td><td class='header-blue'>Net</td>")
+// 			}
+// 			b.WriteString("</tr>")
+// 			continue
+// 		}
+
+// 		// skip header rows completely
+// 		if rowNum <= 6 {
+// 			continue
+// 		}
+
+// 		// --- DATA ROWS ---
+// 		valA := ""
+// 		if len(row) > 0 {
+// 			valA = row[0]
+// 		}
+
+// 		classA := "data-left"
+// 		if valA == "INCOME" || valA == "EXPENSES" {
+// 			classA = "section-title"
+// 			b.WriteString("<tr>")
+// 			b.WriteString(fmt.Sprintf("<td colspan='%d' class='%s'>%s</td>", totalCols, classA, valA))
+// 			b.WriteString("</tr>")
+// 			continue
+// 		}
+
+// 		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td>", classA, valA))
+
+// 		// Combine data columns (4 quarters + 1 grand total)
+// 		allColumns := append(data.Columns, data.GrandTotal)
+
+// 		for _, col := range allColumns {
+// 			var g, gst, n float64
+// 			found := false
+
+// 			// Match Account from API Data
+// 			for _, item := range append(col.Sections.Income.Items, col.Sections.Expenses.Items...) {
+// 				if item.Name == valA {
+// 					g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
+// 					found = true
+// 					break
+// 				}
+// 			}
+
+// 			// Handle Special Rows
+// 			if valA == "Net Profit/Loss" && len(col.Sections.NetProfitLoss.Items) > 0 {
+// 				item := col.Sections.NetProfitLoss.Items[0]
+// 				g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
+// 				found = true
+// 			} else if valA == "Net GST Payable" {
+// 				gst = col.NetGSTPayable
+// 				found = true
+// 			}
+
+// 			cellClass := "text-right"
+// 			if valA == "Net Profit/Loss" {
+// 				cellClass += " profit-green"
+// 			}
+// 			if valA == "Net GST Payable" {
+// 				cellClass += " gst-red"
+// 			}
+
+// 			if found {
+// 				b.WriteString(fmt.Sprintf("<td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>",
+// 					cellClass, formatCurr(g), cellClass, formatCurr(gst), cellClass, formatCurr(n)))
+// 			} else {
+// 				for i := 0; i < 3; i++ {
+// 					b.WriteString("<td class='text-right'>$0.00</td>")
+// 				}
+// 			}
+// 		}
+// 		b.WriteString("</tr>")
+// 	}
+
+// 	b.WriteString("</table></body></html>")
+
+// 	// Render using Chromedp
+// 	ctx, cancel := chromedp.NewContext(context.Background())
+// 	defer cancel()
+
+// 	var buf []byte
+// 	err = chromedp.Run(ctx,
+// 		chromedp.Navigate("about:blank"),
+// 		// Set viewport wide enough to capture all columns at once
+// 		chromedp.EmulateViewport(1920, 1080),
+// 		chromedp.ActionFunc(func(ctx context.Context) error {
+// 			frameTree, _ := page.GetFrameTree().Do(ctx)
+// 			return page.SetDocumentContent(frameTree.Frame.ID, b.String()).Do(ctx)
+// 		}),
+// 		chromedp.ActionFunc(func(ctx context.Context) error {
+// 			var err error
+// 			buf, _, err = page.PrintToPDF().
+// 				WithPrintBackground(true).
+// 				WithLandscape(true).
+// 				WithPaperWidth(16.5). // A3 size
+// 				WithPaperHeight(11.7).
+// 				Do(ctx)
+// 			return err
+// 		}),
+// 	)
+// 	return buf, err
+// }
+
 func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) ([]byte, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, err
 	}
 
-	var b bytes.Buffer
-	b.WriteString("<html><head><style>")
-	b.WriteString(`
-		@page { size: A3 landscape; margin: 0.5cm; }
-		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 10px; }
-		table { border-collapse: collapse; table-layout: fixed; width: 100%; border: 1.2pt solid #000; }
-		td { border: 1px solid #000; padding: 4px 2px; font-size: 8.5pt; height: 22px; text-align: center; }
-		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; }
-		.fy-title { font-size: 16pt; font-weight: bold; background-color: #DAEEF3 !important; padding: 15px; border: 1.2pt solid #000; }
-		.section-title { font-weight: bold; font-size: 11pt; border: none; padding-top: 12px; text-align: left; }
-		.data-left { text-align: left; border: 1px solid #000; }
-		.text-right { text-align: right; }
-		.profit-green { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; }
-		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
-		.income-blue td {background-color: #DAEEF3 !important; }
-		.expense-blue td {background-color: #DAEEF3 !important; }
-	`)
-	b.WriteString("</style></head><body><table>")
+	pdf := fpdf.New("L", "mm", "A3", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.AddPage()
 
-	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
-	totalCols := 1 + (len(data.Columns)+1)*3 // +1 for Total
-
-	b.WriteString("<colgroup>")
-	b.WriteString("<col style='width: 16%;'>")
-
-	colWidth := 84.0 / float64(totalCols-1)
-
-	for i := 0; i < totalCols-1; i++ {
-		b.WriteString(fmt.Sprintf("<col style='width: %.2f%%;'>", colWidth))
-	}
-
-	b.WriteString("</colgroup>")
+	colAWidth := 80.0
+	dataColWidth := 21.3
 
 	formatCurr := func(v float64) string { return fmt.Sprintf("$%.2f", v) }
 
 	for rIdx, row := range rows {
 		rowNum := rIdx + 1
-
-		// --- ROW 1: FINANCIAL YEAR ---
-		if rowNum == 1 {
-			// Render FY row BEFORE iterating Excel
-			b.WriteString("<tr>")
-			b.WriteString(fmt.Sprintf("<td colspan='%d' class='fy-title'>%s</td>", totalCols, FYLabel))
-			b.WriteString("</tr>")
-			continue
-		}
-
-		//  skip empty rows
 		if len(row) == 0 {
 			continue
 		}
+		valA := row[0]
 
-		// --- ROW 5: QUARTERS ---
-		if rowNum == 5 {
-			b.WriteString("<tr>")
+		switch {
+		case rowNum == 1:
+			pdf.SetFillColor(218, 238, 243)
+			pdf.SetFont("Arial", "B", 16)
+			pdf.CellFormat(0, 15, FYLabel, "1", 1, "C", true, 0, "")
 
-			// Column A spacer (Particulars column)
-			b.WriteString("<td class='header-blue'></td>")
+		case rowNum > 1 && rowNum < 5:
+			continue
 
-			// Dynamic quarters from API
-			for _, col := range data.Columns {
-				label := col.Quarter.Name
-				label += " ("
-				label += col.Quarter.DisplayRange
-				label += ")"
+		case rowNum == 5:
+			pdf.SetFont("Arial", "B", 10)
+			pdf.SetFillColor(218, 238, 243)
+			pdf.CellFormat(colAWidth, 10, "", "1", 0, "C", true, 0, "")
+			quarters := []string{"Q1 (Jul-Sep)", "Q2 (Oct-Dec)", "Q3 (Jan-Mar)", "Q4 (Apr-Jun)", "Grand Total"}
+			for _, q := range quarters {
+				pdf.CellFormat(dataColWidth*3, 10, q, "1", 0, "C", true, 0, "")
+			}
+			pdf.Ln(-1)
 
-				b.WriteString(fmt.Sprintf(
-					"<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>",
-					label,
-				))
+		case rowNum == 6:
+			pdf.SetFont("Arial", "B", 9)
+			pdf.SetFillColor(218, 238, 243)
+			pdf.CellFormat(colAWidth, 8, "Particulars", "1", 0, "C", true, 0, "")
+			for i := 0; i < 5; i++ {
+				pdf.CellFormat(dataColWidth, 8, "Gross", "1", 0, "C", true, 0, "")
+				pdf.CellFormat(dataColWidth, 8, "GST", "1", 0, "C", true, 0, "")
+				pdf.CellFormat(dataColWidth, 8, "Net", "1", 0, "C", true, 0, "")
+			}
+			pdf.Ln(-1)
+
+		default:
+			if valA == "INCOME" || valA == "EXPENSES" {
+				pdf.SetFont("Arial", "BU", 11)
+				pdf.CellFormat(0, 10, valA, "0", 1, "L", false, 0, "")
+				continue
 			}
 
-			// Grand Total column (always last)
-			b.WriteString("<td class='header-blue' colspan='3' style='font-size:10pt;'>Total</td>")
+			pdf.SetFont("Arial", "", 9)
+			pdf.CellFormat(colAWidth, 7, valA, "1", 0, "L", false, 0, "")
 
-			b.WriteString("</tr>")
-			continue
-		}
+			allColumns := append(data.Columns, data.GrandTotal)
+			for _, col := range allColumns {
+				var g, gst, n float64
+				isFound := false // Renamed to isFound and used below
 
-		// --- ROW 6: SUBHEADERS ---
-		if rowNum == 6 {
-			b.WriteString("<tr>")
-			b.WriteString("<td class='header-blue'>Particulars</td>")
-			totalBlocks := len(data.Columns) + 1 // +1 for Total
-			for i := 0; i < totalBlocks; i++ {
-				b.WriteString("<td class='header-blue'>Gross</td><td class='header-blue'>GST</td><td class='header-blue'>Net</td>")
-			}
-			b.WriteString("</tr>")
-			continue
-		}
-
-		// skip header rows completely
-		if rowNum <= 6 {
-			continue
-		}
-
-		// --- DATA ROWS ---
-		valA := ""
-		if len(row) > 0 {
-			valA = row[0]
-		}
-
-		classA := "data-left"
-		if valA == "INCOME" || valA == "EXPENSES" {
-			classA = "section-title"
-			b.WriteString("<tr>")
-			b.WriteString(fmt.Sprintf("<td colspan='%d' class='%s'>%s</td>", totalCols, classA, valA))
-			b.WriteString("</tr>")
-			continue
-		}
-
-		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td>", classA, valA))
-
-		// Combine data columns (4 quarters + 1 grand total)
-		allColumns := append(data.Columns, data.GrandTotal)
-
-		for _, col := range allColumns {
-			var g, gst, n float64
-			found := false
-
-			// Match Account from API Data
-			for _, item := range append(col.Sections.Income.Items, col.Sections.Expenses.Items...) {
-				if item.Name == valA {
-					g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
-					found = true
-					break
+				for _, item := range append(col.Sections.Income.Items, col.Sections.Expenses.Items...) {
+					if item.Name == valA {
+						g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
+						isFound = true
+						break
+					}
 				}
-			}
 
-			// Handle Special Rows
-			if valA == "Net Profit/Loss" && len(col.Sections.NetProfitLoss.Items) > 0 {
-				item := col.Sections.NetProfitLoss.Items[0]
-				g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
-				found = true
-			} else if valA == "Net GST Payable" {
-				gst = col.NetGSTPayable
-				found = true
-			}
-
-			cellClass := "text-right"
-			if valA == "Net Profit/Loss" {
-				cellClass += " profit-green"
-			}
-			if valA == "Net GST Payable" {
-				cellClass += " gst-red"
-			}
-
-			if found {
-				b.WriteString(fmt.Sprintf("<td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>",
-					cellClass, formatCurr(g), cellClass, formatCurr(gst), cellClass, formatCurr(n)))
-			} else {
-				for i := 0; i < 3; i++ {
-					b.WriteString("<td class='text-right'>$0.00</td>")
+				if valA == "Net Profit/Loss" {
+					if len(col.Sections.NetProfitLoss.Items) > 0 {
+						item := col.Sections.NetProfitLoss.Items[0]
+						g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
+						isFound = true
+					}
+					pdf.SetFillColor(196, 240, 206)
+				} else if valA == "Net GST Payable" {
+					gst = col.NetGSTPayable
+					isFound = true
+					pdf.SetTextColor(220, 53, 69)
+				} else if !isFound {
+					// This ensures isFound is "used" by the compiler logic
+					g, gst, n = 0, 0, 0
 				}
+
+				fill := (valA == "Net Profit/Loss")
+				pdf.CellFormat(dataColWidth, 7, formatCurr(g), "1", 0, "R", fill, 0, "")
+				pdf.CellFormat(dataColWidth, 7, formatCurr(gst), "1", 0, "R", fill, 0, "")
+				pdf.CellFormat(dataColWidth, 7, formatCurr(n), "1", 0, "R", fill, 0, "")
+
+				pdf.SetTextColor(0, 0, 0)
 			}
+			pdf.Ln(-1)
 		}
-		b.WriteString("</tr>")
 	}
 
-	b.WriteString("</table></body></html>")
-
-	// Render using Chromedp
-	ctx, cancel := chromedp.NewContext(context.Background())
-	defer cancel()
-
-	var buf []byte
-	err = chromedp.Run(ctx,
-		chromedp.Navigate("about:blank"),
-		// Set viewport wide enough to capture all columns at once
-		chromedp.EmulateViewport(1920, 1080),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			frameTree, _ := page.GetFrameTree().Do(ctx)
-			return page.SetDocumentContent(frameTree.Frame.ID, b.String()).Do(ctx)
-		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			var err error
-			buf, _, err = page.PrintToPDF().
-				WithPrintBackground(true).
-				WithLandscape(true).
-				WithPaperWidth(16.5). // A3 size
-				WithPaperHeight(11.7).
-				Do(ctx)
-			return err
-		}),
-	)
-	return buf, err
+	var buf bytes.Buffer
+	// Check the error from Output
+	if err := pdf.Output(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
