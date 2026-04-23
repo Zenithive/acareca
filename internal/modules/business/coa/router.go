@@ -13,26 +13,18 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	rg.GET("/account-taxes", h.ListAccountTaxes)
 	rg.GET("/account-taxes/:id", h.GetAccountTax)
 
-	// Chart of Accounts group - requires sales_purchases permission
+	// Chart of Accounts group - requires authentication only
 	accounts := rg.Group("/chart-of-account")
 	accounts.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 	
-	// Read operations
-	accountsRead := accounts.Group("")
-	accountsRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
+	// All operations - authentication required, no granular permissions
 	{
-		accountsRead.GET("", h.ListChartOfAccount)
-		accountsRead.GET("/by-key/:key", h.GetChartOfAccountByKey)
-		accountsRead.GET("/:id", h.GetChartOfAccount)
-		accountsRead.POST("/check-code", h.CheckCodeUnique)
-	}
-	
-	// Write operations
-	accountsWrite := accounts.Group("")
-	accountsWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
-	{
-		accountsWrite.POST("", h.CreateChartOfAccount)
-		accountsWrite.PUT("/:id", h.UpdateCharOfAccount)
-		accountsWrite.DELETE("/:id", h.DeleteChartOfAccount)
+		accounts.GET("", h.ListChartOfAccount)
+		accounts.GET("/by-key/:key", h.GetChartOfAccountByKey)
+		accounts.GET("/:id", h.GetChartOfAccount)
+		accounts.POST("/check-code", h.CheckCodeUnique)
+		accounts.POST("", h.CreateChartOfAccount)
+		accounts.PUT("/:id", h.UpdateCharOfAccount)
+		accounts.DELETE("/:id", h.DeleteChartOfAccount)
 	}
 }

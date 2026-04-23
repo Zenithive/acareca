@@ -450,6 +450,7 @@ type QuarterData struct {
 }
 
 func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (*bytes.Buffer, string, error) {
+	parsedActorID := actorID.String()
 	// 1. Branching Logic
 	if strings.ToLower(exportType) == "pdf" {
 		// Wrap data for template
@@ -474,6 +475,25 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		return nil, "", fmt.Errorf("failed to generate activity excel: %w", err)
 	}
 
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionActivityStatementExported,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Activity Statement",
+			"quarters":    quarters,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
 	return buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
 }
 func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
@@ -485,8 +505,6 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 	dataSheet := "SourceData"
 	xl.SetSheetName("Sheet1", sheet)
 	xl.NewSheet(dataSheet)
-
-	// parsedActorID := actorID.String()
 
 	// --- 1. Populate Hidden Data Sheet (The Lookup Table) ---
 	headers := []string{"Label", "G1", "1A", "G11", "1B", "Start", "End"}
@@ -630,25 +648,6 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 	xl.SetColWidth(sheet, "A", "A", 55)
 	xl.SetColWidth(sheet, "B", "B", 25)
 
-	// // --- AUDIT LOG ---
-	// meta := auditctx.GetMetadata(ctx)
-	// var userIDStr string
-	// userIDStr = userID.String()
-	// s.auditSvc.LogAsync(&audit.LogEntry{
-	// 	PracticeID: nil,
-	// 	UserID:     &userIDStr,
-	// 	Action:     auditctx.ActionActivityStatementExported,
-	// 	Module:     auditctx.ModuleReport,
-	// 	EntityType: strPtr(auditctx.EntityActivityStatement),
-	// 	EntityID:   &parsedActorID,
-	// 	AfterState: map[string]interface{}{
-	// 		"report_type": "Activity Statement",
-	// 		"quarters":    quarters,
-	// 	},
-	// 	IPAddress: meta.IPAddress,
-	// 	UserAgent: meta.UserAgent,
-	// })
-
 	return xl.WriteToBuffer()
 }
 
@@ -656,14 +655,14 @@ const activityTemplate = `
 <html>
 <head>
 <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #333; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #000; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
     th, td { border: 1px solid #bfbfbf; padding: 8px; word-wrap: break-word; }
     
     .header { background-color: #4EA7B3; color: white; font-weight: bold; text-align: center; }
     .sub-header { background-color: #E1F0F2; font-weight: bold; color: #2A5D63; }
     .label { font-weight: bold; width: 70%; }
-    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; }
+    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; font-weight: bold;}
     .total-row { background-color: #4EA7B3; color: white; font-weight: bold; }
     
     .indent { padding-left: 25px; font-weight: normal; }
@@ -723,22 +722,27 @@ const activityTemplate = `
         </tr>
         <tr>
             <td class="label">W1 (Total Wages, salary and other payments)</td>
+			<td>-</td>
            
         </tr>
         <tr>
             <td class="label">W2 (Amount withheld from payments shown at W1)</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">W3 (Other amounts withheld)</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">W4 (Amount withheld where no ABN is quoted)</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">W5 (Total amounts withheld)</td>
+			<td>-</td>
            
         </tr>
     </table>
@@ -747,10 +751,12 @@ const activityTemplate = `
         <tr class="sub-header"><td colspan="2">PAYG instalment</td></tr>
         <tr>
             <td class="label">Option 1</td>
+			<td>-</td>
             
         </tr>
         <tr>
             <td class="label">Option 2</td>
+			<td>-</td>
             
         </tr>
     </table>
@@ -1227,8 +1233,16 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		})
 	}
 
+	// if exportType == "pdf" {
+	// 	return s.convertExcelToPDF(f, sheet, data, FY.Label)
+	// }
+
 	if exportType == "pdf" {
-		return s.convertExcelToPDF(f, sheet, data, FY.Label)
+		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label)
+		if err != nil {
+			return nil, err
+		}
+		return htmlContent, nil
 	}
 
 	return f, nil
@@ -1275,11 +1289,11 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// Helper to convert the Excel file to PDF bytes using Chromedp
-func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) ([]byte, error) {
+// Helper to convert the Excel file to PDF using HTML
+func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var b bytes.Buffer
@@ -1296,60 +1310,107 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 		.text-right { text-align: right; }
 		.profit-green { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; }
 		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
+		.income-blue td {background-color: #DAEEF3 !important; }
+		.expense-blue td {background-color: #DAEEF3 !important; }
 	`)
-	b.WriteString("</style></head><body><table>")
+	b.WriteString("</style></head><body>")
+
+	// Print button that only shows on screen, not on the PDF/Printout
+	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
+	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
+	<style>@media print{.no-print{display:none}}</style></div>`)
+
+	b.WriteString("<table>")
 
 	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
-	b.WriteString("<colgroup><col style='width: 16%;'>")
-	for i := 0; i < 15; i++ {
-		b.WriteString("<col style='width: 5.6%;'>")
+	totalCols := 1 + (len(data.Columns)+1)*3 // +1 for Total
+
+	b.WriteString("<colgroup>")
+	b.WriteString("<col style='width: 16%;'>")
+
+	colWidth := 84.0 / float64(totalCols-1)
+
+	for i := 0; i < totalCols-1; i++ {
+		b.WriteString(fmt.Sprintf("<col style='width: %.2f%%;'>", colWidth))
 	}
+
 	b.WriteString("</colgroup>")
 
 	formatCurr := func(v float64) string { return fmt.Sprintf("$%.2f", v) }
 
 	for rIdx, row := range rows {
 		rowNum := rIdx + 1
-		if len(row) == 0 {
-			continue
-		}
 
 		// --- ROW 1: FINANCIAL YEAR ---
 		if rowNum == 1 {
-			// Use the passed FYLabel explicitly
-			b.WriteString(fmt.Sprintf("<tr><td colspan='16' class='section-title'>%s</td></tr>", FYLabel))
-			continue
-		}
-
-		// --- ROW 5: QUARTER NAMES ---
-		if rowNum == 5 {
-			b.WriteString("<tr><td class='header-blue'></td>") // Column A spacer
-			// We iterate through the columns and look specifically for the Quarter names
-			quarters := []string{"Q1 (Jul-Sep)", "Q2 (Oct-Dec)", "Q3 (Jan-Mar)", "Q4 (Apr-Jun)", "Grand Total"}
-			for _, qName := range quarters {
-				b.WriteString(fmt.Sprintf("<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>", qName))
-			}
+			// Render FY row BEFORE iterating Excel
+			b.WriteString("<tr>")
+			b.WriteString(fmt.Sprintf("<td colspan='%d' class='fy-title'>%s</td>", totalCols, FYLabel))
 			b.WriteString("</tr>")
 			continue
 		}
 
-		// --- ROW 6: SUB-HEADERS (Gross, GST, Net) ---
+		//  skip empty rows
+		if len(row) == 0 {
+			continue
+		}
+
+		// --- ROW 5: QUARTERS ---
+		if rowNum == 5 {
+			b.WriteString("<tr>")
+
+			// Column A spacer (Particulars column)
+			b.WriteString("<td class='header-blue'></td>")
+
+			// Dynamic quarters from API
+			for _, col := range data.Columns {
+				label := col.Quarter.Name
+				label += " ("
+				label += col.Quarter.DisplayRange
+				label += ")"
+
+				b.WriteString(fmt.Sprintf(
+					"<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>",
+					label,
+				))
+			}
+
+			// Grand Total column (always last)
+			b.WriteString("<td class='header-blue' colspan='3' style='font-size:10pt;'>Total</td>")
+
+			b.WriteString("</tr>")
+			continue
+		}
+
+		// --- ROW 6: SUBHEADERS ---
 		if rowNum == 6 {
+			b.WriteString("<tr>")
 			b.WriteString("<td class='header-blue'>Particulars</td>")
-			for i := 0; i < 5; i++ {
+			totalBlocks := len(data.Columns) + 1 // +1 for Total
+			for i := 0; i < totalBlocks; i++ {
 				b.WriteString("<td class='header-blue'>Gross</td><td class='header-blue'>GST</td><td class='header-blue'>Net</td>")
 			}
 			b.WriteString("</tr>")
 			continue
 		}
 
+		// skip header rows completely
+		if rowNum <= 6 {
+			continue
+		}
+
 		// --- DATA ROWS ---
-		valA := row[0]
+		valA := ""
+		if len(row) > 0 {
+			valA = row[0]
+		}
 
 		classA := "data-left"
 		if valA == "INCOME" || valA == "EXPENSES" {
 			classA = "section-title"
-			b.WriteString(fmt.Sprintf("<td colspan='16' class='%s'>%s</td></tr>", classA, valA))
+			b.WriteString("<tr>")
+			b.WriteString(fmt.Sprintf("<td colspan='%d' class='%s'>%s</td>", totalCols, classA, valA))
+			b.WriteString("</tr>")
 			continue
 		}
 
@@ -1403,29 +1464,5 @@ func (s *service) convertExcelToPDF(f *excelize.File, sheetName string, data *Rs
 
 	b.WriteString("</table></body></html>")
 
-	// Render using Chromedp
-	ctx, cancel := chromedp.NewContext(context.Background())
-	defer cancel()
-
-	var buf []byte
-	err = chromedp.Run(ctx,
-		chromedp.Navigate("about:blank"),
-		// Set viewport wide enough to capture all columns at once
-		chromedp.EmulateViewport(1920, 1080),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			frameTree, _ := page.GetFrameTree().Do(ctx)
-			return page.SetDocumentContent(frameTree.Frame.ID, b.String()).Do(ctx)
-		}),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			var err error
-			buf, _, err = page.PrintToPDF().
-				WithPrintBackground(true).
-				WithLandscape(true).
-				WithPaperWidth(16.5). // A3 size
-				WithPaperHeight(11.7).
-				Do(ctx)
-			return err
-		}),
-	)
-	return buf, err
+	return b.String(), err
 }

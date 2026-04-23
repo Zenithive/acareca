@@ -6,51 +6,31 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
-	// Entries require sales_purchases permission
-
-	// Version-based routes - Read operations
-	versionRead := rg.Group("/version/:version_id")
-	versionRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
+	// All entry operations - no permission checks
+	
+	// Version-based routes
+	versionGroup := rg.Group("/version/:version_id")
 	{
-		versionRead.GET("", h.List)
+		versionGroup.GET("", h.List)
+		versionGroup.POST("", h.Create)
 	}
 
-	// Version-based routes - Write operations
-	versionWrite := rg.Group("/version/:version_id")
-	versionWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
+	// Transaction routes
+	rg.GET("/transactions", h.ListTransactions)
+
+	// COA-grouped routes
+	coaGroup := rg.Group("/coa-entries")
 	{
-		versionWrite.POST("", h.Create)
+		coaGroup.GET("", h.ListCoaEntries)
+		coaGroup.GET("/:coa_id/entries", h.ListCoaEntryDetails)
+		coaGroup.GET("/export", h.HandleExport)
 	}
 
-	// Transaction routes - Read operations
-	transactionRead := rg.Group("")
-	transactionRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
+	// ID-based routes
+	idGroup := rg.Group("/:id")
 	{
-		transactionRead.GET("/transactions", h.ListTransactions)
-	}
-
-	// COA-grouped routes - Read operations
-	coaRead := rg.Group("/coa-entries")
-	coaRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
-	{
-		coaRead.GET("", h.ListCoaEntries)
-		coaRead.GET("/:coa_id/entries", h.ListCoaEntryDetails)
-		coaRead.GET("/export", h.HandleExport)
-
-	}
-
-	// ID-based routes - Read operations
-	idRead := rg.Group("/:id")
-	idRead.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionRead))
-	{
-		idRead.GET("", h.Get)
-	}
-
-	// ID-based routes - Write operations
-	idWrite := rg.Group("/:id")
-	idWrite.Use(middleware.RequireFeaturePermission(permAdapter, middleware.FeatureSalesPurchases, middleware.ActionWrite))
-	{
-		idWrite.PATCH("", h.Update)
-		idWrite.DELETE("", h.Delete)
+		idGroup.GET("", h.Get)
+		idGroup.PATCH("", h.Update)
+		idGroup.DELETE("", h.Delete)
 	}
 }

@@ -60,7 +60,7 @@ func (r *repository) buildListQuery(f common.Filter) struct{ SQL string; Args []
 			pu.phone as prac_phone
 		FROM tbl_accountant a
 		JOIN tbl_user u ON u.id = a.user_id AND u.deleted_at IS NULL
-		LEFT JOIN tbl_invitation i ON i.entity_id = a.id AND i.status = 'COMPLETED'
+		LEFT JOIN tbl_invitation i ON i.accountant_id = a.id AND i.status = 'COMPLETED'
 		LEFT JOIN tbl_practitioner p ON p.id = i.practitioner_id AND p.deleted_at IS NULL
 		LEFT JOIN tbl_user pu ON pu.id = p.user_id AND pu.deleted_at IS NULL
 		WHERE a.deleted_at IS NULL

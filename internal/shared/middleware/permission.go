@@ -256,7 +256,6 @@ func getPractitionerIDFromContext(c *gin.Context) (uuid.UUID, error) {
 				return practitionerID, nil
 			}
 		}
-		
 		// Note: We can't call the service here as we don't have access to it
 		// The practitioner_id MUST be provided in the request for accountants
 		// This is by design - accountants should specify which practitioner's data they're accessing

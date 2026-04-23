@@ -145,7 +145,7 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, 
 		base += fmt.Sprintf(` AND EXISTS (
                 SELECT 1 FROM tbl_invitation inv 
                 WHERE inv.practitioner_id = coa.practitioner_id 
-                AND inv.entity_id = '%s' 
+                AND inv.accountant_id = '%s' 
                 AND inv.status = 'COMPLETED'
             )`, actorID.String())
 	} else {
@@ -172,7 +172,7 @@ func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID,
 		base += fmt.Sprintf(` AND EXISTS (
                 SELECT 1 FROM tbl_invitation
                 WHERE practitioner_id = coa.practitioner_id 
-                AND entity_id = '%s' 
+                AND accountant_id = '%s' 
                 AND status = 'COMPLETED'
             )`, actorID.String())
 	} else {
