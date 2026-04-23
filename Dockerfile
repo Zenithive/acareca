@@ -2,6 +2,7 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
+
 # Install git (needed for module downloads)
 RUN apk add --no-cache git
 
@@ -31,27 +32,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 
 # ── Runtime stage ─────────────────────────────────────────────
-FROM alpine:3.19
-
-# MOVE THE INSTALLATION HERE
-RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
-
-# Create user and a HOME directory
-RUN adduser -D -u 1001 appuser && \
-    mkdir -p /home/appuser && \
-    chown -R 1001:1001 /home/appuser
-
-# Setup /tmp with the "Sticky Bit" 
-RUN mkdir -p /tmp && chmod 1777 /tmp
-
-# Create the specific profile dir for your Go code and give ownership
-RUN mkdir -p /tmp/chromedp-profile && chown -R 1001:1001 /tmp/chromedp-profile
+FROM scratch
 
 WORKDIR /
 
@@ -66,9 +47,6 @@ COPY --from=builder /app/server /server
 
 # Migrations (goose reads these at startup via db.RunMigrations)
 COPY --from=builder /app/migrations /migrations
-
-ENV HOME=/home/appuser
-ENV TMPDIR=/tmp
 
 # Run as non-root
 USER appuser
