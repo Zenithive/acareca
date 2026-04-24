@@ -137,31 +137,37 @@ func (r *RqUpdateFormDetail) Update() *FormDetail {
 }
 
 func (d *FormDetail) ToRs() *RsFormDetail {
-	return &RsFormDetail{
+	rs := &RsFormDetail{
 		ID:              d.ID,
-		ClinicID:        d.ClinicID,
 		Name:            d.Name,
 		Description:     d.Description,
 		Status:          d.Status,
 		Method:          d.Method,
-		OwnerShare:      d.OwnerShare,
-		ClinicShare:     d.ClinicShare,
 		SuperComponent:  d.SuperComponent,
 		ActiveVersionID: d.ActiveVersionID,
 		CreatedAt:       d.CreatedAt,
 		UpdatedAt:       d.UpdatedAt,
 	}
+
+	// Only include clinic_id, owner_share, and clinic_share for non-expense forms
+	if d.Method != "EXPENSE_ENTRY" {
+		rs.ClinicID = &d.ClinicID
+		rs.OwnerShare = &d.OwnerShare
+		rs.ClinicShare = &d.ClinicShare
+	}
+
+	return rs
 }
 
 type RsFormDetail struct {
 	ID              uuid.UUID  `json:"id"`
-	ClinicID        uuid.UUID  `json:"clinic_id"`
+	ClinicID        *uuid.UUID `json:"clinic_id,omitempty"`
 	Name            string     `json:"name"`
 	Description     *string    `json:"description,omitempty"`
 	Status          string     `json:"status"`
 	Method          string     `json:"method"`
-	OwnerShare      int        `json:"owner_share"`
-	ClinicShare     int        `json:"clinic_share"`
+	OwnerShare      *int       `json:"owner_share,omitempty"`
+	ClinicShare     *int       `json:"clinic_share,omitempty"`
 	SuperComponent  *float64   `json:"super_component,omitempty"`
 	ActiveVersionID *uuid.UUID `json:"active_version_id,omitempty"`
 	CreatedAt       string     `json:"created_at"`

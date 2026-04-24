@@ -68,20 +68,26 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 	var permissionClause string
 
 	if role == "ACCOUNTANT" {
-		// Accountant has access to all forms from practitioners they're invited to
+		// Accountant: show forms from invited practitioners (clinic-based + expenses)
 		permissionClause = `
-        AND f.clinic_id IN (
-            SELECT c.id FROM tbl_clinic c
-            INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
-            WHERE i.accountant_id = ? AND i.status = 'COMPLETED' AND c.deleted_at IS NULL
-        )`
+        AND (
+			f.clinic_id IN (
+				SELECT c.id FROM tbl_clinic c
+				INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+				WHERE i.accountant_id = ? AND i.status = 'COMPLETED' AND c.deleted_at IS NULL
+			)
+			OR (f.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
+		)`
 	} else {
-		// Filter by practitioner's clinics
+		// Practitioner: show own clinic forms + own expenses
 		permissionClause = `
-        AND f.clinic_id IN (
-            SELECT id FROM tbl_clinic 
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+        AND (
+			f.clinic_id IN (
+				SELECT id FROM tbl_clinic 
+				WHERE practitioner_id = ? AND deleted_at IS NULL
+			)
+			OR (f.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
+		)`
 	}
 
 	base := `
@@ -89,7 +95,7 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
     LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
     WHERE f.deleted_at IS NULL ` + permissionClause
 
-	args := []any{actorID}
+	args := []any{actorID, actorID}
 
 	allowedColumns := map[string]string{
 		"name":        "f.name",
@@ -132,18 +138,29 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 }
 
 func (r *Repository) CountForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) (int, error) {
-	permissionClause := `AND f.clinic_id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)`
+	var permissionClause string
+	
 	if role == "ACCOUNTANT" {
-		permissionClause = `AND f.clinic_id IN (
-			SELECT c.id FROM tbl_clinic c
-			INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
-			WHERE i.accountant_id = ? AND i.status = 'COMPLETED' AND c.deleted_at IS NULL
+		permissionClause = `AND (
+			f.clinic_id IN (
+				SELECT c.id FROM tbl_clinic c
+				INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+				WHERE i.accountant_id = ? AND i.status = 'COMPLETED' AND c.deleted_at IS NULL
+			)
+			OR (f.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
+		)`
+	} else {
+		permissionClause = `AND (
+			f.clinic_id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)
+			OR (f.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
 		)`
 	}
 
-	base := `FROM tbl_form f WHERE f.deleted_at IS NULL ` + permissionClause
+	base := `FROM tbl_form f 
+	LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
+	WHERE f.deleted_at IS NULL ` + permissionClause
 
-	args := []any{actorID}
+	args := []any{actorID, actorID}
 
 	// Use the same column mappings as ListForm
 	allowedColumns := map[string]string{

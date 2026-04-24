@@ -764,7 +764,12 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 	}
 
 	netAmount := incomeSum - expenseSum - otherCostSum
-	ownerShare := float64(form.OwnerShare)
+	
+	ownerShare := 0.0
+	if form.OwnerShare != nil {
+		ownerShare = float64(*form.OwnerShare)
+	}
+	
 	commission := netAmount * (ownerShare / 100)
 	gstOnCommission := commission * 0.10
 	paymentReceived := commission + gstOnCommission

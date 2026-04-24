@@ -235,11 +235,18 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	// 	}
 	// }
 
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, existing.ClinicID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+	// Skip clinic resolution for expense forms
+	var realOwnerID uuid.UUID
+	if existing.ClinicID != nil && *existing.ClinicID != uuid.Nil {
+		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, *existing.ClinicID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+		}
+		realOwnerID = clinic.PractitionerID
+	} else {
+		// For expense forms, use the actorID as the owner
+		realOwnerID = actorID
 	}
-	realOwnerID := clinic.PractitionerID
 
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
@@ -261,9 +268,17 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return err
 		}
 		updated = upd
-		syncResult = &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
+		clinicID := uuid.Nil
+		if updated.ClinicID != nil {
+			clinicID = *updated.ClinicID
+		}
+		syncResult = &RsFormWithFieldsSyncResult{ClinicID: clinicID}
 
-		versions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
+		existingClinicID := uuid.Nil
+		if existing.ClinicID != nil {
+			existingClinicID = *existing.ClinicID
+		}
+		versions, err := s.versionSvc.List(ctx, existing.ID, existingClinicID)
 		if err != nil {
 			return err
 		}
@@ -518,7 +533,11 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 		Fields:   []field.RsFormField{},
 		Formulas: []formula.RsFormula{},
 	}
-	versions, err := s.versionSvc.List(ctx, formDetail.ID, formDetail.ClinicID)
+	clinicID := uuid.Nil
+	if formDetail.ClinicID != nil {
+		clinicID = *formDetail.ClinicID
+	}
+	versions, err := s.versionSvc.List(ctx, formDetail.ID, clinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -563,13 +582,20 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-
-	// 2. Resolve the REAL owner (Practitioner) from the Clinic
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, formDetail.ClinicID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve clinic owner: %w", err)
+	
+	// Get clinic info and owner ID only for non-expense forms
+	var realOwnerID uuid.UUID
+	if formDetail.Method != "EXPENSE_ENTRY" {
+		clinicID := uuid.Nil
+		if formDetail.ClinicID != nil {
+			clinicID = *formDetail.ClinicID
+		}
+		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
+		if err != nil {
+			return fmt.Errorf("failed to resolve clinic owner: %w", err)
+		}
+		realOwnerID = clinic.PractitionerID
 	}
-	realOwnerID := clinic.PractitionerID
 
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
@@ -586,43 +612,44 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return nil
 	})
 
-	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY, NON-EXPENSE FORMS ONLY) ---
 	meta := auditctx.GetMetadata(ctx)
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-		actorUserID, err := uuid.Parse(*meta.UserID)
-		if err == nil {
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+	if formDetail.Method != "EXPENSE_ENTRY" {
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+			actorUserID, err := uuid.Parse(*meta.UserID)
 			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
+				var finalAccountantID uuid.UUID
+				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+				if err == nil {
+					finalAccountantID = accProfile.ID
+				} else {
+					finalAccountantID = actorUserID
+				}
 
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err == nil {
-				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+				user, err := s.authRepo.FindByID(ctx, actorUserID)
+				if err == nil {
+					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 
-				// Record the Shared Event
-				_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: realOwnerID, // The Clinic Owner
-					AccountantID:   finalAccountantID,
-					ActorID:        actorUserID,
-					ActorName:      &fullName,
-					ActorType:      "ACCOUNTANT",
-					EventType:      "form.deleted",
-					EntityType:     "FORM",
-					EntityID:       formID,
-					Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
-					Metadata:       events.JSONBMap{"form_name": formDetail.Name},
-					CreatedAt:      time.Now(),
-				})
+					// Record the Shared Event
+					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+						ID:             uuid.New(),
+						PractitionerID: realOwnerID, // The Clinic Owner
+						AccountantID:   finalAccountantID,
+						ActorID:        actorUserID,
+						ActorName:      &fullName,
+						ActorType:      "ACCOUNTANT",
+						EventType:      "form.deleted",
+						EntityType:     "FORM",
+						EntityID:       formID,
+						Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
+						Metadata:       events.JSONBMap{"form_name": formDetail.Name},
+						CreatedAt:      time.Now(),
+					})
+				}
 			}
 		}
 	}
 	// Audit log: form deleted
-	//meta := auditctx.GetMetadata(ctx)
 	idStr := formID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,

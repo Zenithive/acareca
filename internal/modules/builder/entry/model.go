@@ -143,6 +143,7 @@ type RsTransactionRow struct {
 	CreatedAt     string    `json:"created_at"`
 	UpdatedAt     *string   `json:"updated_at,omitempty"`
 	Date          *string   `json:"date,omitempty"`
+	IsExpense     bool      `json:"is_expense"`
 }
 
 // RsTransactionDetail kept for backward compat (used by old RsTransaction).
@@ -275,6 +276,7 @@ type transactionFlatRow struct {
 	CreatedAt     string    `db:"created_at"`
 	UpdatedAt     *string   `db:"updated_at"`
 	Date          *string   `db:"date"`
+	IsExpense     bool      `db:"is_expense"`
 }
 
 type RsFieldSummary struct {
