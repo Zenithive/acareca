@@ -1578,6 +1578,18 @@ definitions:
       label:
         type: string
     type: object
+  internal_modules_admin_practitioner.UpdateLockDateRequest:
+    properties:
+      lock_date:
+        description: Use *time.Time to allow null values for removing the lock date
+        type: string
+    type: object
+  internal_modules_business_practitioner.UpdateLockDateRequest:
+    properties:
+      lock_date:
+        description: Use *time.Time to allow null values for removing the lock date
+        type: string
+    type: object
   invitation.AccessLevel:
     properties:
       read:
@@ -6311,6 +6323,71 @@ paths:
       summary: Get practitioner by ID
       tags:
       - practitioner
+  /practitioner/lock-date:
+    get:
+      description: Retrieve the current financial lock date for the authenticated
+        practitioner.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Practitioner Lock Date
+      tags:
+      - practitioner-lock-date
+    patch:
+      consumes:
+      - application/json
+      description: Set or remove (by sending null) the financial lock date for the
+        authenticated practitioner.
+      parameters:
+      - description: Financial Year UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      - description: Lock Date Update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_business_practitioner.UpdateLockDateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update Practitioner Lock Date
+      tags:
+      - practitioner-lock-date
   /practitioner/subscription:
     get:
       consumes:

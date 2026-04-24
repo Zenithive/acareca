@@ -3,6 +3,7 @@ package practitioner
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 type Repository interface {
 	ListPractitionersWithSubscriptions(ctx context.Context, f common.Filter, hasActiveSubscription *bool) ([]*RsPractitionerWithSubscription, error)
+	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, lockDate *time.Time) error
 }
 
 type repository struct {
@@ -40,7 +42,7 @@ var practitionerSearchCols = []string{
 // ListPractitionersWithSubscriptions retrieves all practitioners with their active subscription details
 func (r *repository) ListPractitionersWithSubscriptions(ctx context.Context, f common.Filter, hasActiveSubscription *bool) ([]*RsPractitionerWithSubscription, error) {
 	query := r.buildListQuery(f, hasActiveSubscription)
-	
+
 	rows, err := r.db.QueryxContext(ctx, r.db.Rebind(query.SQL), query.Args...)
 	if err != nil {
 		return nil, fmt.Errorf("list practitioners with subscriptions: %w", err)
@@ -51,7 +53,10 @@ func (r *repository) ListPractitionersWithSubscriptions(ctx context.Context, f c
 }
 
 // buildListQuery constructs the SQL query for listing practitioners
-func (r *repository) buildListQuery(f common.Filter, hasActiveSubscription *bool) struct{ SQL string; Args []interface{} } {
+func (r *repository) buildListQuery(f common.Filter, hasActiveSubscription *bool) struct {
+	SQL  string
+	Args []interface{}
+} {
 	baseQuery := `
 		SELECT 
 			p.id, p.user_id, p.verified, p.created_at,
@@ -68,8 +73,11 @@ func (r *repository) buildListQuery(f common.Filter, hasActiveSubscription *bool
 
 	baseQuery = r.applySubscriptionFilter(baseQuery, hasActiveSubscription)
 	sql, args := common.BuildQuery(baseQuery, f, practitionerColumns, practitionerSearchCols, false)
-	
-	return struct{ SQL string; Args []interface{} }{SQL: sql, Args: args}
+
+	return struct {
+		SQL  string
+		Args []interface{}
+	}{SQL: sql, Args: args}
 }
 
 // applySubscriptionFilter adds subscription filter to query
@@ -160,6 +168,28 @@ func (r *repository) mapSubscriptionData(dbModel *dbPractitionerWithSubscription
 	}
 }
 
+func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, lockDate *time.Time) error {
+	query := `
+        UPDATE practitioners 
+        SET 
+            lock_date = $1, 
+            updated_at = NOW() 
+        WHERE id = $2
+    `
 
+	result, err := r.db.ExecContext(ctx, query, lockDate, practitionerID)
+	if err != nil {
+		return err
+	}
 
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
 
+	if rowsAffected == 0 {
+		return errors.New("practitioner not found")
+	}
+
+	return nil
+}

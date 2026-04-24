@@ -133,17 +133,21 @@ func (r *repository) MarkRead(ctx context.Context, id uuid.UUID, recipientID uui
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
-// MarkDismissed transitions READ → DISMISSED.
+// MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.
 func (r *repository) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
-	err := r.MarkRead(ctx, id, recipientID)
-	if err != nil {
-		return err
-	}
+	// First, try to mark as READ if it's UNREAD (this may fail if already READ, which is fine)
+	_, _ = r.db.ExecContext(ctx,
+		`UPDATE tbl_notification
+		 SET status = 'READ', read_at = NOW()
+		 WHERE id = $1 AND recipient_id = $2 AND status = 'UNREAD'`,
+		id, recipientID,
+	)
 
+	// Now mark as DISMISSED (works for both UNREAD and READ status)
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification
 		 SET status = 'DISMISSED'
-		 WHERE id = $1 AND recipient_id = $2 AND status = 'READ'`,
+		 WHERE id = $1 AND recipient_id = $2 AND status IN ('UNREAD', 'READ')`,
 		id, recipientID,
 	)
 	if err != nil {

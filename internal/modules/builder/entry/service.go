@@ -1057,6 +1057,7 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 
 // validateLockDate checks if the entry date is on or before the clinic's lock date.
 // Returns an error if the entry date violates the lock date restriction.
+/*
 func (s *Service) validateLockDate(ctx context.Context, clinicID uuid.UUID, entryDate *string) error {
 	// If no entry date provided, allow the operation
 	if entryDate == nil || *entryDate == "" {
@@ -1084,6 +1085,43 @@ func (s *Service) validateLockDate(ctx context.Context, clinicID uuid.UUID, entr
 	lockDate := *financialSettings.LockDate
 	if parsedEntryDate.Before(lockDate) || parsedEntryDate.Equal(lockDate) {
 		return fmt.Errorf("cannot modify entries on or before the lock date (%s). This period has been locked for changes", lockDate.Format("2006-01-02"))
+	}
+
+	return nil
+}
+*/
+
+func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string) error {
+	// 1. Basic validation (Keep as is)
+	if entryDate == nil || *entryDate == "" {
+		return nil
+	}
+
+	// 2. Fetch settings based on PractitionerID instead of ClinicID
+	// Ensure your repository has a method like GetPractitionerFinancialSettings
+	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, practitionerID)
+	if err != nil {
+		return fmt.Errorf("failed to get practitioner financial settings: %w", err)
+	}
+
+	// 3. Check if settings or lock date exist
+	if financialSettings == nil || financialSettings.LockDate == nil {
+		return nil
+	}
+
+	// 4. Parse the entry date
+	parsedEntryDate, err := time.Parse("2006-01-02", *entryDate)
+	if err != nil {
+		return fmt.Errorf("invalid entry date format: %w", err)
+	}
+
+	// 5. Compare: entryDate vs practitioner's LockDate
+	lockDate := *financialSettings.LockDate
+
+	// Logic: If entry is in the locked period, block it.
+	if !parsedEntryDate.After(lockDate) {
+		return fmt.Errorf("cannot modify entries on or before the lock date (%s) set for this practitioner",
+			lockDate.Format("2006-01-02"))
 	}
 
 	return nil

@@ -28,6 +28,9 @@ type Repository interface {
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
 
 	GetPractitionerDetails(ctx context.Context, userID *uuid.UUID, practitionerID *uuid.UUID, email *string) (*RsPractitionerDetails, error)
+	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
+
+	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
 }
 
 type repository struct {
@@ -279,4 +282,53 @@ func (r *repository) GetPractitionerDetails(ctx context.Context, userID *uuid.UU
 	}
 
 	return details.ToRs(), nil
+}
+
+func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
+
+	var exists bool
+	checkQuery := `
+		SELECT EXISTS(
+			SELECT 1 FROM tbl_financial_settings 
+			WHERE practitioner_id = $1 AND financial_year_id = $2
+		)`
+	err := r.db.QueryRowContext(ctx, checkQuery, practitionerID, fyID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		// 2. If it exists, UPDATE it
+		updateQuery := `
+			UPDATE tbl_financial_settings 
+			SET 
+				lock_date = CASE WHEN $1::text IS NULL THEN NULL ELSE TO_DATE($1, 'DD-MM-YYYY') END, 
+				updated_at = NOW() 
+			WHERE practitioner_id = $2 AND financial_year_id = $3`
+		_, err = r.db.ExecContext(ctx, updateQuery, lockDate, practitionerID, fyID)
+	} else {
+		// 3. If it doesn't exist, INSERT it
+		insertQuery := `
+			INSERT INTO tbl_financial_settings (practitioner_id, financial_year_id, lock_date, created_at, updated_at)
+			VALUES ($1, $2, CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'DD-MM-YYYY') END, NOW(), NOW())`
+		_, err = r.db.ExecContext(ctx, insertQuery, practitionerID, fyID, lockDate)
+	}
+
+	return err
+}
+
+func (r *repository) GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error) {
+	query := `
+		SELECT id, clinic_id, financial_year_id, lock_date, created_at, updated_at
+		FROM tbl_financial_settings
+		WHERE clinic_id = $1
+	`
+	var fs FinancialSettings
+	if err := r.db.QueryRowxContext(ctx, query, clinicID).StructScan(&fs); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get financial settings: %w", err)
+	}
+	return &fs, nil
 }

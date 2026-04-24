@@ -145,3 +145,13 @@ type RsPractitionerDetails struct {
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
 }
+
+type FinancialSettings struct {
+	ID              uuid.UUID `db:"id"`
+	ClinicID        uuid.UUID `db:"clinic_id"`
+	PractitionerID  uuid.UUID `db:"practitioner_id"`
+	FinancialYearID uuid.UUID `db:"financial_year_id"`
+	LockDate        *string   `db:"lock_date"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
+}

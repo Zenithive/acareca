@@ -34,7 +34,7 @@ type Service interface {
 	RevokeInvite(ctx context.Context, practitionerID uuid.UUID, inviteID uuid.UUID) error
 
 	UpdatePermissions(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error)
-	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*RsPermission, error)
+	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) ([]map[string]interface{}, error)
 	GetInvitationByEmail(ctx context.Context, accountantID *uuid.UUID, email string) (*RsInvitation, error)
 	IsLinked(ctx context.Context, practitionerID *uuid.UUID, accountantID *uuid.UUID) (bool, error)
 }
@@ -614,16 +614,6 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		useEmail = true
 	}
 
-	// If user provided accountant_id, verify it matches what we found
-	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
-		if accountantID != nil && *accountantID != *req.AccountantID {
-			// The provided ID doesn't match the actual accountant ID
-			// This might be an entity_id from invitation table, ignore it and use what we found
-			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n",
-				req.AccountantID.String(), accountantID.String(), req.Email)
-		}
-	}
-
 	// Check if the accountant/email is linked to this practitioner via invitation
 	if accountantID != nil {
 		isLinked, err := s.repo.IsUserLink(ctx, &practitionerID, accountantID)
@@ -649,7 +639,6 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		oldPerms, _ = s.repo.GetPermission(ctx, nil, practitionerID, &req.Email)
 	}
 
-	// Update permissions in a transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if useEmail {
 			// For pending invitations, pass nil accountant_id and the email
@@ -694,7 +683,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
 	filter := f.MapToFilterAccountant()
 
-	invWithPerms, err := s.repo.ListPermission(ctx, filter)
+	invWithPerms, err := s.repo.ListPermissions(ctx, accId, filter)
 	if err != nil {
 		return nil, err
 	}
