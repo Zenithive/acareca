@@ -84,7 +84,7 @@ func (h *Handler) ListPractitioners(c *gin.Context) {
 // @Description Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).
 // @Tags practitioner-lock-date
 // @Produce json
-// @Param practitioner_id query []string false "Practitioner ID (required for accountants and multiple allowed)"
+// @Param practitioner_id query string false "Practitioner ID (required for accountants)"
 // @Param financial_year_id query string true "Financial Year ID"
 // @Success 200 {object} util.RsList
 // @Failure 401 {object} response.RsError
@@ -99,7 +99,7 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 		return
 	}
 
-	var practitionerIDs []uuid.UUID
+	var practitionerID uuid.UUID
 
 	// 1. Determine IDs to fetch based on role
 	if role == util.RolePractitioner {
@@ -108,12 +108,12 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 			response.Error(c, http.StatusUnauthorized, errors.New("practitioner not found"))
 			return
 		}
-		practitionerIDs = append(practitionerIDs, pID)
+		practitionerID = pID
 	} else if role == util.RoleAccountant {
 		// Capture multiple practitioner_id query params
 		pIDStrs := c.QueryArray("practitioner_id")
 		if len(pIDStrs) == 0 {
-			response.Error(c, http.StatusBadRequest, errors.New("at least one practitioner_id is required for accountants"))
+			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required for accountants"))
 			return
 		}
 
@@ -129,7 +129,7 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 				response.Error(c, http.StatusForbidden, fmt.Errorf("no access to practitioner: %s", idStr))
 				return
 			}
-			practitionerIDs = append(practitionerIDs, pID)
+			practitionerID = pID // This will be used in the service call, but we will pass the full list of IDs
 		}
 	}
 
@@ -143,7 +143,7 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 
 	// 3. Call Service for Bulk Fetch
 	// We update this to return a map or a slice of results
-	results, err := h.svc.GetBulkLockDates(c.Request.Context(), practitionerIDs, fyID)
+	results, err := h.svc.GetLockDate(c.Request.Context(), practitionerID, fyID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
