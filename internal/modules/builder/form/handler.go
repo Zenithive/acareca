@@ -20,6 +20,8 @@ type IHandler interface {
 	List(c *gin.Context)
 	Delete(c *gin.Context)
 	UpdateFormStatus(c *gin.Context)
+
+	CreateExpense(c *gin.Context)
 }
 
 type handler struct {
@@ -368,4 +370,9 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Form status updated successfully")
+}
+
+// CreateExpense implements [IHandler].
+func (h *handler) CreateExpense(c *gin.Context) {
+	panic("unimplemented")
 }

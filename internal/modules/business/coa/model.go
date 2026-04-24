@@ -151,6 +151,7 @@ type Filter struct {
 	Code           *int       `form:"code"`
 	AccountType    *string    `form:"account_type"`
 	AccountTypeID  *int16     `form:"-"`
+	AccountTaxID   *int16     `form:"account_tax_id"`
 	common.Filter
 }
 
@@ -164,14 +165,18 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["id"] = uuid.UUID(id)
 	}
 	if filter.Name != nil {
-		filters["name"] = *filter.Name
+		filters["name"] = filter.Name
 	}
 	if filter.Code != nil {
-		filters["code"] = *filter.Code
+		filters["code"] = filter.Code
 	}
 
 	if filter.AccountTypeID != nil {
-		filters["account_type_id"] = *filter.AccountTypeID
+		filters["account_type_id"] = filter.AccountTypeID
+	}
+
+	if filter.AccountTaxID != nil {
+		filters["account_tax_id"] = filter.AccountTaxID
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
