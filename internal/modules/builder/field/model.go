@@ -81,17 +81,18 @@ func (r *RqCreateField) ToRqFormField() *RqFormField {
 }
 
 type RqFormField struct {
-	FieldKey              string  `json:"key" validate:"required,max=5"`
-	Slug                  string  `json:"slug" validate:"omitempty,max=100"`
-	Label                 string  `json:"label" validate:"required,max=255"`
-	IsComputed            bool    `json:"is_computed"`
-	SectionType           string  `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST"`
-	PaymentResponsibility *string `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
-	TaxType               *string `json:"tax_type" validate:"omitempty"`
-	CoaID                 string  `json:"coa_id" validate:"omitempty,uuid"`
-	SortOrder             int     `json:"sort_order" validate:"min=0"`
-	IsFormula             *bool   `json:"is_formula"`
-	IsHighlighted         bool    `json:"is_highlighted"`
+	FieldKey              string   `json:"key" validate:"required,max=5"`
+	Slug                  string   `json:"slug" validate:"omitempty,max=100"`
+	Label                 string   `json:"label" validate:"required,max=255"`
+	IsComputed            bool     `json:"is_computed"`
+	SectionType           string   `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST"`
+	PaymentResponsibility *string  `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
+	TaxType               *string  `json:"tax_type" validate:"omitempty"`
+	CoaID                 string   `json:"coa_id" validate:"omitempty,uuid"`
+	SortOrder             int      `json:"sort_order" validate:"min=0"`
+	IsFormula             *bool    `json:"is_formula"`
+	IsHighlighted         bool     `json:"is_highlighted"`
+	BusinessUse           *float64 `json:"business_use"`
 }
 
 func (r *RqFormField) Sanitize() {
@@ -116,6 +117,7 @@ type RqUpdateFormField struct {
 	CoaID                 *string   `json:"coa_id" validate:"omitempty,uuid"`
 	SortOrder             *int      `json:"sort_order" validate:"omitempty,min=0"`
 	IsHighlighted         *bool     `json:"is_highlighted"`
+	BusinessUse           *float64  `json:"business_use"`
 }
 
 // Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
@@ -149,6 +151,7 @@ type FormField struct {
 	TaxType               *string    `db:"tax_type"`
 	CoaID                 *uuid.UUID `db:"coa_id"`
 	SortOrder             int        `db:"sort_order"`
+	BusinessUse           *float64   `db:"business_use"`
 	CreatedAt             string     `db:"created_at"`
 	UpdatedAt             string     `db:"updated_at"`
 }
@@ -177,6 +180,13 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		formula = false
 	}
 
+	var businessUse float64
+	if r.BusinessUse != nil {
+		businessUse = *r.BusinessUse
+	} else {
+		businessUse = 100
+	}
+
 	return &FormField{
 		ID:                    uuid.New(),
 		FormVersionID:         formVersionID,
@@ -191,6 +201,7 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		SortOrder:             r.SortOrder,
 		IsFormula:             formula,
 		IsHighlighted:         r.IsHighlighted,
+		BusinessUse:           &businessUse,
 	}
 }
 
@@ -208,6 +219,7 @@ func (d *FormField) ToRs() *RsFormField {
 		PaymentResponsibility: d.PaymentResponsibility,
 		TaxType:               d.TaxType,
 		CoaID:                 d.CoaID,
+		BusinessUse:           d.BusinessUse,
 		SortOrder:             d.SortOrder,
 		CreatedAt:             d.CreatedAt,
 		UpdatedAt:             d.UpdatedAt,
@@ -236,6 +248,7 @@ type RsFormField struct {
 	TaxType               *string      `json:"tax_type"`
 	CoaID                 *uuid.UUID   `json:"coa_id"`
 	Coa                   *RsCoaDetail `json:"coa,omitempty"`
+	BusinessUse           *float64     `json:"business_use"`
 	SortOrder             int          `json:"sort_order"`
 	CreatedAt             string       `json:"created_at"`
 	UpdatedAt             string       `json:"updated_at"`
