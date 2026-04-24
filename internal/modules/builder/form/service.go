@@ -1195,6 +1195,15 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		response.UpdatedAt = &formDetail.UpdatedAt
 	}
 
+	amountType := "EXCLUSIVE"
+	if len(fields) > 0 && fields[0].CoaID != nil {
+		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *fields[0].CoaID, actorId)
+		if err == nil && coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
+			amountType = "INCLUSIVE"
+		}
+	}
+	response.AmountType = amountType
+
 	// Build items from fields and entry values
 	for _, f := range fields {
 		if f.CoaID == nil {
