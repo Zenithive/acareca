@@ -900,12 +900,30 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			updatedForm = existingForm
 		}
 
-		if existingForm.ActiveVersionID == nil {
+		// Get active version ID
+		var activeVersionID uuid.UUID
+		if existingForm.ActiveVersionID != nil {
+			activeVersionID = *existingForm.ActiveVersionID
+		} else {
+			// Fallback: fetch from version list if not set in form
+			versions, err := s.versionSvc.List(ctx, formID, uuid.Nil)
+			if err != nil {
+				return fmt.Errorf("failed to get form versions: %w", err)
+			}
+			for _, v := range versions {
+				if v.IsActive {
+					activeVersionID = v.Id
+					break
+				}
+			}
+		}
+
+		if activeVersionID == uuid.Nil {
 			return errors.New("active version not found for expense form")
 		}
 
 		// Get existing entry
-		existingEntry, existingValues, err := s.entryRepo.GetByVersionID(ctx, *existingForm.ActiveVersionID)
+		existingEntry, existingValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
 		if err != nil {
 			return fmt.Errorf("failed to get existing entry: %w", err)
 		}
@@ -1066,7 +1084,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				BusinessUse: &item.BusinessUse,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *existingForm.ActiveVersionID, nil, actorId, formFields)
+			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, actorId, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create new field: %w", err)
 			}
