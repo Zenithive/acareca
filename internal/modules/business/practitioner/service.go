@@ -2,6 +2,8 @@ package practitioner
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -23,6 +26,8 @@ type IService interface {
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
 	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
+	VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error
+	GetBulkLockDates(ctx context.Context, pIDs []uuid.UUID, fyID uuid.UUID) ([]map[string]interface{}, error)
 }
 
 type service struct {
@@ -30,10 +35,15 @@ type service struct {
 	subscription     subscription.Service
 	userSubscription userSubscription.Service
 	coaRepo          coa.Repository
+	invitationRepo   interface{}
 }
 
-func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository) IService {
-	return &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo}
+func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, invitationRepo ...interface{}) IService {
+	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo}
+	if len(invitationRepo) > 0 {
+		svc.invitationRepo = invitationRepo[0]
+	}
+	return svc
 }
 
 func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error) {
@@ -150,4 +160,73 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 	}
 
 	return s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
+}
+
+func (s *service) GetBulkLockDates(ctx context.Context, pIDs []uuid.UUID, fyID uuid.UUID) ([]map[string]interface{}, error) {
+	// 1. Call repository to get existing records
+	settings, err := s.repo.GetBulkLockDates(ctx, pIDs, fyID)
+	if err != nil {
+		return nil, fmt.Errorf("service get bulk lock dates: %w", err)
+	}
+
+	// 2. Create a map for quick lookup of results found in DB
+	foundMap := make(map[uuid.UUID]string)
+	for _, item := range settings {
+		if item.LockDate != nil {
+			foundMap[item.PractitionerID] = *item.LockDate
+		}
+	}
+
+	// 3. Prepare the final response list
+	// This ensures every requested Practitioner ID gets a response entry,
+	// even if it's "null" in the DB.
+	finalResults := make([]map[string]interface{}, 0, len(pIDs))
+	for _, id := range pIDs {
+		lockDate, exists := foundMap[id]
+
+		result := map[string]interface{}{
+			"practitioner_id": id,
+			"lock_date":       nil,
+		}
+
+		if exists {
+			result["lock_date"] = lockDate
+		}
+
+		finalResults = append(finalResults, result)
+	}
+
+	return finalResults, nil
+}
+
+// VerifyAccountantAccessToPractitioner verifies that an accountant has access to a practitioner
+func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
+	if s.invitationRepo == nil {
+		return errors.New("invitation repository not available")
+	}
+
+	// Cast the invitationRepo to the correct type
+	invitationRepo, ok := s.invitationRepo.(invitationPkg.Repository)
+	if !ok {
+		return errors.New("invalid invitation repository type")
+	}
+
+	// Get permissions for this accountant-practitioner relationship
+	perms, err := invitationRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
+	if err != nil {
+		return fmt.Errorf("failed to get permissions: %w", err)
+	}
+
+	// If no permissions exist, the accountant doesn't have access
+	if perms == nil {
+		return errors.New("accountant does not have access to this practitioner")
+	}
+
+	// Check if accountant has read access to lock_dates
+	lockDatePerms, exists := (*perms)[invitationPkg.PermLockDates]
+	if !exists || !lockDatePerms.Read {
+		return errors.New("accountant does not have read permission for lock dates")
+	}
+
+	return nil
 }

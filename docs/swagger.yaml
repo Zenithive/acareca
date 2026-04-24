@@ -6324,8 +6324,15 @@ paths:
   /practitioner/lock-date:
     get:
       description: Retrieve the current financial lock date for the authenticated
-        practitioner.
+        practitioner or associated practitioners (for accountants).
       parameters:
+      - collectionFormat: csv
+        description: Practitioner ID (required for accountants and multiple allowed)
+        in: query
+        items:
+          type: string
+        name: practitioner_id
+        type: array
       - description: Financial Year ID
         in: query
         name: financial_year_id
@@ -6340,6 +6347,10 @@ paths:
             $ref: '#/definitions/util.RsList'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "500":

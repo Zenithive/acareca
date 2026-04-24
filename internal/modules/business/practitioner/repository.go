@@ -29,6 +29,7 @@ type Repository interface {
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 
 	GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*FinancialSettings, error)
+	GetBulkLockDates(ctx context.Context, pIDs []uuid.UUID, fyID uuid.UUID) ([]FinancialSettings, error)
 }
 
 type repository struct {
@@ -289,4 +290,17 @@ func (r *repository) GetFinancialSettings(ctx context.Context, practitionerID uu
 		return nil, fmt.Errorf("get financial settings: %w", err)
 	}
 	return &fs, nil
+}
+
+func (r *repository) GetBulkLockDates(ctx context.Context, pIDs []uuid.UUID, fyID uuid.UUID) ([]FinancialSettings, error) {
+	query := `
+        SELECT practitioner_id, financial_year_id, 
+               TO_CHAR(lock_date, 'DD-MM-YYYY') as lock_date 
+        FROM tbl_financial_settings 
+        WHERE practitioner_id = ANY($1) AND financial_year_id = $2
+    `
+	var list []FinancialSettings
+	// sqlx.SelectContext handles multiple rows
+	err := r.db.SelectContext(ctx, &list, query, pIDs, fyID)
+	return list, err
 }

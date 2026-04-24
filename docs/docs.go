@@ -6468,7 +6468,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Retrieve the current financial lock date for the authenticated practitioner.",
+                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).",
                 "produces": [
                     "application/json"
                 ],
@@ -6477,6 +6477,16 @@ const docTemplate = `{
                 ],
                 "summary": "Get Practitioner Lock Date",
                 "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Practitioner ID (required for accountants and multiple allowed)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Financial Year ID",
@@ -6494,6 +6504,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
