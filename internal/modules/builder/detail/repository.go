@@ -93,7 +93,8 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 	base := `
     FROM tbl_form f
     LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
-    WHERE f.deleted_at IS NULL ` + permissionClause
+    WHERE f.deleted_at IS NULL 
+    AND f.method != 'EXPENSE_ENTRY' ` + permissionClause
 
 	args := []any{actorID, actorID}
 
@@ -158,7 +159,8 @@ func (r *Repository) CountForm(ctx context.Context, filter common.Filter, actorI
 
 	base := `FROM tbl_form f 
 	LEFT JOIN tbl_custom_form_version v ON v.form_id = f.id AND v.is_active = true AND v.deleted_at IS NULL
-	WHERE f.deleted_at IS NULL ` + permissionClause
+	WHERE f.deleted_at IS NULL 
+    AND f.method != 'EXPENSE_ENTRY' ` + permissionClause
 
 	args := []any{actorID, actorID}
 
