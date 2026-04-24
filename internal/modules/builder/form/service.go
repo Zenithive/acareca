@@ -811,7 +811,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			// Create form field for this expense item
 			formFields := &field.RqFormField{
 				FieldKey:    fmt.Sprintf("E%d", idx+1),
-				Label:       fmt.Sprintf("%s (%s)", item.Name, rq.Date),
+				Label:       item.Name,
 				CoaID:       item.CoaID.String(),
 				IsComputed:  false,
 				SortOrder:   idx,
@@ -985,7 +985,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			// Update field
 			label := existingField.Label
 			if item.Name != nil {
-				label = fmt.Sprintf("%s (%s)", *item.Name, rq.Date)
+				label = *item.Name
 			}
 
 			coaIDStr := coaID.String()
@@ -1052,7 +1052,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			// Create new field
 			formFields := &field.RqFormField{
 				FieldKey:    fmt.Sprintf("N%d", idx+1),
-				Label:       fmt.Sprintf("%s (%s)", item.Name, rq.Date),
+				Label:       item.Name,
 				CoaID:       item.CoaID.String(),
 				IsComputed:  false,
 				BusinessUse: &item.BusinessUse,

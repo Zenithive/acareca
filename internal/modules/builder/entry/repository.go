@@ -777,6 +777,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 			coa.name        AS coa_name,
 			at2.name        AS tax_type_name,
 			fm.name         AS form_name,
+			fm.method       AS form_method,
 			COALESCE(c.name, 'Expense') AS clinic_name,
 			ev.net_amount,
 			ev.gst_amount,
@@ -812,6 +813,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 		CoaName       string    `db:"coa_name"`
 		TaxTypeName   *string   `db:"tax_type_name"`
 		FormName      string    `db:"form_name"`
+		FormMethod    string    `db:"form_method"`
 		ClinicName    string    `db:"clinic_name"`
 		NetAmount     *float64  `db:"net_amount"`
 		GstAmount     *float64  `db:"gst_amount"`
@@ -827,26 +829,39 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, &RsCoaEntryDetail{
+		isExpense := row.FormMethod == "EXPENSE_ENTRY"
+		
+		detail := &RsCoaEntryDetail{
 			ID:            row.ID.String(),
 			EntryID:       row.EntryID.String(),
 			FormFieldID:   row.FormFieldID.String(),
 			CoaID:         row.CoaID.String(),
 			TaxTypeID:     row.TaxTypeID,
 			FormID:        row.FormID.String(),
-			ClinicID:      row.ClinicID.String(),
 			VersionID:     row.VersionID.String(),
 			FormFieldName: row.FormFieldName,
 			CoaName:       row.CoaName,
 			TaxTypeName:   row.TaxTypeName,
-			FormName:      row.FormName,
-			ClinicName:    row.ClinicName,
+			IsExpense:     isExpense,
 			NetAmount:     row.NetAmount,
 			GstAmount:     row.GstAmount,
 			GrossAmount:   row.GrossAmount,
 			CreatedAt:     row.CreatedAt,
 			UpdatedAt:     row.UpdatedAt,
-		})
+		}
+		
+		// Only include clinic_id, clinic_name, and form_name for non-expense entries
+		if !isExpense {
+			clinicID := row.ClinicID.String()
+			detail.ClinicID = &clinicID
+			detail.ClinicName = &row.ClinicName
+			detail.FormName = &row.FormName
+		} else {
+			// For expense entries, use form_field_name as supplier_name
+			detail.SupplierName = &row.FormFieldName
+		}
+		
+		result = append(result, detail)
 	}
 	return result, nil
 }

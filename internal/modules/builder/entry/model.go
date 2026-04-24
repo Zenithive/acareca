@@ -309,13 +309,15 @@ type RsCoaEntryDetail struct {
 	CoaID         string   `json:"coa_id"`
 	TaxTypeID     *int16   `json:"tax_type_id"`
 	FormID        string   `json:"form_id"`
-	ClinicID      string   `json:"clinic_id"`
+	ClinicID      *string  `json:"clinic_id,omitempty"`
 	VersionID     string   `json:"version_id"`
 	FormFieldName string   `json:"form_field_name"`
 	CoaName       string   `json:"coa_name"`
 	TaxTypeName   *string  `json:"tax_type_name"`
-	FormName      string   `json:"form_name"`
-	ClinicName    string   `json:"clinic_name"`
+	FormName      *string  `json:"form_name,omitempty"`
+	ClinicName    *string  `json:"clinic_name,omitempty"`
+	SupplierName  *string  `json:"supplier_name,omitempty"`
+	IsExpense     bool     `json:"is_expense"`
 	NetAmount     *float64 `json:"net_amount"`
 	GstAmount     *float64 `json:"gst_amount"`
 	GrossAmount   *float64 `json:"gross_amount"`
