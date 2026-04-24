@@ -24,7 +24,7 @@ type IRepository interface {
 	GetInvitationByID(ctx context.Context, id uuid.UUID) (*InvitationExtended, error)
 	// CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
-	ListPermission(context.Context, common.Filter) (*InvitationWithPermissions, error)
+	ListPermission(ctx context.Context, accId uuid.UUID, f common.Filter) (*InvitationWithPermissions, error)
 	GetPermission(ctx context.Context, accountantID *uuid.UUID, practitionerID uuid.UUID, email *string) (*Permissions, error)
 	GrantEntityPermission(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error
 	UpdateStatus(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, accountantID *uuid.UUID) error
@@ -295,7 +295,7 @@ func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UU
 	return err
 }
 
-func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissions, error) {
+func (r *repository) ListPermission(ctx context.Context, accId uuid.UUID, f common.Filter) (*InvitationWithPermissions, error) {
 	// Define columns with table aliases to avoid ambiguity
 	permissionColumns := map[string]string{
 		"email":           "i.email",

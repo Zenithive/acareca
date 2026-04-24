@@ -683,7 +683,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
 	filter := f.MapToFilterAccountant()
 
-	invWithPerms, err := s.repo.ListPermissions(ctx, accId, filter)
+	invWithPerms, err := s.repo.ListPermission(ctx, accId, filter)
 	if err != nil {
 		return nil, err
 	}
