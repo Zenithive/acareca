@@ -22,6 +22,7 @@ type IHandler interface {
 	UpdateFormStatus(c *gin.Context)
 
 	CreateExpense(c *gin.Context)
+	UpdateExpense(c *gin.Context)
 }
 
 type handler struct {
@@ -372,7 +373,93 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Form status updated successfully")
 }
 
-// CreateExpense implements [IHandler].
+// @Summary Create expense
+// @Description Create a new expense form with items
+// @Tags form/expense
+// @Accept json
+// @Produce json
+// @Param request body RqExpense true "Expense creation request"
+// @Success 201 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /form/expense [post]
 func (h *handler) CreateExpense(c *gin.Context) {
-	panic("unimplemented")
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var rq RqExpense
+	if err := util.BindAndValidate(c, &rq); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	form, err := h.svc.CreateExpense(c.Request.Context(), rq, actorID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusCreated, gin.H{"form": form}, "Expense created successfully")
+}
+
+// @Summary Update expense
+// @Description Update an existing expense form
+// @Tags form/expense
+// @Accept json
+// @Produce json
+// @Param id path string true "Form ID"
+// @Param request body RqUpdateExpense true "Expense update request"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /form/expense/{id} [patch]
+func (h *handler) UpdateExpense(c *gin.Context) {
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var formID uuid.UUID
+	formID, ok = util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	var rq RqUpdateExpense
+	if err := util.BindAndValidate(c, &rq); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	form, err := h.svc.UpdateExpense(c.Request.Context(), formID, rq, actorID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Expense updated successfully")
 }

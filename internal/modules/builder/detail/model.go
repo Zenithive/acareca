@@ -64,7 +64,7 @@ type RqFormDetail struct {
 	Name           string   `json:"name" validate:"required"`
 	Description    *string  `json:"description" validate:"omitempty"`
 	Status         string   `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
-	Method         string   `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	Method         string   `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE EXPENSE_ENTRY"`
 	OwnerShare     int      `json:"owner_share" validate:"required,min=0,max=100"`
 	ClinicShare    int      `json:"clinic_share" validate:"required,min=0,max=100"`
 	SuperComponent *float64 `json:"super_component" validate:"omitempty,min=0,max=100"`
@@ -75,7 +75,7 @@ type RqUpdateFormDetail struct {
 	Name           *string   `json:"name" validate:"omitempty"`
 	Description    *string   `json:"description" validate:"omitempty"`
 	Status         *string   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
-	Method         *string   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	Method         *string   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE EXPENSE_ENTRY"`
 	OwnerShare     *int      `json:"owner_share" validate:"omitempty,min=0,max=100"`
 	ClinicShare    *int      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
 	SuperComponent *float64  `json:"super_component" validate:"omitempty,min=0,max=100"`

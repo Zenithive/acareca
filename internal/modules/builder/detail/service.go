@@ -2,6 +2,7 @@ package detail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -17,7 +18,7 @@ import (
 
 type IService interface {
 	Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
-	CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
+	CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
 	GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormDetail, error)
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
@@ -92,16 +93,22 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 	return result, nil
 }
 
-func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
+func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
 
 	if isAccountant || practitionerID == uuid.Nil {
-		clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+		var clinic *clinic.Clinic
+		var err error
+		if clinicID != nil && *clinicID != uuid.Nil {
+			clinic, err = s.clinicRepo.GetClinicByID(ctx, *clinicID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+			}
+			practitionerID = clinic.PractitionerID
+		} else if practitionerID == uuid.Nil {
+			return nil, errors.New("practitionerID is required when clinicID is not provided")
 		}
-		practitionerID = clinic.PractitionerID
 	}
 
 	// Subscription limit check
@@ -109,7 +116,15 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 		return nil, err
 	}
 
-	formDetail := d.ToDB(clinicID)
+	// Handle nil clinicID for expense forms
+	var actualClinicID uuid.UUID
+	if clinicID != nil {
+		actualClinicID = *clinicID
+	} else {
+		actualClinicID = uuid.Nil
+	}
+
+	formDetail := d.ToDB(actualClinicID)
 
 	// Internal function to execute logic
 	execLogic := func(ctx context.Context, tx *sqlx.Tx) error {
@@ -117,11 +132,17 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 			return err
 		}
 
-		_, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
+		createdVersion, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, actualClinicID, &version.RqFormVersion{
 			Version:  1,
 			IsActive: true,
 		}, practitionerID)
-		return err
+		if err != nil {
+			return err
+		}
+		
+		// Set the active version ID on the form detail
+		formDetail.ActiveVersionID = &createdVersion.Id
+		return nil
 	}
 
 	// If tx is provided by the caller (CreateWithFields), use it.
