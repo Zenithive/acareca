@@ -14,4 +14,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 	rg.DELETE("/:id", h.Delete)
 	rg.PATCH("/:id/status", h.UpdateFormStatus)
 	rg.POST("/expenses", h.CreateExpense)
+	rg.GET("/expenses/:id", h.GetExpense)
 }

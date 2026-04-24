@@ -130,6 +130,7 @@ type ExpenseItem struct {
 	CoaID       uuid.UUID `json:"coa_id" validate:"required,uuid"`
 	BusinessUse float64   `json:"business_use" validate:"required,min=0,max=100"`
 	Amount      float64   `json:"amount" validate:"required,gt=0"`
+	Description *string   `json:"description,omitempty"`
 }
 
 type RqUpdateExpense struct {
@@ -146,4 +147,27 @@ type ExpenseItemUpdate struct {
 	CoaID       *uuid.UUID `json:"coa_id,omitempty"`
 	BusinessUse *float64   `json:"business_use,omitempty" validate:"omitempty,min=0,max=100"`
 	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	Description *string    `json:"description,omitempty"`
+}
+
+type RsExpense struct {
+	ID        uuid.UUID       `json:"id"`
+	Name      string          `json:"name"`
+	Date      string          `json:"date"`
+	Items     []RsExpenseItem `json:"items"`
+	CreatedAt string          `json:"created_at"`
+	UpdatedAt *string         `json:"updated_at,omitempty"`
+}
+
+type RsExpenseItem struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	CoaID       uuid.UUID `json:"coa_id"`
+	CoaName     string    `json:"coa_name"`
+	BusinessUse float64   `json:"business_use"`
+	Amount      float64   `json:"amount"`
+	NetAmount   float64   `json:"net_amount"`
+	GstAmount   float64   `json:"gst_amount"`
+	GrossAmount float64   `json:"gross_amount"`
+	Description *string   `json:"description,omitempty"`
 }

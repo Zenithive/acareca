@@ -100,7 +100,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
@@ -289,7 +289,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
@@ -455,11 +455,11 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING created_at, updated_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description).
 			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("create entry value tx: %w", err)
 		}

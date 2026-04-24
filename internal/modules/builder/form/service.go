@@ -38,6 +38,7 @@ type IService interface {
 
 	CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
 	UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
+	GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID) (*RsExpense, error)
 }
 
 type service struct {
@@ -582,7 +583,7 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Get clinic info and owner ID only for non-expense forms
 	var realOwnerID uuid.UUID
 	if formDetail.Method != "EXPENSE_ENTRY" {
@@ -831,6 +832,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				NetAmount:   &netAmount,
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
+				Description: item.Description,
 			}
 
 			entryValues = append(entryValues, entryValue)
@@ -934,6 +936,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 			amount := 0.0
 			businessUse := 0.0
+			var description *string
 
 			// Find existing entry value for this field
 			for _, ev := range existingValues {
@@ -941,6 +944,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 					if ev.GrossAmount != nil {
 						amount = *ev.GrossAmount
 					}
+					description = ev.Description
 					break
 				}
 			}
@@ -954,6 +958,9 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 			if item.BusinessUse != nil {
 				businessUse = *item.BusinessUse
+			}
+			if item.Description != nil {
+				description = item.Description
 			}
 
 			// Get COA details
@@ -1013,10 +1020,11 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				NetAmount:   &netAmount,
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
+				Description: description,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount) VALUES ($1, $2, $3, $4, $5, $6)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
@@ -1071,10 +1079,11 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				NetAmount:   &netAmount,
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
+				Description: item.Description,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount) VALUES ($1, $2, $3, $4, $5, $6)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
@@ -1102,4 +1111,121 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 	})
 
 	return updatedForm, nil
+}
+
+// GetExpense implements [IService].
+func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID) (*RsExpense, error) {
+	// Get form details
+	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expense form: %w", err)
+	}
+
+	// Verify it's an expense form
+	if formDetail.Method != "EXPENSE_ENTRY" {
+		return nil, errors.New("form is not an expense entry")
+	}
+
+	// Verify ownership
+	if formDetail.ActiveVersionID == nil {
+		return nil, errors.New("active version not found for expense form")
+	}
+
+	// Get form version to check practitioner_id
+	versions, err := s.versionSvc.List(ctx, formID, uuid.Nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get form versions: %w", err)
+	}
+
+	var practitionerID uuid.UUID
+	for _, v := range versions {
+		if v.IsActive {
+			practitionerID = v.PractitionerID
+			break
+		}
+	}
+
+	// Check if actor owns this expense
+	if practitionerID != actorId {
+		return nil, errors.New("access denied: you do not own this expense")
+	}
+
+	// Get form fields
+	fields, err := s.fieldSvc.ListByFormVersionID(ctx, *formDetail.ActiveVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get form fields: %w", err)
+	}
+
+	// Get entry and entry values
+	formEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, *formDetail.ActiveVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get entry values: %w", err)
+	}
+
+	// Build response
+	response := &RsExpense{
+		ID:        formDetail.ID,
+		Name:      formDetail.Name,
+		Date:      formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
+		Items:     []RsExpenseItem{},
+		CreatedAt: formDetail.CreatedAt,
+	}
+
+	if formDetail.UpdatedAt != "" {
+		response.UpdatedAt = &formDetail.UpdatedAt
+	}
+
+	// Build items from fields and entry values
+	for _, f := range fields {
+		if f.CoaID == nil {
+			continue
+		}
+
+		// Get COA details for name
+		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *f.CoaID, actorId)
+		if err != nil {
+			continue
+		}
+
+		// Find matching entry value
+		var netAmount, gstAmount, grossAmount float64
+		var description *string
+		for _, ev := range entryValues {
+			if ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
+				if ev.NetAmount != nil {
+					netAmount = *ev.NetAmount
+				}
+				if ev.GstAmount != nil {
+					gstAmount = *ev.GstAmount
+				}
+				if ev.GrossAmount != nil {
+					grossAmount = *ev.GrossAmount
+				}
+				description = ev.Description
+				break
+			}
+		}
+
+		businessUse := 0.0
+		if f.BusinessUse != nil {
+			businessUse = *f.BusinessUse
+		}
+
+		item := RsExpenseItem{
+			ID:          f.ID,
+			Name:        f.Label,
+			CoaID:       *f.CoaID,
+			CoaName:     coaDetail.Name,
+			BusinessUse: businessUse,
+			Amount:      grossAmount,
+			NetAmount:   netAmount,
+			GstAmount:   gstAmount,
+			GrossAmount: grossAmount,
+			Description: description,
+		}
+
+		response.Items = append(response.Items, item)
+	}
+
+	return response, nil
 }

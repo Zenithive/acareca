@@ -23,6 +23,7 @@ type IHandler interface {
 
 	CreateExpense(c *gin.Context)
 	UpdateExpense(c *gin.Context)
+	GetExpense(c *gin.Context)
 }
 
 type handler struct {
@@ -462,4 +463,55 @@ func (h *handler) UpdateExpense(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Expense updated successfully")
+}
+
+// @Summary Get expense by ID
+// @Description Get an expense form with all its items
+// @Tags form/expense
+// @Accept json
+// @Produce json
+// @Param id path string true "Form ID"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /form/expenses/{id} [get]
+func (h *handler) GetExpense(c *gin.Context) {
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var formID uuid.UUID
+	formID, ok = util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID)
+	if err != nil {
+		if err.Error() == "access denied: you do not own this expense" {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
+		if err.Error() == "form is not an expense entry" {
+			response.Error(c, http.StatusBadRequest, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, expense, "Expense fetched successfully")
 }
