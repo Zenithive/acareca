@@ -83,6 +83,7 @@ func (h *Handler) ListPractitioners(c *gin.Context) {
 // @Description Retrieve the current financial lock date for the authenticated practitioner.
 // @Tags practitioner-lock-date
 // @Produce json
+// @Param financial_year_id query string true "Financial Year ID"
 // @Success 200 {object} util.RsList
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -96,7 +97,20 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 		return
 	}
 
-	lockDate, err := h.svc.GetLockDate(c.Request.Context(), practitionerID)
+	// 2. Get Financial Year ID from Query Params
+	fyIDStr := c.Query("financial_year_id")
+	if fyIDStr == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("financial_year_id is required"))
+		return
+	}
+
+	fyID, err := uuid.Parse(fyIDStr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid financial_year_id format"))
+		return
+	}
+
+	lockDate, err := h.svc.GetLockDate(c.Request.Context(), practitionerID, fyID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

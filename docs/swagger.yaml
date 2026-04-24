@@ -6325,6 +6325,12 @@ paths:
     get:
       description: Retrieve the current financial lock date for the authenticated
         practitioner.
+      parameters:
+      - description: Financial Year ID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
       produces:
       - application/json
       responses:

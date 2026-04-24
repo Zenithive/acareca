@@ -28,7 +28,7 @@ type Repository interface {
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 
-	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
+	GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*FinancialSettings, error)
 }
 
 type repository struct {
@@ -273,14 +273,16 @@ func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUI
 	return err
 }
 
-func (r *repository) GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error) {
+func (r *repository) GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*FinancialSettings, error) {
 	query := `
-		SELECT id, clinic_id, financial_year_id, lock_date, created_at, updated_at
-		FROM tbl_financial_settings
-		WHERE clinic_id = $1
-	`
+        SELECT id, practitioner_id, financial_year_id, 
+               TO_CHAR(lock_date, 'DD-MM-YYYY') as lock_date, 
+               created_at, updated_at
+        FROM tbl_financial_settings
+        WHERE practitioner_id = $1 AND financial_year_id = $2`
+
 	var fs FinancialSettings
-	if err := r.db.QueryRowxContext(ctx, query, clinicID).StructScan(&fs); err != nil {
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID, fyID).StructScan(&fs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
