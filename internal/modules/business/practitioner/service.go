@@ -27,7 +27,6 @@ type IService interface {
 	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 	VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error
-	GetBulkLockDates(ctx context.Context, pIDs []uuid.UUID, fyID uuid.UUID) ([]map[string]interface{}, error)
 }
 
 type service struct {
@@ -160,43 +159,6 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 	}
 
 	return s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
-}
-
-func (s *service) GetBulkLockDates(ctx context.Context, pIDs []uuid.UUID, fyID uuid.UUID) ([]map[string]interface{}, error) {
-	// 1. Call repository to get existing records
-	settings, err := s.repo.GetBulkLockDates(ctx, pIDs, fyID)
-	if err != nil {
-		return nil, fmt.Errorf("service get bulk lock dates: %w", err)
-	}
-
-	// 2. Create a map for quick lookup of results found in DB
-	foundMap := make(map[uuid.UUID]string)
-	for _, item := range settings {
-		if item.LockDate != nil {
-			foundMap[item.PractitionerID] = *item.LockDate
-		}
-	}
-
-	// 3. Prepare the final response list
-	// This ensures every requested Practitioner ID gets a response entry,
-	// even if it's "null" in the DB.
-	finalResults := make([]map[string]interface{}, 0, len(pIDs))
-	for _, id := range pIDs {
-		lockDate, exists := foundMap[id]
-
-		result := map[string]interface{}{
-			"practitioner_id": id,
-			"lock_date":       nil,
-		}
-
-		if exists {
-			result["lock_date"] = lockDate
-		}
-
-		finalResults = append(finalResults, result)
-	}
-
-	return finalResults, nil
 }
 
 // VerifyAccountantAccessToPractitioner verifies that an accountant has access to a practitioner

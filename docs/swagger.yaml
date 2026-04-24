@@ -1371,6 +1371,8 @@ definitions:
     type: object
   field.RqUpdateFormField:
     properties:
+      business_use:
+        type: number
       coa_id:
         type: string
       id:
@@ -1399,6 +1401,41 @@ definitions:
     required:
     - id
     type: object
+  form.ExpenseItem:
+    properties:
+      amount:
+        type: number
+      business_use:
+        maximum: 100
+        minimum: 0
+        type: number
+      coa_id:
+        type: string
+      name:
+        type: string
+    required:
+    - amount
+    - business_use
+    - coa_id
+    - name
+    type: object
+  form.ExpenseItemUpdate:
+    properties:
+      amount:
+        type: number
+      business_use:
+        maximum: 100
+        minimum: 0
+        type: number
+      coa_id:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    required:
+    - id
+    type: object
   form.RqCreateFormWithFields:
     properties:
       clinic_id:
@@ -1421,6 +1458,7 @@ definitions:
         enum:
         - INDEPENDENT_CONTRACTOR
         - SERVICE_FEE
+        - EXPENSE_ENTRY
         type: string
       name:
         type: string
@@ -1445,6 +1483,22 @@ definitions:
     - name
     - owner_share
     type: object
+  form.RqExpense:
+    properties:
+      date:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/form.ExpenseItem'
+        minItems: 1
+        type: array
+      name:
+        type: string
+    required:
+    - date
+    - items
+    - name
+    type: object
   form.RqFieldsSync:
     properties:
       create:
@@ -1459,6 +1513,28 @@ definitions:
         items:
           $ref: '#/definitions/field.RqUpdateFormField'
         type: array
+    type: object
+  form.RqUpdateExpense:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/form.ExpenseItem'
+        type: array
+      date:
+        type: string
+      delete:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      update:
+        items:
+          $ref: '#/definitions/form.ExpenseItemUpdate'
+        type: array
+    required:
+    - date
+    - name
     type: object
   form.RqUpdateFormStatus:
     properties:
@@ -1503,6 +1579,7 @@ definitions:
         enum:
         - INDEPENDENT_CONTRACTOR
         - SERVICE_FEE
+        - EXPENSE_ENTRY
         type: string
       name:
         type: string
@@ -5596,6 +5673,75 @@ paths:
       summary: Update form status
       tags:
       - form
+  /form/expense:
+    post:
+      consumes:
+      - application/json
+      description: Create a new expense form with items
+      parameters:
+      - description: Expense creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqExpense'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create expense
+      tags:
+      - form/expense
+  /form/expense/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing expense form
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Expense update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateExpense'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update expense
+      tags:
+      - form/expense
   /invite:
     get:
       description: Retrieve a paginated list of invitations. If logged in as a Practitioner,
@@ -6326,13 +6472,10 @@ paths:
       description: Retrieve the current financial lock date for the authenticated
         practitioner or associated practitioners (for accountants).
       parameters:
-      - collectionFormat: csv
-        description: Practitioner ID (required for accountants and multiple allowed)
+      - description: Practitioner ID (required for accountants)
         in: query
-        items:
-          type: string
         name: practitioner_id
-        type: array
+        type: string
       - description: Financial Year ID
         in: query
         name: financial_year_id
