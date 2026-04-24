@@ -1578,18 +1578,6 @@ definitions:
       label:
         type: string
     type: object
-  internal_modules_admin_practitioner.UpdateLockDateRequest:
-    properties:
-      lock_date:
-        description: Use *time.Time to allow null values for removing the lock date
-        type: string
-    type: object
-  internal_modules_business_practitioner.UpdateLockDateRequest:
-    properties:
-      lock_date:
-        description: Use *time.Time to allow null values for removing the lock date
-        type: string
-    type: object
   invitation.AccessLevel:
     properties:
       read:
@@ -1855,6 +1843,16 @@ definitions:
         type: number
       period_month:
         type: string
+    type: object
+  practitioner.UpdateLockDateRequest:
+    properties:
+      financial_year_id:
+        description: Use *time.Time to allow null values for removing the lock date
+        type: string
+      lock_date:
+        type: string
+    required:
+    - financial_year_id
     type: object
   response.RsBase:
     properties:
@@ -6353,17 +6351,12 @@ paths:
       description: Set or remove (by sending null) the financial lock date for the
         authenticated practitioner.
       parameters:
-      - description: Financial Year UUID
-        in: query
-        name: financial_year_id
-        required: true
-        type: string
       - description: Lock Date Update
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/internal_modules_business_practitioner.UpdateLockDateRequest'
+          $ref: '#/definitions/practitioner.UpdateLockDateRequest'
       produces:
       - application/json
       responses:

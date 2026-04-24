@@ -107,7 +107,8 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 
 type UpdateLockDateRequest struct {
 	// Use *time.Time to allow null values for removing the lock date
-	LockDate *string `json:"lock_date"`
+	FinancialYearID string  `json:"financial_year_id" binding:"required"`
+	LockDate        *string `json:"lock_date"`
 }
 
 // @Summary Update Practitioner Lock Date
@@ -115,7 +116,6 @@ type UpdateLockDateRequest struct {
 // @Tags practitioner-lock-date
 // @Accept json
 // @Produce json
-// @Param financial_year_id query string true "Financial Year UUID"
 // @Param request body UpdateLockDateRequest true "Lock Date Update"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
@@ -135,13 +135,13 @@ func (h *Handler) UpdateLockDate(c *gin.Context) {
 		return
 	}
 
-	fyIDStr := c.Query("financial_year_id")
-	if fyIDStr == "" {
-		response.Error(c, http.StatusBadRequest, errors.New("financial_year_id is required"))
-		return
-	}
+	// fyIDStr := c.Query("financial_year_id")
+	// if fyIDStr == "" {
+	// 	response.Error(c, http.StatusBadRequest, errors.New("financial_year_id is required"))
+	// 	return
+	// }
 
-	fyID, err := uuid.Parse(fyIDStr)
+	fyID, err := uuid.Parse(req.FinancialYearID)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid financial_year_id format"))
 		return
