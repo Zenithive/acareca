@@ -1127,22 +1127,24 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Verify ownership
-	if formDetail.ActiveVersionID == nil {
-		return nil, errors.New("active version not found for expense form")
-	}
-
-	// Get form version to check practitioner_id
+	// Get form version to check practitioner_id and get active version ID
 	versions, err := s.versionSvc.List(ctx, formID, uuid.Nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get form versions: %w", err)
 	}
 
 	var practitionerID uuid.UUID
+	var activeVersionID uuid.UUID
 	for _, v := range versions {
 		if v.IsActive {
 			practitionerID = v.PractitionerID
+			activeVersionID = v.Id
 			break
 		}
+	}
+
+	if activeVersionID == uuid.Nil {
+		return nil, errors.New("active version not found for expense form")
 	}
 
 	// Check if actor owns this expense
@@ -1151,13 +1153,13 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Get form fields
-	fields, err := s.fieldSvc.ListByFormVersionID(ctx, *formDetail.ActiveVersionID)
+	fields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get form fields: %w", err)
 	}
 
 	// Get entry and entry values
-	formEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, *formDetail.ActiveVersionID)
+	formEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entry values: %w", err)
 	}
