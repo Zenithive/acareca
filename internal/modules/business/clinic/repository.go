@@ -583,7 +583,7 @@ func (r *repository) GetAccountantPermission(ctx context.Context, accountantID u
 	query := `
         SELECT 
             i.practitioner_id, 
-            $2 as clinic_id
+            c.id as clinic_id
         FROM tbl_invitation i
         INNER JOIN tbl_clinic c ON c.practitioner_id = i.practitioner_id
         WHERE i.accountant_id = $1 
