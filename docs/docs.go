@@ -6476,6 +6476,15 @@ const docTemplate = `{
                     "practitioner-lock-date"
                 ],
                 "summary": "Get Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year ID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",

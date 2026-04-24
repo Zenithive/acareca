@@ -21,7 +21,7 @@ type IService interface {
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
-	GetLockDate(ctx context.Context, practitionerID uuid.UUID) (*string, error)
+	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 }
 
@@ -130,9 +130,9 @@ func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsLis
 	return &rsList, nil
 }
 
-// GetLockDate retrieves the lock date for a specific practitioner
-func (s *service) GetLockDate(ctx context.Context, practitionerID uuid.UUID) (*string, error) {
-	settings, err := s.repo.GetFinancialSettings(ctx, practitionerID)
+// GetLockDate retrieves the lock date for a specific practitioner and financial year
+func (s *service) GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error) {
+	settings, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
 	if err != nil {
 		return nil, err
 	}
