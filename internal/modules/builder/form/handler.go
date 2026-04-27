@@ -12,6 +12,11 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
+var (
+	ErrAccessDenied       = errors.New("access denied")
+	ErrInvalidExpenseType = errors.New("form is not an expense entry")
+)
+
 type IHandler interface {
 	GetById(c *gin.Context)
 	CreateFormWithFields(c *gin.Context)
@@ -479,42 +484,38 @@ func (h *handler) UpdateExpense(c *gin.Context) {
 // @Router /form/expenses/{id} [get]
 func (h *handler) GetExpense(c *gin.Context) {
 	role := c.GetString("role")
+
 	var actorID uuid.UUID
 	var ok bool
 
-	if strings.EqualFold(role, util.RoleAccountant) {
+	switch {
+	case strings.EqualFold(role, util.RoleAccountant):
 		actorID, ok = util.GetAccountantID(c)
-	} else {
+	default:
 		actorID, ok = util.GetPractitionerID(c)
 	}
 
 	if !ok {
-		response.Error(c, http.StatusUnauthorized, nil)
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid actor"))
 		return
 	}
 
-	var formID uuid.UUID
-	formID, ok = util.ParseUuidID(c, "id")
+	formID, ok := util.ParseUuidID(c, "id")
 	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid form id"))
 		return
-	}
-
-	practId, ok := util.ParseUuidID(c, "practitioner_id")
-	if ok {
-		actorID = practId
 	}
 
 	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID)
 	if err != nil {
-		if err.Error() == "access denied: you do not own this expense" {
+		switch {
+		case errors.Is(err, ErrAccessDenied):
 			response.Error(c, http.StatusForbidden, err)
-			return
-		}
-		if err.Error() == "form is not an expense entry" {
+		case errors.Is(err, ErrInvalidExpenseType):
 			response.Error(c, http.StatusBadRequest, err)
-			return
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
-		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 

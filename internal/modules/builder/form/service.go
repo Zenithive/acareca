@@ -1337,11 +1337,12 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 
 	// Build response
 	response := &RsExpense{
-		ID:        formDetail.ID,
-		Name:      formDetail.Name,
-		Date:      formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
-		Items:     []RsExpenseItem{},
-		CreatedAt: formDetail.CreatedAt,
+		ID:             formDetail.ID,
+		Name:           formDetail.Name,
+		Date:           formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
+		PractitionerID: practitionerID,
+		Items:          []RsExpenseItem{},
+		CreatedAt:      formDetail.CreatedAt,
 	}
 
 	if formDetail.UpdatedAt != "" {
