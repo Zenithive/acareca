@@ -1309,7 +1309,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	// Check if actor owns this expense or is an accountant linked to the practitioner
 	meta := auditctx.GetMetadata(ctx)
 	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
-	
+
 	if !isAccountant {
 		// For practitioners, check direct ownership
 		if practitionerID != actorId {
@@ -1349,11 +1349,11 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Determine amount_type from the first field's tax type
-	amountType := "EXCLUSIVE" // Default
+	taxType := "EXCLUSIVE" // Default
 	if len(fields) > 0 && fields[0].TaxType != nil {
-		amountType = *fields[0].TaxType
+		taxType = *fields[0].TaxType
 	}
-	response.AmountType = amountType
+	response.TaxType = taxType
 
 	// Build items from fields and entry values
 	for _, f := range fields {

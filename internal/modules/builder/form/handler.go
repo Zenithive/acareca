@@ -499,6 +499,11 @@ func (h *handler) GetExpense(c *gin.Context) {
 		return
 	}
 
+	practId, ok := util.ParseUuidID(c, "practitioner_id")
+	if ok {
+		actorID = practId
+	}
+
 	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID)
 	if err != nil {
 		if err.Error() == "access denied: you do not own this expense" {

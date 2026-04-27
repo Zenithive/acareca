@@ -153,13 +153,13 @@ type ExpenseItemUpdate struct {
 }
 
 type RsExpense struct {
-	ID         uuid.UUID       `json:"id"`
-	Name       string          `json:"name"`
-	Date       string          `json:"date"`
-	AmountType string          `json:"amount_type"`
-	Items      []RsExpenseItem `json:"items"`
-	CreatedAt  string          `json:"created_at"`
-	UpdatedAt  *string         `json:"updated_at,omitempty"`
+	ID        uuid.UUID       `json:"id"`
+	Name      string          `json:"name"`
+	Date      string          `json:"date"`
+	TaxType   string          `json:"tax_type"`
+	Items     []RsExpenseItem `json:"items"`
+	CreatedAt string          `json:"created_at"`
+	UpdatedAt *string         `json:"updated_at,omitempty"`
 }
 
 type RsExpenseItem struct {
