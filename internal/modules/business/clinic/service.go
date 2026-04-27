@@ -97,6 +97,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 		// Create financial settings
 		financialSettings := &FinancialSettings{
 			ClinicID:        created.ID,
+			PractitionerID:  practitionerID,
 			FinancialYearID: *activeFinancialYearID,
 			LockDate:        nil,
 		}

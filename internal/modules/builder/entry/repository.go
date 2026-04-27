@@ -100,7 +100,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
@@ -289,7 +289,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
@@ -315,55 +315,56 @@ var allowedTransactionColumns = map[string]string{
 }
 
 func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
+	// Build permission clause based on role
 	var permissionClause string
-
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Show transactions for all practitioners the accountant is invited to
-		permissionClause = ` AND c.practitioner_id IN (
-            SELECT practitioner_id FROM tbl_invitation 
-            WHERE accountant_id = ? AND status = 'COMPLETED'
-        )`
+		// Accountant: show transactions for invited practitioners (clinic-based + expenses)
+		permissionClause = ` AND (
+			c.practitioner_id IN (SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED')
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	} else {
-		// Show transactions for all clinics owned by the PRACTITIONER
-		permissionClause = ` AND c.id IN (
-            SELECT id FROM tbl_clinic 
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+		// Practitioner: show own clinic transactions + own expenses
+		permissionClause = ` AND (
+			c.practitioner_id = ?
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	base := `
 		SELECT
 			ev.id,
-			e.id            AS entry_id,
-			ff.id           AS form_field_id,
-			ff.label        AS form_field_name,
-			coa.id          AS coa_id,
-			coa.name        AS coa_name,
-			at2.id          AS tax_type_id,
-			at2.name        AS tax_type_name,
-			fm.id           AS form_id,
-			fm.name         AS form_name,
+			e.id AS entry_id,
+			ff.id AS form_field_id,
+			ff.label AS form_field_name,
+			coa.id AS coa_id,
+			coa.name AS coa_name,
+			at2.id AS tax_type_id,
+			at2.name AS tax_type_name,
+			fm.id AS form_id,
+			fm.name AS form_name,
 			e.clinic_id,
-			c.name          AS clinic_name,
+			COALESCE(c.name, 'Expense') AS clinic_name,
 			ev.net_amount,
 			ev.gst_amount,
 			ev.gross_amount,
 			ev.created_at,
 			ev.updated_at,
-			e.date
+			e.date,
+			(e.clinic_id = '00000000-0000-0000-0000-000000000000') AS is_expense
 		FROM tbl_form_entry_value ev
-		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
-		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
+		INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
+		INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+		INNER JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		LEFT JOIN tbl_account_tax at2 ON at2.id = coa.account_tax_id
+		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
+		LEFT JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
 		WHERE e.deleted_at IS NULL AND ev.updated_at IS NULL` + permissionClause
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, false)
-	args := []any{actorID}
+	args := []any{actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
@@ -392,40 +393,42 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 			GrossAmount:   row.GrossAmount,
 			CreatedAt:     row.CreatedAt,
 			UpdatedAt:     row.UpdatedAt,
+			Date:          row.Date,
+			IsExpense:     row.IsExpense,
 		})
 	}
 	return result, nil
 }
 
 func (r *Repository) CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error) {
+	// Build permission clause based on role
 	var permissionClause string
-
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND c.practitioner_id IN (
-            SELECT practitioner_id FROM tbl_invitation
-            WHERE accountant_id = ? AND status = 'COMPLETED'
-        )`
+		permissionClause = ` AND (
+			c.practitioner_id IN (SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED')
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	} else {
-		permissionClause = ` AND c.id IN (
-            SELECT id FROM tbl_clinic
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+		permissionClause = ` AND (
+			c.practitioner_id = ?
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	base := `
 		FROM tbl_form_entry_value ev
-		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts        coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
-		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
+		INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
+		INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
+		INNER JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		LEFT JOIN tbl_account_tax at2 ON at2.id = coa.account_tax_id
+		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
+		INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
+		LEFT JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
 		WHERE e.deleted_at IS NULL AND ev.updated_at IS NULL` + permissionClause
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, true)
-	args := []any{actorID}
+	args := []any{actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
@@ -452,11 +455,11 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING created_at, updated_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description).
 			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("create entry value tx: %w", err)
 		}
@@ -566,15 +569,26 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND c.practitioner_id IN (
-            SELECT practitioner_id FROM tbl_invitation 
-            WHERE accountant_id = ? AND status = 'COMPLETED'
-        )`
+		// Accountant: show clinic entries they have access to + expense entries from those practitioners
+		permissionClause = ` AND (
+			c.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			))
+		)`
 	} else {
-		permissionClause = ` AND c.id IN (
-            SELECT id FROM tbl_clinic 
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+		// Practitioner: show own clinic entries + own expense entries
+		permissionClause = ` AND (
+			c.id IN (
+				SELECT id FROM tbl_clinic 
+				WHERE practitioner_id = ? AND deleted_at IS NULL
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	// Map filter fields to use start_date/end_date instead of date_from/date_to
@@ -583,7 +597,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		"form_id":         "fm.id",
 		"coa_id":          "coa.id",
 		"tax_type_id":     "at2.id",
-		"practitioner_id": "c.practitioner_id",
+		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
 		"start_date":      "ev.created_at",
 		"end_date":        "ev.created_at",
 	}
@@ -601,14 +615,14 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		INNER JOIN tbl_form_entry              e   ON e.id = ev.entry_id         AND e.deleted_at IS NULL
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id = e.form_version_id  AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
+		LEFT  JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause
 
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
 	groupByClause := ` GROUP BY coa.id, coa.name`
-	args := []any{actorID}
+	args := []any{actorID, actorID}
 
 	args = append(args, qArgs...)
 	if strings.Contains(q, "ORDER BY") {
@@ -652,15 +666,26 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND c.practitioner_id IN (
-            SELECT practitioner_id FROM tbl_invitation
-            WHERE accountant_id = ? AND status = 'COMPLETED'
-        )`
+		// Accountant: show clinic entries they have access to + expense entries from those practitioners
+		permissionClause = ` AND (
+			c.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			))
+		)`
 	} else {
-		permissionClause = ` AND c.id IN (
-            SELECT id FROM tbl_clinic
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+		// Practitioner: show own clinic entries + own expense entries
+		permissionClause = ` AND (
+			c.id IN (
+				SELECT id FROM tbl_clinic
+				WHERE practitioner_id = ? AND deleted_at IS NULL
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	allowedColumns := map[string]string{
@@ -668,7 +693,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 		"form_id":         "fm.id",
 		"coa_id":          "coa.id",
 		"tax_type_id":     "at2.id",
-		"practitioner_id": "c.practitioner_id",
+		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
 		"start_date":      "ev.created_at",
 		"end_date":        "ev.created_at",
 	}
@@ -680,13 +705,13 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 		INNER JOIN tbl_form_entry              e   ON e.id = ev.entry_id         AND e.deleted_at IS NULL
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id = e.form_version_id  AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
+		LEFT  JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause
 
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
-	args := []any{actorID}
+	args := []any{actorID, actorID}
 	if strings.Contains(strings.ToUpper(q), "COUNT(*)") {
 		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT coa.id)")
 	}
@@ -706,22 +731,33 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND c.practitioner_id IN (
-            SELECT practitioner_id FROM tbl_invitation 
-            WHERE accountant_id = ? AND status = 'COMPLETED'
-        )`
+		// Accountant: show clinic entries they have access to + expense entries from those practitioners
+		permissionClause = ` AND (
+			c.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			))
+		)`
 	} else {
-		permissionClause = ` AND c.id IN (
-            SELECT id FROM tbl_clinic 
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+		// Practitioner: show own clinic entries + own expense entries
+		permissionClause = ` AND (
+			c.id IN (
+				SELECT id FROM tbl_clinic 
+				WHERE practitioner_id = ? AND deleted_at IS NULL
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	allowedColumns := map[string]string{
 		"clinic_id":       "e.clinic_id",
 		"form_id":         "fm.id",
 		"tax_type_id":     "at2.id",
-		"practitioner_id": "c.practitioner_id",
+		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
 		"start_date":      "ev.created_at",
 		"end_date":        "ev.created_at",
 		"created_at":      "ev.created_at",
@@ -741,7 +777,8 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 			coa.name        AS coa_name,
 			at2.name        AS tax_type_name,
 			fm.name         AS form_name,
-			c.name          AS clinic_name,
+			fm.method       AS form_method,
+			COALESCE(c.name, 'Expense') AS clinic_name,
 			ev.net_amount,
 			ev.gst_amount,
 			ev.gross_amount,
@@ -754,12 +791,12 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
+		LEFT  JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
 		WHERE ev.updated_at IS NULL AND coa.id = ?` + permissionClause
 
-	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
+	searchCols := []string{"ff.label", "coa.name", "fm.name", "COALESCE(c.name, 'Expense')"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
-	args := []any{coaID, actorID}
+	args := []any{coaID, actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
@@ -776,6 +813,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 		CoaName       string    `db:"coa_name"`
 		TaxTypeName   *string   `db:"tax_type_name"`
 		FormName      string    `db:"form_name"`
+		FormMethod    string    `db:"form_method"`
 		ClinicName    string    `db:"clinic_name"`
 		NetAmount     *float64  `db:"net_amount"`
 		GstAmount     *float64  `db:"gst_amount"`
@@ -791,26 +829,39 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, &RsCoaEntryDetail{
+		isExpense := row.FormMethod == "EXPENSE_ENTRY"
+		
+		detail := &RsCoaEntryDetail{
 			ID:            row.ID.String(),
 			EntryID:       row.EntryID.String(),
 			FormFieldID:   row.FormFieldID.String(),
 			CoaID:         row.CoaID.String(),
 			TaxTypeID:     row.TaxTypeID,
 			FormID:        row.FormID.String(),
-			ClinicID:      row.ClinicID.String(),
 			VersionID:     row.VersionID.String(),
 			FormFieldName: row.FormFieldName,
 			CoaName:       row.CoaName,
 			TaxTypeName:   row.TaxTypeName,
-			FormName:      row.FormName,
-			ClinicName:    row.ClinicName,
+			IsExpense:     isExpense,
 			NetAmount:     row.NetAmount,
 			GstAmount:     row.GstAmount,
 			GrossAmount:   row.GrossAmount,
 			CreatedAt:     row.CreatedAt,
 			UpdatedAt:     row.UpdatedAt,
-		})
+		}
+		
+		// Only include clinic_id, clinic_name, and form_name for non-expense entries
+		if !isExpense {
+			clinicID := row.ClinicID.String()
+			detail.ClinicID = &clinicID
+			detail.ClinicName = &row.ClinicName
+			detail.FormName = &row.FormName
+		} else {
+			// For expense entries, use form_field_name as supplier_name
+			detail.SupplierName = &row.FormFieldName
+		}
+		
+		result = append(result, detail)
 	}
 	return result, nil
 }
@@ -820,22 +871,33 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, 
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND c.practitioner_id IN (
-            SELECT practitioner_id FROM tbl_invitation
-            WHERE accountant_id = ? AND status = 'COMPLETED'
-        )`
+		// Accountant: show clinic entries they have access to + expense entries from those practitioners
+		permissionClause = ` AND (
+			c.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			))
+		)`
 	} else {
-		permissionClause = ` AND c.id IN (
-            SELECT id FROM tbl_clinic
-            WHERE practitioner_id = ? AND deleted_at IS NULL
-        )`
+		// Practitioner: show own clinic entries + own expense entries
+		permissionClause = ` AND (
+			c.id IN (
+				SELECT id FROM tbl_clinic
+				WHERE practitioner_id = ? AND deleted_at IS NULL
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	allowedColumns := map[string]string{
 		"clinic_id":       "e.clinic_id",
 		"form_id":         "fm.id",
 		"tax_type_id":     "at2.id",
-		"practitioner_id": "c.practitioner_id",
+		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
 		"start_date":      "ev.created_at",
 		"end_date":        "ev.created_at",
 		"created_at":      "ev.created_at",
@@ -849,12 +911,12 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, 
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		INNER JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
+		LEFT  JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
 		WHERE ev.updated_at IS NULL AND coa.id = ?` + permissionClause
 
-	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
+	searchCols := []string{"ff.label", "coa.name", "fm.name", "COALESCE(c.name, 'Expense')"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
-	args := []any{coaID, actorID}
+	args := []any{coaID, actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 

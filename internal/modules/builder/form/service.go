@@ -23,6 +23,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type IService interface {
@@ -34,6 +35,10 @@ type IService interface {
 	List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error)
+
+	CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
+	UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
+	GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID) (*RsExpense, error)
 }
 
 type service struct {
@@ -45,7 +50,6 @@ type service struct {
 	entryRepo      entry.IRepository
 	coaSvc         coa.Service
 	auditSvc       audit.Service
-	clinicSvc      interface{}
 	eventsSvc      events.Service
 	accountantRepo accountant.Repository
 	authRepo       auth.Repository
@@ -94,7 +98,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 
 		var createErr error
 		// Create form via detail service
-		created, createErr = s.detailSvc.CreateTx(ctx, tx, formReq, d.ClinicID, realOwnerID)
+		created, createErr = s.detailSvc.CreateTx(ctx, tx, formReq, &d.ClinicID, realOwnerID)
 		if createErr != nil {
 			return createErr
 		}
@@ -127,7 +131,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			if err := f.Validate(); err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, d.ClinicID, realOwnerID, f.ToRqFormField())
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &d.ClinicID, realOwnerID, f.ToRqFormField())
 			if err != nil {
 				return err // Rollback everything including the Form
 			}
@@ -192,7 +196,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
-		EntityType: strPtr(auditctx.EntityForm),
+		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: created,
 		IPAddress:  meta.IPAddress,
@@ -232,11 +236,18 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	// 	}
 	// }
 
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, existing.ClinicID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+	// Skip clinic resolution for expense forms
+	var realOwnerID uuid.UUID
+	if existing.ClinicID != nil && *existing.ClinicID != uuid.Nil {
+		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, *existing.ClinicID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+		}
+		realOwnerID = clinic.PractitionerID
+	} else {
+		// For expense forms, use the actorID as the owner
+		realOwnerID = actorID
 	}
-	realOwnerID := clinic.PractitionerID
 
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
@@ -258,9 +269,17 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return err
 		}
 		updated = upd
-		syncResult = &RsFormWithFieldsSyncResult{ClinicID: updated.ClinicID}
+		clinicID := uuid.Nil
+		if updated.ClinicID != nil {
+			clinicID = *updated.ClinicID
+		}
+		syncResult = &RsFormWithFieldsSyncResult{ClinicID: clinicID}
 
-		versions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
+		existingClinicID := uuid.Nil
+		if existing.ClinicID != nil {
+			existingClinicID = *existing.ClinicID
+		}
+		versions, err := s.versionSvc.List(ctx, existing.ID, existingClinicID)
 		if err != nil {
 			return err
 		}
@@ -348,7 +367,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 				return fmt.Errorf("validation failed for field %s: %w", item.FieldKey, err)
 			}
 
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, actorID, item.ToRqFormField())
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, actorID, item.ToRqFormField())
 			if err != nil {
 				return fmt.Errorf("failed to create field %s: %w", item.FieldKey, err)
 			}
@@ -421,7 +440,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
-		EntityType:  strPtr(auditctx.EntityForm),
+		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updated,
@@ -488,7 +507,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			if err := createItem.Validate(); err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, req.ClinicID, practitionerID, createItem.ToRqFormField())
+			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, practitionerID, createItem.ToRqFormField())
 			if err != nil {
 				return err
 			}
@@ -515,7 +534,11 @@ func (s *service) GetFormWithFields(ctx context.Context, formID uuid.UUID) (*RsF
 		Fields:   []field.RsFormField{},
 		Formulas: []formula.RsFormula{},
 	}
-	versions, err := s.versionSvc.List(ctx, formDetail.ID, formDetail.ClinicID)
+	clinicID := uuid.Nil
+	if formDetail.ClinicID != nil {
+		clinicID = *formDetail.ClinicID
+	}
+	versions, err := s.versionSvc.List(ctx, formDetail.ID, clinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -561,12 +584,19 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return err
 	}
 
-	// 2. Resolve the REAL owner (Practitioner) from the Clinic
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, formDetail.ClinicID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve clinic owner: %w", err)
+	// Get clinic info and owner ID only for non-expense forms
+	var realOwnerID uuid.UUID
+	if formDetail.Method != "EXPENSE_ENTRY" {
+		clinicID := uuid.Nil
+		if formDetail.ClinicID != nil {
+			clinicID = *formDetail.ClinicID
+		}
+		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
+		if err != nil {
+			return fmt.Errorf("failed to resolve clinic owner: %w", err)
+		}
+		realOwnerID = clinic.PractitionerID
 	}
-	realOwnerID := clinic.PractitionerID
 
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
@@ -583,50 +613,51 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return nil
 	})
 
-	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY, NON-EXPENSE FORMS ONLY) ---
 	meta := auditctx.GetMetadata(ctx)
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-		actorUserID, err := uuid.Parse(*meta.UserID)
-		if err == nil {
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+	if formDetail.Method != "EXPENSE_ENTRY" {
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
+			actorUserID, err := uuid.Parse(*meta.UserID)
 			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
+				var finalAccountantID uuid.UUID
+				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
+				if err == nil {
+					finalAccountantID = accProfile.ID
+				} else {
+					finalAccountantID = actorUserID
+				}
 
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err == nil {
-				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+				user, err := s.authRepo.FindByID(ctx, actorUserID)
+				if err == nil {
+					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 
-				// Record the Shared Event
-				_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: realOwnerID, // The Clinic Owner
-					AccountantID:   finalAccountantID,
-					ActorID:        actorUserID,
-					ActorName:      &fullName,
-					ActorType:      "ACCOUNTANT",
-					EventType:      "form.deleted",
-					EntityType:     "FORM",
-					EntityID:       formID,
-					Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
-					Metadata:       events.JSONBMap{"form_name": formDetail.Name},
-					CreatedAt:      time.Now(),
-				})
+					// Record the Shared Event
+					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+						ID:             uuid.New(),
+						PractitionerID: realOwnerID, // The Clinic Owner
+						AccountantID:   finalAccountantID,
+						ActorID:        actorUserID,
+						ActorName:      &fullName,
+						ActorType:      "ACCOUNTANT",
+						EventType:      "form.deleted",
+						EntityType:     "FORM",
+						EntityID:       formID,
+						Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
+						Metadata:       events.JSONBMap{"form_name": formDetail.Name},
+						CreatedAt:      time.Now(),
+					})
+				}
 			}
 		}
 	}
 	// Audit log: form deleted
-	//meta := auditctx.GetMetadata(ctx)
 	idStr := formID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionFormDeleted,
 		Module:      auditctx.ModuleForms,
-		EntityType:  strPtr(auditctx.EntityForm),
+		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: formDetail,
 		IPAddress:   meta.IPAddress,
@@ -677,7 +708,7 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
-		EntityType:  strPtr(auditctx.EntityForm),
+		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: map[string]string{"status": existing.Status},
 		AfterState:  map[string]string{"status": status},
@@ -688,4 +719,542 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 	return updated, nil
 }
 
-func strPtr(s string) *string { return &s }
+// calculateExpenseAmounts calculates net, GST, and gross amounts based on tax type
+func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType string) (net, gst, gross float64) {
+	businessPercent := businessUse / 100.0
+
+	if strings.EqualFold(taxType, "INCLUSIVE") {
+		// GST Inclusive: Tax is already inside the amount
+		businessGross := amount * businessPercent
+		net = businessGross / (1 + taxRate)
+		gst = businessGross - net
+		gross = businessGross
+	} else {
+		// GST Exclusive: Tax is added on top
+		net = amount * businessPercent
+		gst = net * taxRate
+		gross = net + gst
+	}
+
+	return util.Round(net, 2), util.Round(gst, 2), util.Round(gross, 2)
+}
+
+// CreateExpense implements [IService].
+func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
+	meta := auditctx.GetMetadata(ctx)
+	var createdForm *detail.RsFormDetail
+
+	// For expense forms, we don't use a clinic, so we pass nil for clinicID
+	// and the actorId as the practitionerID
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		rqDetail := detail.RqFormDetail{
+			Name:        rq.Name,
+			ClinicShare: 0,
+			Method:      "EXPENSE_ENTRY",
+			OwnerShare:  100,
+			Status:      "PUBLISHED",
+		}
+
+		// Pass nil for clinicID and actorId as practitionerID
+		// The detail service will use the practitionerID directly when clinicID is nil
+		form, err := s.detailSvc.CreateTx(ctx, tx, &rqDetail, nil, actorId)
+		if err != nil {
+			return fmt.Errorf("failed to create expense form: %w", err)
+		}
+		createdForm = form
+
+		if form.ActiveVersionID == nil {
+			return errors.New("active version not found for expense form")
+		}
+
+		// Create a single entry for this expense form
+		entryID := uuid.New()
+		formEntry := &entry.FormEntry{
+			ID:            entryID,
+			FormVersionID: *form.ActiveVersionID,
+			ClinicID:      uuid.Nil, // No clinic for expense entries
+			SubmittedBy:   &actorId,
+			Status:        entry.EntryStatusSubmitted,
+		}
+
+		var entryValues []*entry.FormEntryValue
+
+		// Process each expense item
+		for idx, item := range rq.Items {
+			// Get COA details to fetch tax information
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, actorId)
+			if err != nil {
+				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
+			}
+
+			// Determine tax rate and type
+			taxRate := 0.0
+			taxType := "EXCLUSIVE"
+
+			// Get tax details if COA has tax
+			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
+				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
+				if err == nil && taxDetail != nil {
+					taxRate = taxDetail.Rate / 100.0 // Convert percentage to decimal
+					// For now, assume INCLUSIVE for taxable items (can be made configurable)
+					taxType = "INCLUSIVE"
+				}
+			}
+
+			// Calculate amounts based on tax type
+			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
+				item.Amount,
+				item.BusinessUse,
+				taxRate,
+				taxType,
+			)
+
+			// Create form field for this expense item
+			formFields := &field.RqFormField{
+				FieldKey:    fmt.Sprintf("E%d", idx+1),
+				Label:       item.Name,
+				CoaID:       item.CoaID.String(),
+				IsComputed:  false,
+				SortOrder:   idx,
+				BusinessUse: &item.BusinessUse,
+			}
+
+			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, actorId, formFields)
+			if err != nil {
+				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
+			}
+
+			// Create entry value with calculated amounts
+			entryValue := &entry.FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: rsField.ID,
+				NetAmount:   &netAmount,
+				GstAmount:   &gstAmount,
+				GrossAmount: &grossAmount,
+				Description: item.Description,
+			}
+
+			entryValues = append(entryValues, entryValue)
+		}
+
+		// Create the entry with all values
+		if err := s.entryRepo.CreateTx(ctx, tx, formEntry, entryValues); err != nil {
+			return fmt.Errorf("failed to create expense entry: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Audit log
+	idStr := createdForm.ID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: meta.PracticeID,
+		UserID:     meta.UserID,
+		Action:     auditctx.ActionFormCreated,
+		Module:     auditctx.ModuleForms,
+		EntityType: lo.ToPtr(auditctx.EntityForm),
+		EntityID:   &idStr,
+		AfterState: createdForm,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	})
+
+	return createdForm, nil
+}
+
+// UpdateExpense implements [IService].
+func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// Get existing form
+	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expense form: %w", err)
+	}
+
+	if existingForm.Method != "EXPENSE_ENTRY" {
+		return nil, errors.New("form is not an expense entry")
+	}
+
+	beforeState := *existingForm
+	var updatedForm *detail.RsFormDetail
+
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Update form name if changed
+		if rq.Name != existingForm.Name {
+			updateReq := &detail.RqUpdateFormDetail{
+				ID:   formID,
+				Name: &rq.Name,
+			}
+			upd, err := s.detailSvc.UpdateMetadata(ctx, updateReq)
+			if err != nil {
+				return fmt.Errorf("failed to update form name: %w", err)
+			}
+			updatedForm = upd
+		} else {
+			updatedForm = existingForm
+		}
+
+		// Get active version ID
+		var activeVersionID uuid.UUID
+		if existingForm.ActiveVersionID != nil {
+			activeVersionID = *existingForm.ActiveVersionID
+		} else {
+			// Fallback: fetch from version list if not set in form
+			versions, err := s.versionSvc.List(ctx, formID, uuid.Nil)
+			if err != nil {
+				return fmt.Errorf("failed to get form versions: %w", err)
+			}
+			for _, v := range versions {
+				if v.IsActive {
+					activeVersionID = v.Id
+					break
+				}
+			}
+		}
+
+		if activeVersionID == uuid.Nil {
+			return errors.New("active version not found for expense form")
+		}
+
+		// Get existing entry
+		existingEntry, existingValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
+		if err != nil {
+			return fmt.Errorf("failed to get existing entry: %w", err)
+		}
+
+		// Handle deletions
+		for _, fieldID := range rq.Delete {
+			if err := s.fieldSvc.DeleteTx(ctx, tx, fieldID); err != nil {
+				return fmt.Errorf("failed to delete field %s: %w", fieldID, err)
+			}
+		}
+
+		// Handle updates
+		for _, item := range rq.Update {
+			// Get existing field
+			existingField, err := s.fieldSvc.GetByID(ctx, item.ID)
+			if err != nil {
+				return fmt.Errorf("failed to get field %s: %w", item.ID, err)
+			}
+
+			// Prepare update data
+			var coaID uuid.UUID
+			if existingField.CoaID != nil {
+				coaID = *existingField.CoaID
+			}
+			if item.CoaID != nil {
+				coaID = *item.CoaID
+			}
+
+			amount := 0.0
+			businessUse := 0.0
+			var description *string
+
+			// Find existing entry value for this field
+			for _, ev := range existingValues {
+				if ev.FormFieldID == item.ID {
+					if ev.GrossAmount != nil {
+						amount = *ev.GrossAmount
+					}
+					description = ev.Description
+					break
+				}
+			}
+
+			if existingField.BusinessUse != nil {
+				businessUse = *existingField.BusinessUse
+			}
+
+			if item.Amount != nil {
+				amount = *item.Amount
+			}
+			if item.BusinessUse != nil {
+				businessUse = *item.BusinessUse
+			}
+			if item.Description != nil {
+				description = item.Description
+			}
+
+			// Get COA details
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, coaID, actorId)
+			if err != nil {
+				return fmt.Errorf("failed to get COA details: %w", err)
+			}
+
+			taxRate := 0.0
+			taxType := "EXCLUSIVE"
+
+			// Get tax details if COA has tax
+			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
+				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
+				if err == nil && taxDetail != nil {
+					taxRate = taxDetail.Rate / 100.0
+					taxType = "INCLUSIVE"
+				}
+			}
+
+			// Calculate new amounts
+			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
+				amount,
+				businessUse,
+				taxRate,
+				taxType,
+			)
+
+			// Update field
+			label := existingField.Label
+			if item.Name != nil {
+				label = *item.Name
+			}
+
+			coaIDStr := coaID.String()
+			updateFieldReq := field.RqUpdateFormField{
+				ID:          item.ID,
+				Label:       &label,
+				CoaID:       &coaIDStr,
+				BusinessUse: &businessUse,
+			}
+
+			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, actorId, &updateFieldReq); err != nil {
+				return fmt.Errorf("failed to update field: %w", err)
+			}
+
+			// Update entry value - mark old as updated and insert new
+			markOldQuery := `UPDATE tbl_form_entry_value SET updated_at = now() WHERE form_field_id = $1 AND entry_id = $2 AND updated_at IS NULL`
+			if _, err := tx.ExecContext(ctx, markOldQuery, item.ID, existingEntry.ID); err != nil {
+				return fmt.Errorf("failed to mark old entry value: %w", err)
+			}
+
+			newEntryValue := &entry.FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     existingEntry.ID,
+				FormFieldID: item.ID,
+				NetAmount:   &netAmount,
+				GstAmount:   &gstAmount,
+				GrossAmount: &grossAmount,
+				Description: description,
+			}
+
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+				return fmt.Errorf("failed to insert new entry value: %w", err)
+			}
+		}
+
+		// Handle creates
+		for idx, item := range rq.Create {
+			// Get COA details
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, actorId)
+			if err != nil {
+				return fmt.Errorf("failed to get COA details for new item %d: %w", idx, err)
+			}
+
+			taxRate := 0.0
+			taxType := "EXCLUSIVE"
+
+			// Get tax details if COA has tax
+			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
+				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
+				if err == nil && taxDetail != nil {
+					taxRate = taxDetail.Rate / 100.0
+					taxType = "INCLUSIVE"
+				}
+			}
+
+			// Calculate amounts
+			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
+				item.Amount,
+				item.BusinessUse,
+				taxRate,
+				taxType,
+			)
+
+			// Create new field
+			formFields := &field.RqFormField{
+				FieldKey:    fmt.Sprintf("N%d", idx+1),
+				Label:       item.Name,
+				CoaID:       item.CoaID.String(),
+				IsComputed:  false,
+				BusinessUse: &item.BusinessUse,
+			}
+
+			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, actorId, formFields)
+			if err != nil {
+				return fmt.Errorf("failed to create new field: %w", err)
+			}
+
+			// Create entry value
+			newEntryValue := &entry.FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     existingEntry.ID,
+				FormFieldID: rsField.ID,
+				NetAmount:   &netAmount,
+				GstAmount:   &gstAmount,
+				GrossAmount: &grossAmount,
+				Description: item.Description,
+			}
+
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+				return fmt.Errorf("failed to insert new entry value: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Audit log
+	idStr := formID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionFormUpdated,
+		Module:      auditctx.ModuleForms,
+		EntityType:  lo.ToPtr(auditctx.EntityForm),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		AfterState:  updatedForm,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return updatedForm, nil
+}
+
+// GetExpense implements [IService].
+func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID) (*RsExpense, error) {
+	// Get form details
+	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expense form: %w", err)
+	}
+
+	// Verify it's an expense form
+	if formDetail.Method != "EXPENSE_ENTRY" {
+		return nil, errors.New("form is not an expense entry")
+	}
+
+	// Verify ownership
+	// Get form version to check practitioner_id and get active version ID
+	versions, err := s.versionSvc.List(ctx, formID, uuid.Nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get form versions: %w", err)
+	}
+
+	var practitionerID uuid.UUID
+	var activeVersionID uuid.UUID
+	for _, v := range versions {
+		if v.IsActive {
+			practitionerID = v.PractitionerID
+			activeVersionID = v.Id
+			break
+		}
+	}
+
+	if activeVersionID == uuid.Nil {
+		return nil, errors.New("active version not found for expense form")
+	}
+
+	// Check if actor owns this expense
+	if practitionerID != actorId {
+		return nil, errors.New("access denied: you do not own this expense")
+	}
+
+	// Get form fields
+	fields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get form fields: %w", err)
+	}
+
+	// Get entry and entry values
+	formEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get entry values: %w", err)
+	}
+
+	// Build response
+	response := &RsExpense{
+		ID:        formDetail.ID,
+		Name:      formDetail.Name,
+		Date:      formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
+		Items:     []RsExpenseItem{},
+		CreatedAt: formDetail.CreatedAt,
+	}
+
+	if formDetail.UpdatedAt != "" {
+		response.UpdatedAt = &formDetail.UpdatedAt
+	}
+
+	amountType := "EXCLUSIVE"
+	if len(fields) > 0 && fields[0].CoaID != nil {
+		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *fields[0].CoaID, actorId)
+		if err == nil && coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
+			amountType = "INCLUSIVE"
+		}
+	}
+	response.AmountType = amountType
+
+	// Build items from fields and entry values
+	for _, f := range fields {
+		if f.CoaID == nil {
+			continue
+		}
+
+		// Get COA details for name
+		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *f.CoaID, actorId)
+		if err != nil {
+			continue
+		}
+
+		// Find matching entry value
+		var netAmount, gstAmount, grossAmount float64
+		var description *string
+		for _, ev := range entryValues {
+			if ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
+				if ev.NetAmount != nil {
+					netAmount = *ev.NetAmount
+				}
+				if ev.GstAmount != nil {
+					gstAmount = *ev.GstAmount
+				}
+				if ev.GrossAmount != nil {
+					grossAmount = *ev.GrossAmount
+				}
+				description = ev.Description
+				break
+			}
+		}
+
+		businessUse := 0.0
+		if f.BusinessUse != nil {
+			businessUse = *f.BusinessUse
+		}
+
+		item := RsExpenseItem{
+			ID:          f.ID,
+			Name:        f.Label,
+			CoaID:       *f.CoaID,
+			CoaName:     coaDetail.Name,
+			BusinessUse: businessUse,
+			Amount:      grossAmount,
+			NetAmount:   netAmount,
+			GstAmount:   gstAmount,
+			GrossAmount: grossAmount,
+			Description: description,
+		}
+
+		response.Items = append(response.Items, item)
+	}
+
+	return response, nil
+}

@@ -2,6 +2,7 @@ package coa
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -187,6 +188,18 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 
 	// Set the manually parsed practitioner_id
 	filter.PractitionerID = practitionerID
+	
+	// Parse account_tax_id if provided
+	taxIDStr := c.Query("account_tax_id")
+	if taxIDStr != "" {
+		v, err := strconv.ParseInt(taxIDStr, 10, 16)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid account_tax_id: %w", err))
+			return
+		}
+		val := int16(v)
+		filter.AccountTaxID = &val
+	}
 
 	// Identify actor ID based on role
 	var actorID uuid.UUID

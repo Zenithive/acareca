@@ -48,6 +48,7 @@ type ClinicContact struct {
 
 type FinancialSettings struct {
 	ID              uuid.UUID  `db:"id"`
+	PractitionerID  uuid.UUID  `db:"practitioner_id"`
 	ClinicID        uuid.UUID  `db:"clinic_id"`
 	FinancialYearID uuid.UUID  `db:"financial_year_id"`
 	LockDate        *time.Time `db:"lock_date"`

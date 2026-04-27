@@ -5179,6 +5179,115 @@ const docTemplate = `{
                 }
             }
         },
+        "/form/expense": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Create a new expense form with items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Create expense",
+                "parameters": [
+                    {
+                        "description": "Expense creation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqExpense"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/form/expense/{id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Update an existing expense form",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Update expense",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expense update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqUpdateExpense"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/form/{id}": {
             "get": {
                 "security": [
@@ -6468,7 +6577,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Retrieve the current financial lock date for the authenticated practitioner.",
+                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).",
                 "produces": [
                     "application/json"
                 ],
@@ -6476,6 +6585,21 @@ const docTemplate = `{
                     "practitioner-lock-date"
                 ],
                 "summary": "Get Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID (required for accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Financial Year ID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -6485,6 +6609,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6516,19 +6646,12 @@ const docTemplate = `{
                 "summary": "Update Practitioner Lock Date",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Financial Year UUID",
-                        "name": "financial_year_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
                         "description": "Lock Date Update",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_business_practitioner.UpdateLockDateRequest"
+                            "$ref": "#/definitions/practitioner.UpdateLockDateRequest"
                         }
                     }
                 ],
@@ -9555,6 +9678,9 @@ const docTemplate = `{
                 "id"
             ],
             "properties": {
+                "business_use": {
+                    "type": "number"
+                },
                 "coa_id": {
                     "type": "string"
                 },
@@ -9588,6 +9714,56 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "form.ExpenseItem": {
+            "type": "object",
+            "required": [
+                "amount",
+                "business_use",
+                "coa_id",
+                "name"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "form.ExpenseItemUpdate": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }
@@ -9629,7 +9805,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INDEPENDENT_CONTRACTOR",
-                        "SERVICE_FEE"
+                        "SERVICE_FEE",
+                        "EXPENSE_ENTRY"
                     ]
                 },
                 "name": {
@@ -9655,6 +9832,29 @@ const docTemplate = `{
                 }
             }
         },
+        "form.RqExpense": {
+            "type": "object",
+            "required": [
+                "date",
+                "items",
+                "name"
+            ],
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItem"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "form.RqFieldsSync": {
             "type": "object",
             "properties": {
@@ -9674,6 +9874,39 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/field.RqUpdateFormField"
+                    }
+                }
+            }
+        },
+        "form.RqUpdateExpense": {
+            "type": "object",
+            "required": [
+                "date",
+                "name"
+            ],
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItem"
+                    }
+                },
+                "date": {
+                    "type": "string"
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItemUpdate"
                     }
                 }
             }
@@ -9742,7 +9975,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INDEPENDENT_CONTRACTOR",
-                        "SERVICE_FEE"
+                        "SERVICE_FEE",
+                        "EXPENSE_ENTRY"
                     ]
                 },
                 "name": {
@@ -9845,24 +10079,6 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "label": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_modules_admin_practitioner.UpdateLockDateRequest": {
-            "type": "object",
-            "properties": {
-                "lock_date": {
-                    "description": "Use *time.Time to allow null values for removing the lock date",
-                    "type": "string"
-                }
-            }
-        },
-        "internal_modules_business_practitioner.UpdateLockDateRequest": {
-            "type": "object",
-            "properties": {
-                "lock_date": {
-                    "description": "Use *time.Time to allow null values for removing the lock date",
                     "type": "string"
                 }
             }
@@ -10243,6 +10459,21 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "period_month": {
+                    "type": "string"
+                }
+            }
+        },
+        "practitioner.UpdateLockDateRequest": {
+            "type": "object",
+            "required": [
+                "financial_year_id"
+            ],
+            "properties": {
+                "financial_year_id": {
+                    "description": "Use *time.Time to allow null values for removing the lock date",
+                    "type": "string"
+                },
+                "lock_date": {
                     "type": "string"
                 }
             }

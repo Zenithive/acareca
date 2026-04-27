@@ -52,6 +52,7 @@ type FormEntryValue struct {
 	NetAmount   *float64  `db:"net_amount"`
 	GstAmount   *float64  `db:"gst_amount"`
 	GrossAmount *float64  `db:"gross_amount"`
+	Description *string   `db:"description"`
 	CreatedAt   string    `db:"created_at"`
 	UpdatedAt   *string   `db:"updated_at"`
 }
@@ -143,6 +144,7 @@ type RsTransactionRow struct {
 	CreatedAt     string    `json:"created_at"`
 	UpdatedAt     *string   `json:"updated_at,omitempty"`
 	Date          *string   `json:"date,omitempty"`
+	IsExpense     bool      `json:"is_expense"`
 }
 
 // RsTransactionDetail kept for backward compat (used by old RsTransaction).
@@ -275,6 +277,7 @@ type transactionFlatRow struct {
 	CreatedAt     string    `db:"created_at"`
 	UpdatedAt     *string   `db:"updated_at"`
 	Date          *string   `db:"date"`
+	IsExpense     bool      `db:"is_expense"`
 }
 
 type RsFieldSummary struct {
@@ -307,13 +310,15 @@ type RsCoaEntryDetail struct {
 	CoaID         string   `json:"coa_id"`
 	TaxTypeID     *int16   `json:"tax_type_id"`
 	FormID        string   `json:"form_id"`
-	ClinicID      string   `json:"clinic_id"`
+	ClinicID      *string  `json:"clinic_id,omitempty"`
 	VersionID     string   `json:"version_id"`
 	FormFieldName string   `json:"form_field_name"`
 	CoaName       string   `json:"coa_name"`
 	TaxTypeName   *string  `json:"tax_type_name"`
-	FormName      string   `json:"form_name"`
-	ClinicName    string   `json:"clinic_name"`
+	FormName      *string  `json:"form_name,omitempty"`
+	ClinicName    *string  `json:"clinic_name,omitempty"`
+	SupplierName  *string  `json:"supplier_name,omitempty"`
+	IsExpense     bool     `json:"is_expense"`
 	NetAmount     *float64 `json:"net_amount"`
 	GstAmount     *float64 `json:"gst_amount"`
 	GrossAmount   *float64 `json:"gross_amount"`

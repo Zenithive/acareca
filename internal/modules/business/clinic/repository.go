@@ -298,13 +298,13 @@ func (r *repository) CreateClinicContactTx(ctx context.Context, tx *sqlx.Tx, con
 
 func (r *repository) CreateFinancialSettingsTx(ctx context.Context, tx *sqlx.Tx, settings *FinancialSettings) (*FinancialSettings, error) {
 	query := `
-		INSERT INTO tbl_financial_settings (clinic_id, financial_year_id, lock_date)
-		VALUES ($1, $2, $3)
-		RETURNING id, clinic_id, financial_year_id, lock_date, created_at, updated_at
-	`
+        INSERT INTO tbl_financial_settings (clinic_id, practitioner_id, financial_year_id, lock_date)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, clinic_id, practitioner_id, financial_year_id, lock_date, created_at, updated_at
+    `
 	var fs FinancialSettings
 	err := tx.QueryRowxContext(ctx, query,
-		settings.ClinicID, settings.FinancialYearID, settings.LockDate,
+		settings.ClinicID, settings.PractitionerID, settings.FinancialYearID, settings.LockDate,
 	).StructScan(&fs)
 	if err != nil {
 		return nil, fmt.Errorf("create financial settings tx: %w", err)
@@ -583,7 +583,7 @@ func (r *repository) GetAccountantPermission(ctx context.Context, accountantID u
 	query := `
         SELECT 
             i.practitioner_id, 
-            $2 as clinic_id
+            c.id as clinic_id
         FROM tbl_invitation i
         INNER JOIN tbl_clinic c ON c.practitioner_id = i.practitioner_id
         WHERE i.accountant_id = $1 

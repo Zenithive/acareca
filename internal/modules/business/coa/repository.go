@@ -165,8 +165,10 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, 
 }
 
 func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error) {
-	// Start with the soft-delete filter immediately
-	base := ` FROM tbl_chart_of_accounts coa WHERE coa.deleted_at IS NULL `
+	// Start with the soft-delete filter immediately and JOIN with account_tax table
+	base := ` FROM tbl_chart_of_accounts coa 
+	          JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+	          WHERE coa.deleted_at IS NULL `
 
 	if role == util.RoleAccountant {
 		base += fmt.Sprintf(` AND EXISTS (
