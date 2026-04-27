@@ -94,27 +94,16 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 }
 
 func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
-	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
-
-	if isAccountant || practitionerID == uuid.Nil {
-		var clinic *clinic.Clinic
-		var err error
+	// Only try to resolve the ID if we don't have a valid Practitioner ID yet
+	if practitionerID == uuid.Nil {
 		if clinicID != nil && *clinicID != uuid.Nil {
-			clinic, err = s.clinicRepo.GetClinicByID(ctx, *clinicID)
+			clinic, err := s.clinicRepo.GetClinicByID(ctx, *clinicID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
 			}
 			practitionerID = clinic.PractitionerID
-		} else if practitionerID == uuid.Nil {
-			return nil, errors.New("practitionerID is required when clinicID is not provided")
-		} else if isAccountant {
-			// For accountants creating expense forms (no clinic), resolve the practitioner from their linked practitioners
-			resolvedPractitionerID, err := s.invitationSvc.GetFirstPractitionerLinkedToAccountant(ctx, practitionerID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve practitioner for accountant: %w", err)
-			}
-			practitionerID = resolvedPractitionerID
+		} else {
+			return nil, errors.New("practitionerID is required (directly or via clinicID)")
 		}
 	}
 
@@ -147,7 +136,7 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 			return err
 		}
 
-		// Set the active version ID on the form detail
+		// Set the active version ID on the form detail in-memory struct
 		formDetail.ActiveVersionID = &createdVersion.Id
 
 		return nil
