@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -23,6 +24,7 @@ type Repository interface {
 	GetFinancialQuarters(ctx context.Context, financialYearID uuid.UUID) ([]FinancialQuarter, error)
 	UpdateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error)
 	DeactivateAllFinancialYears(ctx context.Context, tx *sqlx.Tx) error
+	GetFinancialYearByDate(ctx context.Context, expenseDate time.Time) (*FinancialYear, error)
 }
 
 type repository struct {
@@ -133,4 +135,18 @@ func (r *repository) DeactivateAllFinancialYears(ctx context.Context, tx *sqlx.T
 		return fmt.Errorf("deactivate all financial years: %w", err)
 	}
 	return nil
+}
+
+func (r *repository) GetFinancialYearByDate(ctx context.Context, expenseDate time.Time) (*FinancialYear, error) {
+	query := `
+        SELECT id, label, is_active, start_date, end_date, created_at, updated_at
+        FROM tbl_financial_year
+        WHERE $1 BETWEEN start_date AND end_date
+        LIMIT 1
+    `
+	var fy FinancialYear
+	if err := r.db.GetContext(ctx, &fy, query, expenseDate); err != nil {
+		return nil, err
+	}
+	return &fy, nil
 }
