@@ -782,6 +782,17 @@ func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType strin
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 
+	// Resolve the practitioner ID if the actor is an accountant
+	practitionerID := actorId
+	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
+	if isAccountant {
+		resolvedID, err := s.invitationSvc.GetFirstPractitionerLinkedToAccountant(ctx, actorId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve practitioner for accountant: %w", err)
+		}
+		practitionerID = resolvedID
+	}
+
 	expenseDate, err := parseFlexibleDate(rq.Date)
 	if err != nil {
 		return nil, fmt.Errorf("invalid transaction date format: %w", err)
@@ -793,8 +804,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		return nil, fmt.Errorf("failed to determine financial year: %w", err)
 	}
 
-	// 2. Fetch the Lock Date for this practitioner
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, actorId, fy.ID)
+	// 2. Fetch the Lock Date for this practitioner (use resolved practitionerID)
+	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify lock date: %w", err)
 	}
@@ -852,8 +863,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		// Process each expense item
 		for idx, item := range rq.Items {
-			// Get COA details to fetch tax information
-			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, actorId)
+			// Get COA details to fetch tax information (use resolved practitionerID)
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, practitionerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
 			}
@@ -895,7 +906,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				TaxType:     &taxType,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, actorId, formFields)
+			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, practitionerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
 			}
@@ -949,6 +960,17 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 
+	// Resolve the practitioner ID if the actor is an accountant
+	practitionerID := actorId
+	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
+	if isAccountant {
+		resolvedID, err := s.invitationSvc.GetFirstPractitionerLinkedToAccountant(ctx, actorId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve practitioner for accountant: %w", err)
+		}
+		practitionerID = resolvedID
+	}
+
 	expenseDate, err := parseFlexibleDate(rq.Date)
 	if err != nil {
 		return nil, fmt.Errorf("invalid transaction date format: %w", err)
@@ -960,8 +982,8 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		return nil, fmt.Errorf("failed to determine financial year: %w", err)
 	}
 
-	// 2. Fetch the Lock Date for this practitioner
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, actorId, fy.ID)
+	// 2. Fetch the Lock Date for this practitioner (use resolved practitionerID)
+	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify lock date: %w", err)
 	}
@@ -1089,8 +1111,8 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				description = item.Description
 			}
 
-			// Get COA details
-			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, coaID, actorId)
+			// Get COA details (use practitionerID)
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details: %w", err)
 			}
@@ -1134,7 +1156,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				TaxType:     &taxType,
 			}
 
-			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, actorId, &updateFieldReq); err != nil {
+			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
 				return fmt.Errorf("failed to update field: %w", err)
 			}
 
@@ -1152,20 +1174,18 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: description,
-				TaxType:     &taxType,
-				BusinessUse: &businessUse,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, tax_type, business_use) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.TaxType, newEntryValue.BusinessUse); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
 
 		// Handle creates
 		for idx, item := range rq.Create {
-			// Get COA details
-			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, actorId)
+			// Get COA details (use practitionerID)
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, practitionerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for new item %d: %w", idx, err)
 			}
@@ -1205,7 +1225,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				SectionType: "OTHER_COST",
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, actorId, formFields)
+			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, practitionerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create new field: %w", err)
 			}
@@ -1219,12 +1239,10 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
-				TaxType:     &taxType,
-				BusinessUse: &item.BusinessUse,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, tax_type, business_use) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.TaxType, newEntryValue.BusinessUse); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
@@ -1288,9 +1306,21 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		return nil, errors.New("active version not found for expense form")
 	}
 
-	// Check if actor owns this expense
-	if practitionerID != actorId {
-		return nil, errors.New("access denied: you do not own this expense")
+	// Check if actor owns this expense or is an accountant linked to the practitioner
+	meta := auditctx.GetMetadata(ctx)
+	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
+	
+	if !isAccountant {
+		// For practitioners, check direct ownership
+		if practitionerID != actorId {
+			return nil, errors.New("access denied: you do not own this expense")
+		}
+	} else {
+		// For accountants, verify they are linked to the practitioner
+		isLinked, err := s.invitationSvc.IsAccountantLinkedToPractitioner(ctx, practitionerID, actorId)
+		if err != nil || !isLinked {
+			return nil, errors.New("access denied: you do not have access to this expense")
+		}
 	}
 
 	// Get form fields
@@ -1318,12 +1348,10 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		response.UpdatedAt = &formDetail.UpdatedAt
 	}
 
-	amountType := "EXCLUSIVE"
-	if len(fields) > 0 && fields[0].CoaID != nil {
-		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *fields[0].CoaID, actorId)
-		if err == nil && coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
-			amountType = "INCLUSIVE"
-		}
+	// Determine amount_type from the first field's tax type
+	amountType := "EXCLUSIVE" // Default
+	if len(fields) > 0 && fields[0].TaxType != nil {
+		amountType = *fields[0].TaxType
 	}
 	response.AmountType = amountType
 
@@ -1333,8 +1361,8 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			continue
 		}
 
-		// Get COA details for name
-		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *f.CoaID, actorId)
+		// Get COA details for name (use practitionerID, not actorId)
+		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *f.CoaID, practitionerID)
 		if err != nil {
 			continue
 		}

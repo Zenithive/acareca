@@ -384,7 +384,7 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /form/expense [post]
+// @Router /form/expenses [post]
 func (h *handler) CreateExpense(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID
@@ -427,7 +427,7 @@ func (h *handler) CreateExpense(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /form/expense/{id} [patch]
+// @Router /form/expenses/{id} [patch]
 func (h *handler) UpdateExpense(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID

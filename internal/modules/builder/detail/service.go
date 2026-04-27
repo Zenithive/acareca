@@ -108,6 +108,13 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 			practitionerID = clinic.PractitionerID
 		} else if practitionerID == uuid.Nil {
 			return nil, errors.New("practitionerID is required when clinicID is not provided")
+		} else if isAccountant {
+			// For accountants creating expense forms (no clinic), resolve the practitioner from their linked practitioners
+			resolvedPractitionerID, err := s.invitationSvc.GetFirstPractitionerLinkedToAccountant(ctx, practitionerID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve practitioner for accountant: %w", err)
+			}
+			practitionerID = resolvedPractitionerID
 		}
 	}
 
