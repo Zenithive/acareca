@@ -139,16 +139,10 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, cl
 		if err != nil {
 			return err
 		}
-		
+
 		// Set the active version ID on the form detail
 		formDetail.ActiveVersionID = &createdVersion.Id
-		
-		// Update the form record with the active version ID
-		updateQuery := `UPDATE tbl_form SET active_version_id = $1 WHERE id = $2`
-		if _, err := tx.ExecContext(ctx, updateQuery, createdVersion.Id, formDetail.ID); err != nil {
-			return fmt.Errorf("failed to update form active_version_id: %w", err)
-		}
-		
+
 		return nil
 	}
 

@@ -15,6 +15,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
@@ -59,13 +60,14 @@ func RegisterBuilderRoutes(
 	fieldRepo := field.NewRepository(dbConn)
 	entryRepo := entry.NewRepository(dbConn)
 	formulaRepo := formula.NewRepository(dbConn)
+	fyRepo := fy.NewRepository(dbConn)
 
 	// Initialize services
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
 	detailSvc := detail.NewService(dbConn, detailRepo, versionSvc, clinicRepo, invitationSvc)
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, versionSvc)
 	formulaSvc := formula.NewService(formulaRepo)
-	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc, invitationSvc)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc, invitationSvc, practitionerSvc, fyRepo)
 	formHandler := form.NewHandler(formSvc)
 
 	// Form routes
