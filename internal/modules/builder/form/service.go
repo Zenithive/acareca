@@ -899,7 +899,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			entryValue := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
-				FormFieldID: rsField.ID,
+				FormFieldID: &rsField.ID,
 				NetAmount:   &netAmount,
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
@@ -1059,7 +1059,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 			// Find existing entry value for this field
 			for _, ev := range existingValues {
-				if ev.FormFieldID == item.ID {
+				if ev.FormFieldID == &item.ID {
 					if ev.GrossAmount != nil {
 						amount = *ev.GrossAmount
 					}
@@ -1135,7 +1135,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			newEntryValue := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     existingEntry.ID,
-				FormFieldID: item.ID,
+				FormFieldID: &item.ID,
 				NetAmount:   &netAmount,
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
@@ -1194,7 +1194,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			newEntryValue := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     existingEntry.ID,
-				FormFieldID: rsField.ID,
+				FormFieldID: &rsField.ID,
 				NetAmount:   &netAmount,
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
@@ -1321,7 +1321,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		var netAmount, gstAmount, grossAmount float64
 		var description *string
 		for _, ev := range entryValues {
-			if ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
+			if ev.FormFieldID != nil && *ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
 				if ev.NetAmount != nil {
 					netAmount = *ev.NetAmount
 				}

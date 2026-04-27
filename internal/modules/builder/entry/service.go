@@ -433,9 +433,48 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	taxTypeByKey := make(map[string]string, len(rq))
 
 	for _, v := range rq {
-		fieldID, err := uuid.Parse(v.FormFieldID)
-		if err != nil {
+		// Validate that either FormFieldID or CoaID is provided
+		if err := v.Validate(); err != nil {
 			return nil, err
+		}
+
+		// Handle direct COA entries (owner fund entries)
+		if v.CoaID != nil && *v.CoaID != "" {
+			coaID, err := uuid.Parse(*v.CoaID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid coa_id: %w", err)
+			}
+
+			// For direct COA entries, use the provided amount as-is
+			// No tax calculations or formulas apply
+			inputAmount := v.Amount
+			if v.NetAmount != nil {
+				inputAmount = *v.NetAmount
+			}
+
+			out = append(out, &FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: nil,    // No form field for direct entries
+				CoaID:       &coaID, // Store COA ID separately
+				NetAmount:   &inputAmount,
+				GstAmount:   nil,
+				GrossAmount: &inputAmount,
+				Description: v.Description,
+			})
+			continue
+		}
+
+		// Handle form field entries (regular transactions)
+		var fieldID uuid.UUID
+		var err error
+		if v.FormFieldID != nil && *v.FormFieldID != "" {
+			fieldID, err = uuid.Parse(*v.FormFieldID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid form_field_id: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("form_field_id is required for form-based entries")
 		}
 
 		f, err := s.fieldRepo.GetByID(ctx, fieldID)
@@ -471,7 +510,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
-				FormFieldID: fieldID,
+				FormFieldID: &fieldID,
 				NetAmount:   &netBase,
 				GstAmount:   nil,
 				GrossAmount: &grossTotal,
@@ -540,7 +579,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		out = append(out, &FormEntryValue{
 			ID:          uuid.New(),
 			EntryID:     entryID,
-			FormFieldID: fieldID,
+			FormFieldID: &fieldID,
 			NetAmount:   &netBase,
 			GstAmount:   gstAmount,
 			GrossAmount: &grossTotal,
@@ -548,13 +587,27 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	}
 
 	if s.formulaSvc != nil && len(rq) > 0 {
-		firstFieldID, err := uuid.Parse(rq[0].FormFieldID)
-		if err != nil {
-			return nil, err
+		// Find first entry with FormFieldID to get form version
+		var firstFieldID uuid.UUID
+		var firstField *field.FormField
+		for _, v := range rq {
+			if v.FormFieldID != nil && *v.FormFieldID != "" {
+				var err error
+				firstFieldID, err = uuid.Parse(*v.FormFieldID)
+				if err != nil {
+					return nil, err
+				}
+				firstField, err = s.fieldRepo.GetByID(ctx, firstFieldID)
+				if err != nil {
+					return nil, err
+				}
+				break
+			}
 		}
-		firstField, err := s.fieldRepo.GetByID(ctx, firstFieldID)
-		if err != nil {
-			return nil, err
+
+		// If no form field entries found, skip formula evaluation
+		if firstField == nil {
+			return out, nil
 		}
 
 		// Get all fields to compute section totals
@@ -571,7 +624,11 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		// Compute section totals using NET amounts from out
 		sectionTotals := make(map[string]float64)
 		for _, entryVal := range out {
-			f, ok := fieldByID[entryVal.FormFieldID]
+			if entryVal.FormFieldID == nil {
+				continue
+			}
+
+			f, ok := fieldByID[*entryVal.FormFieldID]
 			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
 				sectionKey := "SECTION:" + *f.SectionType
 				// Always use NET amount for section totals (matching LiveCalculate logic)
@@ -593,10 +650,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		// Collect manually entered GST amounts for computed fields with MANUAL tax type
 		manualGSTByKey := make(map[string]float64)
 		for _, v := range rq {
-			if v.GstAmount == nil {
+			if v.GstAmount == nil || v.FormFieldID == nil || *v.FormFieldID == "" {
 				continue
 			}
-			fieldID, err := uuid.Parse(v.FormFieldID)
+			fieldID, err := uuid.Parse(*v.FormFieldID)
 			if err != nil {
 				continue
 			}
@@ -617,7 +674,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		// Track which field IDs already have a value in out to prevent duplicates.
 		alreadyAdded := make(map[uuid.UUID]bool, len(out))
 		for _, v := range out {
-			alreadyAdded[v.FormFieldID] = true
+			// Only track form field entries (skip direct COA entries)
+			if v.FormFieldID != nil {
+				alreadyAdded[*v.FormFieldID] = true
+			}
 		}
 
 		for fieldID, val := range computed {
@@ -655,7 +715,13 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 					// For MANUAL tax type on computed fields, check if GST was provided in request
 					var entryGST *float64
 					for _, v := range rq {
-						entryFieldID, _ := uuid.Parse(v.FormFieldID)
+						if v.FormFieldID == nil || *v.FormFieldID == "" {
+							continue
+						}
+						entryFieldID, err := uuid.Parse(*v.FormFieldID)
+						if err != nil {
+							continue
+						}
 						if entryFieldID == fieldID && v.GstAmount != nil {
 							entryGST = v.GstAmount
 							break
@@ -684,7 +750,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
-				FormFieldID: fieldID,
+				FormFieldID: &fieldID,
 				NetAmount:   &netBase,
 				GstAmount:   gstAmount,
 				GrossAmount: &grossTotal,
@@ -698,7 +764,12 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 // attachFieldMetadata enriches each value in the response with field_key, label, and is_computed.
 func (s *Service) attachFieldMetadata(ctx context.Context, rs *RsFormEntry) {
 	for i, v := range rs.Values {
-		f, err := s.fieldRepo.GetByID(ctx, v.FormFieldID)
+		// Skip direct COA entries (they don't have form fields)
+		if v.FormFieldID == nil {
+			continue
+		}
+
+		f, err := s.fieldRepo.GetByID(ctx, *v.FormFieldID)
 		if err != nil {
 			continue
 		}
@@ -734,16 +805,26 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 
 	fieldMap := make(map[uuid.UUID]*field.FormField, len(rs.Values))
 	for _, v := range rs.Values {
-		f, err := s.fieldRepo.GetByID(ctx, v.FormFieldID)
+		// Skip direct COA entries
+		if v.FormFieldID == nil {
+			continue
+		}
+
+		f, err := s.fieldRepo.GetByID(ctx, *v.FormFieldID)
 		if err != nil {
 			return
 		}
-		fieldMap[v.FormFieldID] = f
+		fieldMap[*v.FormFieldID] = f
 	}
 
 	var incomeSum, expenseSum, otherCostSum float64
 	for _, v := range rs.Values {
-		f, ok := fieldMap[v.FormFieldID]
+		// Skip direct COA entries
+		if v.FormFieldID == nil {
+			continue
+		}
+
+		f, ok := fieldMap[*v.FormFieldID]
 		if !ok || f.SectionType == nil {
 			continue
 		}
@@ -764,12 +845,12 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 	}
 
 	netAmount := incomeSum - expenseSum - otherCostSum
-	
+
 	ownerShare := 0.0
 	if form.OwnerShare != nil {
 		ownerShare = float64(*form.OwnerShare)
 	}
-	
+
 	commission := netAmount * (ownerShare / 100)
 	gstOnCommission := commission * 0.10
 	paymentReceived := commission + gstOnCommission
