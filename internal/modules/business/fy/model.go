@@ -8,13 +8,14 @@ import (
 
 // Database models
 type FinancialYear struct {
-	ID        uuid.UUID `db:"id"`
-	Label     string    `db:"label"`
-	IsActive  bool      `db:"is_active"`
-	StartDate time.Time `db:"start_date"`
-	EndDate   time.Time `db:"end_date"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
+	ID          uuid.UUID `db:"id"`
+	Label       string    `db:"label"`
+	IsActive    bool      `db:"is_active"`
+	StartDate   time.Time `db:"start_date"`
+	EndDate     time.Time `db:"end_date"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
+	ExpenseDate time.Time `db:"expense_date"`
 }
 
 type FinancialQuarter struct {

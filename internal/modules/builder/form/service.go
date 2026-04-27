@@ -17,7 +17,9 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -25,6 +27,41 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
 )
+
+// parseFlexibleDate handles multiple date formats
+
+func parseFlexibleDate(dateStr string) (time.Time, error) {
+	if dateStr == "" {
+		return time.Time{}, errors.New("date cannot be empty")
+	}
+
+	// Trim spaces
+	dateStr = strings.TrimSpace(dateStr)
+
+	// Try different date formats
+	formats := []string{
+		"02 Jan 2006",               // "26 Apr 2026"
+		"2 Jan 2006",                // Single digit day
+		"02-01-2006",                // DD-MM-YYYY
+		"2006-01-02",                // YYYY-MM-DD (ISO format)
+		"01/02/2006",                // MM/DD/YYYY
+		"02/01/2006",                // DD/MM/YYYY
+		"January 2, 2006",           // Full month name
+		time.RFC3339,                // RFC3339
+		"2006-01-02T15:04:05Z07:00", // ISO 8601
+	}
+
+	var lastErr error
+	for _, format := range formats {
+		t, err := time.Parse(format, dateStr)
+		if err == nil {
+			return t, nil
+		}
+		lastErr = err
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
+}
 
 type IService interface {
 	GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error)
@@ -42,23 +79,25 @@ type IService interface {
 }
 
 type service struct {
-	db             *sqlx.DB
-	detailSvc      detail.IService
-	versionSvc     version.IService
-	fieldSvc       field.IService
-	formulaSvc     formula.IService
-	entryRepo      entry.IRepository
-	coaSvc         coa.Service
-	auditSvc       audit.Service
-	eventsSvc      events.Service
-	accountantRepo accountant.Repository
-	authRepo       auth.Repository
-	formClinic     clinic.Service
-	invitationSvc  invitation.Service
+	db              *sqlx.DB
+	detailSvc       detail.IService
+	versionSvc      version.IService
+	fieldSvc        field.IService
+	formulaSvc      formula.IService
+	entryRepo       entry.IRepository
+	coaSvc          coa.Service
+	auditSvc        audit.Service
+	eventsSvc       events.Service
+	accountantRepo  accountant.Repository
+	authRepo        auth.Repository
+	formClinic      clinic.Service
+	invitationSvc   invitation.Service
+	practitionerSvc practitioner.IService
+	financialRepo   fy.Repository
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
@@ -742,11 +781,43 @@ func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType strin
 // CreateExpense implements [IService].
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
+
+	expenseDate, err := parseFlexibleDate(rq.Date)
+	if err != nil {
+		return nil, fmt.Errorf("invalid transaction date format: %w", err)
+	}
+
+	// 1. Get the Financial Year ID
+	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine financial year: %w", err)
+	}
+
+	// 2. Fetch the Lock Date for this practitioner
+	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, actorId, fy.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify lock date: %w", err)
+	}
+
+	// 3. Compare dates if a lock date exists
+	if lockDateStr != nil && *lockDateStr != "" {
+		// Parse the lock date
+		lockDate, err := parseFlexibleDate(*lockDateStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid lock date format: %w", err)
+		}
+
+		// Check: If expense date is ON or BEFORE the lock date, block it
+		if !expenseDate.After(lockDate) {
+			return nil, fmt.Errorf("cannot create expense: the financial period for %s is locked", *lockDateStr)
+		}
+	}
+
 	var createdForm *detail.RsFormDetail
 
 	// For expense forms, we don't use a clinic, so we pass nil for clinicID
 	// and the actorId as the practitionerID
-	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		rqDetail := detail.RqFormDetail{
 			Name:        rq.Name,
 			ClinicShare: 0,
@@ -870,6 +941,36 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 // UpdateExpense implements [IService].
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
+
+	expenseDate, err := parseFlexibleDate(rq.Date)
+	if err != nil {
+		return nil, fmt.Errorf("invalid transaction date format: %w", err)
+	}
+
+	// 1. Get the Financial Year ID
+	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine financial year: %w", err)
+	}
+
+	// 2. Fetch the Lock Date for this practitioner
+	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, actorId, fy.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify lock date: %w", err)
+	}
+
+	// 3. Compare dates if a lock date exists
+	if lockDateStr != nil && *lockDateStr != "" {
+		// Parse the lock date
+		lockDate, err := parseFlexibleDate(*lockDateStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid lock date format: %w", err)
+		}
+
+		if !expenseDate.After(lockDate) {
+			return nil, fmt.Errorf("cannot update expense: the financial period for %s is locked", *lockDateStr)
+		}
+	}
 
 	// Get existing form
 	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
