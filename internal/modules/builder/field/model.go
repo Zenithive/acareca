@@ -7,9 +7,11 @@ import (
 )
 
 const (
-	SectionTypeCollection = "COLLECTION"
-	SectionTypeCost       = "COST"
-	SectionTypeOtherCost  = "OTHER_COST"
+	SectionTypeCollection         = "COLLECTION"
+	SectionTypeCost               = "COST"
+	SectionTypeOtherCost          = "OTHER_COST"
+	SectionTypeEquityWithdrawal   = "EQUITY_WITHDRAWAL"   // For owner drawings
+	SectionTypeEquityContribution = "EQUITY_CONTRIBUTION" // For owner funds introduced
 )
 
 const (
@@ -29,7 +31,7 @@ type RqCreateField struct {
 	Slug                  string  `json:"slug" validate:"omitempty,max=100"`
 	Label                 string  `json:"label" validate:"required,max=255"`
 	IsComputed            bool    `json:"is_computed"`
-	SectionType           string  `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST"`
+	SectionType           string  `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST EQUITY_WITHDRAWAL EQUITY_CONTRIBUTION"`
 	PaymentResponsibility *string `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
 	TaxType               *string `json:"tax_type" validate:"omitempty"`
 	CoaID                 *string `json:"coa_id" validate:"omitempty,uuid"`
@@ -85,7 +87,7 @@ type RqFormField struct {
 	Slug                  string   `json:"slug" validate:"omitempty,max=100"`
 	Label                 string   `json:"label" validate:"required,max=255"`
 	IsComputed            bool     `json:"is_computed"`
-	SectionType           string   `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST"`
+	SectionType           string   `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST EQUITY_WITHDRAWAL EQUITY_CONTRIBUTION"`
 	PaymentResponsibility *string  `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
 	TaxType               *string  `json:"tax_type" validate:"omitempty"`
 	CoaID                 string   `json:"coa_id" validate:"omitempty,uuid"`
@@ -111,7 +113,7 @@ func (r *RqFormField) Sanitize() {
 type RqUpdateFormField struct {
 	ID                    uuid.UUID `json:"id" validate:"required,uuid"`
 	Label                 *string   `json:"label" validate:"omitempty,max=255"`
-	SectionType           *string   `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST"`
+	SectionType           *string   `json:"section_type" validate:"omitempty,oneof=COLLECTION COST OTHER_COST EQUITY_WITHDRAWAL EQUITY_CONTRIBUTION"`
 	PaymentResponsibility *string   `json:"payment_responsibility" validate:"omitempty,oneof=OWNER CLINIC"`
 	TaxType               *string   `json:"tax_type" validate:"omitempty"`
 	CoaID                 *string   `json:"coa_id" validate:"omitempty,uuid"`
