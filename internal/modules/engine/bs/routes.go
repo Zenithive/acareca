@@ -9,6 +9,7 @@ import (
 func RegisterRoutes(rg *gin.RouterGroup, h Handler, cfg *config.Config) {
 	routes := rg.Group("/balance-sheet")
 	routes.Use(middleware.Auth(cfg))
+	routes.Use(middleware.SetPractitionerIDFromAuth())
 	{
 		routes.GET("", h.GetBalanceSheet)
 	}
