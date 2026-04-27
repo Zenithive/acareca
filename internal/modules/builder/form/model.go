@@ -131,6 +131,7 @@ type ExpenseItem struct {
 	BusinessUse float64   `json:"business_use" validate:"required,min=0,max=100"`
 	Amount      float64   `json:"amount" validate:"required,gt=0"`
 	Description *string   `json:"description,omitempty"`
+	TaxType     *string   `json:"tax_type" validate:"omitempty"`
 }
 
 type RqUpdateExpense struct {
@@ -148,6 +149,7 @@ type ExpenseItemUpdate struct {
 	BusinessUse *float64   `json:"business_use,omitempty" validate:"omitempty,min=0,max=100"`
 	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	Description *string    `json:"description,omitempty"`
+	TaxType     *string    `json:"tax_type,omitempty" validate:"omitempty"`
 }
 
 type RsExpense struct {

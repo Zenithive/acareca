@@ -55,6 +55,8 @@ type FormEntryValue struct {
 	Description *string   `db:"description"`
 	CreatedAt   string    `db:"created_at"`
 	UpdatedAt   *string   `db:"updated_at"`
+	TaxType     *string   `db:"tax_type"`
+	BusinessUse *float64  `db:"business_use"`
 }
 
 func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
