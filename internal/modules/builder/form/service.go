@@ -849,6 +849,14 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			return errors.New("active version not found for expense form")
 		}
 
+		status := entry.EntryStatusSubmitted
+
+		var submittedAt *string
+		if status == EntryStatusSubmitted {
+			// Declare the string in a way that its life matches the pointer
+			nowStr := time.Now().UTC().Format(time.RFC3339)
+			submittedAt = &nowStr
+		}
 		// Create a single entry for this expense form
 		entryID := uuid.New()
 		formEntry := &entry.FormEntry{
@@ -856,7 +864,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			FormVersionID: *form.ActiveVersionID,
 			ClinicID:      uuid.Nil, // No clinic for expense entries
 			SubmittedBy:   &actorId,
-			Status:        entry.EntryStatusSubmitted,
+			Status:        status,
+			SubmittedAt:   submittedAt,
 		}
 
 		var entryValues []*entry.FormEntryValue
@@ -904,6 +913,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				SortOrder:   idx,
 				BusinessUse: &localBusinessUse,
 				TaxType:     &taxType,
+				SectionType: "EXPENSE_ENTRY",
 			}
 
 			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, practitionerID, formFields)

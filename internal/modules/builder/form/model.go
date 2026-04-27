@@ -11,9 +11,11 @@ import (
 )
 
 const (
-	StatusDraft     = "DRAFT"
-	StatusPublished = "PUBLISHED"
-	StatusArchived  = "ARCHIVED"
+	StatusDraft          = "DRAFT"
+	StatusPublished      = "PUBLISHED"
+	StatusArchived       = "ARCHIVED"
+	EntryStatusDraft     = "DRAFT"
+	EntryStatusSubmitted = "SUBMITTED"
 )
 
 // RqFieldsSync groups field create/update/delete in a nested object.
