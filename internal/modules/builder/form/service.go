@@ -858,24 +858,28 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
 			}
 
-			// Determine tax rate and type
-			taxRate := 0.0
+			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
+			if item.TaxType != nil && *item.TaxType != "" {
+				taxType = *item.TaxType
+			}
 
-			// Get tax details if COA has tax
+			// Determine tax rate from COA
+			taxRate := 0.0
+
+			// Get tax rate if COA has tax
 			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
 				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
 				if err == nil && taxDetail != nil {
 					taxRate = taxDetail.Rate / 100.0 // Convert percentage to decimal
-					// For now, assume INCLUSIVE for taxable items (can be made configurable)
-					taxType = "INCLUSIVE"
 				}
 			}
 
+			localBusinessUse := item.BusinessUse
 			// Calculate amounts based on tax type
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				item.Amount,
-				item.BusinessUse,
+				localBusinessUse,
 				taxRate,
 				taxType,
 			)
@@ -887,7 +891,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				CoaID:       item.CoaID.String(),
 				IsComputed:  false,
 				SortOrder:   idx,
-				BusinessUse: &item.BusinessUse,
+				BusinessUse: &localBusinessUse,
+				TaxType:     &taxType,
 			}
 
 			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, actorId, formFields)
@@ -904,6 +909,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
+				TaxType:     &taxType,
+				BusinessUse: &localBusinessUse,
 			}
 
 			entryValues = append(entryValues, entryValue)
@@ -1091,12 +1098,16 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			taxRate := 0.0
 			taxType := "EXCLUSIVE"
 
-			// Get tax details if COA has tax
+			// Use tax type from request if provided, otherwise use EXCLUSIVE as default
+			if item.TaxType != nil {
+				taxType = *item.TaxType
+			}
+
+			// Get tax rate if COA has tax
 			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
 				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
 				if err == nil && taxDetail != nil {
 					taxRate = taxDetail.Rate / 100.0
-					taxType = "INCLUSIVE"
 				}
 			}
 
@@ -1120,6 +1131,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Label:       &label,
 				CoaID:       &coaIDStr,
 				BusinessUse: &businessUse,
+				TaxType:     &taxType,
 			}
 
 			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, actorId, &updateFieldReq); err != nil {
@@ -1140,10 +1152,12 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: description,
+				TaxType:     &taxType,
+				BusinessUse: &businessUse,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, tax_type, business_use) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.TaxType, newEntryValue.BusinessUse); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
@@ -1156,15 +1170,19 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				return fmt.Errorf("failed to get COA details for new item %d: %w", idx, err)
 			}
 
-			taxRate := 0.0
+			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
+			if item.TaxType != nil && *item.TaxType != "" {
+				taxType = *item.TaxType
+			}
 
-			// Get tax details if COA has tax
+			taxRate := 0.0
+
+			// Get tax rate if COA has tax
 			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
 				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
 				if err == nil && taxDetail != nil {
 					taxRate = taxDetail.Rate / 100.0
-					taxType = "INCLUSIVE"
 				}
 			}
 
@@ -1183,6 +1201,8 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				CoaID:       item.CoaID.String(),
 				IsComputed:  false,
 				BusinessUse: &item.BusinessUse,
+				TaxType:     &taxType,
+				SectionType: "OTHER_COST",
 			}
 
 			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, actorId, formFields)
@@ -1199,10 +1219,12 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
+				TaxType:     &taxType,
+				BusinessUse: &item.BusinessUse,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, tax_type, business_use) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.TaxType, newEntryValue.BusinessUse); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
