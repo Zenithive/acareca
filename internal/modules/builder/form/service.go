@@ -1349,11 +1349,12 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 
 	// Build response
 	response := &RsExpense{
-		ID:        formDetail.ID,
-		Name:      formDetail.Name,
-		Date:      formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
-		Items:     []RsExpenseItem{},
-		CreatedAt: formDetail.CreatedAt,
+		ID:             formDetail.ID,
+		Name:           formDetail.Name,
+		Date:           formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
+		PractitionerID: practitionerID,
+		Items:          []RsExpenseItem{},
+		CreatedAt:      formDetail.CreatedAt,
 	}
 
 	if formDetail.UpdatedAt != "" {
@@ -1361,11 +1362,11 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Determine amount_type from the first field's tax type
-	amountType := "EXCLUSIVE" // Default
+	taxType := "EXCLUSIVE" // Default
 	if len(fields) > 0 && fields[0].TaxType != nil {
-		amountType = *fields[0].TaxType
+		taxType = *fields[0].TaxType
 	}
-	response.AmountType = amountType
+	response.TaxType = taxType
 
 	// Build items from fields and entry values
 	for _, f := range fields {
