@@ -6,10 +6,10 @@ ALTER COLUMN clinic_id DROP NOT NULL;
 ALTER TYPE calculation_method ADD VALUE IF NOT EXISTS 'EXPENSE_ENTRY';
 
 ALTER TABLE tbl_form_field  
-ADD COLUMN business_use DOUBLE PRECISION NULL;
+ADD COLUMN IF NOT EXISTS business_use DOUBLE PRECISION NULL;
 
 ALTER TABLE tbl_form_entry_value
-ADD COLUMN description TEXT NULL;
+ADD COLUMN IF NOT EXISTS description TEXT NULL;
 -- +goose StatementEnd
 
 -- +goose Down
