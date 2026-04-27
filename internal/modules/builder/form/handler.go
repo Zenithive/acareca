@@ -407,7 +407,7 @@ func (h *handler) CreateExpense(c *gin.Context) {
 		return
 	}
 
-	form, err := h.svc.CreateExpense(c.Request.Context(), rq, actorID)
+	form, err := h.svc.CreateExpense(c.Request.Context(), rq, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -499,7 +499,7 @@ func (h *handler) GetExpense(c *gin.Context) {
 		return
 	}
 
-	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID)
+	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID, role)
 	if err != nil {
 		if err.Error() == "access denied: you do not own this expense" {
 			response.Error(c, http.StatusForbidden, err)

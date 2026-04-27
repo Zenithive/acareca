@@ -73,9 +73,9 @@ type IService interface {
 	Delete(ctx context.Context, formID uuid.UUID) error
 	UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error)
 
-	CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
+	CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error)
 	UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
-	GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID) (*RsExpense, error)
+	GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error)
 }
 
 type service struct {
@@ -779,18 +779,25 @@ func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType strin
 }
 
 // CreateExpense implements [IService].
-func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
+func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
+	var OwnerID uuid.UUID
 
-	// Resolve the practitioner ID if the actor is an accountant
-	practitionerID := actorId
-	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
-	if isAccountant {
-		resolvedID, err := s.invitationSvc.GetFirstPractitionerLinkedToAccountant(ctx, actorId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve practitioner for accountant: %w", err)
+	switch role {
+	case util.RoleAccountant:
+		if len(rq.Items) == 0 {
+			return nil, errors.New("at least one expense item is required")
 		}
-		practitionerID = resolvedID
+		// We fetch the first COA to find out who the practitioner is
+		firstCoa, err := s.coaSvc.GetByIDInternal(ctx, rq.Items[0].CoaID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
+				rq.Items[0].CoaID, actorId, err)
+		}
+		// This is the Practitioner ID for accountant
+		OwnerID = firstCoa.PractitionerID
+	default:
+		OwnerID = actorId
 	}
 
 	expenseDate, err := parseFlexibleDate(rq.Date)
@@ -804,8 +811,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		return nil, fmt.Errorf("failed to determine financial year: %w", err)
 	}
 
-	// 2. Fetch the Lock Date for this practitioner (use resolved practitionerID)
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
+	// 2. Fetch the Lock Date for this practitioner
+	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify lock date: %w", err)
 	}
@@ -837,9 +844,9 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			Status:      "PUBLISHED",
 		}
 
-		// Pass nil for clinicID and actorId as practitionerID
+		// Pass nil for clinicID and OwnerID as practitionerID
 		// The detail service will use the practitionerID directly when clinicID is nil
-		form, err := s.detailSvc.CreateTx(ctx, tx, &rqDetail, nil, actorId)
+		form, err := s.detailSvc.CreateTx(ctx, tx, &rqDetail, nil, OwnerID)
 		if err != nil {
 			return fmt.Errorf("failed to create expense form: %w", err)
 		}
@@ -863,8 +870,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		// Process each expense item
 		for idx, item := range rq.Items {
-			// Get COA details to fetch tax information (use resolved practitionerID)
-			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, practitionerID)
+			// Get COA details to fetch tax information
+			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, OwnerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
 			}
@@ -872,7 +879,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
 			if item.TaxType != nil && *item.TaxType != "" {
-				taxType = *item.TaxType
+				taxType = strings.ToUpper(*item.TaxType)
 			}
 
 			// Determine tax rate from COA
@@ -906,7 +913,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				TaxType:     &taxType,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, practitionerID, formFields)
+			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
 			}
@@ -960,15 +967,27 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// Resolve the practitioner ID if the actor is an accountant
-	practitionerID := actorId
-	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
-	if isAccountant {
-		resolvedID, err := s.invitationSvc.GetFirstPractitionerLinkedToAccountant(ctx, actorId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve practitioner for accountant: %w", err)
+	// Get existing form first (we need this to find the practitioner)
+	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expense form: %w", err)
+	}
+
+	// Extract the PractitionerID from the active version
+	var practitionerID uuid.UUID
+	versions, err := s.versionSvc.List(ctx, formID, uuid.Nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get form versions: %w", err)
+	}
+	for _, v := range versions {
+		if v.IsActive {
+			practitionerID = v.PractitionerID
+			break
 		}
-		practitionerID = resolvedID
+	}
+
+	if practitionerID == uuid.Nil {
+		return nil, errors.New("could not determine practitioner for this expense")
 	}
 
 	expenseDate, err := parseFlexibleDate(rq.Date)
@@ -982,7 +1001,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		return nil, fmt.Errorf("failed to determine financial year: %w", err)
 	}
 
-	// 2. Fetch the Lock Date for this practitioner (use resolved practitionerID)
+	// 2. Fetch the Lock Date for this practitioner
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify lock date: %w", err)
@@ -999,12 +1018,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		if !expenseDate.After(lockDate) {
 			return nil, fmt.Errorf("cannot update expense: the financial period for %s is locked", *lockDateStr)
 		}
-	}
-
-	// Get existing form
-	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get expense form: %w", err)
 	}
 
 	if existingForm.Method != "EXPENSE_ENTRY" {
@@ -1031,6 +1044,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		}
 
 		// Get active version ID
+		var practitionerID uuid.UUID
 		var activeVersionID uuid.UUID
 		if existingForm.ActiveVersionID != nil {
 			activeVersionID = *existingForm.ActiveVersionID
@@ -1042,6 +1056,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 			for _, v := range versions {
 				if v.IsActive {
+					practitionerID = v.PractitionerID
 					activeVersionID = v.Id
 					break
 				}
@@ -1111,7 +1126,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				description = item.Description
 			}
 
-			// Get COA details (use practitionerID)
+			// Get COA details
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details: %w", err)
@@ -1122,7 +1137,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 			// Use tax type from request if provided, otherwise use EXCLUSIVE as default
 			if item.TaxType != nil {
-				taxType = *item.TaxType
+				taxType = strings.ToUpper(*item.TaxType)
 			}
 
 			// Get tax rate if COA has tax
@@ -1133,6 +1148,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				}
 			}
 
+			fmt.Printf("Calculating for Field %s: Amount=%f, TaxType=%s\n", item.ID, amount, taxType)
 			// Calculate new amounts
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				amount,
@@ -1184,7 +1200,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 		// Handle creates
 		for idx, item := range rq.Create {
-			// Get COA details (use practitionerID)
+			// Get COA details
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, practitionerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for new item %d: %w", idx, err)
@@ -1193,7 +1209,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
 			if item.TaxType != nil && *item.TaxType != "" {
-				taxType = *item.TaxType
+				taxType = strings.ToUpper(*item.TaxType)
 			}
 
 			taxRate := 0.0
@@ -1273,7 +1289,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 }
 
 // GetExpense implements [IService].
-func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID) (*RsExpense, error) {
+func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error) {
 	// Get form details
 	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
 	if err != nil {
@@ -1306,12 +1322,8 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		return nil, errors.New("active version not found for expense form")
 	}
 
-	// Check if actor owns this expense or is an accountant linked to the practitioner
-	meta := auditctx.GetMetadata(ctx)
-	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
-	
-	if !isAccountant {
-		// For practitioners, check direct ownership
+	// Check if actor owns this expense
+	if role == util.RolePractitioner {
 		if practitionerID != actorId {
 			return nil, errors.New("access denied: you do not own this expense")
 		}
@@ -1361,7 +1373,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			continue
 		}
 
-		// Get COA details for name (use practitionerID, not actorId)
+		// Get COA details for name
 		coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, *f.CoaID, practitionerID)
 		if err != nil {
 			continue
