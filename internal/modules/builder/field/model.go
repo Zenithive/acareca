@@ -93,6 +93,7 @@ type RqFormField struct {
 	IsFormula             *bool    `json:"is_formula"`
 	IsHighlighted         bool     `json:"is_highlighted"`
 	BusinessUse           *float64 `json:"business_use"`
+	Amount                *float64 `json:"amount"`
 }
 
 func (r *RqFormField) Sanitize() {
@@ -118,6 +119,7 @@ type RqUpdateFormField struct {
 	SortOrder             *int      `json:"sort_order" validate:"omitempty,min=0"`
 	IsHighlighted         *bool     `json:"is_highlighted"`
 	BusinessUse           *float64  `json:"business_use"`
+	Amount                *float64  `json:"amount"`
 }
 
 // Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
@@ -152,6 +154,7 @@ type FormField struct {
 	CoaID                 *uuid.UUID `db:"coa_id"`
 	SortOrder             int        `db:"sort_order"`
 	BusinessUse           *float64   `db:"business_use"`
+	Amount                *float64   `json:"amount"`
 	CreatedAt             string     `db:"created_at"`
 	UpdatedAt             string     `db:"updated_at"`
 }
@@ -202,6 +205,7 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		IsFormula:             formula,
 		IsHighlighted:         r.IsHighlighted,
 		BusinessUse:           &businessUse,
+		Amount:                r.Amount,
 	}
 }
 
@@ -220,6 +224,7 @@ func (d *FormField) ToRs() *RsFormField {
 		TaxType:               d.TaxType,
 		CoaID:                 d.CoaID,
 		BusinessUse:           d.BusinessUse,
+		Amount:                d.Amount,
 		SortOrder:             d.SortOrder,
 		CreatedAt:             d.CreatedAt,
 		UpdatedAt:             d.UpdatedAt,
@@ -248,6 +253,7 @@ type RsFormField struct {
 	TaxType               *string      `json:"tax_type"`
 	CoaID                 *uuid.UUID   `json:"coa_id"`
 	Coa                   *RsCoaDetail `json:"coa,omitempty"`
+	Amount                *float64     `json:"amount"`
 	BusinessUse           *float64     `json:"business_use"`
 	SortOrder             int          `json:"sort_order"`
 	CreatedAt             string       `json:"created_at"`

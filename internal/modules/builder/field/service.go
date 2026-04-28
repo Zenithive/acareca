@@ -228,6 +228,12 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clini
 	if req.IsHighlighted != nil {
 		existing.IsHighlighted = *req.IsHighlighted
 	}
+	if req.Amount != nil {
+		existing.Amount = req.Amount
+	}
+	if req.BusinessUse != nil {
+		existing.BusinessUse = req.BusinessUse
+	}
 	updated, err := s.repo.UpdateTx(ctx, tx, existing)
 	if err != nil {
 		return nil, err

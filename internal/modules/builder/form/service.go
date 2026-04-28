@@ -921,6 +921,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				BusinessUse: &localBusinessUse,
 				TaxType:     &taxType,
 				SectionType: "EXPENSE_ENTRY",
+				Amount:      &item.Amount,
 			}
 
 			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
@@ -1180,6 +1181,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				CoaID:       &coaIDStr,
 				BusinessUse: &businessUse,
 				TaxType:     &taxType,
+				Amount:      &amount,
 			}
 
 			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
@@ -1249,6 +1251,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				BusinessUse: &item.BusinessUse,
 				TaxType:     &taxType,
 				SectionType: "OTHER_COST",
+				Amount:      &item.Amount,
 			}
 
 			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, practitionerID, formFields)
@@ -1414,13 +1417,19 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			businessUse = *f.BusinessUse
 		}
 
+		// Safe Dereference for Amount
+		displayAmount := grossAmount // Default to calculated gross
+		if f.Amount != nil {
+			displayAmount = *f.Amount
+		}
+
 		item := RsExpenseItem{
 			ID:          f.ID,
 			Name:        f.Label,
 			CoaID:       *f.CoaID,
 			CoaName:     coaDetail.Name,
 			BusinessUse: businessUse,
-			Amount:      grossAmount,
+			Amount:      displayAmount,
 			NetAmount:   netAmount,
 			GstAmount:   gstAmount,
 			GrossAmount: grossAmount,
