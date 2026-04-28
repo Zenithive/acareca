@@ -1,0 +1,98 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>API Load Test Report - Comprehensive</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+    .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }
+    h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #ddd; padding-bottom: 8px; }
+    .metric { margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 4px solid #4CAF50; }
+    .metric-title { font-weight: bold; color: #555; margin-bottom: 5px; }
+    .metric-value { font-size: 24px; color: #333; }
+    .error { border-left-color: #f44336; }
+    .warning { border-left-color: #ff9800; }
+    .coverage { background: #e3f2fd; padding: 15px; border-radius: 4px; margin: 20px 0; }
+    .coverage ul { margin: 10px 0; padding-left: 20px; }
+    .coverage li { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>API Load Test Report - Comprehensive Coverage</h1>
+    
+    <h2>Performance Metrics</h2>
+    <div class="metric">
+      <div class="metric-title">Total DB Operations</div>
+      <div class="metric-value">44569</div>
+    </div>
+    <div class="metric">
+      <div class="metric-title">Total HTTP Requests</div>
+      <div class="metric-value">44573</div>
+    </div>
+    <div class="metric ">
+      <div class="metric-title">Failure Rate</div>
+      <div class="metric-value">12.07%</div>
+    </div>
+    <div class="metric">
+      <div class="metric-title">Read Operations</div>
+      <div class="metric-value">38541</div>
+    </div>
+    <div class="metric">
+      <div class="metric-title">Write Operations</div>
+      <div class="metric-value">6028</div>
+    </div>
+    <div class="metric ">
+      <div class="metric-title">Read Error Rate</div>
+      <div class="metric-value">0.00%</div>
+    </div>
+    <div class="metric ">
+      <div class="metric-title">Write Error Rate</div>
+      <div class="metric-value">12.06%</div>
+    </div>
+    
+    <h2>Response Times</h2>
+    <div class="metric">
+      <div class="metric-title">P95 Read Duration</div>
+      <div class="metric-value">58.00 ms</div>
+    </div>
+    <div class="metric">
+      <div class="metric-title">P95 Write Duration</div>
+      <div class="metric-value">33.00 ms</div>
+    </div>
+    <div class="metric">
+      <div class="metric-title">P95 Overall Duration</div>
+      <div class="metric-value">53.74 ms</div>
+    </div>
+    <div class="metric">
+      <div class="metric-title">P99 Overall Duration</div>
+      <div class="metric-value">0.00 ms</div>
+    </div>
+    
+    <h2>Test Coverage</h2>
+    <div class="coverage">
+      <strong>APIs Tested:</strong>
+      <ul>
+        <li><strong>Practitioner API:</strong> List, Get by ID, Search, Filters, Pagination</li>
+        <li><strong>Clinic API:</strong> Create, Read (List & Get), Update, Delete, Bulk Operations</li>
+        <li><strong>Form API:</strong> Create, Read (List & Get), Update, Delete, Status Update</li>
+        <li><strong>P&L Reports:</strong> Monthly Summary, By Account, By Responsibility, FY Summary, Full Report, Export</li>
+        <li><strong>BAS Reports:</strong> Report, Preparation, Export (Report & Preparation), Clinic-specific (Summary, By Account, Monthly)</li>
+      </ul>
+      <strong>Test Scenarios:</strong>
+      <ul>
+        <li>Heavy Read Operations (60 concurrent users peak)</li>
+        <li>Write Operations (25 requests/sec peak)</li>
+        <li>Complex Queries (10 concurrent users)</li>
+        <li>Read/Write Mix (40 concurrent users peak)</li>
+        <li>Bulk Operations (2 requests/sec)</li>
+        <li>Clinic Operations (25 concurrent users peak)</li>
+        <li>Form Operations (20 concurrent users peak)</li>
+        <li>P&L Report Operations (8 concurrent users)</li>
+        <li>BAS Report Operations (8 concurrent users)</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

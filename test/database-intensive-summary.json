@@ -1,0 +1,534 @@
+{
+    "metrics": {
+        "concurrent_writes": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 6178,
+                "rate": 18.607021097744354
+            }
+        },
+        "db_read_duration": {
+            "type": "trend",
+            "contains": "default",
+            "values": {
+                "avg": 290.2662876095712,
+                "min": 0,
+                "med": 112,
+                "max": 4292,
+                "p(90)": 794.9000000000005,
+                "p(95)": 1115
+            },
+            "thresholds": {
+                "p(95)<1000": {
+                    "ok": false
+                }
+            }
+        },
+        "http_req_blocked": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "med": 0,
+                "max": 93.2428,
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.033827924590163955,
+                "min": 0
+            }
+        },
+        "db_write_errors": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0.01491681009753299,
+                "passes": 52,
+                "fails": 3434
+            },
+            "thresholds": {
+                "rate<0.2": {
+                    "ok": true
+                }
+            }
+        },
+        "http_req_duration": {
+            "contains": "time",
+            "values": {
+                "max": 4291.9877,
+                "p(90)": 779.2983900000004,
+                "p(95)": 1127.1962149999997,
+                "avg": 310.4447960360672,
+                "min": 0,
+                "med": 161.88619999999997
+            },
+            "thresholds": {
+                "p(95)<2000": {
+                    "ok": true
+                }
+            },
+            "type": "trend"
+        },
+        "http_req_waiting": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(90)": 778.7536500000003,
+                "p(95)": 1126.6675499999997,
+                "avg": 310.2032797180347,
+                "min": 0,
+                "med": 161.65949999999998,
+                "max": 4291.9877
+            }
+        },
+        "checks": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0.985528055922917,
+                "passes": 26082,
+                "fails": 383
+            }
+        },
+        "http_reqs": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 30500,
+                "rate": 91.86049586940803
+            }
+        },
+        "db_write_duration": {
+            "type": "trend",
+            "contains": "default",
+            "values": {
+                "p(90)": 385.5,
+                "p(95)": 588,
+                "avg": 153.55134825014343,
+                "min": 6,
+                "med": 78,
+                "max": 2031
+            },
+            "thresholds": {
+                "p(95)<1500": {
+                    "ok": true
+                }
+            }
+        },
+        "vus_max": {
+            "contains": "default",
+            "values": {
+                "value": 160,
+                "min": 160,
+                "max": 160
+            },
+            "type": "gauge"
+        },
+        "http_req_tls_handshaking": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0,
+                "min": 0,
+                "med": 0,
+                "max": 0
+            }
+        },
+        "db_operations": {
+            "contains": "default",
+            "values": {
+                "count": 20085,
+                "rate": 60.49239539465771
+            },
+            "thresholds": {
+                "count>500": {
+                    "ok": true
+                }
+            },
+            "type": "counter"
+        },
+        "http_req_receiving": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 0.20095139672131188,
+                "min": 0,
+                "med": 0,
+                "max": 10.5935,
+                "p(90)": 0.7468,
+                "p(95)": 1.006805
+            }
+        },
+        "iterations": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 10415,
+                "rate": 31.368100474750314
+            }
+        },
+        "http_req_sending": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "min": 0,
+                "med": 0,
+                "max": 12.6562,
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.0405649213114754
+            }
+        },
+        "data_received": {
+            "type": "counter",
+            "contains": "data",
+            "values": {
+                "count": 27756456,
+                "rate": 83597.43645040673
+            }
+        },
+        "dropped_iterations": {
+            "values": {
+                "count": 1217,
+                "rate": 3.6653843761662155
+            },
+            "type": "counter",
+            "contains": "default"
+        },
+        "http_req_failed": {
+            "thresholds": {
+                "rate<0.15": {
+                    "ok": true
+                }
+            },
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0.02360655737704918,
+                "passes": 720,
+                "fails": 29780
+            }
+        },
+        "concurrent_reads": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 13187,
+                "rate": 39.716864230487985
+            }
+        },
+        "iteration_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(95)": 6583.078939999995,
+                "avg": 2986.342115660126,
+                "min": 1101.5729,
+                "med": 2414.8803,
+                "max": 9663.8738,
+                "p(90)": 5231.57326
+            }
+        },
+        "http_req_connecting": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 0.01917465245901639,
+                "min": 0,
+                "med": 0,
+                "max": 10.7832,
+                "p(90)": 0,
+                "p(95)": 0
+            }
+        },
+        "vus": {
+            "type": "gauge",
+            "contains": "default",
+            "values": {
+                "value": 1,
+                "min": 0,
+                "max": 156
+            }
+        },
+        "db_read_errors": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0.03428786737000754,
+                "passes": 91,
+                "fails": 2563
+            },
+            "thresholds": {
+                "rate<0.1": {
+                    "ok": true
+                }
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "min": 1.5119,
+                "med": 167.09730000000002,
+                "max": 4291.9877,
+                "p(90)": 789.9073600000002,
+                "p(95)": 1139.0531,
+                "avg": 316.7602252787119
+            }
+        },
+        "data_sent": {
+            "type": "counter",
+            "contains": "data",
+            "values": {
+                "count": 10940292,
+                "rate": 32950.18518282353
+            }
+        },
+        "group_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 252.37723784271262,
+                "min": 0,
+                "med": 91.0237,
+                "max": 4768.1574,
+                "p(90)": 662.13198,
+                "p(95)": 1094.0202000000002
+            }
+        }
+    },
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": [
+            {
+                "name": "DB Read - User Profile",
+                "path": "::DB Read - User Profile",
+                "id": "ff1d5457e45ce6650c52147566679c60",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "profile read successful",
+                        "path": "::DB Read - User Profile::profile read successful",
+                        "id": "0c5530de2e359e6c03ddf76b0b68691c",
+                        "passes": 2654,
+                        "fails": 0
+                    },
+                    {
+                        "name": "profile read < 500ms",
+                        "path": "::DB Read - User Profile::profile read < 500ms",
+                        "id": "521acdfe23f8efdf01ca56ee83bb855a",
+                        "passes": 2563,
+                        "fails": 91
+                    }
+                ]
+            },
+            {
+                "name": "DB Read - Clinics List",
+                "path": "::DB Read - Clinics List",
+                "id": "7a08df32c2df1cb344e63f6b603297aa",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "clinics read successful",
+                        "path": "::DB Read - Clinics List::clinics read successful",
+                        "id": "bd14824896a4bbf1cf5eecd7cc02733c",
+                        "passes": 2654
+                    }
+                ]
+            },
+            {
+                "name": "DB Read - Notifications",
+                "path": "::DB Read - Notifications",
+                "id": "ca56f17a922b2013ede652f8f3f2b57b",
+                "groups": [],
+                "checks": [
+                    {
+                        "id": "27e01ffd5be93f242a3b1f5473a2425a",
+                        "passes": 2654,
+                        "fails": 0,
+                        "name": "notifications read successful",
+                        "path": "::DB Read - Notifications::notifications read successful"
+                    }
+                ]
+            },
+            {
+                "path": "::DB Read - Settings",
+                "id": "7c37e9f7e2f35e570231784783f98a7c",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "settings read successful",
+                        "path": "::DB Read - Settings::settings read successful",
+                        "id": "15312668a6dfcbad705b85e04a3c2bc6",
+                        "passes": 2654,
+                        "fails": 0
+                    }
+                ],
+                "name": "DB Read - Settings"
+            },
+            {
+                "checks": [
+                    {
+                        "name": "write operation completed",
+                        "path": "::DB Write - Create Clinic::write operation completed",
+                        "id": "7af7ece06f7ddf508f94db393ef83ed0",
+                        "passes": 1753,
+                        "fails": 0
+                    },
+                    {
+                        "fails": 26,
+                        "name": "write operation < 1s",
+                        "path": "::DB Write - Create Clinic::write operation < 1s",
+                        "id": "9cbbdcc2ba33249f14fdcd935efe87b2",
+                        "passes": 1727
+                    }
+                ],
+                "name": "DB Write - Create Clinic",
+                "path": "::DB Write - Create Clinic",
+                "id": "0e40f409a73f515769636e22bce1317f",
+                "groups": []
+            },
+            {
+                "id": "efde2aefbf3300876b56891810a96a8c",
+                "groups": [],
+                "checks": [
+                    {
+                        "path": "::DB Write - Update Profile::write operation completed",
+                        "id": "8535d02d123f8964de3c2c984b9be2cd",
+                        "passes": 1733,
+                        "fails": 0,
+                        "name": "write operation completed"
+                    },
+                    {
+                        "id": "e3d65bcc64747991c82c9c3c1af5be79",
+                        "passes": 1707,
+                        "fails": 26,
+                        "name": "write operation < 1s",
+                        "path": "::DB Write - Update Profile::write operation < 1s"
+                    }
+                ],
+                "name": "DB Write - Update Profile",
+                "path": "::DB Write - Update Profile"
+            },
+            {
+                "name": "Mixed - Read Operation",
+                "path": "::Mixed - Read Operation",
+                "id": "8b557f5b2155b780c7af9d3c6f96952f",
+                "groups": [],
+                "checks": [
+                    {
+                        "path": "::Mixed - Read Operation::mixed read successful",
+                        "id": "eb021c51ad4f358267b33508b26ce2e1",
+                        "passes": 2571,
+                        "fails": 0,
+                        "name": "mixed read successful"
+                    }
+                ]
+            },
+            {
+                "path": "::Mixed - Write Operation",
+                "id": "65fb905dcd4df4eed7113518dd001d15",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "mixed write successful",
+                        "path": "::Mixed - Write Operation::mixed write successful",
+                        "id": "1563820ef27397ff44b030f267359095",
+                        "passes": 1157
+                    }
+                ],
+                "name": "Mixed - Write Operation"
+            },
+            {
+                "path": "::DB Complex - P&L Report",
+                "id": "cd6be33d200a18073ba756845f74ffd5",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "pl report generated",
+                        "path": "::DB Complex - P&L Report::pl report generated",
+                        "id": "500938c650b3e40b9c2a45975504bf8b",
+                        "passes": 240,
+                        "fails": 0
+                    },
+                    {
+                        "fails": 0,
+                        "name": "pl report < 3s",
+                        "path": "::DB Complex - P&L Report::pl report < 3s",
+                        "id": "d7f1d7530ea90ddb2674069b727677bc",
+                        "passes": 240
+                    }
+                ],
+                "name": "DB Complex - P&L Report"
+            },
+            {
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "bulk create successful",
+                        "path": "::Bulk - Multiple Clinic Creation::bulk create successful",
+                        "id": "3eca6cce6a7790869ddbe66e88651255",
+                        "passes": 1535,
+                        "fails": 0
+                    }
+                ],
+                "name": "Bulk - Multiple Clinic Creation",
+                "path": "::Bulk - Multiple Clinic Creation",
+                "id": "8ec5a21295226ba3c7127ac2e60407ea"
+            },
+            {
+                "name": "DB Complex - BAS Report",
+                "path": "::DB Complex - BAS Report",
+                "id": "308a9e82603e42f73b8962571823a7da",
+                "groups": [],
+                "checks": [
+                    {
+                        "passes": 240,
+                        "fails": 0,
+                        "name": "bas report generated",
+                        "path": "::DB Complex - BAS Report::bas report generated",
+                        "id": "1635046d38f88d87405dbdcb8bb6afa0"
+                    }
+                ]
+            },
+            {
+                "groups": [],
+                "checks": [
+                    {
+                        "passes": 0,
+                        "fails": 240,
+                        "name": "analytics data retrieved",
+                        "path": "::DB Complex - Analytics::analytics data retrieved",
+                        "id": "76093c0be584c9862e75aa795792d33b"
+                    }
+                ],
+                "name": "DB Complex - Analytics",
+                "path": "::DB Complex - Analytics",
+                "id": "11572e3970eda8e678d3a75650a75832"
+            }
+        ],
+        "checks": [],
+        "name": "",
+        "path": ""
+    },
+    "options": {
+        "summaryTimeUnit": "",
+        "noColor": false,
+        "summaryTrendStats": [
+            "avg",
+            "min",
+            "med",
+            "max",
+            "p(90)",
+            "p(95)"
+        ]
+    },
+    "state": {
+        "testRunDurationMs": 332025.2053,
+        "isStdOutTTY": true,
+        "isStdErrTTY": true
+    }
+}
