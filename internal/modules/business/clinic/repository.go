@@ -55,6 +55,9 @@ type Repository interface {
 	DeletePermissionsByEntity(ctx context.Context, entityID uuid.UUID, entityType string) error
 	IsAccountantInvitedByPractitioner(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (bool, error)
 	GetPractitionerForAccountant(ctx context.Context, accountantID uuid.UUID) (*uuid.UUID, error)
+
+	DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
+	DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error
 }
 
 type repository struct {
@@ -681,4 +684,16 @@ func (r *repository) GetPractitionerForAccountant(ctx context.Context, accountan
 
 	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
 	return &practitionerID, err
+}
+
+func (r *repository) DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error {
+	query := `DELETE FROM tbl_clinic_address WHERE clinic_id = $1`
+	_, err := tx.ExecContext(ctx, query, clinicID)
+	return err
+}
+
+func (r *repository) DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error {
+	query := `DELETE FROM tbl_clinic_contacts WHERE id = $1 AND clinic_id = $2`
+	_, err := tx.ExecContext(ctx, query, id, clinicID)
+	return err
 }

@@ -5179,7 +5179,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/form/expense": {
+        "/form/expenses": {
             "post": {
                 "security": [
                     {
@@ -5230,7 +5230,60 @@ const docTemplate = `{
                 }
             }
         },
-        "/form/expense/{id}": {
+        "/form/expenses/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get an expense form with all its items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Get expense by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
             "patch": {
                 "security": [
                     {
@@ -9306,11 +9359,8 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqClinicAddress"
-                    }
+                "address": {
+                    "$ref": "#/definitions/clinic.RqClinicAddress"
                 },
                 "contacts": {
                     "type": "array",
@@ -9364,11 +9414,8 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqUpdateAddress"
-                    }
+                "address": {
+                    "$ref": "#/definitions/clinic.RqUpdateAddress"
                 },
                 "contacts": {
                     "type": "array",
@@ -9678,6 +9725,9 @@ const docTemplate = `{
                 "id"
             ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "business_use": {
                     "type": "number"
                 },
@@ -9738,7 +9788,13 @@ const docTemplate = `{
                 "coa_id": {
                     "type": "string"
                 },
+                "description": {
+                    "type": "string"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "tax_type": {
                     "type": "string"
                 }
             }
@@ -9760,10 +9816,16 @@ const docTemplate = `{
                 "coa_id": {
                     "type": "string"
                 },
+                "description": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "tax_type": {
                     "type": "string"
                 }
             }
