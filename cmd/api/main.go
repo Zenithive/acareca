@@ -84,7 +84,7 @@ func main() {
 
 	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
-	r.Use(middleware.RateLimitMiddleware(10,10))
+	r.Use(middleware.RateLimitMiddleware(50, 100))
 	auditSvc, notifier, notificationRepo := route.RegisterRoutes(r, cfg)
 
 	// Start the in_app delivery retry worker

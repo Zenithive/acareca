@@ -88,11 +88,16 @@ func (r *Repository) Create(ctx context.Context, e *FormEntry, values []*FormEnt
 
 // GetByID implements [IRepository].
 func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
-	query := `SELECT id, form_version_id, clinic_id, submitted_by, submitted_at, status, date, created_at, updated_at
-		FROM tbl_form_entry WHERE id = $1 AND deleted_at IS NULL`
+	query := `SELECT 
+            e.id, e.form_version_id, e.clinic_id, e.submitted_by, e.submitted_at, 
+            e.status, e.date, e.created_at, e.updated_at,
+            v.practitioner_id 
+        FROM tbl_form_entry e 
+        INNER JOIN tbl_custom_form_version v ON e.form_version_id = v.id 
+        WHERE e.id = $1 AND e.deleted_at IS NULL`
 	var e FormEntry
 	if err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&e.ID, &e.FormVersionID, &e.ClinicID, &e.SubmittedBy, &e.SubmittedAt, &e.Status, &e.Date, &e.CreatedAt, &e.UpdatedAt,
+		&e.ID, &e.FormVersionID, &e.ClinicID, &e.SubmittedBy, &e.SubmittedAt, &e.Status, &e.Date, &e.CreatedAt, &e.UpdatedAt, &e.PractitionerID,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil, ErrNotFound
@@ -830,7 +835,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
 		isExpense := row.FormMethod == "EXPENSE_ENTRY"
-		
+
 		detail := &RsCoaEntryDetail{
 			ID:            row.ID.String(),
 			EntryID:       row.EntryID.String(),
@@ -849,7 +854,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 			CreatedAt:     row.CreatedAt,
 			UpdatedAt:     row.UpdatedAt,
 		}
-		
+
 		// Only include clinic_id, clinic_name, and form_name for non-expense entries
 		if !isExpense {
 			clinicID := row.ClinicID.String()
@@ -860,7 +865,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 			// For expense entries, use form_field_name as supplier_name
 			detail.SupplierName = &row.FormFieldName
 		}
-		
+
 		result = append(result, detail)
 	}
 	return result, nil
