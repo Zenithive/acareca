@@ -1,0 +1,460 @@
+{
+    "metrics": {
+        "http_reqs": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "rate": 64.90870487882097,
+                "count": 11810
+            }
+        },
+        "checks": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "fails": 0,
+                "rate": 1,
+                "passes": 32544
+            }
+        },
+        "data_sent": {
+            "type": "counter",
+            "contains": "data",
+            "values": {
+                "count": 5276743,
+                "rate": 29001.401702657447
+            }
+        },
+        "http_req_blocked": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.027631761219305696,
+                "min": 0,
+                "med": 0,
+                "max": 7.0885
+            }
+        },
+        "iteration_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 790.623627196379,
+                "min": 501.2128,
+                "med": 510.20574999999997,
+                "max": 2199.0696,
+                "p(90)": 1013.48227,
+                "p(95)": 1017.5939
+            }
+        },
+        "http_req_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "med": 6.48395,
+                "max": 94.7436,
+                "p(90)": 10.92711,
+                "p(95)": 12.632019999999999,
+                "avg": 7.0686402878916565,
+                "min": 0.5102
+            },
+            "thresholds": {
+                "p(95)<1500": {
+                    "ok": true
+                }
+            }
+        },
+        "vus": {
+            "type": "gauge",
+            "contains": "default",
+            "values": {
+                "value": 3,
+                "min": 0,
+                "max": 74
+            }
+        },
+        "http_req_failed": {
+            "values": {
+                "passes": 0,
+                "fails": 11810,
+                "rate": 0
+            },
+            "thresholds": {
+                "rate<0.1": {
+                    "ok": true
+                }
+            },
+            "type": "rate",
+            "contains": "default"
+        },
+        "group_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "med": 7.36695,
+                "max": 661.3663,
+                "p(90)": 15.273570000000001,
+                "p(95)": 532.3622899999999,
+                "avg": 50.3486914386401,
+                "min": 0.613
+            }
+        },
+        "practitioner_read_duration": {
+            "values": {
+                "avg": 7.212313685636857,
+                "min": 1,
+                "med": 7,
+                "max": 87,
+                "p(90)": 11,
+                "p(95)": 13
+            },
+            "thresholds": {
+                "p(95)<800": {
+                    "ok": true
+                }
+            },
+            "type": "trend",
+            "contains": "default"
+        },
+        "practitioner_read_errors": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0,
+                "passes": 0,
+                "fails": 8928
+            },
+            "thresholds": {
+                "rate<0.05": {
+                    "ok": true
+                }
+            }
+        },
+        "http_req_receiving": {
+            "values": {
+                "p(95)": 0.6746749999999997,
+                "avg": 0.15147756985605412,
+                "min": 0,
+                "med": 0,
+                "max": 5.4799,
+                "p(90)": 0.59411
+            },
+            "type": "trend",
+            "contains": "time"
+        },
+        "http_req_waiting": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "min": 0.5102,
+                "med": 6.3041,
+                "max": 94.2363,
+                "p(90)": 10.726560000000001,
+                "p(95)": 12.420904999999998,
+                "avg": 6.893485063505526
+            }
+        },
+        "http_req_connecting": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "max": 7.0885,
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.020686646909398816,
+                "min": 0,
+                "med": 0
+            }
+        },
+        "practitioner_operations": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 11808,
+                "rate": 64.89771271880763
+            },
+            "thresholds": {
+                "count>100": {
+                    "ok": true
+                }
+            }
+        },
+        "vus_max": {
+            "values": {
+                "max": 88,
+                "value": 88,
+                "min": 88
+            },
+            "type": "gauge",
+            "contains": "default"
+        },
+        "iterations": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 9288,
+                "rate": 51.04759110198893
+            }
+        },
+        "practitioner_write_errors": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0,
+                "passes": 0,
+                "fails": 0
+            },
+            "thresholds": {
+                "rate<0.1": {
+                    "ok": true
+                }
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(95)": 12.632019999999999,
+                "avg": 7.0686402878916565,
+                "min": 0.5102,
+                "med": 6.48395,
+                "max": 94.7436,
+                "p(90)": 10.92711
+            }
+        },
+        "http_req_tls_handshaking": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 0,
+                "min": 0,
+                "med": 0,
+                "max": 0,
+                "p(90)": 0,
+                "p(95)": 0
+            }
+        },
+        "http_req_sending": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.023677654530059277,
+                "min": 0,
+                "med": 0,
+                "max": 3.002
+            }
+        },
+        "data_received": {
+            "values": {
+                "count": 9193177,
+                "rate": 50526.43630751607
+            },
+            "type": "counter",
+            "contains": "data"
+        }
+    },
+    "setup_data": {
+        "practitionerIds": [
+            "694a09cf-3bee-4d60-8a68-d76952ac51d1",
+            "17adc6a7-01bf-43c5-8fa2-2d2a825fe292",
+            "5f5a7382-387d-4075-9701-b0e4bbb7f934",
+            "32e217da-de0e-4891-a791-d3fb58fef9bc",
+            "e1b4d8a9-bf5e-4561-b73a-5bb4ccd9d18e",
+            "c71ce8b2-b9ad-445a-a093-725ec8e27d45",
+            "0b7b97c1-ca51-4851-aee7-3aa30d640521",
+            "f633bce5-91f2-4af5-84d3-268928f483b5",
+            "79cd6f91-360e-46e5-8396-36cf2d6a4f48",
+            "b0e6a109-8ae4-499b-ba34-7aa1e03578fe"
+        ],
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImIwZTZhMTA5LThhZTQtNDk5Yi1iYTM0LTdhYTFlMDM1NzhmZSIsInJvbGUiOiJQUkFDVElUSU9ORVIiLCJzdWIiOiI4MTk5YmUzZS0xODQ4LTQyMzktOWI2Zi0yMTk0ZmMyZTNhMDEiLCJleHAiOjE3Nzc0MjczNjUsImlhdCI6MTc3NzM3MzM2NX0.uVIgVBS6eBMnaC-7vYSLSe_CkS-Oo2Knk35zk_oGO3M"
+    },
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": [
+            {
+                "path": "::List All Practitioners",
+                "id": "82bf05bf14728aaca061d859deeb1c3b",
+                "groups": [],
+                "checks": [
+                    {
+                        "passes": 1628,
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::List All Practitioners::status is 200",
+                        "id": "74dab004a56ea49f496b213824534f26"
+                    },
+                    {
+                        "name": "response time < 500ms",
+                        "path": "::List All Practitioners::response time < 500ms",
+                        "id": "0c06556cb0ea0e8d6553fa309ded18d6",
+                        "passes": 1628,
+                        "fails": 0
+                    },
+                    {
+                        "id": "10c4f2a7410c683d102d017652d07203",
+                        "passes": 1628,
+                        "fails": 0,
+                        "name": "has data",
+                        "path": "::List All Practitioners::has data"
+                    }
+                ],
+                "name": "List All Practitioners"
+            },
+            {
+                "name": "Get Practitioner by ID",
+                "path": "::Get Practitioner by ID",
+                "id": "0a1726357ce93a8214abc78f2e5641db",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Get Practitioner by ID::status is 200",
+                        "id": "09116dd21eada2d5eeccc074774073db",
+                        "passes": 4871
+                    },
+                    {
+                        "name": "response time < 300ms",
+                        "path": "::Get Practitioner by ID::response time < 300ms",
+                        "id": "e1a5467a287e0b0b2e3dbce6c45e224f",
+                        "passes": 4871,
+                        "fails": 0
+                    },
+                    {
+                        "path": "::Get Practitioner by ID::has practitioner data",
+                        "id": "be76d82d91b2554d86606569b18e3300",
+                        "passes": 4871,
+                        "fails": 0,
+                        "name": "has practitioner data"
+                    }
+                ]
+            },
+            {
+                "name": "Search Practitioners",
+                "path": "::Search Practitioners",
+                "id": "327e6c16c61116ad10effd197f506f22",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Search Practitioners::status is 200",
+                        "id": "dcf3720621377f3c65291e6a66f8491a",
+                        "passes": 1190
+                    },
+                    {
+                        "name": "response time < 1000ms",
+                        "path": "::Search Practitioners::response time < 1000ms",
+                        "id": "5baa69eb5bd4fe5ac16b4f456aefd457",
+                        "passes": 1190,
+                        "fails": 0
+                    },
+                    {
+                        "path": "::Search Practitioners::has results",
+                        "id": "6f2d7dc3043d6cd95543f99fab156982",
+                        "passes": 1190,
+                        "fails": 0,
+                        "name": "has results"
+                    }
+                ]
+            },
+            {
+                "name": "Paginate Practitioners",
+                "path": "::Paginate Practitioners",
+                "id": "1b2d708e1e0dc642bfc1feeb26189fdd",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Paginate Practitioners::status is 200",
+                        "id": "f50f4f08657d750bf1b74a0964e530c2",
+                        "passes": 1239,
+                        "fails": 0
+                    },
+                    {
+                        "passes": 1239,
+                        "fails": 0,
+                        "name": "response time < 800ms",
+                        "path": "::Paginate Practitioners::response time < 800ms",
+                        "id": "52b9e798d6e260e31ed4d092860f7e07"
+                    },
+                    {
+                        "passes": 1239,
+                        "fails": 0,
+                        "name": "has pagination data",
+                        "path": "::Paginate Practitioners::has pagination data",
+                        "id": "ba4931afd5cb35b919de631428b5795d"
+                    }
+                ]
+            },
+            {
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Bulk Read Practitioners::status is 200",
+                        "id": "0db0eca55d666c788964fd30717c9494",
+                        "passes": 1080,
+                        "fails": 0
+                    },
+                    {
+                        "name": "response time < 1000ms",
+                        "path": "::Bulk Read Practitioners::response time < 1000ms",
+                        "id": "4f2ee2a5f29a79b73c21cee8d9ffd9fc",
+                        "passes": 1080,
+                        "fails": 0
+                    }
+                ],
+                "name": "Bulk Read Practitioners",
+                "path": "::Bulk Read Practitioners",
+                "id": "2a7427989c741222c863b84c561e7123"
+            },
+            {
+                "path": "::Bulk Get Individual Practitioners",
+                "id": "2c967203a063d40a853a5b18e87de82a",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Bulk Get Individual Practitioners::status is 200",
+                        "id": "48b6f09cce34f37f617feb0d49cdfea4",
+                        "passes": 1800
+                    },
+                    {
+                        "passes": 1800,
+                        "fails": 0,
+                        "name": "response time < 500ms",
+                        "path": "::Bulk Get Individual Practitioners::response time < 500ms",
+                        "id": "5d348cdf1619027ffc6edf433a0377d1"
+                    }
+                ],
+                "name": "Bulk Get Individual Practitioners"
+            }
+        ],
+        "checks": [],
+        "name": "",
+        "path": ""
+    },
+    "options": {
+        "summaryTrendStats": [
+            "avg",
+            "min",
+            "med",
+            "max",
+            "p(90)",
+            "p(95)"
+        ],
+        "summaryTimeUnit": "",
+        "noColor": false
+    },
+    "state": {
+        "testRunDurationMs": 181947.8608,
+        "isStdOutTTY": true,
+        "isStdErrTTY": true
+    }
+}

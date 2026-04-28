@@ -1,0 +1,1004 @@
+{
+    "metrics": {
+        "admin_write_errors": {
+            "values": {
+                "rate": 0,
+                "passes": 0,
+                "fails": 1318
+            },
+            "thresholds": {
+                "rate<0.15": {
+                    "ok": true
+                }
+            },
+            "type": "rate",
+            "contains": "default"
+        },
+        "http_reqs": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 11104,
+                "rate": 60.588476005949694
+            }
+        },
+        "data_received": {
+            "contains": "data",
+            "values": {
+                "count": 8181405,
+                "rate": 44641.46798788336
+            },
+            "type": "counter"
+        },
+        "data_sent": {
+            "type": "counter",
+            "contains": "data",
+            "values": {
+                "count": 4896613,
+                "rate": 26718.14834842591
+            }
+        },
+        "admin_write_duration": {
+            "type": "trend",
+            "contains": "default",
+            "values": {
+                "p(95)": 17,
+                "avg": 3.9553679131483714,
+                "min": 0,
+                "med": 1,
+                "max": 77,
+                "p(90)": 13
+            }
+        },
+        "http_req_sending": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.027250279178674352,
+                "min": 0,
+                "med": 0,
+                "max": 3.5967
+            }
+        },
+        "http_req_blocked": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "med": 0,
+                "max": 8.9651,
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.03367442363112388,
+                "min": 0
+            }
+        },
+        "vus": {
+            "type": "gauge",
+            "contains": "default",
+            "values": {
+                "value": 5,
+                "min": 0,
+                "max": 76
+            }
+        },
+        "iterations": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "rate": 13.76117943867121,
+                "count": 2522
+            }
+        },
+        "http_req_failed": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0.4668587896253602,
+                "passes": 5184,
+                "fails": 5920
+            },
+            "thresholds": {
+                "rate<0.1": {
+                    "ok": false
+                }
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "max": 438.5532,
+                "p(90)": 17.997570000000003,
+                "p(95)": 52.9395300000001,
+                "avg": 16.653019966216256,
+                "min": 1.1202,
+                "med": 7.739800000000001
+            }
+        },
+        "vus_max": {
+            "type": "gauge",
+            "contains": "default",
+            "values": {
+                "min": 81,
+                "max": 81,
+                "value": 81
+            }
+        },
+        "admin_read_duration": {
+            "type": "trend",
+            "contains": "default",
+            "values": {
+                "avg": 10.625503071383182,
+                "min": 0,
+                "med": 5,
+                "max": 439,
+                "p(90)": 12,
+                "p(95)": 21
+            },
+            "thresholds": {
+                "p(95)<1500": {
+                    "ok": true
+                }
+            }
+        },
+        "group_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 9.82486061261263,
+                "min": 0,
+                "med": 4.4666,
+                "max": 439.0838,
+                "p(90)": 12.57889,
+                "p(95)": 20.246009999999956
+            }
+        },
+        "http_req_connecting": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(90)": 0,
+                "p(95)": 0,
+                "avg": 0.02759547910662824,
+                "min": 0,
+                "med": 0,
+                "max": 6.8623
+            }
+        },
+        "http_req_waiting": {
+            "contains": "time",
+            "values": {
+                "avg": 9.274779782060529,
+                "min": 0,
+                "med": 3.97065,
+                "max": 437.9648,
+                "p(90)": 11.7921,
+                "p(95)": 18.713725000000014
+            },
+            "type": "trend"
+        },
+        "admin_operations": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+                "count": 11100,
+                "rate": 60.56665018606282
+            },
+            "thresholds": {
+                "count>100": {
+                    "ok": true
+                }
+            }
+        },
+        "audit_log_duration": {
+            "type": "trend",
+            "contains": "default",
+            "values": {
+                "p(95)": 28.849999999999966,
+                "avg": 16.098958333333332,
+                "min": 3,
+                "med": 13,
+                "max": 83,
+                "p(90)": 25
+            },
+            "thresholds": {
+                "p(95)<2000": {
+                    "ok": true
+                }
+            }
+        },
+        "http_req_receiving": {
+            "contains": "time",
+            "values": {
+                "med": 0,
+                "max": 10.3924,
+                "p(90)": 0.6098,
+                "p(95)": 0.694685,
+                "avg": 0.16413115093659938,
+                "min": 0
+            },
+            "type": "trend"
+        },
+        "iteration_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "avg": 3070.6716495638366,
+                "min": 2503.5148,
+                "med": 2520.183,
+                "max": 6057.4849,
+                "p(90)": 5047.5828,
+                "p(95)": 5785.700779999999
+            }
+        },
+        "http_req_duration": {
+            "contains": "time",
+            "values": {
+                "avg": 9.466161212175805,
+                "min": 0,
+                "med": 4.13415,
+                "max": 438.5532,
+                "p(90)": 12.015680000000001,
+                "p(95)": 19.111684999999998
+            },
+            "thresholds": {
+                "p(95)<2000": {
+                    "ok": true
+                }
+            },
+            "type": "trend"
+        },
+        "admin_read_errors": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "fails": 2018,
+                "rate": 0.1998413957176844,
+                "passes": 504
+            },
+            "thresholds": {
+                "rate<0.05": {
+                    "ok": false
+                }
+            }
+        },
+        "http_req_tls_handshaking": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+                "p(95)": 0,
+                "avg": 0,
+                "min": 0,
+                "med": 0,
+                "max": 0,
+                "p(90)": 0
+            }
+        },
+        "checks": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+                "rate": 0.894054054054054,
+                "passes": 21502,
+                "fails": 2548
+            }
+        }
+    },
+    "setup_data": {
+        "accountantIds": [
+            "ecca6ba2-82df-4be0-8f2f-ee37fe3327d0"
+        ],
+        "practitionerIds": [
+            "60a2f1c3-5963-4292-b7f9-11b3dd26b0a8",
+            "19ed4771-c9fe-485e-9156-75ed1e188fa2",
+            "0361e5cd-d9a7-4050-96da-91a30d9a6f7e",
+            "338135e8-2cc9-4121-9fa5-040b3c6a814e",
+            "77978ada-fc88-4f96-9bad-80ec28794aae",
+            "50087684-3bba-42a4-9f19-3d8d8c56dd80",
+            "bca28946-d261-49fa-99e9-4ec99b96d678",
+            "27afa4a2-b885-4f23-a00d-857c57c97c2b",
+            "2f5c7df3-a338-47e7-b9c7-40a2211bf539",
+            "8199be3e-1848-4239-9b6f-2194fc2e3a01"
+        ],
+        "subscriptionIds": [
+            1,
+            2,
+            3,
+            4
+        ],
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZiNTkzY2ZkLTQ3OTUtNGM1Ny1hNTkxLWZiYjY4ZDFkYWJkYyIsInJvbGUiOiJBRE1JTiIsInN1YiI6IjJmZDBmYmE2LTI1ZmQtNDYwMC1hYjUzLTVkY2U3MzZkMGM2NyIsImV4cCI6MTc3NzQyNzQ2NSwiaWF0IjoxNzc3MzczNDY1fQ.kuFNc85nWH8BOrzMDlyEj03zJMwDa0XBp9eEcD8bsgQ"
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": [
+            {
+                "name": "List All Practitioners (Admin)",
+                "path": "::List All Practitioners (Admin)",
+                "id": "d37b5686f2e076f8dce15a375d9e5642",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::List All Practitioners (Admin)::status is 200",
+                        "id": "02a98d02ed46aca8a153a59e89116536",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "name": "response time < 800ms",
+                        "path": "::List All Practitioners (Admin)::response time < 800ms",
+                        "id": "7f51aae901c2b9fa8ac3e527d01da912",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "name": "has data",
+                        "path": "::List All Practitioners (Admin)::has data",
+                        "id": "ed0cfd018fe128f939a0771a9bfb8f78",
+                        "passes": 659,
+                        "fails": 0
+                    }
+                ]
+            },
+            {
+                "name": "List Practitioners with Pagination (Admin)",
+                "path": "::List Practitioners with Pagination (Admin)",
+                "id": "a718ba3f427799433d5a42ec573b53ea",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::List Practitioners with Pagination (Admin)::status is 200",
+                        "id": "553cc1aefc22cb050cc1755fcc244729",
+                        "passes": 659
+                    },
+                    {
+                        "fails": 0,
+                        "name": "response time < 1000ms",
+                        "path": "::List Practitioners with Pagination (Admin)::response time < 1000ms",
+                        "id": "a9cb31b430ede7fc86dd71d64987ebcc",
+                        "passes": 659
+                    }
+                ]
+            },
+            {
+                "name": "Get Practitioner by ID (Admin)",
+                "path": "::Get Practitioner by ID (Admin)",
+                "id": "7858638a042725510a97f51cc67761b5",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200 or 404",
+                        "path": "::Get Practitioner by ID (Admin)::status is 200 or 404",
+                        "id": "16cadb4e42d1d3eeaf9c6fbc4c806993",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "name": "response time < 500ms",
+                        "path": "::Get Practitioner by ID (Admin)::response time < 500ms",
+                        "id": "14660911b49193ec926418f99e7b4214",
+                        "passes": 659,
+                        "fails": 0
+                    }
+                ]
+            },
+            {
+                "path": "::Update Practitioner Status (Admin)",
+                "id": "ba0443bb998999fb4cc77d88bc5378cd",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200 or 404",
+                        "path": "::Update Practitioner Status (Admin)::status is 200 or 404",
+                        "id": "f478b8ef9324dd2ff279f7212839ed47",
+                        "passes": 659
+                    },
+                    {
+                        "name": "response time < 800ms",
+                        "path": "::Update Practitioner Status (Admin)::response time < 800ms",
+                        "id": "09fb2e7664831234a1ba1e6662000ec4",
+                        "passes": 659,
+                        "fails": 0
+                    }
+                ],
+                "name": "Update Practitioner Status (Admin)"
+            },
+            {
+                "path": "::List All Accountants (Admin)",
+                "id": "8ebb07903e561b2d6ce9008231a3ac7d",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::List All Accountants (Admin)::status is 200",
+                        "id": "8ca0658b27f12cfd95452371495d393b",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "name": "response time < 800ms",
+                        "path": "::List All Accountants (Admin)::response time < 800ms",
+                        "id": "bc7fd3369fcc7ec95429697c0066afaa",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "name": "has data",
+                        "path": "::List All Accountants (Admin)::has data",
+                        "id": "163df68fee08b73123ceef01d0f666f8",
+                        "passes": 659,
+                        "fails": 0
+                    }
+                ],
+                "name": "List All Accountants (Admin)"
+            },
+            {
+                "name": "List Accountants with Filters (Admin)",
+                "path": "::List Accountants with Filters (Admin)",
+                "id": "1008cf7b9892aecf487d1f867fe67fb7",
+                "groups": [],
+                "checks": [
+                    {
+                        "path": "::List Accountants with Filters (Admin)::status is 200",
+                        "id": "58c93cf68d3ec5a306ebf474ed327e3f",
+                        "passes": 659,
+                        "fails": 0,
+                        "name": "status is 200"
+                    },
+                    {
+                        "name": "response time < 1000ms",
+                        "path": "::List Accountants with Filters (Admin)::response time < 1000ms",
+                        "id": "6f6aa8692c14bfd478d8308f57a5ba33",
+                        "passes": 659,
+                        "fails": 0
+                    }
+                ]
+            },
+            {
+                "checks": [
+                    {
+                        "name": "status is 200 or 404",
+                        "path": "::Get Accountant by ID (Admin)::status is 200 or 404",
+                        "id": "7d63d7bd776752818f9468bd3ef486b4",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "fails": 0,
+                        "name": "response time < 500ms",
+                        "path": "::Get Accountant by ID (Admin)::response time < 500ms",
+                        "id": "a46577d8e71b8b67207494320ff52e9e",
+                        "passes": 659
+                    }
+                ],
+                "name": "Get Accountant by ID (Admin)",
+                "path": "::Get Accountant by ID (Admin)",
+                "id": "c87df78dba0ffa749ac33b6aaf7e85fa",
+                "groups": []
+            },
+            {
+                "checks": [
+                    {
+                        "name": "status is 200 or 404",
+                        "path": "::Update Accountant Status (Admin)::status is 200 or 404",
+                        "id": "b5f5621f3535eb0e1165b79ec53a48dc",
+                        "passes": 659,
+                        "fails": 0
+                    },
+                    {
+                        "passes": 659,
+                        "fails": 0,
+                        "name": "response time < 800ms",
+                        "path": "::Update Accountant Status (Admin)::response time < 800ms",
+                        "id": "f391e26d4647489e63b1d9496ca2608d"
+                    }
+                ],
+                "name": "Update Accountant Status (Admin)",
+                "path": "::Update Accountant Status (Admin)",
+                "id": "cc2d7657bf822d2e28b4a2578711d6b5",
+                "groups": []
+            },
+            {
+                "name": "List All Users (Admin)",
+                "path": "::List All Users (Admin)",
+                "id": "e48afdeeebfe05d4d40d16a8c9dacee1",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::List All Users (Admin)::status is 200",
+                        "id": "ff9eda97c71dcbed1e8992310b0a83df",
+                        "passes": 0,
+                        "fails": 504
+                    },
+                    {
+                        "path": "::List All Users (Admin)::response time < 1000ms",
+                        "id": "6ac39e441cd611ff8de2cf0af4864ef5",
+                        "passes": 504,
+                        "fails": 0,
+                        "name": "response time < 1000ms"
+                    }
+                ]
+            },
+            {
+                "path": "::List All Subscriptions (Admin)",
+                "id": "87710a1ac0ea48ee587a5d60516735f4",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::List All Subscriptions (Admin)::status is 200",
+                        "id": "2291bb487179769474415826eb8f177d",
+                        "passes": 340
+                    },
+                    {
+                        "name": "response time < 1000ms",
+                        "path": "::List All Subscriptions (Admin)::response time < 1000ms",
+                        "id": "040000df73ed0bad1b2646eb8db6d735",
+                        "passes": 340,
+                        "fails": 0
+                    },
+                    {
+                        "id": "ae603c4d6dd0c157db065f2d0abf3da5",
+                        "passes": 340,
+                        "fails": 0,
+                        "name": "has data",
+                        "path": "::List All Subscriptions (Admin)::has data"
+                    }
+                ],
+                "name": "List All Subscriptions (Admin)"
+            },
+            {
+                "path": "::Search Users (Admin)",
+                "id": "a4a8affb7c9599cd916cd9fd2a8461e3",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Search Users (Admin)::status is 200",
+                        "id": "cc3fbd65d1ec50c0d0b5f19d116654b3",
+                        "passes": 0,
+                        "fails": 504
+                    },
+                    {
+                        "path": "::Search Users (Admin)::response time < 1200ms",
+                        "id": "c9e95597ed3cb7676b5202d2d9607fe6",
+                        "passes": 504,
+                        "fails": 0,
+                        "name": "response time < 1200ms"
+                    }
+                ],
+                "name": "Search Users (Admin)"
+            },
+            {
+                "id": "14c2e7b57759b04477e754030bb85b08",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::List Subscriptions with Filters (Admin)::status is 200",
+                        "id": "8adfd27f0e9dd54a4b4ff1c0a92554ec",
+                        "passes": 340,
+                        "fails": 0
+                    },
+                    {
+                        "passes": 340,
+                        "fails": 0,
+                        "name": "response time < 1000ms",
+                        "path": "::List Subscriptions with Filters (Admin)::response time < 1000ms",
+                        "id": "f6e61826026dc3905ed14d7d512c5d46"
+                    }
+                ],
+                "name": "List Subscriptions with Filters (Admin)",
+                "path": "::List Subscriptions with Filters (Admin)"
+            },
+            {
+                "name": "Filter Users by Role (Admin)",
+                "path": "::Filter Users by Role (Admin)",
+                "id": "d5a7436fceb9d07c387b2d6bdc946c82",
+                "groups": [],
+                "checks": [
+                    {
+                        "id": "d5c5bc37abf2413c2efa5848cd7dac4f",
+                        "passes": 0,
+                        "fails": 504,
+                        "name": "status is 200",
+                        "path": "::Filter Users by Role (Admin)::status is 200"
+                    },
+                    {
+                        "fails": 0,
+                        "name": "response time < 1000ms",
+                        "path": "::Filter Users by Role (Admin)::response time < 1000ms",
+                        "id": "1cbda283d07ff560c2ad484499564f82",
+                        "passes": 504
+                    }
+                ]
+            },
+            {
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200 or 404",
+                        "path": "::Get Subscription by ID (Admin)::status is 200 or 404",
+                        "id": "7bd93bffe50889537a892c0c8af325d6",
+                        "passes": 340,
+                        "fails": 0
+                    },
+                    {
+                        "path": "::Get Subscription by ID (Admin)::response time < 500ms",
+                        "id": "da1cfd10c0ba3f66541298d1183953b4",
+                        "passes": 340,
+                        "fails": 0,
+                        "name": "response time < 500ms"
+                    }
+                ],
+                "name": "Get Subscription by ID (Admin)",
+                "path": "::Get Subscription by ID (Admin)",
+                "id": "a02b402cce7e75e8c760d26542f0cf37"
+            },
+            {
+                "id": "ff306657f56f3b3c2a0977c06b5d471e",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Filter Users by Status (Admin)::status is 200",
+                        "id": "fe8bbd7cc028eebefde0cfe28629e573",
+                        "passes": 0,
+                        "fails": 504
+                    },
+                    {
+                        "name": "response time < 1000ms",
+                        "path": "::Filter Users by Status (Admin)::response time < 1000ms",
+                        "id": "21feefe929a44e2232c23efa25d2533b",
+                        "passes": 504,
+                        "fails": 0
+                    }
+                ],
+                "name": "Filter Users by Status (Admin)",
+                "path": "::Filter Users by Status (Admin)"
+            },
+            {
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200 or 404",
+                        "path": "::Update Subscription (Admin)::status is 200 or 404",
+                        "id": "712819cd590d0ee7d2c5b79cea3d11a7",
+                        "passes": 340,
+                        "fails": 0
+                    },
+                    {
+                        "id": "3d1c68039680d8a18907d54585152e7f",
+                        "passes": 340,
+                        "fails": 0,
+                        "name": "response time < 800ms",
+                        "path": "::Update Subscription (Admin)::response time < 800ms"
+                    }
+                ],
+                "name": "Update Subscription (Admin)",
+                "path": "::Update Subscription (Admin)",
+                "id": "a13f3933afe69ed3cb9a39a5947cd435"
+            },
+            {
+                "path": "::Get Subscription Statistics (Admin)",
+                "id": "1b0be76b205ca5782f47f30c2007218c",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Get Subscription Statistics (Admin)::status is 200",
+                        "id": "ac7991cc3899eb8d2f8fc1c83e1836eb",
+                        "passes": 0,
+                        "fails": 340
+                    },
+                    {
+                        "passes": 340,
+                        "fails": 0,
+                        "name": "response time < 1500ms",
+                        "path": "::Get Subscription Statistics (Admin)::response time < 1500ms",
+                        "id": "3caaa609520d6df614201057cd862aae"
+                    }
+                ],
+                "name": "Get Subscription Statistics (Admin)"
+            },
+            {
+                "name": "List Audit Logs",
+                "path": "::List Audit Logs",
+                "id": "21e2b53ce3dc5d99056d6e30fea82c0a",
+                "groups": [],
+                "checks": [
+                    {
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::List Audit Logs::status is 200",
+                        "id": "0bd201fce8d55faeb87fba9db9f389ea",
+                        "passes": 192
+                    },
+                    {
+                        "name": "response time < 1500ms",
+                        "path": "::List Audit Logs::response time < 1500ms",
+                        "id": "6fcfd8f7ce2262bbccb695cfadb836c8",
+                        "passes": 192,
+                        "fails": 0
+                    },
+                    {
+                        "passes": 192,
+                        "fails": 0,
+                        "name": "has data",
+                        "path": "::List Audit Logs::has data",
+                        "id": "9ea9af23dd666d4b9e4a0f91247e2b0b"
+                    }
+                ]
+            },
+            {
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::List Audit Logs with Filters::status is 200",
+                        "id": "3a666ae2e02c457613de004888dff618",
+                        "passes": 192,
+                        "fails": 0
+                    },
+                    {
+                        "id": "0eee8814f1a896fe6faa4ec0b1586548",
+                        "passes": 192,
+                        "fails": 0,
+                        "name": "response time < 2000ms",
+                        "path": "::List Audit Logs with Filters::response time < 2000ms"
+                    }
+                ],
+                "name": "List Audit Logs with Filters",
+                "path": "::List Audit Logs with Filters",
+                "id": "dae300938a90b4999119f5ffe3d952ab"
+            },
+            {
+                "name": "List Audit Logs by Date Range",
+                "path": "::List Audit Logs by Date Range",
+                "id": "38b28b5590e9d6c6662f04f615438d13",
+                "groups": [],
+                "checks": [
+                    {
+                        "path": "::List Audit Logs by Date Range::status is 200",
+                        "id": "7678bb2c97d6480795a6ff9e7f827359",
+                        "passes": 0,
+                        "fails": 192,
+                        "name": "status is 200"
+                    },
+                    {
+                        "id": "f9911e323c49dbcbb60c4cd30052036b",
+                        "passes": 192,
+                        "fails": 0,
+                        "name": "response time < 2000ms",
+                        "path": "::List Audit Logs by Date Range::response time < 2000ms"
+                    }
+                ]
+            },
+            {
+                "path": "::Get Audit Logs for Specific User",
+                "id": "a1e67962e849fe8109461be1dc3d2edc",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Get Audit Logs for Specific User::status is 200",
+                        "id": "f4247b8cc5c2a8eb3253249de1cfa542",
+                        "passes": 192,
+                        "fails": 0
+                    },
+                    {
+                        "name": "response time < 1500ms",
+                        "path": "::Get Audit Logs for Specific User::response time < 1500ms",
+                        "id": "545bfa03335fc5113ae603c7a28d6c52",
+                        "passes": 192,
+                        "fails": 0
+                    }
+                ],
+                "name": "Get Audit Logs for Specific User"
+            },
+            {
+                "name": "Get User Growth Analytics",
+                "path": "::Get User Growth Analytics",
+                "id": "95bcde417e3f82c499bac48a5ffcc471",
+                "groups": [],
+                "checks": [
+                    {
+                        "id": "8bfa3efb75190ff994e06a6ce54e6418",
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Get User Growth Analytics::status is 200"
+                    },
+                    {
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "response time < 1500ms",
+                        "path": "::Get User Growth Analytics::response time < 1500ms",
+                        "id": "9a2361ce175e2f45b9275eeb6ae893fd"
+                    }
+                ]
+            },
+            {
+                "name": "Get Active Users Analytics",
+                "path": "::Get Active Users Analytics",
+                "id": "eeb1e334e743657a3d38efd9751fe895",
+                "groups": [],
+                "checks": [
+                    {
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Get Active Users Analytics::status is 200",
+                        "id": "a51f49d4b7455604600ef009514db475"
+                    },
+                    {
+                        "name": "response time < 1500ms",
+                        "path": "::Get Active Users Analytics::response time < 1500ms",
+                        "id": "9e8d46edb0636afeb3816a9e15fa5a94",
+                        "passes": 168,
+                        "fails": 0
+                    }
+                ]
+            },
+            {
+                "name": "Get Subscription Analytics",
+                "path": "::Get Subscription Analytics",
+                "id": "a4cb957657e0061ca2ca05c8fe4e7b2a",
+                "groups": [],
+                "checks": [
+                    {
+                        "id": "f407fa50fc17544f8abc6601a706cb44",
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Get Subscription Analytics::status is 200"
+                    },
+                    {
+                        "name": "response time < 1500ms",
+                        "path": "::Get Subscription Analytics::response time < 1500ms",
+                        "id": "e1e66aa7bfd0ba639dc42d55ebb349df",
+                        "passes": 168,
+                        "fails": 0
+                    }
+                ]
+            },
+            {
+                "name": "Get Practitioner Overview Analytics",
+                "path": "::Get Practitioner Overview Analytics",
+                "id": "70cfd4d5dc078458b812cfa7d364ff6a",
+                "groups": [],
+                "checks": [
+                    {
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "status is 200",
+                        "path": "::Get Practitioner Overview Analytics::status is 200",
+                        "id": "52b3e097d669826ef65e149873586ac2"
+                    },
+                    {
+                        "name": "response time < 2000ms",
+                        "path": "::Get Practitioner Overview Analytics::response time < 2000ms",
+                        "id": "d365f971e92ce921054906b85b7c70e7",
+                        "passes": 168,
+                        "fails": 0
+                    }
+                ]
+            },
+            {
+                "id": "c88856b24d75729841f9f8960caae519",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Get Accountant Overview Analytics::status is 200",
+                        "id": "e748ee72d26ffff6de7816eb6e3f7935",
+                        "passes": 168,
+                        "fails": 0
+                    },
+                    {
+                        "name": "response time < 2000ms",
+                        "path": "::Get Accountant Overview Analytics::response time < 2000ms",
+                        "id": "b048286a6d235c60b0ef4ea64f5edb8a",
+                        "passes": 168,
+                        "fails": 0
+                    }
+                ],
+                "name": "Get Accountant Overview Analytics",
+                "path": "::Get Accountant Overview Analytics"
+            },
+            {
+                "path": "::Get Billing Dashboard",
+                "id": "fcd122ea84ec43694d698ca10b66ed31",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Get Billing Dashboard::status is 200",
+                        "id": "3707b962581eed639ac46e4ee95933f5",
+                        "passes": 168,
+                        "fails": 0
+                    },
+                    {
+                        "path": "::Get Billing Dashboard::response time < 2000ms",
+                        "id": "37d42f4a4fd7d3051bdf63b846086445",
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "response time < 2000ms"
+                    }
+                ],
+                "name": "Get Billing Dashboard"
+            },
+            {
+                "name": "Get Platform Revenue Analytics",
+                "path": "::Get Platform Revenue Analytics",
+                "id": "d3af74ff707e8ec37b79ab6f35668df6",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Get Platform Revenue Analytics::status is 200",
+                        "id": "80a58162ca8b4a3a67ef6576ec59dbda",
+                        "passes": 168,
+                        "fails": 0
+                    },
+                    {
+                        "path": "::Get Platform Revenue Analytics::response time < 1500ms",
+                        "id": "cb22a6f8c05153dd29c0db6380fa9f00",
+                        "passes": 168,
+                        "fails": 0,
+                        "name": "response time < 1500ms"
+                    }
+                ]
+            },
+            {
+                "id": "374bd5362d2760b2b3a582281675e3a2",
+                "groups": [],
+                "checks": [
+                    {
+                        "name": "status is 200",
+                        "path": "::Get Plan Distribution Analytics::status is 200",
+                        "id": "12c572f4435db5e290b179433feb0d81",
+                        "passes": 168,
+                        "fails": 0
+                    },
+                    {
+                        "fails": 0,
+                        "name": "response time < 1500ms",
+                        "path": "::Get Plan Distribution Analytics::response time < 1500ms",
+                        "id": "0a4183c2aa6c3b7167c2692f049787c8",
+                        "passes": 168
+                    }
+                ],
+                "name": "Get Plan Distribution Analytics",
+                "path": "::Get Plan Distribution Analytics"
+            }
+        ],
+        "checks": []
+    },
+    "options": {
+        "summaryTrendStats": [
+            "avg",
+            "min",
+            "med",
+            "max",
+            "p(90)",
+            "p(95)"
+        ],
+        "summaryTimeUnit": "",
+        "noColor": false
+    },
+    "state": {
+        "isStdOutTTY": true,
+        "isStdErrTTY": true,
+        "testRunDurationMs": 183269.1748
+    }
+}
