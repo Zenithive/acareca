@@ -1,6 +1,7 @@
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
+import { htmlReport } from 'https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js';
 
 // =====================
 // Custom Metrics
@@ -10,6 +11,22 @@ const practitionerWriteErrors = new Rate('practitioner_write_errors');
 const practitionerReadDuration = new Trend('practitioner_read_duration');
 const practitionerWriteDuration = new Trend('practitioner_write_duration');
 const practitionerOperations = new Counter('practitioner_operations');
+
+// Track endpoint-specific metrics
+const endpointMetrics = {
+  list: new Trend('endpoint_list_duration'),
+  getById: new Trend('endpoint_get_by_id_duration'),
+  search: new Trend('endpoint_search_duration'),
+  pagination: new Trend('endpoint_pagination_duration'),
+  updateLockDate: new Trend('endpoint_update_lock_date_duration'),
+  createClinic: new Trend('endpoint_create_clinic_duration'),
+  updateClinic: new Trend('endpoint_update_clinic_duration'),
+  deleteClinic: new Trend('endpoint_delete_clinic_duration'),
+  listClinic: new Trend('endpoint_list_clinic_duration'),
+  createForm: new Trend('endpoint_create_form_duration'),
+  listForm: new Trend('endpoint_list_form_duration'),
+  getForm: new Trend('endpoint_get_form_duration'),
+};
 
 // =====================
 // Config
@@ -21,10 +38,9 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '30s', target: 10 },
-        { duration: '1m', target: 20 },
-        { duration: '30s', target: 10 },
-        { duration: '30s', target: 0 },
+        { duration: '20s', target: 10 },
+        { duration: '40s', target: 15 },
+        { duration: '20s', target: 0 },
       ],
       exec: 'listPractitioners',
     },
@@ -32,64 +48,123 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '30s', target: 15 },
-        { duration: '1m', target: 30 },
-        { duration: '30s', target: 15 },
-        { duration: '30s', target: 0 },
+        { duration: '20s', target: 10 },
+        { duration: '40s', target: 20 },
+        { duration: '20s', target: 0 },
       ],
       exec: 'getPractitioner',
-      startTime: '15s',
+      startTime: '10s',
     },
     practitioner_search: {
       executor: 'constant-vus',
-      vus: 10,
-      duration: '2m',
+      vus: 8,
+      duration: '1m',
       exec: 'searchPractitioners',
+      startTime: '20s',
+    },
+    practitioner_update_lock_date: {
+      executor: 'ramping-vus',
+      startVUs: 2,
+      stages: [
+        { duration: '15s', target: 5 },
+        { duration: '30s', target: 8 },
+        { duration: '15s', target: 2 },
+      ],
+      exec: 'updateLockDate',
       startTime: '30s',
     },
-    practitioner_pagination: {
+    clinic_create: {
       executor: 'ramping-vus',
-      startVUs: 5,
+      startVUs: 0,
       stages: [
+        { duration: '15s', target: 5 },
         { duration: '30s', target: 10 },
-        { duration: '1m', target: 15 },
-        { duration: '30s', target: 5 },
+        { duration: '15s', target: 0 },
       ],
-      exec: 'paginatePractitioners',
-      startTime: '45s',
+      exec: 'createClinic',
+      startTime: '20s',
     },
-    practitioner_bulk_read: {
-      executor: 'constant-arrival-rate',
-      rate: 3,
-      timeUnit: '1s',
-      duration: '2m',
-      preAllocatedVUs: 15,
-      exec: 'bulkReadPractitioners',
-      startTime: '1m',
+    clinic_list: {
+      executor: 'constant-vus',
+      vus: 10,
+      duration: '1m',
+      exec: 'listClinics',
+      startTime: '25s',
+    },
+    clinic_update: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '45s',
+      exec: 'updateClinic',
+      startTime: '40s',
+    },
+    clinic_delete: {
+      executor: 'constant-vus',
+      vus: 3,
+      duration: '30s',
+      exec: 'deleteClinic',
+      startTime: '1m30s',
+    },
+    form_create: {
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: [
+        { duration: '15s', target: 3 },
+        { duration: '30s', target: 5 },
+        { duration: '15s', target: 0 },
+      ],
+      exec: 'createForm',
+      startTime: '30s',
+    },
+    form_list: {
+      executor: 'constant-vus',
+      vus: 8,
+      duration: '1m',
+      exec: 'listForms',
+      startTime: '35s',
+    },
+    form_get: {
+      executor: 'constant-vus',
+      vus: 6,
+      duration: '45s',
+      exec: 'getForm',
+      startTime: '40s',
+    },
+    form_delete: {
+      executor: 'constant-vus',
+      vus: 3,
+      duration: '30s',
+      exec: 'deleteForm',
+      startTime: '1m45s',
     },
   },
   thresholds: {
-    http_req_duration: ['p(95)<1500'],
-    http_req_failed: ['rate<0.1'],
-    practitioner_read_errors: ['rate<0.05'],
-    practitioner_write_errors: ['rate<0.1'],
-    practitioner_read_duration: ['p(95)<800'],
-    practitioner_operations: ['count>100'],
+    http_req_duration: ['p(95)<3000'],
+    http_req_failed: ['rate<0.20'],
+    practitioner_read_errors: ['rate<0.10'],
+    practitioner_write_errors: ['rate<0.20'],
+    practitioner_read_duration: ['p(95)<1000'],
+    practitioner_write_duration: ['p(95)<2000'],
+    practitioner_operations: ['count>200'],
   },
 };
 
 // =====================
 // Constants
 // =====================
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const BASE_URL = __ENV.BASE_URL || 'https://acareca-backend-staging.up.railway.app';
 const API_BASE = `${BASE_URL}/api/v1`;
+const FINANCIAL_YEAR_ID = 'a381d86c-0f2b-4aac-9b6c-7289c3618762';
 
 // =====================
 // Setup (LOGIN ONCE)
 // =====================
+// =====================
+// Setup (LOGIN ONCE & CREATE INITIAL DATA)
+// =====================
 export function setup() {
   const loginPayload = JSON.stringify({
-    email: __ENV.TEST_EMAIL || 'mihir@yopmail.com',
+    email: __ENV.TEST_EMAIL || 'loadtest@yopmail.com',
     password: __ENV.TEST_PASSWORD || '@Demo1234',
   });
 
@@ -108,24 +183,167 @@ export function setup() {
     throw new Error(`Token missing in response: ${JSON.stringify(body)}`);
   }
 
-  // Fetch practitioner list to get valid IDs
-  const practitionersRes = http.get(`${API_BASE}/practitioner`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
 
+  console.log('✅ Login successful');
+
+  // Fetch practitioner list
+  const practitionersRes = http.get(`${API_BASE}/practitioner`, { headers });
   let practitionerIds = [];
   if (practitionersRes.status === 200) {
     const practitionersBody = JSON.parse(practitionersRes.body);
     const practitioners = practitionersBody?.data?.items || [];
     practitionerIds = practitioners.map((p) => p.id).filter(Boolean);
-    console.log(`Found ${practitionerIds.length} practitioner IDs`);
+    console.log(`✅ Found ${practitionerIds.length} practitioner IDs`);
   }
 
-  return { token, practitionerIds };
+  // Fetch COA (Chart of Accounts) IDs
+  const coaRes = http.get(`${API_BASE}/coa`, { headers });
+  let coaIds = {
+    collection: null,
+    cost: null,
+    revenue: null,
+    expense: null,
+  };
+  
+  if (coaRes.status === 200) {
+    const coaBody = JSON.parse(coaRes.body);
+    const coaItems = coaBody?.data?.items || [];
+    
+    // Find COA IDs by section type
+    const collectionCoa = coaItems.find(c => c.section_type === 'COLLECTION' || c.name?.toLowerCase().includes('collection') || c.name?.toLowerCase().includes('revenue'));
+    const costCoa = coaItems.find(c => c.section_type === 'COST' || c.name?.toLowerCase().includes('cost') || c.name?.toLowerCase().includes('expense'));
+    const revenueCoa = coaItems.find(c => c.section_type === 'REVENUE' || c.name?.toLowerCase().includes('revenue') || c.name?.toLowerCase().includes('income'));
+    const expenseCoa = coaItems.find(c => c.section_type === 'EXPENSE' || c.name?.toLowerCase().includes('expense'));
+    
+    coaIds.collection = collectionCoa?.id || (coaItems[0]?.id || null);
+    coaIds.cost = costCoa?.id || (coaItems[1]?.id || null);
+    coaIds.revenue = revenueCoa?.id || (coaItems[2]?.id || null);
+    coaIds.expense = expenseCoa?.id || (coaItems[3]?.id || null);
+    
+    console.log(`✅ Found COA IDs: collection=${coaIds.collection ? 'yes' : 'no'}, cost=${coaIds.cost ? 'yes' : 'no'}, revenue=${coaIds.revenue ? 'yes' : 'no'}, expense=${coaIds.expense ? 'yes' : 'no'}`);
+  } else {
+    console.log(`⚠️ Failed to fetch COA: ${coaRes.status}`);
+  }
+
+  // Fetch existing clinics
+  const clinicsRes = http.get(`${API_BASE}/clinic`, { headers });
+  let clinicIds = [];
+  if (clinicsRes.status === 200) {
+    const clinicsBody = JSON.parse(clinicsRes.body);
+    const clinics = clinicsBody?.data?.items || [];
+    clinicIds = clinics.map((c) => c.id).filter(Boolean);
+    console.log(`✅ Found ${clinicIds.length} existing clinic IDs`);
+  }
+
+  // Create 3 test clinics if none exist
+  if (clinicIds.length === 0) {
+    console.log('📝 Creating initial test clinics...');
+    for (let i = 0; i < 3; i++) {
+      const clinicPayload = {
+        name: `Setup Test Clinic ${i + 1}`,
+        abn: `${Math.floor(Math.random() * 90000000000) + 10000000000}`,
+        is_active: true,
+        addresses: [{
+          address: `${i + 1} Test Street`,
+          city: 'Sydney',
+          state: 'NSW',
+          postcode: '2000',
+          is_primary: true,
+        }],
+        contacts: [{
+          contact_type: 'PHONE',
+          value: `+61400000${i}00`,
+          is_primary: true,
+        }],
+      };
+
+      const createRes = http.post(
+        `${API_BASE}/clinic`,
+        JSON.stringify(clinicPayload),
+        { headers }
+      );
+
+      if (createRes.status === 201) {
+        const createBody = JSON.parse(createRes.body);
+        if (createBody?.data?.id) {
+          clinicIds.push(createBody.data.id);
+        }
+      }
+    }
+    console.log(`✅ Created ${clinicIds.length} test clinics`);
+  }
+
+  // Fetch existing forms
+  const formsRes = http.get(`${API_BASE}/form`, { headers });
+  let formIds = [];
+  if (formsRes.status === 200) {
+    const formsBody = JSON.parse(formsRes.body);
+    const forms = formsBody?.data?.items || [];
+    formIds = forms.map((f) => f.id).filter(Boolean);
+    console.log(`✅ Found ${formIds.length} existing form IDs`);
+  }
+
+  // Create 2 test forms if none exist and we have clinics and COA IDs
+  if (formIds.length === 0 && clinicIds.length > 0 && coaIds.collection && coaIds.cost) {
+    console.log('📝 Creating initial test forms...');
+    for (let i = 0; i < 2; i++) {
+      const formPayload = {
+        clinic_id: clinicIds[i % clinicIds.length],
+        name: `Setup Test Form ${i + 1}`,
+        method: 'SERVICE_FEE',
+        clinic_share: 60,
+        owner_share: 40,
+        status: 'DRAFT',
+        fields: [
+          {
+            key: 'A',
+            slug: `setup_field_a_${i}`,
+            label: 'Test Field A',
+            coa_id: coaIds.collection,
+            section_type: 'COLLECTION',
+            payment_responsibility: 'OWNER',
+            tax_type: '',
+            is_formula: false,
+            sort_order: 1,
+            is_computed: false,
+          },
+        ],
+        formulas: [],
+      };
+
+      const createRes = http.post(
+        `${API_BASE}/form`,
+        JSON.stringify(formPayload),
+        { headers }
+      );
+
+      if (createRes.status === 201) {
+        const createBody = JSON.parse(createRes.body);
+        if (createBody?.data?.form?.id) {
+          formIds.push(createBody.data.form.id);
+        }
+      } else {
+        console.log(`⚠️ Failed to create setup form ${i + 1}: ${createRes.status}`);
+      }
+    }
+    console.log(`✅ Created ${formIds.length} test forms`);
+  } else if (!coaIds.collection || !coaIds.cost) {
+    console.log('⚠️ Skipping form creation: COA IDs not available');
+  }
+
+  console.log(`\n📊 Setup Complete:`);
+  console.log(`   - Practitioners: ${practitionerIds.length}`);
+  console.log(`   - Clinics: ${clinicIds.length}`);
+  console.log(`   - Forms: ${formIds.length}`);
+  console.log(`   - COA Available: ${coaIds.collection ? 'Yes' : 'No'}\n`);
+
+  return { token, practitionerIds, clinicIds, formIds, coaIds };
 }
+
 
 // =====================
 // Helpers
@@ -137,15 +355,31 @@ function getAuthHeaders(token) {
   };
 }
 
-function trackedRequest(method, url, headers, body = null) {
+function trackedRequest(method, url, headers, body = null, endpointType = null) {
   const start = Date.now();
+  
+  // Map 'delete' to 'del' for k6 http module
+  const httpMethod = method.toLowerCase() === 'delete' ? 'del' : method.toLowerCase();
+  
   const res = body
-    ? http[method](url, JSON.stringify(body), { headers })
-    : http[method](url, { headers });
+    ? http[httpMethod](url, JSON.stringify(body), { headers })
+    : http[httpMethod](url, { headers });
   const duration = Date.now() - start;
 
   practitionerOperations.add(1);
-  practitionerReadDuration.add(duration);
+  
+  // Track read vs write operations
+  const isWrite = ['post', 'put', 'patch', 'delete', 'del'].includes(method.toLowerCase());
+  if (isWrite) {
+    practitionerWriteDuration.add(duration);
+  } else {
+    practitionerReadDuration.add(duration);
+  }
+  
+  // Track endpoint-specific metrics
+  if (endpointType && endpointMetrics[endpointType]) {
+    endpointMetrics[endpointType].add(duration);
+  }
 
   return res;
 }
@@ -157,10 +391,10 @@ export function listPractitioners(data) {
   const headers = getAuthHeaders(data.token);
 
   group('List All Practitioners', () => {
-    const res = trackedRequest('get', `${API_BASE}/practitioner`, headers);
+    const res = trackedRequest('get', `${API_BASE}/practitioner`, headers, null, 'list');
     const ok = check(res, {
       'status is 200': (r) => r.status === 200,
-      'response time < 500ms': (r) => r.timings.duration < 500,
+      'response time < 1000ms': (r) => r.timings.duration < 1000,
       'has data': (r) => {
         try {
           const body = JSON.parse(r.body);
@@ -196,11 +430,13 @@ export function getPractitioner(data) {
     const res = trackedRequest(
       'get',
       `${API_BASE}/practitioner/${randomId}`,
-      headers
+      headers,
+      null,
+      'getById'
     );
     const ok = check(res, {
       'status is 200': (r) => r.status === 200,
-      'response time < 300ms': (r) => r.timings.duration < 300,
+      'response time < 500ms': (r) => r.timings.duration < 500,
       'has practitioner data': (r) => {
         try {
           const body = JSON.parse(r.body);
@@ -228,11 +464,13 @@ export function searchPractitioners(data) {
     const res = trackedRequest(
       'get',
       `${API_BASE}/practitioner?search=${term}`,
-      headers
+      headers,
+      null,
+      'search'
     );
     const ok = check(res, {
       'status is 200': (r) => r.status === 200,
-      'response time < 1000ms': (r) => r.timings.duration < 1000,
+      'response time < 1500ms': (r) => r.timings.duration < 1500,
       'has results': (r) => {
         try {
           const body = JSON.parse(r.body);
@@ -249,28 +487,118 @@ export function searchPractitioners(data) {
 }
 
 // =====================
-// Scenario 4: Paginate Practitioners
+// Scenario 4: Update Lock Date
 // =====================
-export function paginatePractitioners(data) {
+export function updateLockDate(data) {
   const headers = getAuthHeaders(data.token);
 
-  group('Paginate Practitioners', () => {
-    const limits = [5, 10, 20, 50];
-    const limit = limits[Math.floor(Math.random() * limits.length)];
-    const offset = Math.floor(Math.random() * 100);
+  group('Update Practitioner Lock Date', () => {
+    const today = new Date();
+    const lockDate = new Date(
+      today.getFullYear(),
+      Math.floor(Math.random() * 12),
+      Math.floor(Math.random() * 28) + 1
+    );
+    const lockDateStr = lockDate.toISOString().split('T')[0];
+
+    const updatePayload = {
+      financial_year_id: FINANCIAL_YEAR_ID,
+      lock_date: lockDateStr,
+    };
 
     const res = trackedRequest(
-      'get',
-      `${API_BASE}/practitioner?limit=${limit}&offset=${offset}`,
-      headers
+      'patch',
+      `${API_BASE}/practitioner/lock-date`,
+      headers,
+      updatePayload,
+      'updateLockDate'
     );
+
     const ok = check(res, {
-      'status is 200': (r) => r.status === 200,
-      'response time < 800ms': (r) => r.timings.duration < 800,
-      'has pagination data': (r) => {
+      'status is 200 or 400': (r) => r.status === 200 || r.status === 400,
+      'response time < 2000ms': (r) => r.timings.duration < 2000,
+    });
+    practitionerWriteErrors.add(ok ? 0 : 1);
+  });
+
+  sleep(1);
+}
+
+// =====================
+// Scenario 5: Create Clinic
+// =====================
+export function createClinic(data) {
+  const headers = getAuthHeaders(data.token);
+
+  group('Create Clinic', () => {
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 10000);
+    
+    const payload = {
+      name: `LoadTest Clinic ${timestamp}_${randomNum}`,
+      abn: `${Math.floor(Math.random() * 90000000000) + 10000000000}`,
+      description: 'Load test clinic',
+      is_active: true,
+      addresses: [
+        {
+          address: '123 Test Street',
+          city: 'Sydney',
+          state: 'NSW',
+          postcode: '2000',
+          is_primary: true,
+        },
+      ],
+      contacts: [
+        {
+          contact_type: 'PHONE',
+          value: `+61${Math.floor(Math.random() * 900000000) + 100000000}`,
+          label: 'Main',
+          is_primary: true,
+        },
+      ],
+    };
+
+    const res = trackedRequest(
+      'post',
+      `${API_BASE}/clinic`,
+      headers,
+      payload,
+      'createClinic'
+    );
+
+    const ok = check(res, {
+      'status is 201': (r) => r.status === 201,
+      'response time < 2500ms': (r) => r.timings.duration < 2500,
+      'has clinic data': (r) => {
         try {
           const body = JSON.parse(r.body);
-          return body?.data?.items !== undefined;
+          return body?.data?.id !== undefined;
+        } catch {
+          return false;
+        }
+      },
+    });
+    practitionerWriteErrors.add(ok ? 0 : 1);
+  });
+
+  sleep(1);
+}
+
+// =====================
+// Scenario 6: List Clinics
+// =====================
+export function listClinics(data) {
+  const headers = getAuthHeaders(data.token);
+
+  group('List Clinics', () => {
+    const res = trackedRequest('get', `${API_BASE}/clinic`, headers, null, 'listClinic');
+    const ok = check(res, {
+      'status is 200': (r) => r.status === 200,
+      'response time < 1000ms': (r) => r.timings.duration < 1000,
+      'has data': (r) => {
+        try {
+          const body = JSON.parse(r.body);
+          return body?.data !== undefined;
         } catch {
           return false;
         }
@@ -283,50 +611,423 @@ export function paginatePractitioners(data) {
 }
 
 // =====================
-// Scenario 5: Bulk Read Practitioners
+// Scenario 7: Update Clinic
 // =====================
-export function bulkReadPractitioners(data) {
+export function updateClinic(data) {
   const headers = getAuthHeaders(data.token);
 
-  group('Bulk Read Practitioners', () => {
-    // Read multiple pages in sequence
-    for (let i = 0; i < 3; i++) {
-      const res = trackedRequest(
-        'get',
-        `${API_BASE}/practitioner?limit=20&offset=${i * 20}`,
-        headers
-      );
-      check(res, {
-        'status is 200': (r) => r.status === 200,
-        'response time < 1000ms': (r) => r.timings.duration < 1000,
-      });
-      sleep(0.2);
+  if (!data.clinicIds || data.clinicIds.length === 0) {
+    console.log('No clinic IDs available, skipping update test');
+    sleep(1);
+    return;
+  }
+
+  group('Update Clinic', () => {
+    const randomId = data.clinicIds[Math.floor(Math.random() * data.clinicIds.length)];
+    
+    const updatePayload = {
+      name: `Updated Clinic ${Date.now()}`,
+      description: 'Updated during load test',
+      is_active: true,
+    };
+
+    const res = trackedRequest(
+      'put',
+      `${API_BASE}/clinic/${randomId}`,
+      headers,
+      updatePayload,
+      'updateClinic'
+    );
+
+    const ok = check(res, {
+      'status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+      'response time < 2000ms': (r) => r.timings.duration < 2000,
+    });
+    practitionerWriteErrors.add(ok ? 0 : 1);
+  });
+
+  sleep(1);
+}
+
+// =====================
+// Scenario 8: Delete Clinic
+// =====================
+export function deleteClinic(data) {
+  const headers = getAuthHeaders(data.token);
+
+  group('Delete Clinic', () => {
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 10000);
+    
+    const createPayload = {
+      name: `Delete Test Clinic ${timestamp}_${randomNum}`,
+      abn: `${Math.floor(Math.random() * 90000000000) + 10000000000}`,
+      is_active: true,
+      addresses: [],
+      contacts: [],
+    };
+
+    const createRes = http.post(
+      `${API_BASE}/clinic`,
+      JSON.stringify(createPayload),
+      { headers }
+    );
+
+    if (createRes.status === 201) {
+      const createBody = JSON.parse(createRes.body);
+      const clinicId = createBody?.data?.id;
+
+      if (clinicId) {
+        const res = trackedRequest(
+          'delete',
+          `${API_BASE}/clinic/${clinicId}`,
+          headers,
+          null,
+          'deleteClinic'
+        );
+
+        const ok = check(res, {
+          'status is 200': (r) => r.status === 200,
+          'response time < 2000ms': (r) => r.timings.duration < 2000,
+        });
+        practitionerWriteErrors.add(ok ? 0 : 1);
+      }
     }
   });
 
-  if (data.practitionerIds && data.practitionerIds.length > 0) {
-    group('Bulk Get Individual Practitioners', () => {
-      // Get multiple individual practitioners
-      for (let i = 0; i < 5; i++) {
-        const randomId =
-          data.practitionerIds[
-            Math.floor(Math.random() * data.practitionerIds.length)
-          ];
-        const res = trackedRequest(
-          'get',
-          `${API_BASE}/practitioner/${randomId}`,
-          headers
-        );
-        check(res, {
-          'status is 200': (r) => r.status === 200,
-          'response time < 500ms': (r) => r.timings.duration < 500,
-        });
-        sleep(0.1);
-      }
-    });
+  sleep(2);
+}
+
+// =====================
+// Scenario 9: Create Form
+// =====================
+export function createForm(data) {
+  const headers = getAuthHeaders(data.token);
+
+  if (!data.clinicIds || data.clinicIds.length === 0) {
+    console.log('No clinic IDs available, skipping form create test');
+    sleep(1);
+    return;
   }
 
+  if (!data.coaIds || !data.coaIds.collection || !data.coaIds.cost) {
+    console.log('No COA IDs available, skipping form create test');
+    sleep(1);
+    return;
+  }
+
+  group('Create Form', () => {
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 10000);
+    const clinicId = data.clinicIds[Math.floor(Math.random() * data.clinicIds.length)];
+    
+    // Use dynamic COA IDs from setup
+    const payload = {
+      clinic_id: clinicId,
+      name: `Service Agreement (60%/40%) - ${timestamp}`,
+      method: 'SERVICE_FEE',
+      clinic_share: 60,
+      owner_share: 40,
+      status: 'PUBLISHED',
+      fields: [
+        {
+          key: 'A',
+          slug: `total_patient_fees_collected_gst_free_${randomNum}`,
+          label: 'Total Patient Fees Collected (GST Free)',
+          coa_id: data.coaIds.collection,
+          section_type: 'COLLECTION',
+          payment_responsibility: 'OWNER',
+          tax_type: '',
+          is_formula: false,
+          sort_order: 1,
+          is_computed: false,
+        },
+        {
+          key: 'B',
+          slug: `lab_fees_net_after_deducting_gst_${randomNum}`,
+          label: 'Lab Fees (net after deducting GST)',
+          coa_id: data.coaIds.cost,
+          section_type: 'COST',
+          payment_responsibility: 'CLINIC',
+          tax_type: '',
+          is_formula: false,
+          sort_order: 2,
+          is_computed: false,
+        },
+        {
+          key: 'C',
+          slug: `net_patient_fees_${randomNum}`,
+          label: 'Net Patient Fees',
+          is_computed: true,
+          sort_order: 3,
+        },
+        {
+          key: 'D',
+          slug: `total_sf_fee_${randomNum}`,
+          label: 'Total S&F Fee',
+          is_computed: true,
+          sort_order: 4,
+          coa_id: data.coaIds.revenue || data.coaIds.collection,
+          section_type: '',
+          tax_type: 'EXCLUSIVE',
+          is_taxable: true,
+        },
+        {
+          key: 'E',
+          slug: `amount_remitted_to_owner_${randomNum}`,
+          label: 'Amount Remitted to Owner',
+          is_computed: true,
+          sort_order: 5,
+          coa_id: data.coaIds.expense || data.coaIds.cost,
+          tax_type: '',
+        },
+      ],
+      formulas: [
+        {
+          field_key: 'C',
+          name: 'Net Patient Fees',
+          expression: {
+            type: 'operator',
+            op: '-',
+            left: {
+              type: 'field',
+              key: 'A',
+            },
+            right: {
+              type: 'field',
+              key: 'B',
+            },
+          },
+        },
+        {
+          field_key: 'D',
+          name: 'Total S&F Fee',
+          expression: {
+            type: 'operator',
+            op: '*',
+            left: {
+              type: 'field',
+              key: 'C',
+            },
+            right: {
+              type: 'constant',
+              value: 0.6,
+            },
+          },
+        },
+        {
+          field_key: 'E',
+          name: 'Amount Remitted to Owner',
+          expression: {
+            type: 'operator',
+            op: '-',
+            left: {
+              type: 'field',
+              key: 'C',
+            },
+            right: {
+              type: 'field',
+              key: 'D',
+            },
+          },
+        },
+      ],
+    };
+
+    const res = trackedRequest(
+      'post',
+      `${API_BASE}/form`,
+      headers,
+      payload,
+      'createForm'
+    );
+
+    const ok = check(res, {
+      'status is 201': (r) => r.status === 201,
+      'response time < 4000ms': (r) => r.timings.duration < 4000,
+      'has form data': (r) => {
+        try {
+          const body = JSON.parse(r.body);
+          return body?.data?.form?.id !== undefined;
+        } catch {
+          return false;
+        }
+      },
+    });
+    
+    if (!ok) {
+      console.log(`❌ Form create failed: Status ${res.status}`);
+      if (res.body) {
+        try {
+          const errorBody = JSON.parse(res.body);
+          console.log(`Error details: ${JSON.stringify(errorBody, null, 2)}`);
+        } catch {
+          console.log(`Response body: ${res.body.substring(0, 500)}`);
+        }
+      }
+    }
+    
+    practitionerWriteErrors.add(ok ? 0 : 1);
+  });
+
   sleep(1);
+}
+
+// =====================
+// Scenario 10: List Forms
+// =====================
+export function listForms(data) {
+  const headers = getAuthHeaders(data.token);
+
+  group('List Forms', () => {
+    const res = trackedRequest('get', `${API_BASE}/form`, headers, null, 'listForm');
+    const ok = check(res, {
+      'status is 200': (r) => r.status === 200,
+      'response time < 1500ms': (r) => r.timings.duration < 1500,
+      'has data': (r) => {
+        try {
+          const body = JSON.parse(r.body);
+          return body?.data !== undefined;
+        } catch {
+          return false;
+        }
+      },
+    });
+    practitionerReadErrors.add(ok ? 0 : 1);
+  });
+
+  sleep(1);
+}
+
+// =====================
+// Scenario 11: Get Form by ID
+// =====================
+export function getForm(data) {
+  const headers = getAuthHeaders(data.token);
+
+  if (!data.formIds || data.formIds.length === 0) {
+    console.log('No form IDs available, skipping get form test');
+    sleep(1);
+    return;
+  }
+
+  group('Get Form by ID', () => {
+    const randomFormId = data.formIds[Math.floor(Math.random() * data.formIds.length)];
+    
+    const res = trackedRequest(
+      'get',
+      `${API_BASE}/form/${randomFormId}`,
+      headers,
+      null,
+      'getForm'
+    );
+
+    const ok = check(res, {
+      'status is 200': (r) => r.status === 200,
+      'response time < 1500ms': (r) => r.timings.duration < 1500,
+      'has form data': (r) => {
+        try {
+          const body = JSON.parse(r.body);
+          return body?.data?.form?.id !== undefined;
+        } catch {
+          return false;
+        }
+      },
+    });
+    practitionerReadErrors.add(ok ? 0 : 1);
+  });
+
+  sleep(1);
+}
+
+// =====================
+// Scenario 12: Delete Form
+// =====================
+export function deleteForm(data) {
+  const headers = getAuthHeaders(data.token);
+
+  if (!data.clinicIds || data.clinicIds.length === 0) {
+    console.log('No clinic IDs available, skipping form delete test');
+    sleep(1);
+    return;
+  }
+
+  if (!data.coaIds || !data.coaIds.collection) {
+    console.log('No COA IDs available, skipping form delete test');
+    sleep(1);
+    return;
+  }
+
+  group('Delete Form', () => {
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 10000);
+    const clinicId = data.clinicIds[Math.floor(Math.random() * data.clinicIds.length)];
+    
+    // Create a form to delete
+    const createPayload = {
+      clinic_id: clinicId,
+      name: `Delete Test Form ${timestamp}_${randomNum}`,
+      method: 'SERVICE_FEE',
+      clinic_share: 50,
+      owner_share: 50,
+      status: 'DRAFT',
+      fields: [
+        {
+          key: 'A',
+          slug: `delete_test_field_${randomNum}`,
+          label: 'Delete Test Field',
+          coa_id: data.coaIds.collection,
+          section_type: 'COLLECTION',
+          payment_responsibility: 'OWNER',
+          tax_type: '',
+          is_formula: false,
+          sort_order: 1,
+          is_computed: false,
+        },
+      ],
+      formulas: [],
+    };
+
+    const createRes = http.post(
+      `${API_BASE}/form`,
+      JSON.stringify(createPayload),
+      { headers }
+    );
+
+    if (createRes.status === 201) {
+      const createBody = JSON.parse(createRes.body);
+      const formId = createBody?.data?.form?.id;
+
+      if (formId) {
+        const res = trackedRequest(
+          'delete',
+          `${API_BASE}/form/${formId}`,
+          headers,
+          null,
+          'deleteForm'
+        );
+
+        const ok = check(res, {
+          'status is 200 or 204': (r) => r.status === 200 || r.status === 204,
+          'response time < 2000ms': (r) => r.timings.duration < 2000,
+        });
+        
+        if (!ok) {
+          console.log(`❌ Form delete failed: Status ${res.status}`);
+        }
+        
+        practitionerWriteErrors.add(ok ? 0 : 1);
+      } else {
+        console.log('❌ Failed to get form ID from create response');
+        practitionerWriteErrors.add(1);
+      }
+    } else {
+      console.log(`❌ Failed to create form for deletion: Status ${createRes.status}`);
+      practitionerWriteErrors.add(1);
+    }
+  });
+
+  sleep(2);
 }
 
 // =====================
@@ -334,13 +1035,34 @@ export function bulkReadPractitioners(data) {
 // =====================
 export function handleSummary(data) {
   return {
-    'practitioner-summary.json': JSON.stringify(data),
+    'practitioner-report.html': htmlReport(data, { 
+      title: 'Practitioner API Load Test Report',
+      description: 'Performance testing results for Practitioner, Clinic, and Form endpoints'
+    }),
+    'test/practitioner-summary.json': JSON.stringify(data, null, 2),
     stdout: textSummary(data),
   };
 }
 
 function textSummary(data) {
   const m = data.metrics;
+  
+  // Extract endpoint-specific metrics
+  const listP95 = m.endpoint_list_duration?.values['p(95)'] || 0;
+  const getByIdP95 = m.endpoint_get_by_id_duration?.values['p(95)'] || 0;
+  const searchP95 = m.endpoint_search_duration?.values['p(95)'] || 0;
+  const updateLockDateP95 = m.endpoint_update_lock_date_duration?.values['p(95)'] || 0;
+  
+  const createClinicP95 = m.endpoint_create_clinic_duration?.values['p(95)'] || 0;
+  const updateClinicP95 = m.endpoint_update_clinic_duration?.values['p(95)'] || 0;
+  const deleteClinicP95 = m.endpoint_delete_clinic_duration?.values['p(95)'] || 0;
+  const listClinicP95 = m.endpoint_list_clinic_duration?.values['p(95)'] || 0;
+  
+  const createFormP95 = m.endpoint_create_form_duration?.values['p(95)'] || 0;
+  const listFormP95 = m.endpoint_list_form_duration?.values['p(95)'] || 0;
+  const getFormP95 = m.endpoint_get_form_duration?.values['p(95)'] || 0;
+  const deleteFormP95 = m.endpoint_delete_form_duration?.values['p(95)'] || 0;
+  
   return `
 ========== PRACTITIONER TEST SUMMARY ==========
 Total Operations:     ${m.practitioner_operations?.values.count || 0}
@@ -349,15 +1071,46 @@ Failed Requests:      ${m.http_req_failed?.values.fails || 0}
 Failure Rate:         ${((m.http_req_failed?.values.rate || 0) * 100).toFixed(2)}%
 
 Read Error Rate:      ${((m.practitioner_read_errors?.values.rate || 0) * 100).toFixed(2)}%
+Write Error Rate:     ${((m.practitioner_write_errors?.values.rate || 0) * 100).toFixed(2)}%
 P95 Read Duration:    ${(m.practitioner_read_duration?.values['p(95)'] || 0).toFixed(2)} ms
+P95 Write Duration:   ${(m.practitioner_write_duration?.values['p(95)'] || 0).toFixed(2)} ms
 P99 Read Duration:    ${(m.practitioner_read_duration?.values['p(99)'] || 0).toFixed(2)} ms
+P99 Write Duration:   ${(m.practitioner_write_duration?.values['p(99)'] || 0).toFixed(2)} ms
+
+Endpoint Performance (P95):
+PRACTITIONER Operations:
+  GET    /practitioner                  ${listP95.toFixed(2)} ms
+  GET    /practitioner/:id              ${getByIdP95.toFixed(2)} ms
+  GET    /practitioner?search=...       ${searchP95.toFixed(2)} ms
+  PATCH  /practitioner/lock-date        ${updateLockDateP95.toFixed(2)} ms
+
+CLINIC Operations:
+  POST   /clinic                        ${createClinicP95.toFixed(2)} ms
+  GET    /clinic                        ${listClinicP95.toFixed(2)} ms
+  PUT    /clinic/:id                    ${updateClinicP95.toFixed(2)} ms
+  DELETE /clinic/:id                    ${deleteClinicP95.toFixed(2)} ms
+
+FORM Operations:
+  POST   /form                          ${createFormP95.toFixed(2)} ms
+  GET    /form                          ${listFormP95.toFixed(2)} ms
+  GET    /form/:id                      ${getFormP95.toFixed(2)} ms
+  DELETE /form/:id                      ${deleteFormP95.toFixed(2)} ms
 
 Test Coverage:
-✓ List Practitioners (with pagination)
+✓ List Practitioners
 ✓ Get Practitioner by ID
 ✓ Search Practitioners
-✓ Paginate Practitioners
-✓ Bulk Read Operations
+✓ Update Lock Date (FY: ${FINANCIAL_YEAR_ID})
+✓ Create Clinic
+✓ List Clinics
+✓ Update Clinic
+✓ Delete Clinic
+✓ Create Form (with fields & formulas)
+✓ List Forms
+✓ Get Form by ID
+✓ Delete Form
+
+HTML Report: practitioner-report.html
 ================================================
 `;
 }

@@ -48,3 +48,12 @@ cleanup-practitioner-dry:
 		exit 1; \
 	fi
 	go run scripts/cleanup_practitioner.go -practitioner-id $(PRACTITIONER_ID) -dry-run
+
+k6-practitioner:
+	k6 run test/scenarios/practitioner-test.js
+
+k6-admin:
+	k6 run test/scenarios/admin-test.js
+
+k6-db:
+	k6 run test/scenarios/db-test.js
