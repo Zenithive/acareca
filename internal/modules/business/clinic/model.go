@@ -65,7 +65,7 @@ type RqCreateClinic struct {
 	ABN            *string           `json:"abn" validate:"omitempty,len=11"`
 	Description    *string           `json:"description"`
 	IsActive       *bool             `json:"is_active"`
-	Addresses      []RqClinicAddress `json:"addresses"`
+	Address        *RqClinicAddress  `json:"address"`
 	Contacts       []RqClinicContact `json:"contacts"`
 }
 
@@ -98,7 +98,7 @@ type RqUpdateClinic struct {
 	ABN             *string           `json:"abn" validate:"omitempty,len=11"`
 	Description     *string           `json:"description"`
 	IsActive        *bool             `json:"is_active"`
-	Addresses       []RqUpdateAddress `json:"addresses"`
+	Address         *RqUpdateAddress  `json:"address"`
 	Contacts        []RqUpdateContact `json:"contacts"`
 	FinancialYearID *uuid.UUID        `json:"financial_year_id"`
 	LockDate        *time.Time        `json:"lock_date"`
@@ -139,7 +139,7 @@ type RsClinic struct {
 	ABN               *string              `json:"abn,omitempty"`
 	Description       *string              `json:"description,omitempty"`
 	IsActive          bool                 `json:"is_active"`
-	Addresses         []RsClinicAddress    `json:"addresses,omitempty"`
+	Address           *RsClinicAddress     `json:"address,omitempty"`
 	Contacts          []RsClinicContact    `json:"contacts,omitempty"`
 	FinancialSettings *RsFinancialSettings `json:"financial_settings,omitempty"`
 	CreatedAt         time.Time            `json:"created_at"`

@@ -107,20 +107,21 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			return fmt.Errorf("create financial settings: %w", err)
 		}
 
-		// Create Addresses
-		var addresses []RsClinicAddress
-		for _, addr := range req.Addresses {
-			isPrimary := false
-			if addr.IsPrimary != nil {
-				isPrimary = *addr.IsPrimary
+		// Create Address
+		var rsAddress *RsClinicAddress
+		if req.Address != nil {
+			isPrimary := true // Default to true for singular address
+			if req.Address.IsPrimary != nil {
+				isPrimary = *req.Address.IsPrimary
 			}
 
 			clinicAddr := &ClinicAddress{
+				ID:        uuid.New(),
 				ClinicID:  created.ID,
-				Address:   addr.Address,
-				City:      addr.City,
-				State:     addr.State,
-				Postcode:  addr.Postcode,
+				Address:   req.Address.Address,
+				City:      req.Address.City,
+				State:     req.Address.State,
+				Postcode:  req.Address.Postcode,
 				IsPrimary: isPrimary,
 			}
 
@@ -129,14 +130,14 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 				return fmt.Errorf("create address: %w", err)
 			}
 
-			addresses = append(addresses, RsClinicAddress{
+			rsAddress = &RsClinicAddress{
 				ID:        createdAddr.ID,
 				Address:   createdAddr.Address,
 				City:      createdAddr.City,
 				State:     createdAddr.State,
 				Postcode:  createdAddr.Postcode,
 				IsPrimary: createdAddr.IsPrimary,
-			})
+			}
 		}
 
 		// Create Contacts
@@ -179,7 +180,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			ABN:            created.ABN,
 			Description:    created.Description,
 			IsActive:       created.IsActive,
-			Addresses:      addresses,
+			Address:        rsAddress,
 			Contacts:       contacts,
 			FinancialSettings: &RsFinancialSettings{
 				ID:              createdFS.ID,
@@ -265,13 +266,6 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
-	// 1. CRITICAL STEP: Convert the Auth User ID to the Practitioner ID
-	// Based on your Beekeeper screenshot, the table stores Profile IDs, not Auth IDs.
-	/*prac, err := s.practitionerRepo.GetByUserID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("resolve practitioner profile: %w", err)
-	}*/
-
 	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
 	if err != nil {
 		return nil, err
@@ -283,9 +277,17 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 		if addrErr != nil {
 			return nil, addrErr
 		}
-		rsAddresses := make([]RsClinicAddress, len(addresses))
-		for i, addr := range addresses {
-			rsAddresses[i] = RsClinicAddress{
+		var rsAddress *RsClinicAddress
+		if len(addresses) > 0 {
+			// Find the primary address, or default to the first one
+			addr := addresses[0]
+			for _, a := range addresses {
+				if a.IsPrimary {
+					addr = a
+					break
+				}
+			}
+			rsAddress = &RsClinicAddress{
 				ID:        addr.ID,
 				Address:   addr.Address,
 				City:      addr.City,
@@ -332,7 +334,7 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
 			IsActive:          clinic.IsActive,
-			Addresses:         rsAddresses,
+			Address:           rsAddress,
 			Contacts:          rsContacts,
 			FinancialSettings: rsFinancialSettings,
 			CreatedAt:         clinic.CreatedAt,
@@ -402,16 +404,24 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		return nil, err
 	}
 
-	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-	for _, addr := range addresses {
-		rsAddresses = append(rsAddresses, RsClinicAddress{
+	var rsAddress *RsClinicAddress
+	if len(addresses) > 0 {
+		// Default to first, but try to find the marked primary
+		addr := addresses[0]
+		for _, a := range addresses {
+			if a.IsPrimary {
+				addr = a
+				break
+			}
+		}
+		rsAddress = &RsClinicAddress{
 			ID:        addr.ID,
 			Address:   addr.Address,
 			City:      addr.City,
 			State:     addr.State,
 			Postcode:  addr.Postcode,
 			IsPrimary: addr.IsPrimary,
-		})
+		}
 	}
 
 	rsContacts := make([]RsClinicContact, 0, len(contacts))
@@ -443,7 +453,7 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
 		IsActive:          clinic.IsActive,
-		Addresses:         rsAddresses,
+		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
 		CreatedAt:         clinic.CreatedAt,
@@ -592,99 +602,84 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 			return fmt.Errorf("update clinic: %w", err)
 		}
 
-		// Update addresses
-		for _, addr := range req.Addresses {
-			if addr.ID != nil {
-				existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *addr.ID)
-				if err != nil {
-					return fmt.Errorf("get address by id: %w", err)
-				}
-
-				if existingAddr.ClinicID != clinic.ID {
-					return fmt.Errorf("address %s does not belong to clinic %s", addr.ID.String(), clinic.ID.String())
-				}
-
-				if addr.Address != nil {
-					existingAddr.Address = addr.Address
-				}
-				if addr.City != nil {
-					existingAddr.City = addr.City
-				}
-				if addr.State != nil {
-					existingAddr.State = addr.State
-				}
-				if addr.Postcode != nil {
-					existingAddr.Postcode = addr.Postcode
-				}
-				if addr.IsPrimary != nil {
-					existingAddr.IsPrimary = *addr.IsPrimary
-					if *addr.IsPrimary {
-						if err := s.repo.UnsetPrimaryAddressTx(ctx, tx, clinic.ID, *addr.ID); err != nil {
-							return fmt.Errorf("unset primary address: %w", err)
-						}
+		// Update address
+		if req.Address != nil {
+			if req.Address.ID != nil && *req.Address.ID != uuid.Nil {
+				// UPDATE EXISTING
+				existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *req.Address.ID)
+				if err == nil && existingAddr.ClinicID == clinic.ID {
+					if req.Address.Address != nil {
+						existingAddr.Address = req.Address.Address
 					}
-				}
+					if req.Address.City != nil {
+						existingAddr.City = req.Address.City
+					}
+					if req.Address.State != nil {
+						existingAddr.State = req.Address.State
+					}
+					if req.Address.Postcode != nil {
+						existingAddr.Postcode = req.Address.Postcode
+					}
+					existingAddr.IsPrimary = true // Usually single address is primary
 
-				if err := s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr); err != nil {
-					return fmt.Errorf("update address: %w", err)
+					_ = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
 				}
+			} else {
+				// CREATE NEW
+				newAddr := &ClinicAddress{
+					ID:        uuid.New(),
+					ClinicID:  clinic.ID,
+					Address:   req.Address.Address,
+					City:      req.Address.City,
+					State:     req.Address.State,
+					Postcode:  req.Address.Postcode,
+					IsPrimary: true,
+				}
+				_, _ = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
 			}
+		} else {
+			// ABSENCE = DELETE
+			_ = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
 		}
 
 		// Update contacts
+		existingContacts, _ := s.repo.GetClinicContactsTx(ctx, tx, clinic.ID)
+		incomingIDs := make(map[uuid.UUID]bool)
+
 		for _, cont := range req.Contacts {
-			if cont.ID != nil {
-				existingContact, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
-				if err != nil {
-					return fmt.Errorf("get contact by id: %w", err)
-				}
-
-				if existingContact.ClinicID != clinic.ID {
-					return fmt.Errorf("contact %s does not belong to clinic %s", cont.ID.String(), clinic.ID.String())
-				}
-
-				if cont.ContactType != nil {
-					existingContact.ContactType = *cont.ContactType
-				}
-				if cont.Value != nil {
-					existingContact.Value = *cont.Value
-				}
-				if cont.Label != nil {
-					existingContact.Label = cont.Label
-				}
-				if cont.IsPrimary != nil {
-					existingContact.IsPrimary = *cont.IsPrimary
-					if *cont.IsPrimary {
-						if err := s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID); err != nil {
-							return fmt.Errorf("unset primary contact: %w", err)
-						}
+			if cont.ID != nil && *cont.ID != uuid.Nil {
+				// UPDATE existing
+				incomingIDs[*cont.ID] = true
+				existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
+				if err == nil && existing.ClinicID == clinic.ID {
+					if cont.ContactType != nil {
+						existing.ContactType = *cont.ContactType
 					}
+					if cont.Value != nil {
+						existing.Value = *cont.Value
+					}
+					if cont.IsPrimary != nil {
+						existing.IsPrimary = *cont.IsPrimary
+					}
+					_ = s.repo.UpdateClinicContactTx(ctx, tx, existing)
 				}
-
-				if err := s.repo.UpdateClinicContactTx(ctx, tx, existingContact); err != nil {
-					return fmt.Errorf("update contact: %w", err)
+			} else {
+				// CREATE new
+				newCont := &ClinicContact{
+					ID:          uuid.New(),
+					ClinicID:    clinic.ID,
+					ContactType: *cont.ContactType,
+					Value:       *cont.Value,
+					IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
 				}
+				_, _ = s.repo.CreateClinicContactTx(ctx, tx, newCont)
 			}
 		}
 
-		// Update financial settings if provided
-		if req.FinancialYearID != nil || req.LockDate != nil {
-			financialSettings, err := s.repo.GetFinancialSettingsTx(ctx, tx, clinic.ID)
-			if err != nil {
-				return fmt.Errorf("get financial settings: %w", err)
-			}
-
-			if financialSettings != nil {
-				if req.FinancialYearID != nil {
-					financialSettings.FinancialYearID = *req.FinancialYearID
-				}
-				if req.LockDate != nil {
-					financialSettings.LockDate = req.LockDate
-				}
-
-				if err := s.repo.UpdateFinancialSettingsTx(ctx, tx, financialSettings); err != nil {
-					return fmt.Errorf("update financial settings: %w", err)
-				}
+		// DELETE contacts that weren't in the request
+		for _, ex := range existingContacts {
+			if !incomingIDs[ex.ID] {
+				_ = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
 			}
 		}
 
@@ -778,16 +773,24 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		return nil, err
 	}
 
-	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-	for _, addr := range addresses {
-		rsAddresses = append(rsAddresses, RsClinicAddress{
+	var rsAddress *RsClinicAddress
+	if len(addresses) > 0 {
+		// Default to first, but try to find the marked primary
+		addr := addresses[0]
+		for _, a := range addresses {
+			if a.IsPrimary {
+				addr = a
+				break
+			}
+		}
+		rsAddress = &RsClinicAddress{
 			ID:        addr.ID,
 			Address:   addr.Address,
 			City:      addr.City,
 			State:     addr.State,
 			Postcode:  addr.Postcode,
 			IsPrimary: addr.IsPrimary,
-		})
+		}
 	}
 
 	rsContacts := make([]RsClinicContact, 0, len(contacts))
@@ -818,7 +821,7 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
 		IsActive:          clinic.IsActive,
-		Addresses:         rsAddresses,
+		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
 		CreatedAt:         clinic.CreatedAt,
@@ -886,16 +889,24 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		return nil, err
 	}
 
-	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-	for _, addr := range addresses {
-		rsAddresses = append(rsAddresses, RsClinicAddress{
+	var rsAddress *RsClinicAddress
+	if len(addresses) > 0 {
+		// Default to first, but try to find the marked primary
+		addr := addresses[0]
+		for _, a := range addresses {
+			if a.IsPrimary {
+				addr = a
+				break
+			}
+		}
+		rsAddress = &RsClinicAddress{
 			ID:        addr.ID,
 			Address:   addr.Address,
 			City:      addr.City,
 			State:     addr.State,
 			Postcode:  addr.Postcode,
 			IsPrimary: addr.IsPrimary,
-		})
+		}
 	}
 
 	rsContacts := make([]RsClinicContact, 0, len(contacts))
@@ -927,7 +938,7 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
 		IsActive:          clinic.IsActive,
-		Addresses:         rsAddresses,
+		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
 		CreatedAt:         clinic.CreatedAt,
@@ -969,86 +980,93 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 		return nil, fmt.Errorf("update clinic: %w", err)
 	}
 
-	// Update addresses
-	for _, addr := range req.Addresses {
-		if addr.ID != nil {
-			// Get existing address to update only provided fields
-			existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *addr.ID)
-			if err != nil {
-				return nil, fmt.Errorf("get address by id: %w", err)
-			}
-
-			// Validate that the address belongs to this clinic
-			if existingAddr.ClinicID != clinic.ID {
-				return nil, fmt.Errorf("address %s does not belong to clinic %s", addr.ID.String(), clinic.ID.String())
-			}
-
-			// Update only provided fields
-			if addr.Address != nil {
-				existingAddr.Address = addr.Address
-			}
-			if addr.City != nil {
-				existingAddr.City = addr.City
-			}
-			if addr.State != nil {
-				existingAddr.State = addr.State
-			}
-			if addr.Postcode != nil {
-				existingAddr.Postcode = addr.Postcode
-			}
-			if addr.IsPrimary != nil {
-				existingAddr.IsPrimary = *addr.IsPrimary
-				// If setting as primary, unset other primary addresses for this clinic
-				if *addr.IsPrimary {
-					if err := s.repo.UnsetPrimaryAddressTx(ctx, tx, clinic.ID, *addr.ID); err != nil {
-						return nil, fmt.Errorf("unset primary address: %w", err)
-					}
+	// Update address
+	if req.Address != nil {
+		if req.Address.ID != nil && *req.Address.ID != uuid.Nil {
+			// UPDATE
+			existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *req.Address.ID)
+			if err == nil && existingAddr.ClinicID == clinic.ID {
+				if req.Address.Address != nil {
+					existingAddr.Address = req.Address.Address
 				}
+				if req.Address.City != nil {
+					existingAddr.City = req.Address.City
+				}
+				if req.Address.State != nil {
+					existingAddr.State = req.Address.State
+				}
+				if req.Address.Postcode != nil {
+					existingAddr.Postcode = req.Address.Postcode
+				}
+				existingAddr.IsPrimary = true
+				_ = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
 			}
-
-			if err := s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr); err != nil {
-				return nil, fmt.Errorf("update address: %w", err)
+		} else {
+			// CREATE
+			newAddr := &ClinicAddress{
+				ID:        uuid.New(),
+				ClinicID:  clinic.ID,
+				Address:   req.Address.Address,
+				City:      req.Address.City,
+				State:     req.Address.State,
+				Postcode:  req.Address.Postcode,
+				IsPrimary: true,
 			}
+			_, _ = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
 		}
+	} else {
+		// ABSENCE = DELETE
+		_ = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
 	}
 
 	// Update contacts
+	existingContacts, _ := s.repo.GetClinicContactsTx(ctx, tx, clinic.ID)
+	incomingIDs := make(map[uuid.UUID]bool)
+
 	for _, cont := range req.Contacts {
-		if cont.ID != nil {
-			// Get existing contact to update only provided fields
-			existingContact, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
-			if err != nil {
-				return nil, fmt.Errorf("get contact by id: %w", err)
-			}
-
-			// Validate that the contact belongs to this clinic
-			if existingContact.ClinicID != clinic.ID {
-				return nil, fmt.Errorf("contact %s does not belong to clinic %s", cont.ID.String(), clinic.ID.String())
-			}
-
-			// Update only provided fields
-			if cont.ContactType != nil {
-				existingContact.ContactType = *cont.ContactType
-			}
-			if cont.Value != nil {
-				existingContact.Value = *cont.Value
-			}
-			if cont.Label != nil {
-				existingContact.Label = cont.Label
-			}
-			if cont.IsPrimary != nil {
-				existingContact.IsPrimary = *cont.IsPrimary
-				// If setting as primary, unset other primary contacts for this clinic
-				if *cont.IsPrimary {
-					if err := s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID); err != nil {
-						return nil, fmt.Errorf("unset primary contact: %w", err)
+		if cont.ID != nil && *cont.ID != uuid.Nil {
+			// UPDATE
+			incomingIDs[*cont.ID] = true
+			existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
+			if err == nil && existing.ClinicID == clinic.ID {
+				if cont.ContactType != nil {
+					existing.ContactType = *cont.ContactType
+				}
+				if cont.Value != nil {
+					existing.Value = *cont.Value
+				}
+				if cont.Label != nil {
+					existing.Label = cont.Label
+				}
+				if cont.IsPrimary != nil {
+					existing.IsPrimary = *cont.IsPrimary
+					if *cont.IsPrimary {
+						_ = s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID)
 					}
 				}
+				_ = s.repo.UpdateClinicContactTx(ctx, tx, existing)
 			}
+		} else {
+			// CREATE
+			newCont := &ClinicContact{
+				ID:          uuid.New(),
+				ClinicID:    clinic.ID,
+				ContactType: *cont.ContactType,
+				Value:       *cont.Value,
+				Label:       cont.Label,
+				IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
+			}
+			if newCont.IsPrimary {
+				_ = s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, uuid.Nil)
+			}
+			_, _ = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+		}
+	}
 
-			if err := s.repo.UpdateClinicContactTx(ctx, tx, existingContact); err != nil {
-				return nil, fmt.Errorf("update contact: %w", err)
-			}
+	// DELETE contacts not present in request
+	for _, ex := range existingContacts {
+		if !incomingIDs[ex.ID] {
+			_ = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
 		}
 	}
 
@@ -1171,9 +1189,17 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 		if addrErr != nil {
 			return nil, addrErr
 		}
-		rsAddresses := make([]RsClinicAddress, len(addresses))
-		for i, addr := range addresses {
-			rsAddresses[i] = RsClinicAddress{
+		var rsAddress *RsClinicAddress
+		if len(addresses) > 0 {
+			// Default to first, but try to find the marked primary
+			addr := addresses[0]
+			for _, a := range addresses {
+				if a.IsPrimary {
+					addr = a
+					break
+				}
+			}
+			rsAddress = &RsClinicAddress{
 				ID:        addr.ID,
 				Address:   addr.Address,
 				City:      addr.City,
@@ -1223,7 +1249,7 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
 			IsActive:          clinic.IsActive,
-			Addresses:         rsAddresses,
+			Address:           rsAddress,
 			Contacts:          rsContacts,
 			FinancialSettings: rsFinancialSettings,
 			CreatedAt:         clinic.CreatedAt,
