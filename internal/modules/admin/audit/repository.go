@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -19,7 +20,7 @@ type Repository interface {
 	GetAdminIDs(ctx context.Context) ([]uuid.UUID, error)
 	GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error)
 	GetUserName(ctx context.Context, id string) (string, error)
-	GetEntityName(ctx context.Context, table string, id string) (string, error)
+	GetEntityName(ctx context.Context, table string, id string) (*string, error)
 	ResolveActorName(ctx context.Context, id string) string
 	ResolveEntityLabel(ctx context.Context, entityType, id string) string
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error)
@@ -161,7 +162,7 @@ func (r *repository) GetUserName(ctx context.Context, id string) (string, error)
 	return name, nil
 }
 
-func (r *repository) GetEntityName(ctx context.Context, table string, id string) (string, error) {
+func (r *repository) GetEntityName(ctx context.Context, table string, id string) (*string, error) {
 	var name, query string
 
 	// Select 'name' from the provided table name
@@ -169,9 +170,12 @@ func (r *repository) GetEntityName(ctx context.Context, table string, id string)
 
 	err := r.db.GetContext(ctx, &name, query, id)
 	if err != nil {
-		return "", err
+		if err == sql.ErrNoRows {
+			return nil, nil // Not found is not an error here, just return nil
+		}
+		return nil, err
 	}
-	return name, nil
+	return &name, nil
 }
 
 // HasActiveSystemNotification checks for an existing UNREAD system notification for entityID + eventType in tbl_notification.

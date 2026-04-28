@@ -313,17 +313,20 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 
 	// Get Entity Name
+	var entityNamePtr *string
 	entityName := ""
 	if entry.EntityType != nil && entry.EntityID != nil {
-		// entityContext = *entry.EntityType
-		entityName, err = s.repo.GetEntityName(ctx, *entry.EntityType, *entry.EntityID)
-		if err != nil {
-			log.Printf("ERROR: [Audit-Notification] Failed to get entity name for ID %s: %v", *entry.EntityID, err)
+		entityNamePtr, err = s.repo.GetEntityName(ctx, *entry.EntityType, *entry.EntityID)
+
+		// If the pointer is not nil, use the value
+		if entityNamePtr != nil {
+			entityName = *entityNamePtr
 		}
 	}
 
 	title := "System Activity Alert"
 	message := fmt.Sprintf("%s %s %s", userName, formattedAction, entityName)
+	message = strings.TrimSpace(message) // Clean up trailing spaces if name was nil
 
 	// Construct Payload
 	extraData := map[string]interface{}{
