@@ -85,7 +85,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	realOwnerID := clinic.PractitionerID
 
 	// Validate lock date before creating entry
-	if err := s.validateLockDate(ctx, req.ClinicID, req.Date); err != nil {
+	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
 		return nil, err
 	}
 
@@ -235,7 +235,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if req.Date != nil {
 		dateToCheck = req.Date
 	}
-	if err := s.validateLockDate(ctx, existing.ClinicID, dateToCheck); err != nil {
+	if err := s.validateLockDate(ctx, existing.PractitionerID, dateToCheck, &existing.CreatedAt); err != nil {
 		return nil, err
 	}
 
@@ -327,7 +327,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	beforeState := existing.ToRs(values)
 
 	// Validate lock date before deleting entry
-	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date); err != nil {
+	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
 		return err
 	}
 
@@ -764,12 +764,12 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 	}
 
 	netAmount := incomeSum - expenseSum - otherCostSum
-	
+
 	ownerShare := 0.0
 	if form.OwnerShare != nil {
 		ownerShare = float64(*form.OwnerShare)
 	}
-	
+
 	commission := netAmount * (ownerShare / 100)
 	gstOnCommission := commission * 0.10
 	paymentReceived := commission + gstOnCommission
@@ -1096,14 +1096,20 @@ func (s *Service) validateLockDate(ctx context.Context, clinicID uuid.UUID, entr
 }
 */
 
-func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string) error {
-	// 1. Basic validation (Keep as is)
-	if entryDate == nil || *entryDate == "" {
+func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string, createdAt *string) error {
+
+	var dateString string
+	if entryDate != nil && *entryDate != "" {
+		dateString = *entryDate
+	} else if createdAt != nil && *createdAt != "" {
+
+		dateString = (*createdAt)[:10]
+	} else {
+
 		return nil
 	}
 
 	// 2. Fetch settings based on PractitionerID instead of ClinicID
-	// Ensure your repository has a method like GetPractitionerFinancialSettings
 	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, practitionerID)
 	if err != nil {
 		return fmt.Errorf("failed to get practitioner financial settings: %w", err)
@@ -1115,17 +1121,16 @@ func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID
 	}
 
 	// 4. Parse the entry date
-	parsedEntryDate, err := time.Parse("2006-01-02", *entryDate)
+	parsedEntryDate, err := time.Parse("2006-01-02", dateString)
 	if err != nil {
 		return fmt.Errorf("invalid entry date format: %w", err)
 	}
 
-	// 5. Compare: entryDate vs practitioner's LockDate
-	lockDate := *financialSettings.LockDate
+	lockDate := financialSettings.LockDate.UTC().Truncate(24 * time.Hour)
+	entryDateOnly := parsedEntryDate.UTC().Truncate(24 * time.Hour)
 
-	// Logic: If entry is in the locked period, block it.
-	if !parsedEntryDate.After(lockDate) {
-		return fmt.Errorf("cannot modify entries on or before the lock date (%s) set for this practitioner",
+	if entryDateOnly.Before(lockDate) || entryDateOnly.Equal(lockDate) {
+		return fmt.Errorf("cannot modify entries on or before the lock date (%s)",
 			lockDate.Format("2006-01-02"))
 	}
 
