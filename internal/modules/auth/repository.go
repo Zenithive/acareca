@@ -177,7 +177,7 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) 
 
 func (r *repository) FindByPractitionerID(ctx context.Context, pracID uuid.UUID) (*User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone, u.is_superadmin 
+		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone 
 		FROM tbl_user u
 		JOIN tbl_practitioner p ON p.user_id = u.id
 		WHERE p.id = $1 AND u.deleted_at IS NULL
