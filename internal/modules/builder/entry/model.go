@@ -34,15 +34,16 @@ type RqUpdateFormEntry struct {
 }
 
 type FormEntry struct {
-	ID            uuid.UUID  `db:"id" json:"id"`
-	FormVersionID uuid.UUID  `db:"form_version_id" json:"form_version_id"`
-	ClinicID      uuid.UUID  `db:"clinic_id" json:"clinic_id"`
-	SubmittedBy   *uuid.UUID `db:"submitted_by" json:"submitted_by,omitempty"`
-	SubmittedAt   *string    `db:"submitted_at" json:"submitted_at,omitempty"`
-	Date          *string    `db:"date" json:"date,omitempty"`
-	Status        string     `db:"status" json:"status"`
-	CreatedAt     string     `db:"created_at" json:"created_at"`
-	UpdatedAt     *string    `db:"updated_at" json:"updated_at,omitempty"`
+	ID             uuid.UUID  `db:"id" json:"id"`
+	FormVersionID  uuid.UUID  `db:"form_version_id" json:"form_version_id"`
+	PractitionerID uuid.UUID  `db:"practitioner_id" json:"practitioner_id"`
+	ClinicID       uuid.UUID  `db:"clinic_id" json:"clinic_id"`
+	SubmittedBy    *uuid.UUID `db:"submitted_by" json:"submitted_by,omitempty"`
+	SubmittedAt    *string    `db:"submitted_at" json:"submitted_at,omitempty"`
+	Date           *string    `db:"date" json:"date,omitempty"`
+	Status         string     `db:"status" json:"status"`
+	CreatedAt      string     `db:"created_at" json:"created_at"`
+	UpdatedAt      *string    `db:"updated_at" json:"updated_at,omitempty"`
 }
 
 type FormEntryValue struct {
