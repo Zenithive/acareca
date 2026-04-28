@@ -165,8 +165,8 @@ func (r *repository) GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PL
 func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error) {
 	query := `
 		SELECT
-			li.clinic_id::TEXT,
-			c.name        AS clinic_name,
+			COALESCE(li.clinic_id::TEXT, '') AS clinic_id,
+			COALESCE(c.name, 'Manual Expense') AS clinic_name,
 			li.form_id::TEXT,
 			li.form_name,
 			li.form_field_id::TEXT,
@@ -179,7 +179,7 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			SUM(li.gst_amount)   AS gst_amount,
 			SUM(li.gross_amount) AS gross_amount
 		FROM vw_pl_line_items li
-		JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
+		LEFT JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
 		WHERE 1=1
 	`
 	args := []interface{}{}

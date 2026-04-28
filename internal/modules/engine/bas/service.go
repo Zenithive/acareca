@@ -241,11 +241,20 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	// Aggregate data from all relevant clinics
 	var allRows []*BASLineItemRow
 	for _, cID := range clinicIDs {
-		rows, err := s.repo.GetBASLineItems(ctx, cID, f)
+		rows, err := s.repo.GetBASLineItems(ctx, ownerID, &cID, f)
 		if err != nil {
 			return nil, err
 		}
 		allRows = append(allRows, rows...)
+	}
+
+	if len(f.ParsedClinicIDs) == 0 {
+		nilClinic := uuid.Nil
+
+		manualRows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+		if err == nil && len(manualRows) > 0 {
+			allRows = append(allRows, manualRows...)
+		}
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
@@ -325,8 +334,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			continue
 		}
 
-		// Handle NULL section_type as expense (matches vw_bas_summary logic)
-		sectionType := ""
+		sectionType := "EXPENSE_ENTRY" // Default fallback for manual entries
 		if r.SectionType != nil {
 			sectionType = *r.SectionType
 		}
@@ -343,7 +351,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			incomeAccounts[r.CoaID].Amounts.GST += r.GstAmount
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
 
-		case "COST", "OTHER_COST", "":
+		case "COST", "OTHER_COST", "EXPENSE_ENTRY", "":
 
 			b1.Gross += r.GstAmount
 
