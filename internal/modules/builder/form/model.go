@@ -11,9 +11,11 @@ import (
 )
 
 const (
-	StatusDraft     = "DRAFT"
-	StatusPublished = "PUBLISHED"
-	StatusArchived  = "ARCHIVED"
+	StatusDraft          = "DRAFT"
+	StatusPublished      = "PUBLISHED"
+	StatusArchived       = "ARCHIVED"
+	EntryStatusDraft     = "DRAFT"
+	EntryStatusSubmitted = "SUBMITTED"
 )
 
 // RqFieldsSync groups field create/update/delete in a nested object.
@@ -131,6 +133,7 @@ type ExpenseItem struct {
 	BusinessUse float64   `json:"business_use" validate:"required,min=0,max=100"`
 	Amount      float64   `json:"amount" validate:"required,gt=0"`
 	Description *string   `json:"description,omitempty"`
+	TaxType     *string   `json:"tax_type" validate:"omitempty"`
 }
 
 type RqUpdateExpense struct {
@@ -148,16 +151,18 @@ type ExpenseItemUpdate struct {
 	BusinessUse *float64   `json:"business_use,omitempty" validate:"omitempty,min=0,max=100"`
 	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	Description *string    `json:"description,omitempty"`
+	TaxType     *string    `json:"tax_type,omitempty" validate:"omitempty"`
 }
 
 type RsExpense struct {
-	ID         uuid.UUID       `json:"id"`
-	Name       string          `json:"name"`
-	Date       string          `json:"date"`
-	AmountType string          `json:"amount_type"`
-	Items      []RsExpenseItem `json:"items"`
-	CreatedAt  string          `json:"created_at"`
-	UpdatedAt  *string         `json:"updated_at,omitempty"`
+	ID             uuid.UUID       `json:"id"`
+	Name           string          `json:"name"`
+	Date           string          `json:"date"`
+	TaxType        string          `json:"tax_type"`
+	PractitionerID uuid.UUID       `json:"practitioner_id"`
+	Items          []RsExpenseItem `json:"items"`
+	CreatedAt      string          `json:"created_at"`
+	UpdatedAt      *string         `json:"updated_at,omitempty"`
 }
 
 type RsExpenseItem struct {

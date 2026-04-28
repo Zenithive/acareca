@@ -35,6 +35,7 @@ type Repository interface {
 	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
+	GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error)
 }
 
 type repository struct {
@@ -216,13 +217,6 @@ func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practi
 }
 
 func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
-	// query := `
-	// 	SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-	// 	       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
-	// 	FROM tbl_chart_of_accounts coa
-	// 	JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-	// 	WHERE coa.key = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
-	// `
 	query := `
         SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
                coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
@@ -370,4 +364,20 @@ func (r *repository) GetAccountTypeByName(ctx context.Context, name string) (int
 		return 0, fmt.Errorf("get account type: %w", err)
 	}
 	return int(a.ID), nil
+}
+
+// GetByIDInternal ignores the practitionerID check because it's only used for internal ID resolution
+func (r *repository) GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error) {
+	query := `
+		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
+		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		FROM tbl_chart_of_accounts coa
+		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+		WHERE coa.id = $1 AND coa.deleted_at IS NULL
+	`
+	var c ChartOfAccount
+	if err := r.db.GetContext(ctx, &c, query, id); err != nil {
+		return nil, err
+	}
+	return &c, nil
 }

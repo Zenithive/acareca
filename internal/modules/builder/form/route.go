@@ -6,6 +6,11 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
+	// Expense routes - must come before generic /:id routes to avoid conflicts
+	rg.POST("/expenses", h.CreateExpense)
+	rg.GET("/expenses/:id", h.GetExpense)
+	rg.PATCH("/expenses/:id", h.UpdateExpense)
+	
 	// All form operations - no permission checks
 	rg.GET("/:id", h.GetFormWithFields)
 	rg.GET("", h.List)
@@ -13,7 +18,4 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 	rg.PATCH("/:id", h.UpdateFormWithFields)
 	rg.DELETE("/:id", h.Delete)
 	rg.PATCH("/:id/status", h.UpdateFormStatus)
-	rg.POST("/expenses", h.CreateExpense)
-	rg.PATCH("/expenses/:id", h.UpdateExpense)
-	rg.GET("/expenses/:id", h.GetExpense)
 }

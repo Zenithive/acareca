@@ -24,6 +24,7 @@ type Service interface {
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
+	GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOfAccount, error)
 }
 
 type service struct {
@@ -311,6 +312,16 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 func (s *service) CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error) {
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, code, practitionerID, excludeID)
 	return &RsCodeUnique{IsUnique: existing == nil}, nil
+}
+
+func (s *service) GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOfAccount, error) {
+	c, err := s.repo.GetByIDInternal(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	rs := c.ToRs()
+	return &rs, nil
 }
 
 func strPtr(s string) *string { return &s }
