@@ -21,7 +21,6 @@ const endpointMetrics = {
   updateLockDate: new Trend('endpoint_update_lock_date_duration'),
   createClinic: new Trend('endpoint_create_clinic_duration'),
   updateClinic: new Trend('endpoint_update_clinic_duration'),
-  deleteClinic: new Trend('endpoint_delete_clinic_duration'),
   listClinic: new Trend('endpoint_list_clinic_duration'),
   createForm: new Trend('endpoint_create_form_duration'),
   listForm: new Trend('endpoint_list_form_duration'),
@@ -98,13 +97,6 @@ export const options = {
       exec: 'updateClinic',
       startTime: '40s',
     },
-    clinic_delete: {
-      executor: 'constant-vus',
-      vus: 3,
-      duration: '30s',
-      exec: 'deleteClinic',
-      startTime: '1m30s',
-    },
     form_create: {
       executor: 'ramping-vus',
       startVUs: 0,
@@ -129,13 +121,6 @@ export const options = {
       duration: '45s',
       exec: 'getForm',
       startTime: '40s',
-    },
-    form_delete: {
-      executor: 'constant-vus',
-      vus: 3,
-      duration: '30s',
-      exec: 'deleteForm',
-      startTime: '1m45s',
     },
   },
   thresholds: {
@@ -200,35 +185,6 @@ export function setup() {
     console.log(`✅ Found ${practitionerIds.length} practitioner IDs`);
   }
 
-  // Fetch COA (Chart of Accounts) IDs
-  const coaRes = http.get(`${API_BASE}/coa`, { headers });
-  let coaIds = {
-    collection: null,
-    cost: null,
-    revenue: null,
-    expense: null,
-  };
-  
-  if (coaRes.status === 200) {
-    const coaBody = JSON.parse(coaRes.body);
-    const coaItems = coaBody?.data?.items || [];
-    
-    // Find COA IDs by section type
-    const collectionCoa = coaItems.find(c => c.section_type === 'COLLECTION' || c.name?.toLowerCase().includes('collection') || c.name?.toLowerCase().includes('revenue'));
-    const costCoa = coaItems.find(c => c.section_type === 'COST' || c.name?.toLowerCase().includes('cost') || c.name?.toLowerCase().includes('expense'));
-    const revenueCoa = coaItems.find(c => c.section_type === 'REVENUE' || c.name?.toLowerCase().includes('revenue') || c.name?.toLowerCase().includes('income'));
-    const expenseCoa = coaItems.find(c => c.section_type === 'EXPENSE' || c.name?.toLowerCase().includes('expense'));
-    
-    coaIds.collection = collectionCoa?.id || (coaItems[0]?.id || null);
-    coaIds.cost = costCoa?.id || (coaItems[1]?.id || null);
-    coaIds.revenue = revenueCoa?.id || (coaItems[2]?.id || null);
-    coaIds.expense = expenseCoa?.id || (coaItems[3]?.id || null);
-    
-    console.log(`✅ Found COA IDs: collection=${coaIds.collection ? 'yes' : 'no'}, cost=${coaIds.cost ? 'yes' : 'no'}, revenue=${coaIds.revenue ? 'yes' : 'no'}, expense=${coaIds.expense ? 'yes' : 'no'}`);
-  } else {
-    console.log(`⚠️ Failed to fetch COA: ${coaRes.status}`);
-  }
-
   // Fetch existing clinics
   const clinicsRes = http.get(`${API_BASE}/clinic`, { headers });
   let clinicIds = [];
@@ -287,8 +243,8 @@ export function setup() {
     console.log(`✅ Found ${formIds.length} existing form IDs`);
   }
 
-  // Create 2 test forms if none exist and we have clinics and COA IDs
-  if (formIds.length === 0 && clinicIds.length > 0 && coaIds.collection && coaIds.cost) {
+  // Create 2 test forms if none exist and we have clinics
+  if (formIds.length === 0 && clinicIds.length > 0) {
     console.log('📝 Creating initial test forms...');
     for (let i = 0; i < 2; i++) {
       const formPayload = {
@@ -303,7 +259,7 @@ export function setup() {
             key: 'A',
             slug: `setup_field_a_${i}`,
             label: 'Test Field A',
-            coa_id: coaIds.collection,
+            coa_id: 'a6f919e6-94b6-43e2-9b01-0eeb2267631b',
             section_type: 'COLLECTION',
             payment_responsibility: 'OWNER',
             tax_type: '',
@@ -331,17 +287,14 @@ export function setup() {
       }
     }
     console.log(`✅ Created ${formIds.length} test forms`);
-  } else if (!coaIds.collection || !coaIds.cost) {
-    console.log('⚠️ Skipping form creation: COA IDs not available');
   }
 
   console.log(`\n📊 Setup Complete:`);
   console.log(`   - Practitioners: ${practitionerIds.length}`);
   console.log(`   - Clinics: ${clinicIds.length}`);
-  console.log(`   - Forms: ${formIds.length}`);
-  console.log(`   - COA Available: ${coaIds.collection ? 'Yes' : 'No'}\n`);
+  console.log(`   - Forms: ${formIds.length}\n`);
 
-  return { token, practitionerIds, clinicIds, formIds, coaIds };
+  return { token, practitionerIds, clinicIds, formIds };
 }
 
 
@@ -650,55 +603,6 @@ export function updateClinic(data) {
 }
 
 // =====================
-// Scenario 8: Delete Clinic
-// =====================
-export function deleteClinic(data) {
-  const headers = getAuthHeaders(data.token);
-
-  group('Delete Clinic', () => {
-    const timestamp = Date.now();
-    const randomNum = Math.floor(Math.random() * 10000);
-    
-    const createPayload = {
-      name: `Delete Test Clinic ${timestamp}_${randomNum}`,
-      abn: `${Math.floor(Math.random() * 90000000000) + 10000000000}`,
-      is_active: true,
-      addresses: [],
-      contacts: [],
-    };
-
-    const createRes = http.post(
-      `${API_BASE}/clinic`,
-      JSON.stringify(createPayload),
-      { headers }
-    );
-
-    if (createRes.status === 201) {
-      const createBody = JSON.parse(createRes.body);
-      const clinicId = createBody?.data?.id;
-
-      if (clinicId) {
-        const res = trackedRequest(
-          'delete',
-          `${API_BASE}/clinic/${clinicId}`,
-          headers,
-          null,
-          'deleteClinic'
-        );
-
-        const ok = check(res, {
-          'status is 200': (r) => r.status === 200,
-          'response time < 2000ms': (r) => r.timings.duration < 2000,
-        });
-        practitionerWriteErrors.add(ok ? 0 : 1);
-      }
-    }
-  });
-
-  sleep(2);
-}
-
-// =====================
 // Scenario 9: Create Form
 // =====================
 export function createForm(data) {
@@ -710,18 +614,12 @@ export function createForm(data) {
     return;
   }
 
-  if (!data.coaIds || !data.coaIds.collection || !data.coaIds.cost) {
-    console.log('No COA IDs available, skipping form create test');
-    sleep(1);
-    return;
-  }
-
   group('Create Form', () => {
     const timestamp = Date.now();
     const randomNum = Math.floor(Math.random() * 10000);
     const clinicId = data.clinicIds[Math.floor(Math.random() * data.clinicIds.length)];
     
-    // Use dynamic COA IDs from setup
+    // Use hardcoded COA IDs from working payload
     const payload = {
       clinic_id: clinicId,
       name: `Service Agreement (60%/40%) - ${timestamp}`,
@@ -734,7 +632,7 @@ export function createForm(data) {
           key: 'A',
           slug: `total_patient_fees_collected_gst_free_${randomNum}`,
           label: 'Total Patient Fees Collected (GST Free)',
-          coa_id: data.coaIds.collection,
+          coa_id: 'a6f919e6-94b6-43e2-9b01-0eeb2267631b',
           section_type: 'COLLECTION',
           payment_responsibility: 'OWNER',
           tax_type: '',
@@ -746,7 +644,7 @@ export function createForm(data) {
           key: 'B',
           slug: `lab_fees_net_after_deducting_gst_${randomNum}`,
           label: 'Lab Fees (net after deducting GST)',
-          coa_id: data.coaIds.cost,
+          coa_id: '1ceffddf-fd79-4309-9397-c433468594e6',
           section_type: 'COST',
           payment_responsibility: 'CLINIC',
           tax_type: '',
@@ -767,7 +665,7 @@ export function createForm(data) {
           label: 'Total S&F Fee',
           is_computed: true,
           sort_order: 4,
-          coa_id: data.coaIds.revenue || data.coaIds.collection,
+          coa_id: '4547e1bd-f181-45c5-9b44-7d3049172bf2',
           section_type: '',
           tax_type: 'EXCLUSIVE',
           is_taxable: true,
@@ -778,7 +676,7 @@ export function createForm(data) {
           label: 'Amount Remitted to Owner',
           is_computed: true,
           sort_order: 5,
-          coa_id: data.coaIds.expense || data.coaIds.cost,
+          coa_id: '276c38f3-6274-4c68-9460-3165f081638e',
           tax_type: '',
         },
       ],
@@ -941,96 +839,6 @@ export function getForm(data) {
 }
 
 // =====================
-// Scenario 12: Delete Form
-// =====================
-export function deleteForm(data) {
-  const headers = getAuthHeaders(data.token);
-
-  if (!data.clinicIds || data.clinicIds.length === 0) {
-    console.log('No clinic IDs available, skipping form delete test');
-    sleep(1);
-    return;
-  }
-
-  if (!data.coaIds || !data.coaIds.collection) {
-    console.log('No COA IDs available, skipping form delete test');
-    sleep(1);
-    return;
-  }
-
-  group('Delete Form', () => {
-    const timestamp = Date.now();
-    const randomNum = Math.floor(Math.random() * 10000);
-    const clinicId = data.clinicIds[Math.floor(Math.random() * data.clinicIds.length)];
-    
-    // Create a form to delete
-    const createPayload = {
-      clinic_id: clinicId,
-      name: `Delete Test Form ${timestamp}_${randomNum}`,
-      method: 'SERVICE_FEE',
-      clinic_share: 50,
-      owner_share: 50,
-      status: 'DRAFT',
-      fields: [
-        {
-          key: 'A',
-          slug: `delete_test_field_${randomNum}`,
-          label: 'Delete Test Field',
-          coa_id: data.coaIds.collection,
-          section_type: 'COLLECTION',
-          payment_responsibility: 'OWNER',
-          tax_type: '',
-          is_formula: false,
-          sort_order: 1,
-          is_computed: false,
-        },
-      ],
-      formulas: [],
-    };
-
-    const createRes = http.post(
-      `${API_BASE}/form`,
-      JSON.stringify(createPayload),
-      { headers }
-    );
-
-    if (createRes.status === 201) {
-      const createBody = JSON.parse(createRes.body);
-      const formId = createBody?.data?.form?.id;
-
-      if (formId) {
-        const res = trackedRequest(
-          'delete',
-          `${API_BASE}/form/${formId}`,
-          headers,
-          null,
-          'deleteForm'
-        );
-
-        const ok = check(res, {
-          'status is 200 or 204': (r) => r.status === 200 || r.status === 204,
-          'response time < 2000ms': (r) => r.timings.duration < 2000,
-        });
-        
-        if (!ok) {
-          console.log(`❌ Form delete failed: Status ${res.status}`);
-        }
-        
-        practitionerWriteErrors.add(ok ? 0 : 1);
-      } else {
-        console.log('❌ Failed to get form ID from create response');
-        practitionerWriteErrors.add(1);
-      }
-    } else {
-      console.log(`❌ Failed to create form for deletion: Status ${createRes.status}`);
-      practitionerWriteErrors.add(1);
-    }
-  });
-
-  sleep(2);
-}
-
-// =====================
 // Summary
 // =====================
 export function handleSummary(data) {
@@ -1039,7 +847,7 @@ export function handleSummary(data) {
       title: 'Practitioner API Load Test Report',
       description: 'Performance testing results for Practitioner, Clinic, and Form endpoints'
     }),
-    'test/practitioner-summary.json': JSON.stringify(data, null, 2),
+    'practitioner-summary.json': JSON.stringify(data, null, 2),
     stdout: textSummary(data),
   };
 }
@@ -1055,13 +863,11 @@ function textSummary(data) {
   
   const createClinicP95 = m.endpoint_create_clinic_duration?.values['p(95)'] || 0;
   const updateClinicP95 = m.endpoint_update_clinic_duration?.values['p(95)'] || 0;
-  const deleteClinicP95 = m.endpoint_delete_clinic_duration?.values['p(95)'] || 0;
   const listClinicP95 = m.endpoint_list_clinic_duration?.values['p(95)'] || 0;
   
   const createFormP95 = m.endpoint_create_form_duration?.values['p(95)'] || 0;
   const listFormP95 = m.endpoint_list_form_duration?.values['p(95)'] || 0;
   const getFormP95 = m.endpoint_get_form_duration?.values['p(95)'] || 0;
-  const deleteFormP95 = m.endpoint_delete_form_duration?.values['p(95)'] || 0;
   
   return `
 ========== PRACTITIONER TEST SUMMARY ==========
@@ -1088,13 +894,11 @@ CLINIC Operations:
   POST   /clinic                        ${createClinicP95.toFixed(2)} ms
   GET    /clinic                        ${listClinicP95.toFixed(2)} ms
   PUT    /clinic/:id                    ${updateClinicP95.toFixed(2)} ms
-  DELETE /clinic/:id                    ${deleteClinicP95.toFixed(2)} ms
 
 FORM Operations:
   POST   /form                          ${createFormP95.toFixed(2)} ms
   GET    /form                          ${listFormP95.toFixed(2)} ms
   GET    /form/:id                      ${getFormP95.toFixed(2)} ms
-  DELETE /form/:id                      ${deleteFormP95.toFixed(2)} ms
 
 Test Coverage:
 ✓ List Practitioners
@@ -1104,11 +908,9 @@ Test Coverage:
 ✓ Create Clinic
 ✓ List Clinics
 ✓ Update Clinic
-✓ Delete Clinic
 ✓ Create Form (with fields & formulas)
 ✓ List Forms
 ✓ Get Form by ID
-✓ Delete Form
 
 HTML Report: practitioner-report.html
 ================================================

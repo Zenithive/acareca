@@ -1,5 +1,4 @@
 # Environment
-.env
 
 # Binary output
 server
@@ -17,3 +16,5 @@ server
 # OS
 .DS_Store
 Thumbs.db
+config.bat
+node_modules
