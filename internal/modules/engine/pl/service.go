@@ -291,12 +291,19 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		}
 	}
 
-	return buildReport(f, rows), nil
+	// NEW: Fetch pre-calculated summary from the specialized view
+	summary, err := s.repo.GetPLSummary(ctx, f)
+	if err != nil {
+		// Log the error but perhaps allow a fallback or return error
+		return nil, err
+	}
+
+	return buildReport(f, rows, summary), nil
 }
 
 // buildReport assembles a flat P&L report aggregated across all clinics/forms,
 // grouped by COA account within each section.
-func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
+func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) *RsReport {
 	// coaKey → accumulated total per section
 	type coaKey struct {
 		sectionType string
@@ -351,8 +358,11 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 	cos := buildGroup("COST")
 	other := buildGroup("OTHER_COST", "EXPENSE_ENTRY")
 
-	grossProfit := round2(income.GroupTotal - cos.GroupTotal)
-	netProfit := round2(grossProfit - other.GroupTotal)
+	grossProfit := round2(summary.GrossProfitNet)
+	netProfit := round2(summary.NetProfitNet)
+
+	// grossProfit := round2(income.GroupTotal - cos.GroupTotal)
+	// netProfit := round2(grossProfit - other.GroupTotal)
 
 	dateFrom := ""
 	dateUntil := ""

@@ -15,6 +15,7 @@ type Repository interface {
 	GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error)
 	GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLFYSummaryRow, error)
 	GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error)
+	GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error)
 }
 
 type repository struct {
@@ -259,4 +260,39 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 		return nil, fmt.Errorf("get report: %w", err)
 	}
 	return rows, nil
+}
+
+func (r *repository) GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error) {
+	query := `
+		SELECT 
+			COALESCE(SUM(net_profit_net), 0)   AS net_profit_net,
+			COALESCE(SUM(gross_profit_net), 0) AS gross_profit_net
+		FROM vw_pl_summary_monthly
+		WHERE practitioner_id = $1
+	`
+	args := []interface{}{f.PractitionerID}
+	idx := 2
+
+	if f.ClinicID != nil && *f.ClinicID != "" {
+		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+		args = append(args, *f.ClinicID)
+		idx++
+	}
+
+	if f.DateFrom != nil {
+		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		args = append(args, *f.DateFrom)
+		idx++
+	}
+	if f.DateUntil != nil {
+		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		args = append(args, *f.DateUntil)
+		idx++
+	}
+
+	var summary PLSummaryRow
+	if err := r.db.GetContext(ctx, &summary, query, args...); err != nil {
+		return nil, fmt.Errorf("get summary: %w", err)
+	}
+	return &summary, nil
 }
