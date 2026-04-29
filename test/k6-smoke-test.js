@@ -11,7 +11,7 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const BASE_URL = __ENV.BASE_URL || 'https://acareca-backend-staging.up.railway.app';
 const API_BASE = `${BASE_URL}/api/v1`;
 
 export function setup() {
@@ -51,8 +51,8 @@ export default function () {
   
   // Test 4: Login endpoint (expect failure with invalid credentials)
   const loginPayload = JSON.stringify({
-    email: 'smoke-test@example.com',
-    password: 'SmokeTest@123',
+   email: 'loadtest@yopmail.com',
+      password: '@Demo1234',
   });
   
   res = http.post(`${API_BASE}/auth/login`, loginPayload, {

@@ -1,0 +1,737 @@
+{
+  "root_group": {
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [
+      {
+        "checks": [
+          {
+            "passes": 578,
+            "fails": 0,
+            "name": "status is 200",
+            "path": "::List All Practitioners::status is 200",
+            "id": "74dab004a56ea49f496b213824534f26"
+          },
+          {
+            "name": "response time < 1000ms",
+            "path": "::List All Practitioners::response time < 1000ms",
+            "id": "ecfe51de6ef89ce260bcf87250728efc",
+            "passes": 578,
+            "fails": 0
+          },
+          {
+            "path": "::List All Practitioners::has data",
+            "id": "10c4f2a7410c683d102d017652d07203",
+            "passes": 578,
+            "fails": 0,
+            "name": "has data"
+          }
+        ],
+        "name": "List All Practitioners",
+        "path": "::List All Practitioners",
+        "id": "82bf05bf14728aaca061d859deeb1c3b",
+        "groups": []
+      },
+      {
+        "name": "Get Practitioner by ID",
+        "path": "::Get Practitioner by ID",
+        "id": "0a1726357ce93a8214abc78f2e5641db",
+        "groups": [],
+        "checks": [
+            {
+              "fails": 0,
+              "name": "status is 200",
+              "path": "::Get Practitioner by ID::status is 200",
+              "id": "09116dd21eada2d5eeccc074774073db",
+              "passes": 1155
+            },
+            {
+              "fails": 0,
+              "name": "response time < 500ms",
+              "path": "::Get Practitioner by ID::response time < 500ms",
+              "id": "212f588a312a9f4b9dbfaab6c315b6fb",
+              "passes": 1155
+            },
+            {
+              "passes": 1155,
+              "fails": 0,
+              "name": "has practitioner data",
+              "path": "::Get Practitioner by ID::has practitioner data",
+              "id": "be76d82d91b2554d86606569b18e3300"
+            }
+          ]
+      },
+      {
+        "name": "Search Practitioners",
+        "path": "::Search Practitioners",
+        "id": "327e6c16c61116ad10effd197f506f22",
+        "groups": [],
+        "checks": [
+            {
+              "fails": 0,
+              "name": "status is 200",
+              "path": "::Search Practitioners::status is 200",
+              "id": "dcf3720621377f3c65291e6a66f8491a",
+              "passes": 376
+            },
+            {
+              "name": "response time < 1500ms",
+              "path": "::Search Practitioners::response time < 1500ms",
+              "id": "0719bde8b05df7781c044f00658a6fbf",
+              "passes": 376,
+              "fails": 0
+            },
+            {
+              "name": "has results",
+              "path": "::Search Practitioners::has results",
+              "id": "6f2d7dc3043d6cd95543f99fab156982",
+              "passes": 376,
+              "fails": 0
+            }
+          ]
+      },
+      {
+        "name": "Create Clinic",
+        "path": "::Create Clinic",
+        "id": "4aaef62d3c0b74686b2efd08d6628e06",
+        "groups": [],
+        "checks": [
+            {
+              "name": "status is 201",
+              "path": "::Create Clinic::status is 201",
+              "id": "930711b47e699c8d5ab84016fc4874e6",
+              "passes": 253,
+              "fails": 0
+            },
+            {
+              "id": "8c46b212dd836d42998a5e733c66fa2c",
+              "passes": 253,
+              "fails": 0,
+              "name": "response time < 2500ms",
+              "path": "::Create Clinic::response time < 2500ms"
+            },
+            {
+              "passes": 253,
+              "fails": 0,
+              "name": "has clinic data",
+              "path": "::Create Clinic::has clinic data",
+              "id": "8c7590cb5621b92bae7aa4fcaa7140c8"
+            }
+          ]
+      },
+      {
+        "checks": [
+          {
+            "name": "status is 200",
+            "path": "::List Clinics::status is 200",
+            "id": "df569a8306bf05136ae0a56555e28bb9",
+            "passes": 430,
+            "fails": 0
+          },
+          {
+            "name": "response time < 1000ms",
+            "path": "::List Clinics::response time < 1000ms",
+            "id": "098369eac90ac2fc524112f3e66cda99",
+            "passes": 430,
+            "fails": 0
+          },
+          {
+            "name": "has data",
+            "path": "::List Clinics::has data",
+            "id": "202e0b6f18d885725f397b66fc415195",
+            "passes": 430,
+            "fails": 0
+          }
+        ],
+        "name": "List Clinics",
+        "path": "::List Clinics",
+        "id": "6159745b36e685f64cacb542672be0f1",
+        "groups": []
+      },
+      {
+        "id": "7dd8edaf867c3f73c2f3b5a8f528c531",
+        "groups": [],
+        "checks": [
+            {
+              "name": "status is 200 or 400",
+              "path": "::Update Practitioner Lock Date::status is 200 or 400",
+              "id": "e97f7f70acdf328e0adc8a2e7f0c66f5",
+              "passes": 0,
+              "fails": 245
+            },
+            {
+              "name": "response time < 2000ms",
+              "path": "::Update Practitioner Lock Date::response time < 2000ms",
+              "id": "0da934d47488fa7968b1b65c2fb7b671",
+              "passes": 245,
+              "fails": 0
+            }
+          ],
+        "name": "Update Practitioner Lock Date",
+        "path": "::Update Practitioner Lock Date"
+      },
+      {
+        "path": "::List Forms",
+        "id": "a1f3cd3010522318c03ab79070719235",
+        "groups": [],
+        "checks": [
+            {
+              "name": "status is 200",
+              "path": "::List Forms::status is 200",
+              "id": "ab6fb3ce83d5596f88a7a6fa855f15d8",
+              "passes": 379,
+              "fails": 0
+            },
+            {
+              "name": "response time < 1500ms",
+              "path": "::List Forms::response time < 1500ms",
+              "id": "4362d219b939b94915f1442e90ce2a05",
+              "passes": 379,
+              "fails": 0
+            },
+            {
+              "name": "has data",
+              "path": "::List Forms::has data",
+              "id": "8f4b59dcf6aaaa3e9cada911941c9211",
+              "passes": 379,
+              "fails": 0
+            }
+          ],
+        "name": "List Forms"
+      },
+      {
+        "checks": [
+          {
+            "id": "95f834c47c839c2ad7fa50625d68e444",
+            "passes": 118,
+            "fails": 0,
+            "name": "status is 201",
+            "path": "::Create Form::status is 201"
+          },
+          {
+            "name": "response time < 4000ms",
+            "path": "::Create Form::response time < 4000ms",
+            "id": "6577c671edbfaf58c4366001ed5b13e6",
+            "passes": 118,
+            "fails": 0
+          },
+          {
+            "name": "has form data",
+            "path": "::Create Form::has form data",
+            "id": "9cbf20fe7a69719b029ab0be29e0dd94",
+            "passes": 118,
+            "fails": 0
+          }
+        ],
+        "name": "Create Form",
+        "path": "::Create Form",
+        "id": "5706207b5c1be2664445dfd38867401a",
+        "groups": []
+      },
+      {
+        "id": "36d78eb03c0b4a50a04a9bacdcdc8859",
+        "groups": [],
+        "checks": [
+            {
+              "name": "status is 200",
+              "path": "::Get Form by ID::status is 200",
+              "id": "3667432bef941f4530bef0251acb896d",
+              "passes": 210,
+              "fails": 0
+            },
+            {
+              "name": "response time < 1500ms",
+              "path": "::Get Form by ID::response time < 1500ms",
+              "id": "aaa4eb2eb27c4fef93e77f74422d7623",
+              "passes": 210,
+              "fails": 0
+            },
+            {
+              "name": "has form data",
+              "path": "::Get Form by ID::has form data",
+              "id": "c6e6a6be745b8f9dcb6dd295d442fd15",
+              "passes": 210,
+              "fails": 0
+            }
+          ],
+        "name": "Get Form by ID",
+        "path": "::Get Form by ID"
+      },
+      {
+        "name": "Update Clinic",
+        "path": "::Update Clinic",
+        "id": "31b2b720219678e3fd6678b48efb28be",
+        "groups": [],
+        "checks": [
+            {
+              "passes": 175,
+              "fails": 0,
+              "name": "status is 200 or 404",
+              "path": "::Update Clinic::status is 200 or 404",
+              "id": "efda41c07348af922b27347b9ca43665"
+            },
+            {
+              "name": "response time < 2000ms",
+              "path": "::Update Clinic::response time < 2000ms",
+              "id": "bd408fae07ba6e7f2f00257350d95f28",
+              "passes": 175,
+              "fails": 0
+            }
+          ]
+      }
+    ],
+    "checks": [],
+    "name": "",
+    "path": ""
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": true,
+    "isStdErrTTY": true,
+    "testRunDurationMs": 98381.5742
+  },
+  "metrics": {
+    "http_req_waiting": {
+      "values": {
+        "avg": 293.45308707621666,
+        "min": 242.6109,
+        "med": 266.58,
+        "max": 592.0372,
+        "p(90)": 392.9816,
+        "p(95)": 414.27038
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 744.3038,
+        "med": 1264.3427,
+        "max": 1646.2638,
+        "p(90)": 1394.8414,
+        "p(95)": 1416.09277,
+        "avg": 1150.3138843072206
+      }
+    },
+    "endpoint_search_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 278.4255319148936,
+        "min": 250,
+        "med": 264,
+        "max": 509,
+        "p(90)": 315,
+        "p(95)": 366.25
+      }
+    },
+    "practitioner_operations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 3919,
+        "rate": 39.834694980922556
+      },
+      "thresholds": {
+        "count>200": {
+          "ok": true
+        }
+      }
+    },
+    "group_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 269.4827,
+        "max": 645.7216,
+        "p(90)": 396.05976000000004,
+        "p(95)": 419.50102999999996,
+        "avg": 296.9893158713948,
+        "min": 243.7807
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "rate": 79102.4138745688,
+        "count": 7782220
+      }
+    },
+    "endpoint_get_form_duration": {
+      "values": {
+        "min": 272,
+        "med": 286,
+        "max": 455,
+        "p(90)": 354,
+        "p(95)": 375.8499999999999,
+        "avg": 299.9238095238095
+      },
+      "type": "trend",
+      "contains": "default"
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0.9783893446237982,
+        "passes": 11092,
+        "fails": 245
+      }
+    },
+    "endpoint_create_form_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "max": 615,
+        "p(90)": 454.3,
+        "p(95)": 467.04999999999995,
+        "avg": 418.10169491525426,
+        "min": 385,
+        "med": 408.5
+      }
+    },
+    "endpoint_list_form_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 276.4353562005277,
+        "min": 255,
+        "med": 266,
+        "max": 525,
+        "p(90)": 296.2,
+        "p(95)": 334.39999999999986
+      }
+    },
+    "endpoint_update_clinic_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "max": 462,
+        "p(90)": 357.4,
+        "p(95)": 378,
+        "avg": 313.3542857142857,
+        "min": 286,
+        "med": 301
+      }
+    },
+    "endpoint_get_by_id_duration": {
+      "values": {
+        "avg": 267.83809523809526,
+        "min": 244,
+        "med": 255,
+        "max": 487,
+        "p(90)": 297,
+        "p(95)": 343.29999999999995
+      },
+      "type": "trend",
+      "contains": "default"
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 1.8007936273260257,
+        "min": 0,
+        "med": 0,
+        "max": 447.9586,
+        "p(90)": 0,
+        "p(95)": 0
+      }
+    },
+    "practitioner_read_errors": {
+      "thresholds": {
+        "rate<0.10": {
+          "ok": true
+        }
+      },
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "fails": 3128,
+        "rate": 0,
+        "passes": 0
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 243.1882,
+        "med": 269.5208,
+        "max": 592.0372,
+        "p(90)": 397.26160000000004,
+        "p(95)": 418.55078499999996,
+        "avg": 296.4866857531263
+      }
+    },
+    "endpoint_update_lock_date_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "max": 502,
+        "p(90)": 307.79999999999995,
+        "p(95)": 349.79999999999995,
+        "avg": 273.78367346938774,
+        "min": 248,
+        "med": 260
+      }
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 3923,
+        "rate": 39.87535300080612
+      }
+    },
+    "iterations": {
+      "values": {
+        "count": 3919,
+        "rate": 39.834694980922556
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0.062452204945195,
+        "passes": 245,
+        "fails": 3678
+      },
+      "thresholds": {
+        "rate<0.20": {
+          "ok": true
+        }
+      }
+    },
+    "practitioner_write_errors": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0.30973451327433627,
+        "passes": 245,
+        "fails": 546
+      },
+      "thresholds": {
+        "rate<0.20": {
+          "ok": false
+        }
+      }
+    },
+    "http_req_duration": {
+      "thresholds": {
+        "p(95)<3000": {
+          "ok": true
+        }
+      },
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 294.8709951822582,
+        "min": 243.1882,
+        "med": 268.0166,
+        "max": 592.0372,
+        "p(90)": 395.47532,
+        "p(95)": 416.35310999999996
+      }
+    },
+    "http_req_sending": {
+      "contains": "time",
+      "values": {
+        "avg": 0.40456581697680283,
+        "min": 0,
+        "med": 0.5086,
+        "max": 7.5096,
+        "p(90)": 0.7954600000000003,
+        "p(95)": 0.9662299999999998
+      },
+      "type": "trend"
+    },
+    "data_sent": {
+      "contains": "data",
+      "values": {
+        "count": 758575,
+        "rate": 7710.53935829378
+      },
+      "type": "counter"
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "min": 95,
+        "max": 95,
+        "value": 95
+      }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 172.3519,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0.7424235024216161,
+        "min": 0,
+        "med": 0
+      }
+    },
+    "endpoint_list_duration": {
+      "contains": "default",
+      "values": {
+        "max": 645,
+        "p(90)": 309.2000000000003,
+        "p(95)": 371.29999999999995,
+        "avg": 275.4134948096886,
+        "min": 248,
+        "med": 259.5
+      },
+      "type": "trend"
+    },
+    "practitioner_write_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 311.21997471554994,
+        "min": 248,
+        "med": 290,
+        "max": 615,
+        "p(90)": 407,
+        "p(95)": 427
+      },
+      "thresholds": {
+        "p(95)<2000": {
+          "ok": true
+        }
+      }
+    },
+    "endpoint_create_clinic_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "avg": 296.14624505928856,
+        "min": 269,
+        "med": 282,
+        "max": 525,
+        "p(90)": 338,
+        "p(95)": 369.19999999999993
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 4,
+        "min": 0,
+        "max": 88
+      }
+    },
+    "endpoint_list_clinic_duration": {
+      "contains": "default",
+      "values": {
+        "avg": 407.22558139534885,
+        "min": 365,
+        "med": 393,
+        "max": 629,
+        "p(90)": 462.20000000000005,
+        "p(95)": 509.0499999999995
+      },
+      "type": "trend"
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.9922217435635995,
+        "min": 0,
+        "med": 0,
+        "max": 114.1405,
+        "p(90)": 0,
+        "p(95)": 0
+      }
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 2.208600000000001,
+        "p(95)": 3.464159999999997,
+        "avg": 1.01334228906449,
+        "min": 0,
+        "med": 0.4756,
+        "max": 153.363
+      }
+    },
+    "practitioner_read_duration": {
+      "type": "trend",
+      "contains": "default",
+      "values": {
+        "p(95)": 416,
+        "avg": 292.86764705882354,
+        "min": 244,
+        "med": 264,
+        "max": 645,
+        "p(90)": 391
+      },
+      "thresholds": {
+        "p(95)<1000": {
+          "ok": true
+        }
+      }
+    }
+  },
+  "setup_data": {
+    "practitionerIds": [
+      "e4b1d13f-e49d-4481-9329-d2a7139eba46",
+      "3ff53c5c-10a9-4d13-8459-991b9c699402",
+      "20d84933-4dfb-4528-806d-3e71fa13e948",
+      "c59d54e6-36b6-4a22-956e-79c890d87d91",
+      "ea92bd11-1395-4a99-ab8c-907d82b79a17",
+      "00959002-5ff2-4305-8852-4b745339d9d6",
+      "101e58de-eaf8-4bdb-b328-4866181a4d49",
+      "ae857bb4-b0a0-416f-8d0f-546904ca2839",
+      "2e6760ba-e1d3-4927-96b9-c444de4c70cc",
+      "ffd13d7b-605b-4a7e-b820-d75f32eaf456"
+    ],
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAzNmM0MTEwLWFjZmYtNDI0My1hM2Y1LTI3MTYxNDljM2YwMiIsInJvbGUiOiJQUkFDVElUSU9ORVIiLCJzdWIiOiI3NGYzYTEyZS1kMTFlLTQ3ZWUtOTU0YS1iZTkwMjFlNTQwOGQiLCJleHAiOjE3Nzc0MzY4NjAsImlhdCI6MTc3NzM4Mjg2MH0.lJ3HqizI-z1zD5jL3ubl4fuFI3I_racfXMgo0qLQYOE",
+    "clinicIds": [
+      "d86128bb-d8cd-48f1-ab74-0a2a8c4ed698",
+      "fe7b3868-d963-400e-a2da-d7e5e71909a2",
+      "ea080457-2762-40a8-9061-5bdbd00a9006",
+      "f1d501a2-4266-412b-94a8-a3be550db261",
+      "92251325-04d2-410d-8d96-0f38b9eafdd8",
+      "816a20cf-15d6-454b-8003-2b05deb8ac57",
+      "eec3b3dd-5874-4473-9399-b74f06bc2030",
+      "429d218d-8886-4427-a16c-9e765f56f2a9",
+      "5bd1a274-c05c-4f21-b29c-ad36b248f4f6",
+      "a409f81c-bf8e-4d21-98e1-cdac03070b6a"
+    ],
+    "formIds": [
+      "5f49c1e4-9510-40ba-9302-c416b99f41d2",
+      "630da849-bca9-4f8d-b76f-5856577a30cd",
+      "063a1764-676e-4a68-93b1-c3f9e5044b75",
+      "c568a536-7788-488a-8d02-b210daafe16b",
+      "2ba80420-cdf1-4035-9009-c84903990eed",
+      "f837b4b0-9937-4359-82a8-f06ddde36d32",
+      "2e812f93-21b6-4e53-9d85-dc0c601082f1",
+      "2037532c-7229-4627-9039-ed76230d4792",
+      "5d7a5535-22c7-4bf5-adb0-cfd85b554939",
+      "f608a177-37ca-4a3c-b0b2-ff6f30c96e75"
+    ]
+  }
+}
