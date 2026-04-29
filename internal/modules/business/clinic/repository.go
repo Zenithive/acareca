@@ -88,7 +88,7 @@ func (r *repository) GetClinicAddresses(ctx context.Context, clinicID uuid.UUID)
 	query := `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_clinic_address
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var addresses []ClinicAddress
@@ -102,7 +102,7 @@ func (r *repository) GetClinicContacts(ctx context.Context, clinicID uuid.UUID) 
 	query := `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_clinic_contact
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var contacts []ClinicContact
@@ -363,7 +363,7 @@ func (r *repository) GetClinicAddressesTx(ctx context.Context, tx *sqlx.Tx, clin
 	query := `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_clinic_address
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var addresses []ClinicAddress
@@ -377,7 +377,7 @@ func (r *repository) GetClinicContactsTx(ctx context.Context, tx *sqlx.Tx, clini
 	query := `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_clinic_contact
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var contacts []ClinicContact
@@ -407,7 +407,7 @@ func (r *repository) GetAddressByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 	query := `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_clinic_address
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 	var a ClinicAddress
 	if err := tx.QueryRowxContext(ctx, query, id).StructScan(&a); err != nil {
@@ -423,7 +423,7 @@ func (r *repository) GetContactByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 	query := `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_clinic_contact
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 	var c ClinicContact
 	if err := tx.QueryRowxContext(ctx, query, id).StructScan(&c); err != nil {
@@ -461,7 +461,7 @@ func (r *repository) UpdateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, add
 	query := `
 		UPDATE tbl_clinic_address 
 		SET address = $1, city = $2, state = $3, postcode = $4, is_primary = $5, updated_at = now()
-		WHERE id = $6
+		WHERE id = $6 AND deleted_at IS NULL
 	`
 	_, err := tx.ExecContext(ctx, query,
 		address.Address, address.City, address.State,
@@ -477,7 +477,7 @@ func (r *repository) UpdateClinicContactTx(ctx context.Context, tx *sqlx.Tx, con
 	query := `
 		UPDATE tbl_clinic_contact 
 		SET value = $1, label = $2, is_primary = $3, updated_at = now()
-		WHERE id = $4
+		WHERE id = $4 AND deleted_at IS NULL
 	`
 	_, err := tx.ExecContext(ctx, query,
 		contact.Value, contact.Label, contact.IsPrimary, contact.ID,
@@ -504,7 +504,7 @@ func (r *repository) UpdateFinancialSettingsTx(ctx context.Context, tx *sqlx.Tx,
 }
 
 func (r *repository) UnsetPrimaryAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, excludeID uuid.UUID) error {
-	query := `UPDATE tbl_clinic_address SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2`
+	query := `UPDATE tbl_clinic_address SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, clinicID, excludeID)
 	if err != nil {
 		return fmt.Errorf("unset primary address tx: %w", err)
@@ -513,7 +513,7 @@ func (r *repository) UnsetPrimaryAddressTx(ctx context.Context, tx *sqlx.Tx, cli
 }
 
 func (r *repository) UnsetPrimaryContactTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, excludeID uuid.UUID) error {
-	query := `UPDATE tbl_clinic_contact SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2`
+	query := `UPDATE tbl_clinic_contact SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, clinicID, excludeID)
 	if err != nil {
 		return fmt.Errorf("unset primary contact tx: %w", err)
@@ -687,13 +687,13 @@ func (r *repository) GetPractitionerForAccountant(ctx context.Context, accountan
 }
 
 func (r *repository) DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error {
-	query := `DELETE FROM tbl_clinic_address WHERE clinic_id = $1`
+	query := `UPDATE tbl_clinic_address SET deleted_at = NOW() WHERE clinic_id = $1 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, clinicID)
 	return err
 }
 
 func (r *repository) DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error {
-	query := `DELETE FROM tbl_clinic_contacts WHERE id = $1 AND clinic_id = $2`
+	query := `UPDATE tbl_clinic_contact SET deleted_at = NOW() WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, id, clinicID)
 	return err
 }
