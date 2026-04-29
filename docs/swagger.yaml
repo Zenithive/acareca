@@ -6211,6 +6211,34 @@ paths:
       summary: Mark notification as read
       tags:
       - notification
+  /notification/read-all:
+    patch:
+      description: Marks all currently UNREAD notifications as READ for the authenticated
+        entity.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Mark all notifications as read
+      tags:
+      - notification
   /pl/by-account:
     get:
       description: Returns monthly totals broken down per Chart of Accounts entry,

@@ -252,6 +252,8 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		if err == nil {
 			userName, _ = s.repo.GetUserName(ctx, uID)
 		}
+	} else if entry.Action == "shared_event.recorded" {
+		userName, err = s.repo.GetAccountantNameForSharedEvents(ctx, *entry.UserID)
 	}
 
 	// Format the Action into a generic sentence
@@ -300,11 +302,15 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"billing.payment_success":       "successfully processed payment for",
 		"billing.activation_successful": "successfully activated subscription for",
 
-		// Report Export
-		"bas_report.exported":         "exported BAS Report",
-		"pl_report.exported":          "exported Profit Loss Report",
-		"activity_statement.exported": "exported Activity Statement",
-		"transactions.exported":       "exported Transactions",
+		// Report Generate and Export
+		"bas_report.exported":          "exported BAS Report",
+		"pl_report.exported":           "exported Profit and Loss Report",
+		"activity_statement.exported":  "exported Activity Statement",
+		"transactions.exported":        "exported Transactions",
+		"bas_report.generated":         "generated BAS Report",
+		"pl_report.generated":          "generated Profit and Loss Report",
+		"activity_statement.generated": "generated Activity Statement",
+		"transactions.generated":       "generated Transactions",
 	}
 	formattedAction, exists := actionVerbs[entry.Action]
 	if !exists {

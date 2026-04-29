@@ -40,11 +40,11 @@ type IService interface {
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 
 	// COA-grouped endpoints
-	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
+	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 
 	//ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
-	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string) (interface{}, string, error)
+	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
 	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
 }
 
@@ -860,7 +860,76 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 }
 
 // ListCoaEntries implements [IService] - returns grouped COA rows for parent grid
-func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error) {
+func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
+	var targetPracIDs []uuid.UUID
+	if role == util.RolePractitioner {
+		// Practitioner logic: Only them
+		pracIdStr := actorID.String()
+		filter.PractitionerID = &pracIdStr
+		targetPracIDs = []uuid.UUID{actorID}
+	} else if role == util.RoleAccountant {
+		// Accountant logic:
+		if filter.PractitionerID != nil && *filter.PractitionerID != "" {
+			// Case A: Specific practitioner selected in query
+			pID, err := uuid.Parse(*filter.PractitionerID)
+			if err == nil {
+				targetPracIDs = []uuid.UUID{pID}
+			}
+		} else {
+			// Case B: No practitioner specified - fetch all linked practitioners
+			linked, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
+			}
+			targetPracIDs = linked
+		}
+	}
+
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	parsedActorID := actorID.String()
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActitionTransactionsGenerated,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityTransactions),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Transaction Report",
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	// Record the Shared Event
+	if role == util.RoleAccountant {
+		// Fetching user details
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		for _, pID := range targetPracIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorType:      role,
+				EventType:      "transaction_report.generated",
+				EntityType:     "REPORT",
+				Description:    fmt.Sprintf("Accountant %s generated Transaction Report", fullName),
+				Metadata:       events.JSONBMap{"report_type": "Transaction Report"},
+				CreatedAt:      time.Now(),
+			})
+		}
+	}
+
 	f := filter.ToCommonFilter()
 
 	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
@@ -900,8 +969,8 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	return &rs, nil
 }
 
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string) (interface{}, string, error) {
-	// 1. Fetch Shared Data
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error) {
+	// Fetch Shared Data
 	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 	if err != nil {
 		return nil, "", err
@@ -911,32 +980,96 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		coaUUID, _ := uuid.Parse(g.CoaID)
 		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
 		if err != nil {
-			continue // Or handle error
+			continue
 		}
-		g.Details = details // <--- This matches the field in the struct
+		g.Details = details
 	}
 
-	// 2. Handle HTML Export
+	var result interface{}
+	var contentType string
+
+	// Handle HTML Export
 	if strings.ToLower(exportType) == "pdf" {
 		data := struct{ Groups interface{} }{Groups: groups}
-
-		htmlContent, err := s.generateTransactionHTML(data) // Call new helper
+		htmlContent, err := s.generateTransactionHTML(data)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to generate html: %w", err)
 		}
-		return htmlContent, "text/html", nil
+		result = htmlContent
+		contentType = "text/html"
+	} else {
+		// Handle Excel Export
+		buf, err := s.generateExcelReport(ctx, f, actorID, role)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to generate excel: %w", err)
+		}
+		result = buf
+		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
 
-	// 3. Handle Excel Export
-	// We cannot return s.generateExcelReport directly because it only returns 2 values
-	// whereas this function requires 3.
-	buf, err := s.generateExcelReport(ctx, f, actorID, role)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate excel: %w", err)
+	// Resolve target practitioners for Notifications
+	targetNotifIDs := PracIDs
+
+	// If clinic_id is provided, we narrow down the notification to ONLY the owner of that clinic
+	if f.ClinicID != nil {
+		clinicUUID, err := uuid.Parse(*f.ClinicID)
+		if err == nil {
+			// Get the clinic to find the practitioner_id
+			clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicUUID)
+			if err == nil {
+				// Set the notification target to just this owner
+				targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
+			}
+		}
 	}
 
-	// Explicitly return the 3 values: buffer, MIME type, and nil error
-	return buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	parsedActorID := actorID.String()
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActitionTransactionsExported,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityTransactions),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Transaction Report",
+			"export_type": exportType,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	// Record the Shared Event
+	if role == util.RoleAccountant {
+		// Fetching user details
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		for _, pID := range targetNotifIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorType:      role,
+				EventType:      "transaction_report.exported",
+				EntityType:     "REPORT",
+				Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
+				Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
+				CreatedAt:      time.Now(),
+			})
+		}
+	}
+
+	return result, contentType, nil
 }
 
 func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {

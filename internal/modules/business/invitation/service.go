@@ -38,7 +38,7 @@ type Service interface {
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
-	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
+	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
 	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) ([]map[string]interface{}, error)
 }
 
@@ -718,8 +718,8 @@ func (s *service) IsAccountantLinkedToPractitioner(ctx context.Context, practiti
 	return s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, accountantID)
 }
 
-func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
-	return s.repo.GetFirstPractitionerLinkedToAccountant(ctx, accountantID)
+func (s *service) GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error) {
+	return s.repo.GetPractitionersLinkedToAccountant(ctx, accountantID)
 }
 
 // ListPermissions retrieves all permissions for an accountant across all practitioners
