@@ -288,24 +288,26 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 		coaTotals[ck] += val
 	}
 
-	buildGroup := func(sectionType string) RsReportGroup {
+	buildGroup := func(sectionTypes ...string) RsReportGroup {
 		accounts := make([]RsReportAccount, 0)
 		var total float64
-		for _, cid := range coaOrder[sectionType] {
-			ck := coaKey{sectionType, cid}
-			total += coaTotals[ck]
-			accounts = append(accounts, RsReportAccount{
-				CoaID:      cid,
-				CoaName:    coaNames[ck],
-				TotalValue: round2(coaTotals[ck]),
-			})
+		for _, st := range sectionTypes {
+			for _, cid := range coaOrder[st] {
+				ck := coaKey{st, cid}
+				total += coaTotals[ck]
+				accounts = append(accounts, RsReportAccount{
+					CoaID:      cid,
+					CoaName:    coaNames[ck],
+					TotalValue: round2(coaTotals[ck]),
+				})
+			}
 		}
 		return RsReportGroup{GroupTotal: round2(total), Accounts: accounts}
 	}
 
 	income := buildGroup("COLLECTION")
 	cos := buildGroup("COST")
-	other := buildGroup("OTHER_COST")
+	other := buildGroup("OTHER_COST", "EXPENSE_ENTRY")
 
 	grossProfit := round2(income.GroupTotal - cos.GroupTotal)
 	netProfit := round2(grossProfit - other.GroupTotal)

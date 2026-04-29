@@ -85,7 +85,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	realOwnerID := clinic.PractitionerID
 
 	// Validate lock date before creating entry
-	if err := s.validateLockDate(ctx, req.ClinicID, req.Date); err != nil {
+	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
 		return nil, err
 	}
 
@@ -235,7 +235,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if req.Date != nil {
 		dateToCheck = req.Date
 	}
-	if err := s.validateLockDate(ctx, existing.ClinicID, dateToCheck); err != nil {
+	if err := s.validateLockDate(ctx, existing.PractitionerID, dateToCheck, &existing.CreatedAt); err != nil {
 		return nil, err
 	}
 
@@ -327,7 +327,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	beforeState := existing.ToRs(values)
 
 	// Validate lock date before deleting entry
-	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date); err != nil {
+	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
 		return err
 	}
 
@@ -1064,127 +1064,117 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 		return *f
 	}
 	getString := func(s *string) string {
-		if s == nil {
-			return ""
+		// If the pointer is nil, or the dereferenced string is empty or "<nil>"
+		if s == nil || *s == "" || *s == "<nil>" {
+			return "-"
 		}
 		return *s
 	}
 
+	// Format date to YYYY-MM-DD
+	formatDate := func(dateStr string) string {
+		if dateStr == "" || dateStr == "<nil>" {
+			return "-"
+		}
+
+		// Try to parse the standard ISO format
+		t, err := time.Parse(time.RFC3339, dateStr)
+		if err != nil {
+			// Fallback: If it's already a simple date string "2026-04-27"
+			t, err = time.Parse("2006-01-02", strings.Split(dateStr, "T")[0])
+			if err != nil {
+				return dateStr // Return raw string if parsing fails
+			}
+		}
+		return t.Format("2006-01-02")
+	}
+
 	// 2. Set Headers
-	headers := []string{"Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Date"}
+	headers := []string{"Date", "Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Type"}
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		xl.SetCellValue(sheet, cell, h)
 	}
-	xl.SetCellStyle(sheet, "A1", "H1", headerStyle)
+	xl.SetCellStyle(sheet, "A1", "I1", headerStyle)
 
 	currRow := 2
 	for _, g := range groups {
-		// --- 3. Write Group Header (Title only, Amounts blank) ---
+		// --- 4. GROUP HEADER ---
 		xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), g.CoaName)
-		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("H%d", currRow), groupHeaderStyle)
+		xl.MergeCell(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow))
+		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow), groupHeaderStyle)
 		currRow++
 
-		// 4. Fetch Details
 		coaUUID, _ := uuid.Parse(g.CoaID)
 		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			continue
 		}
 
-		// 5. Write Individual Transactions
+		// --- 5. INDIVIDUAL TRANSACTIONS ---
 		for _, d := range details {
-			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), "  "+d.FormFieldName)
-			xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), getString(d.TaxTypeName))
-			xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), d.FormName)
-			xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), d.ClinicName)
+			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), formatDate(d.CreatedAt))
+			xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), "  "+d.FormFieldName)
+			xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), getString(d.TaxTypeName))
+			xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), getString(d.FormName))
+			xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), getString(d.ClinicName))
 
-			xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), getFloat(d.NetAmount))
-			xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), getFloat(d.GstAmount))
-			xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), getFloat(d.GrossAmount))
-			xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), normalCurrencyStyle)
+			xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), getFloat(d.NetAmount))
+			xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), getFloat(d.GstAmount))
+			xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), getFloat(d.GrossAmount))
 
-			// dateVal := getString(d.Date)
-			// if strings.Contains(dateVal, "T") {
-			// 	dateVal = strings.Split(dateVal, "T")[0]
-			// }
-			// xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), dateVal)
+			// Apply currency formatting to F, G, H columns
+			xl.SetCellStyle(sheet, fmt.Sprintf("F%d", currRow), fmt.Sprintf("H%d", currRow), normalCurrencyStyle)
 
-			xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), d.CreatedAt)
+			entryType := "Entry"
+			if d.IsExpense {
+				entryType = "Expense"
+			}
+			xl.SetCellValue(sheet, fmt.Sprintf("I%d", currRow), entryType)
 			currRow++
 		}
 
-		// --- 6. Write TOTAL Row (Amounts only, no label) ---
-		// We leave column A blank or just styled
-		xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), g.TotalNetAmount)
-		xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), g.TotalGrossAmount)
+		// --- 6. TOTAL ROW ---
+		xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), "Total "+g.CoaName)
+		xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), g.TotalNetAmount)
+		xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), g.TotalGrossAmount)
 
-		// Apply Bold + Currency Style
-		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("H%d", currRow), totalRowStyle)
+		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow), totalRowStyle)
+		xl.SetCellStyle(sheet, fmt.Sprintf("F%d", currRow), fmt.Sprintf("F%d", currRow), totalCurrencyStyle)
+		xl.SetCellStyle(sheet, fmt.Sprintf("H%d", currRow), fmt.Sprintf("H%d", currRow), totalCurrencyStyle)
 
-		xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("E%d", currRow), totalCurrencyStyle)
-		xl.SetCellStyle(sheet, fmt.Sprintf("G%d", currRow), fmt.Sprintf("G%d", currRow), totalCurrencyStyle)
-		//xl.SetCellStyle(sheet, fmt.Sprintf("E%d", currRow), fmt.Sprintf("G%d", currRow), currencyStyle)
-
-		currRow += 2 // Space before next group
+		currRow += 2 // Gap between groups
 	}
 
-	// 7. Add AutoFilter to the header row (A1 to H1)
-	if err := xl.AutoFilter(sheet, "A1:H1", nil); err != nil {
+	// Add AutoFilter to the header row (A1 to I1)
+	if err := xl.AutoFilter(sheet, "A1:I1", nil); err != nil {
 		return nil, err
 	}
 
-	xl.SetColWidth(sheet, "A", "A", 35)
-	xl.SetColWidth(sheet, "B", "D", 20)
-	xl.SetColWidth(sheet, "E", "H", 15)
+	// Column Widths
+	xl.SetColWidth(sheet, "A", "A", 15) // Date
+	xl.SetColWidth(sheet, "B", "B", 35) // Account
+	xl.SetColWidth(sheet, "C", "E", 20) // Tax, Form, Clinic
+	xl.SetColWidth(sheet, "F", "H", 15) // Amounts
+	xl.SetColWidth(sheet, "I", "I", 12) // Type
 
 	return xl.WriteToBuffer()
 }
 
-// validateLockDate checks if the entry date is on or before the clinic's lock date.
-// Returns an error if the entry date violates the lock date restriction.
-/*
-func (s *Service) validateLockDate(ctx context.Context, clinicID uuid.UUID, entryDate *string) error {
-	// If no entry date provided, allow the operation
-	if entryDate == nil || *entryDate == "" {
-		return nil
-	}
+func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string, createdAt *string) error {
 
-	// Get financial settings for the clinic
-	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, clinicID)
-	if err != nil {
-		return fmt.Errorf("failed to get financial settings: %w", err)
-	}
+	var dateString string
+	if entryDate != nil && *entryDate != "" {
+		dateString = *entryDate
+	} else if createdAt != nil && *createdAt != "" {
 
-	// If no financial settings or no lock date set, allow the operation
-	if financialSettings == nil || financialSettings.LockDate == nil {
-		return nil
-	}
+		dateString = (*createdAt)[:10]
+	} else {
 
-	// Parse the entry date
-	parsedEntryDate, err := time.Parse("2006-01-02", *entryDate)
-	if err != nil {
-		return fmt.Errorf("invalid entry date format: %w", err)
-	}
-
-	// Compare dates: if entry date is on or before lock date, reject the operation
-	lockDate := *financialSettings.LockDate
-	if parsedEntryDate.Before(lockDate) || parsedEntryDate.Equal(lockDate) {
-		return fmt.Errorf("cannot modify entries on or before the lock date (%s). This period has been locked for changes", lockDate.Format("2006-01-02"))
-	}
-
-	return nil
-}
-*/
-
-func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string) error {
-	// 1. Basic validation (Keep as is)
-	if entryDate == nil || *entryDate == "" {
 		return nil
 	}
 
 	// 2. Fetch settings based on PractitionerID instead of ClinicID
-	// Ensure your repository has a method like GetPractitionerFinancialSettings
 	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, practitionerID)
 	if err != nil {
 		return fmt.Errorf("failed to get practitioner financial settings: %w", err)
@@ -1196,17 +1186,16 @@ func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID
 	}
 
 	// 4. Parse the entry date
-	parsedEntryDate, err := time.Parse("2006-01-02", *entryDate)
+	parsedEntryDate, err := time.Parse("2006-01-02", dateString)
 	if err != nil {
 		return fmt.Errorf("invalid entry date format: %w", err)
 	}
 
-	// 5. Compare: entryDate vs practitioner's LockDate
-	lockDate := *financialSettings.LockDate
+	lockDate := financialSettings.LockDate.UTC().Truncate(24 * time.Hour)
+	entryDateOnly := parsedEntryDate.UTC().Truncate(24 * time.Hour)
 
-	// Logic: If entry is in the locked period, block it.
-	if !parsedEntryDate.After(lockDate) {
-		return fmt.Errorf("cannot modify entries on or before the lock date (%s) set for this practitioner",
+	if entryDateOnly.Before(lockDate) || entryDateOnly.Equal(lockDate) {
+		return fmt.Errorf("cannot modify entries on or before the lock date (%s)",
 			lockDate.Format("2006-01-02"))
 	}
 
@@ -1275,6 +1264,7 @@ const reportTemplate = `
     .col-form { width: 15%; }
     .col-clinic { width: 15%; }
     .col-amt  { width: 9%; }
+    .col-type  { width: 10%; }
 </style>
 </head>
 <body>
@@ -1289,23 +1279,25 @@ const reportTemplate = `
                 <th class="col-amt">Net</th>
                 <th class="col-amt">GST</th>
                 <th class="col-amt">Gross</th>
+                <th class="col-type">Type</th>
             </tr>
         </thead>
         <tbody>
             {{range .Groups}}
                 <tr class="group-row">
-                    <td colspan="8">{{.CoaName}}</td>
+                    <td colspan="9">{{.CoaName}}</td>
                 </tr>
                 {{range .Details}}
                 <tr>
                     <td class="date-cell">{{formatDate .CreatedAt}}</td>
                     <td style="padding-left: 20px;">{{.FormFieldName}}</td>
                     <td>{{.TaxTypeName}}</td>
-                    <td>{{.FormName}}</td>
-                    <td>{{.ClinicName}}</td>
+                   	<td>{{if .FormName}}{{.FormName}}{{else}}-{{end}}</td>
+					<td>{{if .ClinicName}}{{.ClinicName}}{{else}}-{{end}}</td>
                     <td class="amount">${{getFloat .NetAmount | printf "%.2f"}}</td>
                     <td class="amount">${{getFloat .GstAmount | printf "%.2f"}}</td>
                     <td class="amount">${{getFloat .GrossAmount | printf "%.2f"}}</td>
+					<td>{{if .IsExpense}}Expense{{else}}Entry{{end}}</td>
                 </tr>
                 {{end}}
                 <tr class="total-row">
@@ -1313,8 +1305,9 @@ const reportTemplate = `
                     <td class="amount">${{.TotalNetAmount | printf "%.2f"}}</td>
                     <td class="amount"></td>
                     <td class="amount">${{.TotalGrossAmount | printf "%.2f"}}</td>
+					<td></td>
                 </tr>
-                <tr style="border: none; height: 20px;"><td colspan="8" style="border: none;"></td></tr>
+                <tr style="border: none; height: 20px;"><td colspan="9" style="border: none;"></td></tr>
             {{end}}
         </tbody>
     </table>
@@ -1340,14 +1333,6 @@ type CoaDetail struct {
 	GstAmount     *float64  `json:"gst_amount"`
 	GrossAmount   *float64  `json:"gross_amount"`
 	CreatedAt     time.Time `json:"created_at"`
-}
-
-// Helper to handle nil floats for the template
-func getFloat(f *float64) float64 {
-	if f == nil {
-		return 0.0
-	}
-	return *f
 }
 
 func (s *Service) generateTransactionHTML(data interface{}) (string, error) {

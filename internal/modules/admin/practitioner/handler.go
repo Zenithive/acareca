@@ -1,9 +1,11 @@
 package practitioner
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -49,6 +51,33 @@ func (h *Handler) ListPractitionersWithSubscriptions(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, list, "Practitioners with subscriptions fetched successfully")
+}
+
+// @Summary Get practitioner by ID with subscription (Admin)
+// @Description Fetch a single practitioner with their active subscription details by ID. Admin only.
+// @Tags admin-practitioner
+// @Produce json
+// @Param id path string true "Practitioner ID (UUID)"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /admin/practitioner/{id} [get]
+func (h *Handler) GetPractitionerWithSubscription(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner id"))
+		return
+	}
+
+	practitioner, err := h.svc.GetPractitionerWithSubscription(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, http.StatusNotFound, errors.New("practitioner not found"))
+		return
+	}
+
+	response.JSON(c, http.StatusOK, practitioner, "Practitioner fetched successfully")
 }
 
 

@@ -1116,10 +1116,8 @@ definitions:
     properties:
       abn:
         type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RqClinicAddress'
-        type: array
+      address:
+        $ref: '#/definitions/clinic.RqClinicAddress'
       contacts:
         items:
           $ref: '#/definitions/clinic.RqClinicContact'
@@ -1156,10 +1154,8 @@ definitions:
     properties:
       abn:
         type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RqUpdateAddress'
-        type: array
+      address:
+        $ref: '#/definitions/clinic.RqUpdateAddress'
       contacts:
         items:
           $ref: '#/definitions/clinic.RqUpdateContact'
@@ -1371,6 +1367,8 @@ definitions:
     type: object
   field.RqUpdateFormField:
     properties:
+      amount:
+        type: number
       business_use:
         type: number
       coa_id:
@@ -1411,7 +1409,11 @@ definitions:
         type: number
       coa_id:
         type: string
+      description:
+        type: string
       name:
+        type: string
+      tax_type:
         type: string
     required:
     - amount
@@ -1429,9 +1431,13 @@ definitions:
         type: number
       coa_id:
         type: string
+      description:
+        type: string
       id:
         type: string
       name:
+        type: string
+      tax_type:
         type: string
     required:
     - id
@@ -5673,7 +5679,7 @@ paths:
       summary: Update form status
       tags:
       - form
-  /form/expense:
+  /form/expenses:
     post:
       consumes:
       - application/json
@@ -5705,7 +5711,41 @@ paths:
       summary: Create expense
       tags:
       - form/expense
-  /form/expense/{id}:
+  /form/expenses/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get an expense form with all its items
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get expense by ID
+      tags:
+      - form/expense
     patch:
       consumes:
       - application/json

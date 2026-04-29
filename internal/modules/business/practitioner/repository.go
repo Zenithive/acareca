@@ -142,7 +142,7 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 // ListPractitionersForAccountant lists practitioners associated with an accountant via COMPLETED invitations
 func (r *repository) ListPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*PractitionerWithUser, error) {
 	base := `
-		SELECT DISTINCT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL

@@ -26,7 +26,7 @@ type Repository interface {
 	DeleteClinicTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) error
 
-	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
+	GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID) (*FinancialSettings, error)
 
 	CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error)
 	CreateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, address *ClinicAddress) (*ClinicAddress, error)
@@ -55,6 +55,9 @@ type Repository interface {
 	DeletePermissionsByEntity(ctx context.Context, entityID uuid.UUID, entityType string) error
 	IsAccountantInvitedByPractitioner(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (bool, error)
 	GetPractitionerForAccountant(ctx context.Context, accountantID uuid.UUID) (*uuid.UUID, error)
+
+	DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
+	DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error
 }
 
 type repository struct {
@@ -109,14 +112,14 @@ func (r *repository) GetClinicContacts(ctx context.Context, clinicID uuid.UUID) 
 	return contacts, nil
 }
 
-func (r *repository) GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error) {
+func (r *repository) GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID) (*FinancialSettings, error) {
 	query := `
-		SELECT id, clinic_id, financial_year_id, lock_date, created_at, updated_at
+		SELECT id, practitioner_id, financial_year_id, lock_date, created_at, updated_at
 		FROM tbl_financial_settings
-		WHERE clinic_id = $1
+		WHERE practitioner_id = $1
 	`
 	var fs FinancialSettings
-	if err := r.db.QueryRowxContext(ctx, query, clinicID).StructScan(&fs); err != nil {
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID).StructScan(&fs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -681,4 +684,16 @@ func (r *repository) GetPractitionerForAccountant(ctx context.Context, accountan
 
 	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
 	return &practitionerID, err
+}
+
+func (r *repository) DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error {
+	query := `DELETE FROM tbl_clinic_address WHERE clinic_id = $1`
+	_, err := tx.ExecContext(ctx, query, clinicID)
+	return err
+}
+
+func (r *repository) DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error {
+	query := `DELETE FROM tbl_clinic_contacts WHERE id = $1 AND clinic_id = $2`
+	_, err := tx.ExecContext(ctx, query, id, clinicID)
+	return err
 }
