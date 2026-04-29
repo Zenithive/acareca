@@ -65,9 +65,10 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 
 	if s.auditSvc != nil {
 		meta := auditctx.GetMetadata(ctx)
+		userIDStr := e.ActorID.String()
 		auditEntry := &audit.LogEntry{
 			PracticeID: meta.PracticeID,
-			UserID:     meta.UserID,
+			UserID:     &userIDStr,
 			Action:     "shared_event.recorded",
 			Module:     "shared_events",
 			EntityType: strPtr("shared_event"),
