@@ -28,13 +28,13 @@ type Service interface {
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error)
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
-	GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error)
-	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter) (*RsBASPreparation, error)
-	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (interface{}, string, error)
+	GetReport(ctx context.Context, f *BASReportFilter, PracIDs []uuid.UUID, userID uuid.UUID, actorID uuid.UUID, role string) (*RsBASReport, error)
+	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter, userID uuid.UUID) (*RsBASPreparation, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
-	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string) (interface{}, error)
+	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error)
 }
 
 type service struct {
@@ -126,7 +126,7 @@ func parseUUID(s string) ([16]byte, error) {
 	return parsed, nil
 }
 
-func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASReport, error) {
+func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []uuid.UUID, userID uuid.UUID, actorID uuid.UUID, role string) (*RsBASReport, error) {
 	pracID, err := uuid.Parse(f.PractitionerID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid practitioner_id")
@@ -162,6 +162,54 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 		return nil, err
 	}
 
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	parsedActorID := actorID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionActivityStatementGenerated,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Activity Statement",
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	// Shared Events: only fire for accountants, using the PracIDs passed from the handler.
+	// NOTE: When called from ExportBASReport's loop, PracIDs is passed but events are
+	// intentionally suppressed there — ExportActivityStatement fires its own events.
+	// Here we only fire if this is a direct GetReport call (PracIDs non-empty and role is accountant).
+	if role == util.RoleAccountant && len(PracIDs) > 0 {
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		for _, pID := range PracIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorName:      &fullName,
+				ActorType:      role,
+				EventType:      "activity_statement.generated",
+				EntityType:     "REPORT",
+				EntityID:       actorID,
+				Description:    fmt.Sprintf("Accountant %s generated Activity Statement", fullName),
+				Metadata:       events.JSONBMap{"report_type": "Activity Statement"},
+				CreatedAt:      time.Now(),
+			})
+		}
+	}
+
 	return &RsBASReport{
 		G1:  row.G1TotalSalesGross,
 		A1:  row.Label1AGSTOnSales,
@@ -170,7 +218,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter) (*RsBASRepo
 	}, nil
 }
 
-func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter) (*RsBASPreparation, error) {
+func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter, userID uuid.UUID) (*RsBASPreparation, error) {
 	isAccountant := false
 	if role == util.RoleAccountant {
 		isAccountant = true
@@ -178,6 +226,9 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 
 	var ownerID uuid.UUID
 	var clinicIDs []uuid.UUID
+
+	// Track unique practitioners to notify
+	practitionerMap := make(map[uuid.UUID]bool)
 
 	// Convert BASFilter to common.Filter for clinic listing
 	commonFilter := f.MapToFilter()
@@ -193,6 +244,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 				if err != nil {
 					return nil, fmt.Errorf("permission denied for clinic %s", clinicID)
 				}
+				practitionerMap[permission.PractitionerID] = true
 				ownerID = permission.PractitionerID
 				clinicIDs = append(clinicIDs, clinicID)
 			}
@@ -208,6 +260,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			// Use the first clinic's practitioner as owner (they should all belong to same practitioner)
 			ownerID = clinics[0].PractitionerID
 			for _, clinic := range clinics {
+				practitionerMap[clinic.PractitionerID] = true
 				clinicIDs = append(clinicIDs, clinic.ID)
 			}
 		}
@@ -237,24 +290,58 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			}
 		}
 	}
+	var rawRows []*BASLineItemRow
 
-	// Aggregate data from all relevant clinics
-	var allRows []*BASLineItemRow
-	for _, cID := range clinicIDs {
-		rows, err := s.repo.GetBASLineItems(ctx, ownerID, &cID, f)
-		if err != nil {
-			return nil, err
+	// 1. Fetch ALL data for the practitioner in one single call.
+	// By passing uuid.Nil to the reverted repo, it pulls both clinic data and manual expenses.
+	nilClinic := uuid.Nil
+	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch BAS items: %w", err)
+	}
+	rawRows = append(rawRows, rows...)
+
+	for i, r := range rawRows {
+		sec := "NIL"
+		if r.SectionType != nil {
+			sec = *r.SectionType
 		}
-		allRows = append(allRows, rows...)
+		fmt.Printf("[%d] Name: %-15s | Section: %-15s | Quarter: %s | Gross: %10.2f\n",
+			i, r.AccountName, sec, r.PeriodQuarter.Format("2006-01-02"), r.GrossAmount)
 	}
 
-	if len(f.ParsedClinicIDs) == 0 {
-		nilClinic := uuid.Nil
+	unifiedMap := make(map[string]*BASLineItemRow)
+	for _, r := range rawRows {
+		section := ""
+		if r.SectionType != nil {
 
-		manualRows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
-		if err == nil && len(manualRows) > 0 {
-			allRows = append(allRows, manualRows...)
+			section = strings.ToUpper(*r.SectionType)
 		}
+
+		key := fmt.Sprintf("%s-%s-%s-%s",
+			r.PeriodQuarter.Format("2006-01-02"),
+			section,
+			r.BasCategory,
+			r.CoaID,
+		)
+
+		if existing, found := unifiedMap[key]; found {
+			existing.NetAmount += r.NetAmount
+			existing.GstAmount += r.GstAmount
+			existing.GrossAmount += r.GrossAmount
+		} else {
+			unifiedMap[key] = r
+		}
+	}
+
+	for k, v := range unifiedMap {
+		fmt.Printf("Key: %-40s | Name: %s\n", k, v.AccountName)
+	}
+
+	// 3. Convert Map back to Slice
+	var allRows []*BASLineItemRow
+	for _, r := range unifiedMap {
+		allRows = append(allRows, r)
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
@@ -263,6 +350,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
 
+	// DEBUG 3: Quarter Matching
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
@@ -311,6 +399,52 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	resp.GrandTotal = s.mapToBASColumn(finalizedRowsForTotal)
 	resp.GrandTotal.Quarter.Name = "Total"
 
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	parsedActorID := actorID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionBASReportGenerated,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityBASReport),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type":    "Quarterly BAS Report",
+			"financial_year": f.FinancialYearID,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	if isAccountant {
+		// Fetching user details
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		// Record the Shared Event
+		for pID := range practitionerMap {
+			err = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorName:      &fullName,
+				ActorType:      role,
+				EventType:      "bas_report.generated",
+				EntityType:     "REPORT",
+				EntityID:       actorID,
+				Description:    fmt.Sprintf("Accountant %s generated BAS Report", fullName),
+				Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": f.FinancialYearID},
+				CreatedAt:      time.Now(),
+			})
+		}
+	}
 	return resp, nil
 }
 
@@ -455,8 +589,13 @@ type QuarterData struct {
 	Report *RsBASReport
 }
 
-func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID) (interface{}, string, error) {
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error) {
 	parsedActorID := actorID.String()
+
+	var result interface{}
+	var contentType string
+	var err error
+
 	// 1. Branching Logic
 	if strings.ToLower(exportType) == "pdf" {
 		// Wrap data for template
@@ -468,17 +607,18 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 			Prev:     prevDates,
 		}
 
-		htmlContent, err := s.generateActivityHTML(data)
+		result, err = s.generateActivityHTML(data)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity html: %w", err)
 		}
-		return htmlContent, "text/html", nil
-	}
-
-	// 2. Default to Excel logic
-	buf, err := s.generateActivityExcelReport(ctx, quarters, prevDates)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
+		contentType = "text/html"
+	} else {
+		// 2. Default to Excel logic
+		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
+		}
+		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
 
 	// --- AUDIT LOG ---
@@ -494,13 +634,39 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Activity Statement",
-			"quarters":    quarters,
+			"export_type": exportType,
 		},
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
 	})
 
-	return buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
+	// Record the Shared Event — only for accountants, never for practitioners.
+	if role == util.RoleAccountant && len(practitionerIDs) > 0 {
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		for _, pID := range practitionerIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorName:      &fullName,
+				ActorType:      role,
+				EventType:      "activity_statement.exported",
+				EntityType:     "REPORT",
+				EntityID:       actorID,
+				Description:    fmt.Sprintf("Accountant %s exported Activity Statement", fullName),
+				Metadata:       events.JSONBMap{"report_type": "Activity Statement", "export_type": exportType},
+				CreatedAt:      time.Now(),
+			})
+		}
+	}
+
+	return result, contentType, nil
 }
 
 func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
@@ -886,7 +1052,7 @@ func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID)
 	return quarters, nil
 }
 
-func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string) (interface{}, error) {
+func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Quarterly BAS REPORT"
 	f.NewSheet(sheet)
@@ -1192,34 +1358,51 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		AfterState: map[string]interface{}{
 			"report_type":    "Quarterly BAS Report",
 			"financial_year": filter.FinancialYearID,
+			"export_type":    exportType,
 		},
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
 	})
 
-	if role == util.RoleAccountant {
-		// Fetching user details
+	// Record the Shared Event — only for accountants, never for practitioners.
+	if role == util.RoleAccountant && len(PracIDs) > 0 {
 		var fullName string
 		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
 
-		// Record the Shared Event
-		err = s.eventsSvc.Record(ctx, events.SharedEvent{
-			ID: uuid.New(),
-			// PractitionerID: practitionerID,
-			AccountantID: actorID,
-			ActorID:      actorID,
-			ActorName:    &fullName,
-			ActorType:    role,
-			EventType:    "bas_report.exported",
-			EntityType:   "REPORT",
-			EntityID:     actorID,
-			Description:  fmt.Sprintf("Accountant %s exported BAS Report", fullName),
-			Metadata:     events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID},
-			CreatedAt:    time.Now(),
-		})
+		// If clinics are filtered, narrow notifications to only those clinic owners.
+		targetPracIDs := PracIDs
+		if len(filter.ParsedClinicIDs) > 0 {
+			uniqueOwners := make(map[uuid.UUID]bool)
+			for _, cID := range filter.ParsedClinicIDs {
+				clinic, err := s.clinicRepo.GetClinicByID(ctx, cID)
+				if err == nil {
+					uniqueOwners[clinic.PractitionerID] = true
+				}
+			}
+			targetPracIDs = make([]uuid.UUID, 0, len(uniqueOwners))
+			for id := range uniqueOwners {
+				targetPracIDs = append(targetPracIDs, id)
+			}
+		}
+		for _, pID := range targetPracIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorName:      &fullName,
+				ActorType:      role,
+				EventType:      "bas_report.exported",
+				EntityType:     "REPORT",
+				EntityID:       actorID,
+				Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
+				Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
+				CreatedAt:      time.Now(),
+			})
+		}
 	}
 
 	if exportType == "pdf" {

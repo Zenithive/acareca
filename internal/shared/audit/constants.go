@@ -125,8 +125,12 @@ const (
 )
 
 const (
-	ActionBASReportExported         = "bas_report.exported"
-	ActionPLReportExported          = "pl_report.exported"
-	ActionActivityStatementExported = "activity_statement.exported"
-	ActitionTransactionsExported    = "transactions.exported"
+	ActionBASReportExported          = "bas_report.exported"
+	ActionPLReportExported           = "pl_report.exported"
+	ActionActivityStatementExported  = "activity_statement.exported"
+	ActitionTransactionsExported     = "transactions.exported"
+	ActionBASReportGenerated         = "bas_report.generated"
+	ActionPLReportGenerated          = "pl_report.generated"
+	ActionActivityStatementGenerated = "activity_statement.generated"
+	ActitionTransactionsGenerated    = "transactions.generated"
 )

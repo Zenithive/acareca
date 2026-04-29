@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -31,11 +32,12 @@ type IHandler interface {
 }
 
 type handler struct {
-	svc IService
+	svc           IService
+	invitationSvc invitation.Service
 }
 
-func NewHandler(svc IService) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc IService, invitationSvc invitation.Service) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc}
 }
 
 // @Summary Create a new form entry
@@ -345,6 +347,7 @@ func (h *handler) ListTransactions(c *gin.Context) {
 // @Router /entry/coa-entries [get]
 func (h *handler) ListCoaEntries(c *gin.Context) {
 	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, _ := util.GetUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
@@ -356,9 +359,21 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 		return
 	}
 
+	if role == util.RoleAccountant {
+		// If the frontend sent ["uuid"], strip the brackets and quotes
+		if filter.PractitionerID != nil {
+			cleanID := strings.Trim(*filter.PractitionerID, "[]\" ")
+			filter.PractitionerID = &cleanID
+		}
+		if filter.ClinicID != nil {
+			cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
+			filter.ClinicID = &cleanID
+		}
+	}
+
 	filter.Role = role
 
-	result, err := h.svc.ListCoaEntries(c.Request.Context(), filter, *actorID, role)
+	result, err := h.svc.ListCoaEntries(c.Request.Context(), filter, *actorID, role, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -432,9 +447,46 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 func (h *handler) HandleExport(c *gin.Context) {
 	// 1. Auth check
 	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, ok := util.GetUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
+	}
+
+	// --- COLLECTION LOGIC ---
+	// Scenario A: practitioner_id provided in query → scope to that one practitioner only.
+	// Scenario B: no practitioner_id → fetch all linked practitioners.
+	var PracIDs []uuid.UUID
+	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
+
+	if role == util.RoleAccountant {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			// Scenario A
+			pracUUID, err := uuid.Parse(pracIDStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
+				return
+			}
+			PracIDs = []uuid.UUID{pracUUID}
+			notifIDs = []uuid.UUID{pracUUID}
+		} else {
+			// Scenario B
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			if err != nil {
+				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
+				return
+			}
+			if len(linked) == 0 {
+				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
+				return
+			}
+			PracIDs = linked
+			notifIDs = linked
+		}
+	} else {
+		// Practitioner: scope to self, no shared events
+		PracIDs = []uuid.UUID{*actorID}
+		notifIDs = nil // practitioners never receive their own shared events
 	}
 
 	// 2. Get export type from query (default to excel)
@@ -448,8 +500,17 @@ func (h *handler) HandleExport(c *gin.Context) {
 	}
 	filter.Role = role
 
+	// Set PractitionerID in the filter.
+	// For accountants Scenario A: the specific practitioner_id is already in PracIDs[0].
+	// For accountants Scenario B: leave empty so the repo uses the full PracIDs list via actorID/role.
+	// For practitioners: always their own ID.
+	if role != util.RoleAccountant {
+		pracIDStr := PracIDs[0].String()
+		filter.PractitionerID = &pracIDStr
+	}
+
 	// 4. Call Service (Service now returns buffer, contentType, and error)
-	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType)
+	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return

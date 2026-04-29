@@ -192,7 +192,10 @@ type RsTransaction struct {
 }
 
 type TransactionFilter struct {
-	PractitionerID *string `form:"-"`
+	// PractitionerID is set programmatically from JWT/invitation — never bound from query params.
+	// The *string field here shadows common.Filter's *uuid.UUID field to prevent gin from
+	// attempting to bind array-style query values (e.g. practitioner_id[]) into a uuid.UUID.
+	PractitionerID *string `form:"practitioner_id"`
 	ClinicID       *string `form:"clinic_id"`
 	FormID         *string `form:"form_id"`
 	CoaID          *string `form:"coa_id"`

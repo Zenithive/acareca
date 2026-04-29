@@ -25,6 +25,7 @@ type Repository interface {
 	ResolveEntityLabel(ctx context.Context, entityType, id string) string
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error)
 	GetInvitationEmail(ctx context.Context, invitationID string) (string, error)
+	GetAccountantNameForSharedEvents(ctx context.Context, id string) (string, error)
 }
 
 type repository struct {
@@ -238,6 +239,7 @@ var entityTypeToTable = map[string]string{
 	"tbl_subscription":      "tbl_subscription",
 	"tbl_invitation":        "tbl_invitation",
 	"tbl_financial_year":    "tbl_financial_year",
+	"shared_event":          "tbl_shared_events",
 }
 
 // ResolveEntityLabel returns a display name for an entity.
@@ -266,4 +268,14 @@ func (r *repository) GetInvitationEmail(ctx context.Context, invitationID string
 		return "", err
 	}
 	return email, nil
+}
+
+func (r *repository) GetAccountantNameForSharedEvents(ctx context.Context, id string) (string, error) {
+	var name string
+	query := `SELECT actor_name FROM tbl_shared_events WHERE actor_id = $1`
+	err := r.db.GetContext(ctx, &name, query, id)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
 }

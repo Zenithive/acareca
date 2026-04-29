@@ -22,6 +22,7 @@ type Repository interface {
 	CreateDeliveries(ctx context.Context, notificationID uuid.UUID, channels []Channel) error
 	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	// Delivery worker methods
 	ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error)
@@ -131,6 +132,19 @@ func (r *repository) MarkRead(ctx context.Context, id uuid.UUID, recipientID uui
 		return err
 	}
 	return requireOneRow(res, ErrInvalidTransition)
+}
+
+func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error {
+	query := `
+		UPDATE tbl_notification 
+		SET status = 'READ', read_at = NOW() 
+		WHERE recipient_id = $1 AND status = 'UNREAD'`
+
+	_, err := r.db.ExecContext(ctx, query, recipientID)
+	if err != nil {
+		return fmt.Errorf("mark all read: %w", err)
+	}
+	return nil
 }
 
 // MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.

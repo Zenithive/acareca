@@ -3,6 +3,7 @@ package bas
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -227,16 +228,21 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerID uuid.UU
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
         FROM vw_bas_line_items
-        WHERE 1=1
+        WHERE practitioner_id = ?
     `
-	args := []interface{}{}
+	args := []interface{}{practitionerID}
+
+	// if clinicID != nil && *clinicID != uuid.Nil {
+	// 	query += " AND clinic_id = ?"
+	// 	args = append(args, *clinicID)
+	// } else {
+	// 	query += " AND practitioner_id = ?"
+	// 	args = append(args, practitionerID)
+	// }
 
 	if clinicID != nil && *clinicID != uuid.Nil {
 		query += " AND clinic_id = ?"
 		args = append(args, *clinicID)
-	} else {
-		query += " AND practitioner_id = ?"
-		args = append(args, practitionerID)
 	}
 
 	if len(f.ParsedQuarterIDs) > 0 {
@@ -269,8 +275,14 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerID uuid.UU
 	finalQuery := r.db.Rebind(fullQuery)
 
 	var rows []*BASLineItemRow
+
 	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
+	}
+
+	for _, r := range rows {
+		if r.SectionType != nil && strings.Contains(strings.ToUpper(*r.SectionType), "EXPENSE") {
+		}
 	}
 	return rows, nil
 }
