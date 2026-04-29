@@ -26,7 +26,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
-	"github.com/iamarpitzala/acareca/internal/modules/seed"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -198,11 +197,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
-
-	// ============ SEED MODULE ============
-	seedSvc := seed.NewService(dbConn)
-	seedHandler := seed.NewHandler(seedSvc)
-	seed.RegisterRoutes(v1, seedHandler)
 
 	return auditSvc, notifier, notificationRepo
 
