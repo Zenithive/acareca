@@ -622,7 +622,10 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					}
 					existingAddr.IsPrimary = true // Usually single address is primary
 
-					_ = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
+					err = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
+					if err != nil {
+						return fmt.Errorf("update address: %w", err)
+					}
 				}
 			} else {
 				// CREATE NEW
@@ -635,11 +638,17 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					Postcode:  req.Address.Postcode,
 					IsPrimary: true,
 				}
-				_, _ = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
+				_, err = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
+				if err != nil {
+					return fmt.Errorf("create address: %w", err)
+				}
 			}
 		} else {
 			// ABSENCE = DELETE
-			_ = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
+			err = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
+			if err != nil {
+				return fmt.Errorf("delete address: %w", err)
+			}
 		}
 
 		// Update contacts
@@ -648,7 +657,7 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 
 		for _, cont := range req.Contacts {
 			if cont.ID != nil && *cont.ID != uuid.Nil {
-				// UPDATE existing
+				// UPDATE EXISTING
 				incomingIDs[*cont.ID] = true
 				existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
 				if err == nil && existing.ClinicID == clinic.ID {
@@ -661,10 +670,13 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					if cont.IsPrimary != nil {
 						existing.IsPrimary = *cont.IsPrimary
 					}
-					_ = s.repo.UpdateClinicContactTx(ctx, tx, existing)
+					err = s.repo.UpdateClinicContactTx(ctx, tx, existing)
+					if err != nil {
+						return fmt.Errorf("update contact: %w", err)
+					}
 				}
 			} else {
-				// CREATE new
+				// CREATE NEW
 				newCont := &ClinicContact{
 					ID:          uuid.New(),
 					ClinicID:    clinic.ID,
@@ -672,14 +684,20 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					Value:       *cont.Value,
 					IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
 				}
-				_, _ = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+				_, err = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+				if err != nil {
+					return fmt.Errorf("create contact: %w", err)
+				}
 			}
 		}
 
 		// DELETE contacts that weren't in the request
 		for _, ex := range existingContacts {
 			if !incomingIDs[ex.ID] {
-				_ = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
+				err = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
+				if err != nil {
+					return fmt.Errorf("delete contact: %w", err)
+				}
 			}
 		}
 
@@ -691,7 +709,6 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		result = updatedClinic
 
 		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
-		//meta := auditctx.GetMetadata(ctx)
 		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
 			actorUserID, err := uuid.Parse(*meta.UserID)
 			if err == nil {
