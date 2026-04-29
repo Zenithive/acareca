@@ -96,13 +96,13 @@ ORDER BY period_month, pl_section, account_code;
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_summary_monthly AS
 WITH section_totals AS (
-    SELECT practitioner_id, period_month, section_type,
+    SELECT practitioner_id, clinic_id, period_month, section_type,
            SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross
     FROM vw_pl_line_items
-    GROUP BY practitioner_id, period_month, section_type
+    GROUP BY practitioner_id, clinic_id, period_month, section_type
 )
 SELECT
-    practitioner_id, period_month,
+    practitioner_id, clinic_id, period_month,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
@@ -116,8 +116,8 @@ SELECT
     COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS net_profit_net,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS net_profit_gross
 FROM section_totals
-GROUP BY practitioner_id, period_month
-ORDER BY period_month;
+GROUP BY practitioner_id, clinic_id, period_month
+ORDER BY clinic_id, period_month;
 -- +goose StatementEnd
 
 -- +goose StatementBegin

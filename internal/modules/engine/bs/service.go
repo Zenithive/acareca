@@ -42,7 +42,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		clinicID = &id
 	}
 
-	// Get balance sheet accounts (assets, liabilities, non-calculated equity)
+	// Get balance sheet accounts (assets, liabilities, other equity accounts)
 	rows, err := s.repo.GetBalanceSheet(ctx, practitionerID, f)
 	if err != nil {
 		return nil, err
@@ -61,8 +61,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 	for _, row := range rows {
 		account := row.ToRs()
 
-		fmt.Println(row.ToRs().Balance)
-
 		switch row.AccountType {
 		case "Asset":
 			assets = append(assets, account)
@@ -71,17 +69,16 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			liabilities = append(liabilities, account)
 			totalLiabilities += row.Balance
 		case "Equity":
-			fmt.Println("ll", row)
+			// Skip owner fund accounts (880, 881, 960, 970) - they're calculated by equity service
 			if row.AccountCode != 880 && row.AccountCode != 881 &&
 				row.AccountCode != 960 && row.AccountCode != 970 {
 				equity = append(equity, account)
-				fmt.Println("row balance", row.Balance)
 				totalOtherEquity += row.Balance
 			}
 		}
 	}
 
-	// Add automatically calculated owner fund accounts
+	// Build equity section from calculated values
 	if ownerEquity.ShareCapital != 0 {
 		equity = append(equity, RsAccount{
 			Code:    970,
@@ -102,7 +99,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		equity = append(equity, RsAccount{
 			Code:    880,
 			Name:    "Owner A Drawings",
-			Balance: -ownerEquity.Drawings, // Show as negative
+			Balance: -ownerEquity.Drawings,
 		})
 	}
 
@@ -122,9 +119,9 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		})
 	}
 
-	fmt.Println("total: ", ownerEquity.TotalEquity)
-
+	// Total equity = calculated owner equity + other equity accounts
 	totalEquity := ownerEquity.TotalEquity + totalOtherEquity
+
 	return &RsBalanceSheet{
 		AsOfDate:                  asOfDate,
 		Assets:                    assets,
