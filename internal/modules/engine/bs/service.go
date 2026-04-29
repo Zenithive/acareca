@@ -119,7 +119,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		TotalLiabilities:          totalLiabilities,
 		Equity:                    equity,
 		CurrentYearProfit:         ownerEquity.CurrentYearProfit,
-		TotalEquity:               ownerEquity.TotalEquity,
-		TotalLiabilitiesAndEquity: totalEquity,
+		TotalEquity:               totalEquity,
+		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
 	}, nil
 }

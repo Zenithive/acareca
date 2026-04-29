@@ -1,21 +1,10 @@
 -- +goose Up
 -- +goose StatementBegin
 
--- Drop and recreate balance sheet views to support direct COA entries
 DROP VIEW IF EXISTS vw_balance_sheet_summary CASCADE;
 DROP VIEW IF EXISTS vw_balance_sheet_line_items CASCADE;
 
--- ============================================================
--- VIEW: vw_balance_sheet_line_items (Updated)
--- Foundation view for Balance Sheet reporting
---
--- Purpose: Raw line items from submitted form entries for balance sheet accounts
--- Key Features:
---   - Supports both form-based entries (via form_field_id) and direct COA entries (via coa_id)
---   - Filters to Asset, Liability, and Equity accounts only
---   - Handles owner fund entries (codes 880, 881, 960, 970) automatically by COA code
---   - Preserves period aggregations for historical balance sheets
--- ============================================================
+
 CREATE OR REPLACE VIEW vw_balance_sheet_line_items AS
 SELECT
     fe.clinic_id,
@@ -74,17 +63,7 @@ WHERE fe.status = 'SUBMITTED'
   AND coa.deleted_at IS NULL
   AND at.name IN ('Asset', 'Liability', 'Equity');  -- Only balance sheet accounts
 
--- +goose StatementEnd
 
--- +goose StatementBegin
-
--- ============================================================
--- VIEW: vw_balance_sheet_summary (Updated)
--- Balance Sheet summary by account
---
--- Purpose: Aggregated balances for each COA account
--- Usage: Primary view for balance sheet reporting
--- ============================================================
 CREATE OR REPLACE VIEW vw_balance_sheet_summary AS
 SELECT
     practitioner_id,
@@ -99,6 +78,7 @@ SELECT
 FROM vw_balance_sheet_line_items
 GROUP BY practitioner_id, clinic_id, account_type, account_code, account_name, coa_id
 ORDER BY account_type, account_code;
+
 
 -- +goose StatementEnd
 
