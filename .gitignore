@@ -1,19 +1,21 @@
-# Environment
+# Environment
+
+# Binary output
+server
+/bin/
+
+# Go build cache
+*.test
+*.out
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+config.bat
+node_modules
 .env
-
-# Binary output
-server
-/bin/
-
-# Go build cache
-*.test
-*.out
-
-# IDE
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
