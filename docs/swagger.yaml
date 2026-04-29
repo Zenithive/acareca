@@ -3218,6 +3218,40 @@ paths:
       summary: List all practitioners with active subscriptions (Admin)
       tags:
       - admin-practitioner
+  /admin/practitioner/{id}:
+    get:
+      description: Fetch a single practitioner with their active subscription details
+        by ID. Admin only.
+      parameters:
+      - description: Practitioner ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner by ID with subscription (Admin)
+      tags:
+      - admin-practitioner
   /admin/subscription:
     get:
       consumes:
@@ -6175,6 +6209,34 @@ paths:
       security:
       - BearerToken: []
       summary: Mark notification as read
+      tags:
+      - notification
+  /notification/read-all:
+    patch:
+      description: Marks all currently UNREAD notifications as READ for the authenticated
+        entity.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Mark all notifications as read
       tags:
       - notification
   /pl/by-account:

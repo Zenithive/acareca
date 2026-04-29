@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/xuri/excelize/v2"
@@ -24,11 +26,12 @@ type IHandler interface {
 }
 
 type handler struct {
-	svc Service
+	svc           Service
+	invitationSvc invitation.Service
 }
 
-func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc}
 }
 
 // GetMonthlySummary godoc
@@ -179,6 +182,7 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
+	role := c.GetString("role")
 	actorID, ok := util.GetUserID(c)
 	if !ok {
 		return
@@ -189,9 +193,30 @@ func (h *handler) GetReport(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	//f.PractitionerID = pracID.String()
 
-	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f)
+	var targetNotifIDs []uuid.UUID
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// Scenario A: practitioner_id in query
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			f.PractitionerID = pracIDStr
+			if pID, err := uuid.Parse(pracIDStr); err == nil {
+				targetNotifIDs = []uuid.UUID{pID}
+			}
+		} else {
+			// Scenario B: No practitioner_id -> Fetch all linked practitioners
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), actorID)
+			if err == nil {
+				targetNotifIDs = linked
+			}
+		}
+	} else {
+		// Practitioner: Only notify self
+		targetNotifIDs = []uuid.UUID{actorID}
+		f.PractitionerID = actorID.String()
+	}
+
+	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f, role, targetNotifIDs)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -218,8 +243,9 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /pl/export [get]
 func (h *handler) ExportReport(c *gin.Context) {
-	actorID, ok := util.GetUserID(c)
-	if !ok {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, okUser := util.GetUserID(c)
+	if !ok || !okUser {
 		return
 	}
 
@@ -232,33 +258,76 @@ func (h *handler) ExportReport(c *gin.Context) {
 		return
 	}
 
-	// Fetch the structured data
-	reportData, err := h.svc.GetReport(c.Request.Context(), actorID, &f)
+	// Resolve PracIDs (for data scoping) and notifIDs (for Shared Events).
+	// Scenario A: practitioner_id in query → scope + notify only that one.
+	// Scenario B: no practitioner_id → fetch all linked, notify all.
+	// Practitioner: scope to self, no shared events.
+	var PracIDs []uuid.UUID
+	var notifIDs []uuid.UUID
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			// Scenario A
+			pracUUID, err := uuid.Parse(pracIDStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
+				return
+			}
+			f.PractitionerID = pracIDStr
+			PracIDs = []uuid.UUID{pracUUID}
+			notifIDs = []uuid.UUID{pracUUID}
+		} else {
+			// Scenario B
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			if err != nil {
+				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
+				return
+			}
+			if len(linked) == 0 {
+				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
+				return
+			}
+			PracIDs = linked
+			notifIDs = linked
+			// f.PractitionerID left empty — service resolves via clinicRepo
+		}
+	} else {
+		PracIDs = []uuid.UUID{*actorID}
+		notifIDs = nil // practitioners never receive their own shared events
+	}
+
+	// Safely handle optional ClinicID
+	clinicIDParam := ""
+	if f.ClinicID != nil {
+		clinicIDParam = *f.ClinicID
+	}
+
+	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
+	reportData, err := h.svc.GetReport(c.Request.Context(), userID, &f, role, notifIDs)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Generate the Excel file using the service method
-	excelFile, err := h.svc.ExportPLReport(reportData, exportType)
+	// Generate the Excel/PDF file
+	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, clinicIDParam)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Set headers for file download
+	_ = PracIDs // used for scoping context; notifIDs drives notifications
+
 	switch v := excelFile.(type) {
 	case *excelize.File:
-		// Standard Excel Response
 		fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 		c.Header("Content-Disposition", "attachment; filename="+fileName)
 		v.Write(c.Writer)
 
 	case string:
-		// HTML Response for PDF
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.Header("Content-Disposition", "inline") // opens in new tab
+		c.Header("Content-Disposition", "inline")
 		c.String(http.StatusOK, v)
 
 	default:
