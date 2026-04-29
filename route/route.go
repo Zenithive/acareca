@@ -157,7 +157,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	bas.RegisterRoutes(v1, basHandler, cfg)
 
 	// Equity service for automatic owner fund calculations
-	equitySvc := equity.NewService(dbConn)
+	equitySvc := equity.NewService(dbConn, fyRepo)
 	equityHandler := equity.NewHandler(equitySvc)
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 

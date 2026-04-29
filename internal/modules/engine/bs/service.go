@@ -14,8 +14,8 @@ type Service interface {
 }
 
 type service struct {
-	repo       Repository
-	equitySvc  equity.Service
+	repo      Repository
+	equitySvc equity.Service
 }
 
 func NewService(repo Repository, equitySvc equity.Service) Service {
@@ -56,7 +56,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 
 	// Organize by account type
 	var assets, liabilities, equity []RsAccount
-	var totalAssets, totalLiabilities float64
+	var totalAssets, totalLiabilities, totalOtherEquity float64
 
 	for _, row := range rows {
 		account := row.ToRs()
@@ -69,9 +69,10 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			liabilities = append(liabilities, account)
 			totalLiabilities += row.Balance
 		case "Equity":
-			// Skip owner fund accounts (880, 881, 960) as they're calculated automatically
-			if row.AccountCode != 880 && row.AccountCode != 881 && row.AccountCode != 960 {
+			if row.AccountCode != 880 && row.AccountCode != 881 &&
+				row.AccountCode != 960 && row.AccountCode != 970 {
 				equity = append(equity, account)
+				totalOtherEquity += row.Balance
 			}
 		}
 	}
@@ -84,7 +85,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			Balance: ownerEquity.ShareCapital,
 		})
 	}
-	
+
 	if ownerEquity.FundsIntroduced != 0 {
 		equity = append(equity, RsAccount{
 			Code:    881,
@@ -92,7 +93,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			Balance: ownerEquity.FundsIntroduced,
 		})
 	}
-	
+
 	if ownerEquity.Drawings != 0 {
 		equity = append(equity, RsAccount{
 			Code:    880,
@@ -100,7 +101,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			Balance: -ownerEquity.Drawings, // Show as negative
 		})
 	}
-	
+
 	if ownerEquity.RetainedEarnings != 0 {
 		equity = append(equity, RsAccount{
 			Code:    960,
@@ -109,6 +110,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		})
 	}
 
+	totalEquity := ownerEquity.TotalEquity + totalOtherEquity
 	return &RsBalanceSheet{
 		AsOfDate:                  asOfDate,
 		Assets:                    assets,
@@ -118,6 +120,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		Equity:                    equity,
 		CurrentYearProfit:         ownerEquity.CurrentYearProfit,
 		TotalEquity:               ownerEquity.TotalEquity,
-		TotalLiabilitiesAndEquity: totalLiabilities + ownerEquity.TotalEquity,
+		TotalLiabilitiesAndEquity: totalEquity,
 	}, nil
 }

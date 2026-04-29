@@ -938,8 +938,8 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
-				TaxType:     &taxType,
-				BusinessUse: &localBusinessUse,
+				// TaxType:     &taxType,
+				// BusinessUse: &localBusinessUse,
 			}
 
 			entryValues = append(entryValues, entryValue)

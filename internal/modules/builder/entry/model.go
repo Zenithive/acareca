@@ -66,8 +66,8 @@ type FormEntry struct {
 type FormEntryValue struct {
 	ID          uuid.UUID  `db:"id"`
 	EntryID     uuid.UUID  `db:"entry_id"`
-	FormFieldID *uuid.UUID `db:"form_field_id"` // Nullable for direct COA entries
-	CoaID       *uuid.UUID `db:"coa_id"`        // For direct COA entries (owner funds)
+	FormFieldID *uuid.UUID `db:"form_field_id"`
+	CoaID       *uuid.UUID `db:"coa_id"`
 	NetAmount   *float64   `db:"net_amount"`
 	GstAmount   *float64   `db:"gst_amount"`
 	GrossAmount *float64   `db:"gross_amount"`
