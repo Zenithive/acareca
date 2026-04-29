@@ -237,24 +237,58 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			}
 		}
 	}
+	var rawRows []*BASLineItemRow
 
-	// Aggregate data from all relevant clinics
-	var allRows []*BASLineItemRow
-	for _, cID := range clinicIDs {
-		rows, err := s.repo.GetBASLineItems(ctx, ownerID, &cID, f)
-		if err != nil {
-			return nil, err
+	// 1. Fetch ALL data for the practitioner in one single call.
+	// By passing uuid.Nil to the reverted repo, it pulls both clinic data and manual expenses.
+	nilClinic := uuid.Nil
+	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch BAS items: %w", err)
+	}
+	rawRows = append(rawRows, rows...)
+
+	for i, r := range rawRows {
+		sec := "NIL"
+		if r.SectionType != nil {
+			sec = *r.SectionType
 		}
-		allRows = append(allRows, rows...)
+		fmt.Printf("[%d] Name: %-15s | Section: %-15s | Quarter: %s | Gross: %10.2f\n",
+			i, r.AccountName, sec, r.PeriodQuarter.Format("2006-01-02"), r.GrossAmount)
 	}
 
-	if len(f.ParsedClinicIDs) == 0 {
-		nilClinic := uuid.Nil
+	unifiedMap := make(map[string]*BASLineItemRow)
+	for _, r := range rawRows {
+		section := ""
+		if r.SectionType != nil {
 
-		manualRows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
-		if err == nil && len(manualRows) > 0 {
-			allRows = append(allRows, manualRows...)
+			section = strings.ToUpper(*r.SectionType)
 		}
+
+		key := fmt.Sprintf("%s-%s-%s-%s",
+			r.PeriodQuarter.Format("2006-01-02"),
+			section,
+			r.BasCategory,
+			r.CoaID,
+		)
+
+		if existing, found := unifiedMap[key]; found {
+			existing.NetAmount += r.NetAmount
+			existing.GstAmount += r.GstAmount
+			existing.GrossAmount += r.GrossAmount
+		} else {
+			unifiedMap[key] = r
+		}
+	}
+
+	for k, v := range unifiedMap {
+		fmt.Printf("Key: %-40s | Name: %s\n", k, v.AccountName)
+	}
+
+	// 3. Convert Map back to Slice
+	var allRows []*BASLineItemRow
+	for _, r := range unifiedMap {
+		allRows = append(allRows, r)
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
@@ -263,6 +297,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
 
+	// DEBUG 3: Quarter Matching
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
