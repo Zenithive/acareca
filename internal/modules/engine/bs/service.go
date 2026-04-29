@@ -61,6 +61,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 	for _, row := range rows {
 		account := row.ToRs()
 
+		fmt.Println(row.ToRs().Balance)
+
 		switch row.AccountType {
 		case "Asset":
 			assets = append(assets, account)
@@ -69,9 +71,11 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			liabilities = append(liabilities, account)
 			totalLiabilities += row.Balance
 		case "Equity":
+			fmt.Println("ll", row)
 			if row.AccountCode != 880 && row.AccountCode != 881 &&
 				row.AccountCode != 960 && row.AccountCode != 970 {
 				equity = append(equity, account)
+				fmt.Println("row balance", row.Balance)
 				totalOtherEquity += row.Balance
 			}
 		}
@@ -109,6 +113,16 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 			Balance: ownerEquity.RetainedEarnings,
 		})
 	}
+
+	if ownerEquity.CurrentYearProfit != 0 {
+		equity = append(equity, RsAccount{
+			Code:    961,
+			Name:    "Current Year Profit",
+			Balance: ownerEquity.CurrentYearProfit,
+		})
+	}
+
+	fmt.Println("total: ", ownerEquity.TotalEquity)
 
 	totalEquity := ownerEquity.TotalEquity + totalOtherEquity
 	return &RsBalanceSheet{

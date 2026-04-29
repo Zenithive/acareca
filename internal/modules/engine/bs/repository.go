@@ -30,9 +30,9 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UU
 			account_code,
 			account_name,
 			coa_id,
-			balance,
-			entry_count,
-			TO_CHAR(last_transaction_date, 'YYYY-MM-DD') AS last_transaction_date
+			signed_amount,
+			entry_id,
+			submitted_at
 		FROM vw_balance_sheet_line_items
 		WHERE practitioner_id = $1
 	`
