@@ -57,8 +57,8 @@ type EquityMovements struct {
 
 // CalculateOwnerEquity calculates all owner fund balances automatically
 func (s *service) CalculateOwnerEquity(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string) (*OwnerEquityCalculation, error) {
-	// Each sub-calculation runs once
-	shareCapital, err := s.getShareCapital(ctx, practitionerID, clinicID)
+
+	shareCapital, err := s.getShareCapital(ctx, practitionerID, clinicID, asOfDate) // date-bounded (Flaw 4 fix)
 	if err != nil {
 		return nil, fmt.Errorf("get share capital: %w", err)
 	}
@@ -68,44 +68,54 @@ func (s *service) CalculateOwnerEquity(ctx context.Context, practitionerID uuid.
 		return nil, fmt.Errorf("get retained earnings: %w", err)
 	}
 
+	// All-time cumulative figures — NOT year-scoped
+	allTimeFundsIntroduced, err := s.getAllTimeEquityAccountBalance(ctx, practitionerID, clinicID, 881, asOfDate)
+	if err != nil {
+		return nil, fmt.Errorf("get all-time funds introduced: %w", err)
+	}
+
+	allTimeDrawings, err := s.getAllTimeEquityAccountBalance(ctx, practitionerID, clinicID, 880, asOfDate)
+	if err != nil {
+		return nil, fmt.Errorf("get all-time drawings: %w", err)
+	}
+
 	currentYearProfit, err := s.getCurrentYearProfit(ctx, practitionerID, clinicID, asOfDate)
 	if err != nil {
 		return nil, fmt.Errorf("get current year profit: %w", err)
 	}
 
-	// Movements reuse the already-fetched values — no extra queries
+	// Year-scoped figures for the equity movements statement only
 	movements, err := s.buildEquityMovements(ctx, practitionerID, clinicID, asOfDate, shareCapital, retainedEarnings, currentYearProfit)
 	if err != nil {
-		return nil, fmt.Errorf("get equity movements: %w", err)
+		return nil, fmt.Errorf("build equity movements: %w", err)
 	}
 
-	totalEquity := shareCapital + retainedEarnings + movements.FundsIntroduced - movements.Drawings + currentYearProfit
+	// Balance sheet total uses all-time equity movements
+	totalEquity := shareCapital + retainedEarnings + allTimeFundsIntroduced - allTimeDrawings + currentYearProfit
 
 	return &OwnerEquityCalculation{
 		AsOfDate:          asOfDate,
 		ShareCapital:      shareCapital,
-		FundsIntroduced:   movements.FundsIntroduced,
-		Drawings:          movements.Drawings,
+		FundsIntroduced:   allTimeFundsIntroduced, // shown on balance sheet
+		Drawings:          allTimeDrawings,        // shown on balance sheet
 		RetainedEarnings:  retainedEarnings,
 		CurrentYearProfit: currentYearProfit,
 		TotalEquity:       totalEquity,
-		EquityMovements:   movements,
+		EquityMovements:   movements, // year-scoped, for the movements statement
 	}, nil
 }
 
-// GetRetainedEarnings calculates retained earnings from all prior years
 func (s *service) GetRetainedEarnings(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string) (float64, error) {
 	fyStart, _, err := s.fyBoundaries(ctx, asOfDate)
 	if err != nil {
 		return 0, err
 	}
 
-	// Retained earnings = all P&L profit before this financial year's start date
 	query := `
-		SELECT COALESCE(SUM(net_profit_net), 0)
-		FROM vw_pl_summary_monthly
+		SELECT COALESCE(SUM(signed_net_amount), 0) AS retained_earnings
+		FROM vw_pl_line_items
 		WHERE practitioner_id = $1
-		  AND period_month < DATE_TRUNC('month', $2::DATE)
+		  AND submitted_at::DATE < $2::DATE
 	`
 	args := []interface{}{practitionerID, fyStart.Format("2006-01-02")}
 	idx := 3
@@ -117,14 +127,17 @@ func (s *service) GetRetainedEarnings(ctx context.Context, practitionerID uuid.U
 
 	var retained float64
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&retained); err != nil {
-		return 0, fmt.Errorf("query retained earnings: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("get retained earnings: %w", err)
 	}
 	return retained, nil
 }
 
 // CalculateCurrentYearEquityMovements calculates funds introduced and drawings for current year
 func (s *service) CalculateCurrentYearEquityMovements(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string) (*EquityMovements, error) {
-	sc, err := s.getShareCapital(ctx, practitionerID, clinicID)
+	sc, err := s.getShareCapital(ctx, practitionerID, clinicID, asOfDate)
 	if err != nil {
 		return nil, err
 	}
@@ -139,16 +152,16 @@ func (s *service) CalculateCurrentYearEquityMovements(ctx context.Context, pract
 	return s.buildEquityMovements(ctx, practitionerID, clinicID, asOfDate, sc, re, cy)
 }
 
-// getShareCapital gets the share capital balance (code 970)
-func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID) (float64, error) {
+func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string) (float64, error) {
 	query := `
 		SELECT COALESCE(SUM(signed_amount), 0) AS balance
 		FROM vw_balance_sheet_line_items
 		WHERE practitioner_id = $1
-		  AND account_code = 970
+		  AND account_code    = 970
+		  AND submitted_at   <= $2::DATE     -- ← date boundary added
 	`
-	args := []interface{}{practitionerID}
-	idx := 2
+	args := []interface{}{practitionerID, asOfDate}
+	idx := 3
 
 	if clinicID != nil {
 		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
@@ -156,12 +169,11 @@ func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID,
 	}
 
 	var balance float64
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&balance)
-	if err != nil {
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&balance); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil // legitimate: no share capital entries yet
+			return 0, nil
 		}
-		return 0, fmt.Errorf("get share capital: %w", err) // real error — propagate
+		return 0, fmt.Errorf("get share capital: %w", err)
 	}
 	return balance, nil
 }
@@ -196,18 +208,23 @@ func (s *service) getEquityAccountBalance(ctx context.Context, practitionerID uu
 }
 
 // getCurrentYearProfit gets net profit for the current year
-func (s *service) getCurrentYearProfit(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string) (float64, error) {
-	fyStart, _, err := s.fyBoundaries(ctx, asOfDate)
+func (s *service) getCurrentYearProfit(
+	ctx context.Context,
+	practitionerID uuid.UUID,
+	clinicID *uuid.UUID,
+	asOfDate string,
+) (float64, error) {
+	fyStart, _, err := s.fyBoundaries(ctx, asOfDate) // from the previously reported Bug 2 fix
 	if err != nil {
 		return 0, err
 	}
 
 	query := `
-		SELECT COALESCE(SUM(net_profit_net), 0)
-		FROM vw_pl_summary_monthly
+		SELECT COALESCE(SUM(signed_net_amount), 0) AS current_year_profit
+		FROM vw_pl_line_items
 		WHERE practitioner_id = $1
-		  AND period_month >= DATE_TRUNC('month', $2::DATE)
-		  AND period_month <= DATE_TRUNC('month', $3::DATE)
+		  AND submitted_at::DATE >= $2::DATE
+		  AND submitted_at::DATE <= $3::DATE
 	`
 	args := []interface{}{practitionerID, fyStart.Format("2006-01-02"), asOfDate}
 	idx := 4
@@ -219,7 +236,10 @@ func (s *service) getCurrentYearProfit(ctx context.Context, practitionerID uuid.
 
 	var profit float64
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&profit); err != nil {
-		return 0, fmt.Errorf("query current year profit: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("get current year profit: %w", err)
 	}
 	return profit, nil
 }
@@ -246,30 +266,69 @@ func (s *service) fyBoundaries(ctx context.Context, asOfDate string) (start, end
 		nil
 }
 
-func (s *service) buildEquityMovements(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string, shareCapital, retainedEarnings, currentYearProfit float64) (*EquityMovements, error) {
+func (s *service) buildEquityMovements(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, asOfDate string, shareCapital float64, retainedEarnings float64, currentYearProfit float64) (*EquityMovements, error) {
 	fyStart, _, err := s.fyBoundaries(ctx, asOfDate)
 	if err != nil {
 		return nil, err
 	}
-	yearStart := fyStart.Format("2006-01-02")
+	fyStartStr := fyStart.Format("2006-01-02")
 
-	fundsIntroduced, err := s.getEquityAccountBalance(ctx, practitionerID, clinicID, 881, yearStart, asOfDate)
+	// Current year movements (year-scoped — for the movements statement only)
+	yearFundsIntroduced, err := s.getEquityAccountBalance(ctx, practitionerID, clinicID, 881, fyStartStr, asOfDate)
 	if err != nil {
-		return nil, fmt.Errorf("get funds introduced: %w", err)
+		return nil, fmt.Errorf("get year funds introduced: %w", err)
 	}
-	drawings, err := s.getEquityAccountBalance(ctx, practitionerID, clinicID, 880, yearStart, asOfDate)
+	yearDrawings, err := s.getEquityAccountBalance(ctx, practitionerID, clinicID, 880, fyStartStr, asOfDate)
 	if err != nil {
-		return nil, fmt.Errorf("get drawings: %w", err)
+		return nil, fmt.Errorf("get year drawings: %w", err)
 	}
 
-	openingBalance := shareCapital + retainedEarnings
-	netEquityMovement := fundsIntroduced - drawings
+	priorFundsIntroduced, err := s.getAllTimeEquityAccountBalance(ctx, practitionerID, clinicID, 881, fyStartStr)
+	if err != nil {
+		return nil, fmt.Errorf("get prior funds introduced for opening balance: %w", err)
+	}
+	priorDrawings, err := s.getAllTimeEquityAccountBalance(ctx, practitionerID, clinicID, 880, fyStartStr)
+	if err != nil {
+		return nil, fmt.Errorf("get prior drawings for opening balance: %w", err)
+	}
+
+	openingBalance := shareCapital + retainedEarnings + priorFundsIntroduced - priorDrawings
+
+	netEquityMovement := yearFundsIntroduced - yearDrawings
+	closingBalance := openingBalance + netEquityMovement + currentYearProfit
+
 	return &EquityMovements{
 		OpeningBalance:    openingBalance,
-		FundsIntroduced:   fundsIntroduced,
-		Drawings:          drawings,
+		FundsIntroduced:   yearFundsIntroduced,
+		Drawings:          yearDrawings,
 		NetEquityMovement: netEquityMovement,
 		CurrentYearProfit: currentYearProfit,
-		ClosingBalance:    openingBalance + netEquityMovement + currentYearProfit,
+		ClosingBalance:    closingBalance,
 	}, nil
+}
+
+func (s *service) getAllTimeEquityAccountBalance(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, accountCode int16, asOfDate string) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(signed_amount), 0) AS balance
+		FROM vw_balance_sheet_line_items
+		WHERE practitioner_id = $1
+		  AND account_code    = $2
+		  AND submitted_at   <= $3::DATE
+	`
+	args := []interface{}{practitionerID, accountCode, asOfDate}
+	idx := 4
+
+	if clinicID != nil {
+		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+		args = append(args, *clinicID)
+	}
+
+	var balance float64
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&balance); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("get all-time equity balance for code %d: %w", accountCode, err)
+	}
+	return balance, nil
 }

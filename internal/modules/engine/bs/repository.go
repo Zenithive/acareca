@@ -21,18 +21,11 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
+// repository.go — updated GetBalanceSheet
 func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID, f *BSFilter) ([]*BSRow, error) {
-	query := `
-		SELECT 
-			practitioner_id,
-			clinic_id,
-			account_type,
-			account_code,
-			account_name,
-			coa_id,
-			signed_amount,
-			entry_id,
-			submitted_at
+	// Step 1 — build the inner filter query first, with all WHERE conditions
+	inner := `
+		SELECT *
 		FROM vw_balance_sheet_line_items
 		WHERE practitioner_id = $1
 	`
@@ -44,27 +37,33 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UU
 		if err != nil {
 			return nil, fmt.Errorf("invalid clinic_id: %w", err)
 		}
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+		inner += fmt.Sprintf(" AND clinic_id = $%d", idx)
 		args = append(args, clinicID)
 		idx++
 	}
 
 	if f.AsOfDate != nil && *f.AsOfDate != "" {
-		query += fmt.Sprintf(" AND submitted_at::DATE <= $%d::DATE", idx)
+		inner += fmt.Sprintf(" AND submitted_at::DATE <= $%d::DATE", idx)
 		args = append(args, *f.AsOfDate)
 		idx++
 	}
 
-	query = fmt.Sprintf(`
+	// Step 2 — wrap once with the outer aggregation AFTER all filters are applied
+	query := fmt.Sprintf(`
 		SELECT
-			practitioner_id, clinic_id, account_type, account_code, account_name, coa_id,
-			SUM(signed_amount)          AS balance,
-			COUNT(DISTINCT entry_id)    AS entry_count,
-			TO_CHAR(MAX(submitted_at), 'YYYY-MM-DD') AS last_transaction_date
+			practitioner_id,
+			clinic_id,
+			account_type,
+			account_code,
+			account_name,
+			coa_id,
+			SUM(signed_amount)                           AS balance,
+			COUNT(DISTINCT entry_id)                     AS entry_count,
+			TO_CHAR(MAX(submitted_at), 'YYYY-MM-DD')     AS last_transaction_date
 		FROM (%s) filtered
 		GROUP BY practitioner_id, clinic_id, account_type, account_code, account_name, coa_id
 		ORDER BY account_type, account_code
-	`, query)
+	`, inner)
 
 	var rows []*BSRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
