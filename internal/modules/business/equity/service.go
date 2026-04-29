@@ -308,12 +308,20 @@ func (s *service) buildEquityMovements(ctx context.Context, practitionerID uuid.
 }
 
 func (s *service) getAllTimeEquityAccountBalance(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, accountCode int16, asOfDate string) (float64, error) {
+
 	query := `
 		SELECT COALESCE(SUM(signed_amount), 0) AS balance
-		FROM vw_balance_sheet_line_items
-		WHERE practitioner_id = $1
-		  AND account_code    = $2
-		  AND submitted_at   <= $3::DATE
+		FROM (
+			SELECT 
+				practitioner_id,
+				clinic_id,
+				account_code,
+				signed_amount,
+				submitted_at
+			FROM vw_balance_sheet_line_items
+			WHERE practitioner_id = $1
+			  AND account_code = $2
+			  AND submitted_at::DATE <= $3::DATE
 	`
 	args := []interface{}{practitionerID, accountCode, asOfDate}
 	idx := 4
@@ -321,7 +329,12 @@ func (s *service) getAllTimeEquityAccountBalance(ctx context.Context, practition
 	if clinicID != nil {
 		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
 		args = append(args, *clinicID)
+		idx++
 	}
+
+	query += `
+		) filtered
+	`
 
 	var balance float64
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&balance); err != nil {
