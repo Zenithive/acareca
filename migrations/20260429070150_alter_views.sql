@@ -31,8 +31,6 @@ SELECT
     ff.label                             AS field_label,
     ff.section_type,
     ff.payment_responsibility,
-    -- Use TaxType and BusinessUse from the ENTRY VALUE if available (more specific),
-    -- otherwise fallback to the FIELD definition
     ff.tax_type   AS tax_type,
     ff.business_use AS business_use,
     coa.id                               AS coa_id,
@@ -59,19 +57,25 @@ SELECT
         WHEN 'OTHER_COST' THEN '3. Other Expenses'
         WHEN 'EXPENSE_ENTRY' THEN '3. Expense Entries'
     END AS pl_section
-FROM tbl_form_entry_value     fev
-JOIN tbl_form_entry           fe  ON fe.id          = fev.entry_id
-JOIN tbl_form_field           ff  ON ff.id          = fev.form_field_id
-JOIN tbl_custom_form_version cfv ON cfv.id         = ff.form_version_id
-JOIN tbl_form                f   ON f.id           = cfv.form_id
-JOIN tbl_chart_of_accounts   coa ON coa.id         = ff.coa_id
-JOIN tbl_account_type        at  ON at.id          = coa.account_type_id
-LEFT JOIN tbl_account_tax    atx ON atx.id         = coa.account_tax_id -- Use LEFT JOIN in case tax is null
-WHERE fe.status    = 'SUBMITTED'
-  AND fe.deleted_at  IS NULL
-  AND ff.deleted_at  IS NULL
+FROM tbl_form_entry fe
+JOIN tbl_custom_form_version cfv ON cfv.id = fe.form_version_id
+JOIN tbl_form f ON f.id = cfv.form_id
+JOIN (
+    SELECT DISTINCT ON (entry_id, form_field_id)
+        id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description
+    FROM tbl_form_entry_value
+    WHERE updated_at IS NULL  
+    ORDER BY entry_id, form_field_id, created_at DESC
+) fev ON fev.entry_id = fe.id
+JOIN tbl_form_field ff ON ff.id = fev.form_field_id
+JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id
+JOIN tbl_account_type at ON at.id = coa.account_type_id
+LEFT JOIN tbl_account_tax atx ON atx.id = coa.account_tax_id
+WHERE fe.status = 'SUBMITTED'
+  AND fe.deleted_at IS NULL
+  AND ff.deleted_at IS NULL
+  AND ff.is_formula = FALSE
   AND coa.deleted_at IS NULL
-
   AND at.name IN ('Revenue', 'Expense')
   AND ff.coa_id IS NOT NULL;
 
@@ -96,13 +100,17 @@ ORDER BY period_month, pl_section, account_code;
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_summary_monthly AS
 WITH section_totals AS (
-    SELECT practitioner_id, clinic_id, period_month, section_type,
-           SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross
+    SELECT practitioner_id, period_month, section_type,
+           SUM(net_amount) AS total_net, 
+           SUM(gst_amount) AS total_gst, 
+           SUM(gross_amount) AS total_gross,
+           SUM(signed_net_amount) AS sg_net_amount,
+           SUM(signed_gross_amount) AS sg_gross_amount
     FROM vw_pl_line_items
-    GROUP BY practitioner_id, clinic_id, period_month, section_type
+    GROUP BY practitioner_id, period_month, section_type
 )
 SELECT
-    practitioner_id, clinic_id, period_month,
+    practitioner_id, period_month,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
@@ -113,11 +121,11 @@ SELECT
     COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gross,
-    COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS net_profit_net,
-    COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS net_profit_gross
+    COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
+    COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
 FROM section_totals
-GROUP BY practitioner_id, clinic_id, period_month
-ORDER BY clinic_id, period_month;
+GROUP BY practitioner_id, period_month
+ORDER BY period_month;
 -- +goose StatementEnd
 
 -- +goose StatementBegin

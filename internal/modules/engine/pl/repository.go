@@ -26,16 +26,20 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLSummaryRow, error) {
+	// Query vw_pl_line_items directly and aggregate by clinic_id
 	query := `
-		SELECT
-			practitioner_id, period_month,
-			income_net, income_gst, income_gross,
-			cogs_net, cogs_gst, cogs_gross,
-			gross_profit_net,
-			other_expenses_net, other_expenses_gst, other_expenses_gross,
-			net_profit_net, net_profit_gross
-		FROM vw_pl_summary_monthly
-		WHERE clinic_id = $1
+		WITH section_totals AS (
+			SELECT 
+				practitioner_id, 
+				period_month, 
+				section_type,
+				SUM(net_amount) AS total_net, 
+				SUM(gst_amount) AS total_gst, 
+				SUM(gross_amount) AS total_gross,
+				SUM(signed_net_amount) AS sg_net_amount,
+				SUM(signed_gross_amount) AS sg_gross_amount
+			FROM vw_pl_line_items
+			WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
@@ -51,7 +55,27 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 		idx++
 	}
 
-	query += " ORDER BY period_month ASC"
+	query += `
+			GROUP BY practitioner_id, period_month, section_type
+		)
+		SELECT
+			practitioner_id, period_month,
+			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
+			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'),        0) AS cogs_gross,
+			COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) AS gross_profit_net,
+			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gross,
+			COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
+			COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
+		FROM section_totals
+		GROUP BY practitioner_id, period_month
+		ORDER BY period_month ASC
+	`
 
 	var rows []*PLSummaryRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {

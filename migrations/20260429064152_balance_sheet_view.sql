@@ -55,7 +55,6 @@ JOIN (
 LEFT JOIN tbl_form_field ff ON ff.id = fev.form_field_id  -- LEFT JOIN for direct COA entries
 JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(fev.coa_id, ff.coa_id)
 JOIN tbl_account_type at ON at.id = coa.account_type_id
-
 WHERE fe.status = 'SUBMITTED'
   AND fe.deleted_at IS NULL
   AND (ff.deleted_at IS NULL OR ff.id IS NULL)  -- Allow entries without form fields
