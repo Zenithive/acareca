@@ -12,6 +12,7 @@ type Service interface {
 	Publish(ctx context.Context, rq RqNotification) error
 	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 }
 
@@ -85,6 +86,10 @@ func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter Filter
 
 func (s *service) MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
 	return s.repo.MarkRead(ctx, id, recipientID)
+}
+
+func (s *service) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error {
+	return s.repo.MarkAllRead(ctx, recipientID)
 }
 
 func (s *service) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
