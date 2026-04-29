@@ -290,24 +290,58 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			}
 		}
 	}
+	var rawRows []*BASLineItemRow
 
-	// Aggregate data from all relevant clinics
-	var allRows []*BASLineItemRow
-	for _, cID := range clinicIDs {
-		rows, err := s.repo.GetBASLineItems(ctx, ownerID, &cID, f)
-		if err != nil {
-			return nil, err
+	// 1. Fetch ALL data for the practitioner in one single call.
+	// By passing uuid.Nil to the reverted repo, it pulls both clinic data and manual expenses.
+	nilClinic := uuid.Nil
+	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch BAS items: %w", err)
+	}
+	rawRows = append(rawRows, rows...)
+
+	for i, r := range rawRows {
+		sec := "NIL"
+		if r.SectionType != nil {
+			sec = *r.SectionType
 		}
-		allRows = append(allRows, rows...)
+		fmt.Printf("[%d] Name: %-15s | Section: %-15s | Quarter: %s | Gross: %10.2f\n",
+			i, r.AccountName, sec, r.PeriodQuarter.Format("2006-01-02"), r.GrossAmount)
 	}
 
-	if len(f.ParsedClinicIDs) == 0 {
-		nilClinic := uuid.Nil
+	unifiedMap := make(map[string]*BASLineItemRow)
+	for _, r := range rawRows {
+		section := ""
+		if r.SectionType != nil {
 
-		manualRows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
-		if err == nil && len(manualRows) > 0 {
-			allRows = append(allRows, manualRows...)
+			section = strings.ToUpper(*r.SectionType)
 		}
+
+		key := fmt.Sprintf("%s-%s-%s-%s",
+			r.PeriodQuarter.Format("2006-01-02"),
+			section,
+			r.BasCategory,
+			r.CoaID,
+		)
+
+		if existing, found := unifiedMap[key]; found {
+			existing.NetAmount += r.NetAmount
+			existing.GstAmount += r.GstAmount
+			existing.GrossAmount += r.GrossAmount
+		} else {
+			unifiedMap[key] = r
+		}
+	}
+
+	for k, v := range unifiedMap {
+		fmt.Printf("Key: %-40s | Name: %s\n", k, v.AccountName)
+	}
+
+	// 3. Convert Map back to Slice
+	var allRows []*BASLineItemRow
+	for _, r := range unifiedMap {
+		allRows = append(allRows, r)
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
@@ -316,6 +350,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
 
+	// DEBUG 3: Quarter Matching
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
@@ -414,67 +449,70 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 }
 
 func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
+	type accGroup struct {
+		Name    string
+		Amounts BASAmount
+	}
+
 	var col BASColumn
 	col.Sections.Income.Items = make([]BASLineItem, 0)
 	col.Sections.Expenses.Items = make([]BASLineItem, 0)
 
-	type incomeAcc struct {
-		Name    string
-		Amounts BASAmount
-	}
-	incomeOrder := []string{} // To maintain order of appearance
-	incomeAccounts := map[string]*incomeAcc{}
+	incomeOrder := []string{}
+	incomeAccounts := map[string]*accGroup{}
+
+	expenseOrder := []string{}
+	expenseAccounts := map[string]*accGroup{}
 
 	var b1 BASAmount
-	var mgtFee, labWork, otherExp BASAmount
+	var mgtFee, labWork BASAmount // Only keep these two as separate totals
 
 	for _, r := range rows {
 		if BASCategory(r.BasCategory) == BASCategoryBASExcluded {
 			continue
 		}
 
-		sectionType := "EXPENSE_ENTRY" // Default fallback for manual entries
+		sectionType := ""
 		if r.SectionType != nil {
-			sectionType = *r.SectionType
+			sectionType = strings.ToUpper(*r.SectionType)
 		}
 
-		switch sectionType {
-		case "COLLECTION":
-
-			//  Accumulate Individual COA Totals for Display
+		if sectionType == "COLLECTION" {
 			if _, seen := incomeAccounts[r.CoaID]; !seen {
 				incomeOrder = append(incomeOrder, r.CoaID)
-				incomeAccounts[r.CoaID] = &incomeAcc{Name: r.AccountName}
+				incomeAccounts[r.CoaID] = &accGroup{Name: r.AccountName}
 			}
 			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
 			incomeAccounts[r.CoaID].Amounts.GST += r.GstAmount
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
+			continue
+		}
 
-		case "COST", "OTHER_COST", "EXPENSE_ENTRY", "":
+		// --- Process All Expenses ---
+		b1.Gross += r.GstAmount
+		accNameLower := strings.ToLower(r.AccountName)
 
-			b1.Gross += r.GstAmount
-
-			// Categorize by Account Name, not by BAS Category
-			accName := strings.ToLower(r.AccountName)
-			switch {
-			case strings.Contains(accName, "management"):
-				mgtFee.Gross += r.GrossAmount
-				mgtFee.GST += r.GstAmount
-				mgtFee.Net += r.NetAmount
-			case strings.Contains(accName, "lab"): // Catch "Lab Fees" and "Laboratory"
-				labWork.Gross += r.GrossAmount
-				labWork.GST += r.GstAmount
-				labWork.Net += r.NetAmount
-			default:
-				// Captures Merchant Fees, Bank Fees, and other overheads
-				otherExp.Gross += r.GrossAmount
-				otherExp.GST += r.GstAmount
-				otherExp.Net += r.NetAmount
+		switch {
+		case strings.Contains(accNameLower, "management"):
+			mgtFee.Gross += r.GrossAmount
+			mgtFee.GST += r.GstAmount
+			mgtFee.Net += r.NetAmount
+		case strings.Contains(accNameLower, "lab"):
+			labWork.Gross += r.GrossAmount
+			labWork.GST += r.GstAmount
+			labWork.Net += r.NetAmount
+		default:
+			// Treat everything else as an individual line item
+			if _, seen := expenseAccounts[r.AccountName]; !seen {
+				expenseOrder = append(expenseOrder, r.AccountName)
+				expenseAccounts[r.AccountName] = &accGroup{Name: r.AccountName}
 			}
+			expenseAccounts[r.AccountName].Amounts.Gross += r.GrossAmount
+			expenseAccounts[r.AccountName].Amounts.GST += r.GstAmount
+			expenseAccounts[r.AccountName].Amounts.Net += r.NetAmount
 		}
 	}
 
-	// Helper to finalize a BASAmount with rounding
 	finalize := func(amt BASAmount) BASAmount {
 		return BASAmount{
 			Gross: roundToTwo(amt.Gross),
@@ -483,56 +521,55 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		}
 	}
 
-	// --- 1. Income Section Construction & Calculation ---
+	// --- Income ---
 	var totalIncome BASAmount
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
-		finalAmounts := finalize(acc.Amounts)
-
-		// Add to display items
-		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{
-			Name:    acc.Name,
-			Amounts: finalAmounts,
-		})
-
-		// Sum up for Net Profit/Loss calculation
-		totalIncome.Gross += finalAmounts.Gross
-		totalIncome.GST += finalAmounts.GST
-		totalIncome.Net += finalAmounts.Net
+		fAmts := finalize(acc.Amounts)
+		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
+		totalIncome.Gross += fAmts.Gross
+		totalIncome.GST += fAmts.GST
+		totalIncome.Net += fAmts.Net
 	}
-
-	// Ensure total is rounded
 	totalIncome = finalize(totalIncome)
 
-	// Expenses Section
+	// --- Expenses ---
 	mgtFee = finalize(mgtFee)
 	labWork = finalize(labWork)
-	otherExp = finalize(otherExp)
-
-	subtotalExpenses := BASAmount{
-		Gross: roundToTwo(mgtFee.Gross + labWork.Gross + otherExp.Gross),
-		GST:   roundToTwo(mgtFee.GST + labWork.GST + otherExp.GST),
-		Net:   roundToTwo(mgtFee.Net + labWork.Net + otherExp.Net),
-	}
 
 	col.Sections.Expenses.Items = []BASLineItem{
 		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
 		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
-		{Name: "Other Expenses (GST)", Amounts: otherExp},
 	}
 
-	// Net Profit/Loss
+	tGross := mgtFee.Gross + labWork.Gross
+	tGST := mgtFee.GST + labWork.GST
+	tNet := mgtFee.Net + labWork.Net
+
+	for _, name := range expenseOrder {
+		acc := expenseAccounts[name]
+		fAmts := finalize(acc.Amounts)
+
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    acc.Name,
+			Amounts: fAmts,
+		})
+
+		tGross += fAmts.Gross
+		tGST += fAmts.GST
+		tNet += fAmts.Net
+	}
+
+	subtotalExpenses := BASAmount{
+		Gross: roundToTwo(tGross),
+		GST:   roundToTwo(tGST),
+		Net:   roundToTwo(tNet),
+	}
+
+	// --- Profit/Loss & GST Payable ---
 	col.Sections.NetProfitLoss.Items = []BASLineItem{
-		{
-			Name: "Net Profit/Loss",
-			Amounts: BASAmount{
-				Net: roundToTwo(totalIncome.Net - subtotalExpenses.Net),
-			},
-		},
+		{Name: "Net Profit/Loss", Amounts: BASAmount{Net: roundToTwo(totalIncome.Net - subtotalExpenses.Net)}},
 	}
-
-	// Totals
-	// Net GST Payable = 1A (GST on taxable sales) - 1B (GST on purchases)
 	col.NetGSTPayable = roundToTwo(0 - b1.Gross)
 
 	return col
