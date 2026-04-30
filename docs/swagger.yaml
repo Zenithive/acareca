@@ -1888,10 +1888,14 @@ definitions:
     type: object
   notification.RsListNotification:
     properties:
+      limit:
+        type: integer
       notifications:
         items:
           $ref: '#/definitions/notification.Notification'
         type: array
+      page:
+        type: integer
       total:
         type: integer
       unread_count:
@@ -4040,6 +4044,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
       summary: Get Balance Sheet
       tags:
       - Balance Sheet

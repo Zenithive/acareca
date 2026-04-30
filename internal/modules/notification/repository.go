@@ -20,7 +20,7 @@ const maxRetries = 5
 type Repository interface {
 	CreateNotification(ctx context.Context, notification Notification) (uuid.UUID, error)
 	CreateDeliveries(ctx context.Context, notificationID uuid.UUID, channels []Channel) error
-	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error)
+	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, int, int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
@@ -79,23 +79,23 @@ func (r *repository) CreateDeliveries(ctx context.Context, notificationID uuid.U
 	return nil
 }
 
-func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error) {
+func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, int, int, error) {
 	args := []any{recipientID}
 	where := "WHERE recipient_id = $1 AND status != 'DISMISSED'"
 
-	if filter.Status != nil {
+	if filter.Status != nil && *filter.Status != "" {
 		args = append(args, *filter.Status)
 		where += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM tbl_notification "+where, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count notifications: %w", err)
+		return nil, 0, 0, 0, fmt.Errorf("count notifications: %w", err)
 	}
 
 	limit := filter.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = 10
 	}
 	page := filter.Page
 	if page <= 0 {
@@ -103,7 +103,6 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	}
 	offset := (page - 1) * limit
 
-	args = append(args, limit, offset)
 	q := fmt.Sprintf(`
 		SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id,
 		       status, payload, created_at, read_at AS readed_at
@@ -111,13 +110,17 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		%s
 		ORDER BY created_at DESC
 		LIMIT $%d OFFSET $%d
-	`, where, len(args)-1, len(args))
+	`, where, len(args)+1, len(args)+2)
+
+	// Append limit and offset to args AFTER the where clause params
+	args = append(args, limit, offset)
 
 	var rows []Notification
 	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
-		return nil, 0, fmt.Errorf("list notifications: %w", err)
+		return nil, 0, 0, 0, fmt.Errorf("list notifications: %w", err)
 	}
-	return rows, total, nil
+
+	return rows, total, page, limit, nil
 }
 
 // MarkRead transitions UNREAD → READ.

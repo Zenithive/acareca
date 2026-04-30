@@ -2785,6 +2785,11 @@ const docTemplate = `{
         },
         "/balance-sheet": {
             "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
                 "description": "Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)",
                 "consumes": [
                     "application/json"
@@ -10761,11 +10766,17 @@ const docTemplate = `{
         "notification.RsListNotification": {
             "type": "object",
             "properties": {
+                "limit": {
+                    "type": "integer"
+                },
                 "notifications": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/notification.Notification"
                     }
+                },
+                "page": {
+                    "type": "integer"
                 },
                 "total": {
                     "type": "integer"

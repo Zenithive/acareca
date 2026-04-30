@@ -65,7 +65,7 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 }
 
 func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error) {
-	notifications, total, err := s.repo.ListByRecipient(ctx, recipientID, filter)
+	notifications, total, page, limit, err := s.repo.ListByRecipient(ctx, recipientID, filter)
 	if err != nil {
 		return RsListNotification{}, err
 	}
@@ -81,6 +81,8 @@ func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter Filter
 		Notifications: notifications,
 		UnreadCount:   unread,
 		Total:         total,
+		Page:          page,
+		Limit:         limit,
 	}, nil
 }
 

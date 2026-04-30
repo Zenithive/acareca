@@ -42,6 +42,7 @@ func NewHandler(svc Service, invitationSvc invitation.Service) Handler {
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
+// @Security     BearerToken
 // @Router /balance-sheet [get]
 func (h *handler) GetBalanceSheet(c *gin.Context) {
 	actorID, role, ok := util.GetRoleBasedID(c)
