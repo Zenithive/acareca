@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -65,22 +66,24 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 }
 
 func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error) {
-	notifications, total, err := s.repo.ListByRecipient(ctx, recipientID, filter)
+	notifications, total, page, limit, err := s.repo.ListByRecipient(ctx, recipientID, filter)
 	if err != nil {
 		return RsListNotification{}, err
 	}
 
+	// Get the GLOBAL unread count
 	unread := 0
-	for _, n := range notifications {
-		if n.Status == StatusUnread {
-			unread++
-		}
+	unread, err = s.repo.GetUnreadCount(ctx, recipientID)
+	if err != nil {
+		fmt.Printf("Error in count notifications: %s", err)
 	}
 
 	return RsListNotification{
 		Notifications: notifications,
 		UnreadCount:   unread,
 		Total:         total,
+		Page:          page,
+		Limit:         limit,
 	}, nil
 }
 

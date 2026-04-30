@@ -2088,61 +2088,6 @@
                 }
             }
         },
-        "/api/v1/balance-sheet": {
-            "get": {
-                "description": "Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Balance Sheet"
-                ],
-                "summary": "Get Balance Sheet",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Filter by clinic UUID",
-                        "name": "clinic_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
-                        "name": "as_of_date",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/bs.RsBalanceSheet"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/equity/calculation": {
             "get": {
                 "description": "Automatically calculates all owner fund balances (drawings, funds introduced, retained earnings)",
@@ -2835,6 +2780,137 @@
                 }
             }
         },
+        "/balance-sheet": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Balance Sheet"
+                ],
+                "summary": "Get Balance Sheet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bs.RsBalanceSheet"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/balance-sheet/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates and downloads a Balance Sheet report. Accountants can export data for linked practitioners.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
+                ],
+                "tags": [
+                    "Balance Sheet"
+                ],
+                "summary": "Export Balance Sheet to Excel/PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID (Required for Accountants to filter)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Export Type: pdf | excel",
+                        "name": "export_type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Balance_Sheet_2026-04-30.xlsx",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/bas/activity-statement/report/export": {
             "get": {
                 "security": [
@@ -2848,7 +2924,7 @@
                     " text/html"
                 ],
                 "tags": [
-                    "BAS"
+                    "engine/bas"
                 ],
                 "summary": "Export Business Activity Statement to Excel",
                 "parameters": [
@@ -10687,11 +10763,17 @@
         "notification.RsListNotification": {
             "type": "object",
             "properties": {
+                "limit": {
+                    "type": "integer"
+                },
                 "notifications": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/notification.Notification"
                     }
+                },
+                "page": {
+                    "type": "integer"
                 },
                 "total": {
                     "type": "integer"

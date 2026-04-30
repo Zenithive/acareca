@@ -123,15 +123,19 @@ const (
 	EntityPLReport          = "pl_report"
 	EntityActivityStatement = "activity_statement"
 	EntityTransactions      = "transactions"
+	EntityBalanceSheet      = "balance_sheet"
 )
 
 const (
-	ActionBASReportExported          = "bas_report.exported"
-	ActionPLReportExported           = "pl_report.exported"
-	ActionActivityStatementExported  = "activity_statement.exported"
-	ActitionTransactionsExported     = "transactions.exported"
+	ActionBASReportExported         = "bas_report.exported"
+	ActionPLReportExported          = "pl_report.exported"
+	ActionActivityStatementExported = "activity_statement.exported"
+	ActitionTransactionsExported    = "transactions.exported"
+	ActionBalanceSheetExported      = "balance_sheet.exported"
+
 	ActionBASReportGenerated         = "bas_report.generated"
 	ActionPLReportGenerated          = "pl_report.generated"
 	ActionActivityStatementGenerated = "activity_statement.generated"
 	ActitionTransactionsGenerated    = "transactions.generated"
+	ActitionBalanceSheetGenerated    = "balance_sheet.generated"
 )

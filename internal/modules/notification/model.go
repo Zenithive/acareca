@@ -182,6 +182,8 @@ type RsListNotification struct {
 	Notifications []Notification `json:"notifications"`
 	UnreadCount   int            `json:"unread_count"`
 	Total         int            `json:"total"`
+	Page          int            `json:"page"`
+	Limit         int            `json:"limit"`
 }
 
 func BuildNotificationPayload(title string, body json.RawMessage, senderName *string, entityName *string, extraData *map[string]interface{}) *NotificationPayload {

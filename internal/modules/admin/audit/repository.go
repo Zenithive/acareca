@@ -272,7 +272,11 @@ func (r *repository) GetInvitationEmail(ctx context.Context, invitationID string
 
 func (r *repository) GetAccountantNameForSharedEvents(ctx context.Context, id string) (string, error) {
 	var name string
-	query := `SELECT actor_name FROM tbl_shared_events WHERE actor_id = $1`
+	query := `SELECT actor_name 
+		FROM tbl_shared_events 
+		WHERE actor_id = $1 AND actor_name IS NOT NULL AND actor_name != ''
+		ORDER BY created_at DESC 
+		LIMIT 1`
 	err := r.db.GetContext(ctx, &name, query, id)
 	if err != nil {
 		return "", err

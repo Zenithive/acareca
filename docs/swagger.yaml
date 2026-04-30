@@ -1888,10 +1888,14 @@ definitions:
     type: object
   notification.RsListNotification:
     properties:
+      limit:
+        type: integer
       notifications:
         items:
           $ref: '#/definitions/notification.Notification'
         type: array
+      page:
+        type: integer
       total:
         type: integer
       unread_count:
@@ -3555,43 +3559,6 @@ paths:
       summary: Update the label of a financial year
       tags:
       - fy
-  /api/v1/balance-sheet:
-    get:
-      consumes:
-      - application/json
-      description: Get balance sheet showing assets, liabilities, and equity (including
-        owner fund accounts)
-      parameters:
-      - description: Filter by clinic UUID
-        in: query
-        name: clinic_id
-        type: string
-      - description: Balance as of date (YYYY-MM-DD), defaults to today
-        in: query
-        name: as_of_date
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/bs.RsBalanceSheet'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Get Balance Sheet
-      tags:
-      - Balance Sheet
   /api/v1/equity/calculation:
     get:
       consumes:
@@ -4043,6 +4010,92 @@ paths:
       summary: Verify user email address
       tags:
       - auth
+  /balance-sheet:
+    get:
+      consumes:
+      - application/json
+      description: Get balance sheet showing assets, liabilities, and equity (including
+        owner fund accounts)
+      parameters:
+      - description: Filter by clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Balance as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bs.RsBalanceSheet'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Balance Sheet
+      tags:
+      - Balance Sheet
+  /balance-sheet/export:
+    get:
+      description: Generates and downloads a Balance Sheet report. Accountants can
+        export data for linked practitioners.
+      parameters:
+      - description: Practitioner UUID (Required for Accountants to filter)
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Balance as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      - description: 'Export Type: pdf | excel'
+        in: query
+        name: export_type
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
+      responses:
+        "200":
+          description: Balance_Sheet_2026-04-30.xlsx
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export Balance Sheet to Excel/PDF
+      tags:
+      - Balance Sheet
   /bas/activity-statement/report/export:
     get:
       description: Generates a formatted Excel BAS report.
@@ -4088,7 +4141,7 @@ paths:
       - BearerToken: []
       summary: Export Business Activity Statement to Excel
       tags:
-      - BAS
+      - engine/bas
   /bas/bas-preparation:
     get:
       description: Returns a side-by-side comparison of BAS figures across selected

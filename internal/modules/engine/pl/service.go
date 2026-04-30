@@ -281,6 +281,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 				PractitionerID: pID,
 				AccountantID:   accProfile.ID,
 				ActorID:        actorID,
+				ActorName:      &fullName,
 				ActorType:      role,
 				EventType:      "pl_report.generated",
 				EntityType:     "REPORT",
@@ -609,12 +610,13 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 				PractitionerID: pID,
 				AccountantID:   actorID,
 				ActorID:        userID,
+				ActorName:      &fullName,
 				ActorType:      role,
 				EventType:      "pl_report.exported",
 				EntityType:     "REPORT",
 				Description:    fmt.Sprintf("Accountant %s exported Profit and Loss Report", fullName),
 				CreatedAt:      time.Now(),
-				Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report", "export_format": exportType},
+				Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report", "export_type": exportType},
 			})
 		}
 	}
