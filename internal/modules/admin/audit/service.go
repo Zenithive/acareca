@@ -241,8 +241,12 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			userName, _ = s.repo.GetUserName(ctx, *entry.UserID)
 		}
 	} else if entry.UserID != nil {
-		// Standard path: prioritize the direct Actor (UserID)
-		userName, err = s.repo.GetUserName(ctx, *entry.UserID)
+		if entry.Action == "shared_event.recorded" {
+			userName, err = s.repo.GetAccountantNameForSharedEvents(ctx, *entry.UserID)
+			fmt.Printf("Accountant Name for shared events: %s", userName)
+		} else {
+			userName, err = s.repo.GetUserName(ctx, *entry.UserID)
+		}
 		if err != nil {
 			log.Printf("ERROR: [Audit-Notification] Failed to get user name for ID %s: %v", *entry.UserID, err)
 		}
@@ -252,8 +256,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		if err == nil {
 			userName, _ = s.repo.GetUserName(ctx, uID)
 		}
-	} else if entry.Action == "shared_event.recorded" {
-		userName, err = s.repo.GetAccountantNameForSharedEvents(ctx, *entry.UserID)
 	}
 
 	// Format the Action into a generic sentence
