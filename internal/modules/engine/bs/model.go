@@ -38,13 +38,15 @@ type RsBalanceSheet struct {
 
 // RsAccount represents a single account line in the balance sheet
 type RsAccount struct {
-	Code    int16   `json:"code"`
-	Name    string  `json:"name"`
-	Balance float64 `json:"balance"`
+	CoaId   uuid.UUID `json:"coa_id"`
+	Code    int16     `json:"code"`
+	Name    string    `json:"name"`
+	Balance float64   `json:"balance"`
 }
 
 func (r *BSRow) ToRs() RsAccount {
 	return RsAccount{
+		CoaId:   r.CoaID,
 		Code:    r.AccountCode,
 		Name:    r.AccountName,
 		Balance: r.Balance,
