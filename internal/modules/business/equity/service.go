@@ -118,13 +118,17 @@ func (s *service) GetRetainedEarnings(ctx context.Context, practitionerID uuid.U
 		  AND submitted_at::DATE < $2::DATE
 	`
 	args := []interface{}{practitionerID, fyStart.Format("2006-01-02")}
-	idx := 3
+	//dx := 3
 
-	if clinicID != nil {
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// if clinicID != nil {
+	// 	query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// 	args = append(args, *clinicID)
+	// }
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND (clinic_id = $3 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
 	}
-
 	var retained float64
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&retained); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -161,13 +165,17 @@ func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID,
 		  AND submitted_at   <= $2::DATE     -- ← date boundary added
 	`
 	args := []interface{}{practitionerID, asOfDate}
-	idx := 3
+	//idx := 3
 
-	if clinicID != nil {
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// if clinicID != nil {
+	// 	query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// 	args = append(args, *clinicID)
+	// }
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND (clinic_id = $3 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
 	}
-
 	var balance float64
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&balance); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -189,10 +197,15 @@ func (s *service) getEquityAccountBalance(ctx context.Context, practitionerID uu
 		  AND submitted_at <= $4::DATE
 	`
 	args := []interface{}{practitionerID, accountCode, fromDate, toDate}
-	idx := 5
+	// idx := 5
 
-	if clinicID != nil {
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// if clinicID != nil {
+	// 	query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// 	args = append(args, *clinicID)
+	// }
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND (clinic_id = $5 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
 	}
 
@@ -227,10 +240,15 @@ func (s *service) getCurrentYearProfit(
 		  AND submitted_at::DATE <= $3::DATE
 	`
 	args := []interface{}{practitionerID, fyStart.Format("2006-01-02"), asOfDate}
-	idx := 4
+	// idx := 4
 
-	if clinicID != nil {
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// if clinicID != nil {
+	// 	query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// 	args = append(args, *clinicID)
+	// }
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND (clinic_id = $4 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
 	}
 
@@ -324,12 +342,17 @@ func (s *service) getAllTimeEquityAccountBalance(ctx context.Context, practition
 			  AND submitted_at::DATE <= $3::DATE
 	`
 	args := []interface{}{practitionerID, accountCode, asOfDate}
-	idx := 4
+	//idx := 4
 
-	if clinicID != nil {
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// if clinicID != nil {
+	// 	query += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// 	args = append(args, *clinicID)
+	// 	idx++
+	// }
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND (clinic_id = $4 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
-		idx++
 	}
 
 	query += `
