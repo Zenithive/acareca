@@ -53,6 +53,7 @@ const (
 	ActionFYUpdated           = "fy.updated"
 	ActionFYClosed            = "fy.closed"
 	ActionFYActivated         = "fy.activated"
+	ActionLockDateUpdated     = "lock_date.updated"
 )
 
 // Action constants - Forms module

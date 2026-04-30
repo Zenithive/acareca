@@ -322,6 +322,7 @@ type RsCoaEntry struct {
 	CoaID            string  `json:"coa_id"`
 	CoaName          string  `json:"coa_name"`
 	TotalNetAmount   float64 `json:"total_net_amount"`
+	TotalGSTAmount   float64 `json:"total_gst_amount"`
 	TotalGrossAmount float64 `json:"total_gross_amount"`
 	EntryCount       int     `json:"entry_count"`
 

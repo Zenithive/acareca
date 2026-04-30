@@ -2091,6 +2091,230 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/balance-sheet": {
+            "get": {
+                "description": "Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Balance Sheet"
+                ],
+                "summary": "Get Balance Sheet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bs.RsBalanceSheet"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/equity/calculation": {
+            "get": {
+                "description": "Automatically calculates all owner fund balances (drawings, funds introduced, retained earnings)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Owner Equity"
+                ],
+                "summary": "Get Owner Equity Calculation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/equity.OwnerEquityCalculation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/equity/movements": {
+            "get": {
+                "description": "Calculates detailed equity movements for current year (funds introduced, drawings, etc.)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Owner Equity"
+                ],
+                "summary": "Get Equity Movements",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/equity.EquityMovements"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/equity/retained-earnings": {
+            "get": {
+                "description": "Calculates retained earnings from all prior years' profits",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Owner Equity"
+                ],
+                "summary": "Get Retained Earnings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "number",
+                                "format": "float64"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/forgot-password": {
             "post": {
                 "description": "Sends a reset link to the user's email if they exist.",
@@ -7235,98 +7459,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/seed": {
-            "post": {
-                "description": "Create test clinics, forms, and formulas for a practitioner",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Seed"
-                ],
-                "summary": "Seed test data",
-                "parameters": [
-                    {
-                        "description": "Seed configuration",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/seed.RqSeedData"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Data seeded successfully",
-                        "schema": {
-                            "$ref": "#/definitions/seed.RsSeedData"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/seed/cleanup": {
-            "post": {
-                "description": "Delete all clinics and forms for a practitioner (preserves COA)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Seed"
-                ],
-                "summary": "Cleanup seeded data",
-                "parameters": [
-                    {
-                        "description": "Cleanup configuration",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/seed.RqCleanupData"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Data cleaned up successfully",
-                        "schema": {
-                            "$ref": "#/definitions/seed.RsCleanupData"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/setting": {
             "get": {
                 "security": [
@@ -8975,6 +9107,64 @@ const docTemplate = `{
                 }
             }
         },
+        "bs.RsAccount": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "number"
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "bs.RsBalanceSheet": {
+            "type": "object",
+            "properties": {
+                "as_of_date": {
+                    "type": "string"
+                },
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bs.RsAccount"
+                    }
+                },
+                "current_year_profit": {
+                    "type": "number"
+                },
+                "equity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bs.RsAccount"
+                    }
+                },
+                "liabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bs.RsAccount"
+                    }
+                },
+                "total_assets": {
+                    "type": "number"
+                },
+                "total_equity": {
+                    "type": "number"
+                },
+                "total_liabilities": {
+                    "type": "number"
+                },
+                "total_liabilities_and_equity": {
+                    "type": "number"
+                }
+            }
+        },
         "calculation.PreviewSummary": {
             "type": "object",
             "properties": {
@@ -9658,13 +9848,17 @@ const docTemplate = `{
         },
         "entry.RqEntryValue": {
             "type": "object",
-            "required": [
-                "form_field_id"
-            ],
             "properties": {
                 "amount": {
                     "type": "number",
                     "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "description": "For direct COA entries",
+                    "type": "string"
                 },
                 "form_field_id": {
                     "type": "string"
@@ -9735,10 +9929,19 @@ const docTemplate = `{
                     "description": "Amount is used when there is no GST (net == gross).",
                     "type": "number"
                 },
+                "coa_id": {
+                    "description": "For direct COA entries",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "For direct COA entries",
+                    "type": "string"
+                },
                 "field_key": {
                     "type": "string"
                 },
                 "form_field_id": {
+                    "description": "Nullable for direct COA entries",
                     "type": "string"
                 },
                 "gross_amount": {
@@ -9755,6 +9958,69 @@ const docTemplate = `{
                 },
                 "net_amount": {
                     "description": "NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.",
+                    "type": "number"
+                }
+            }
+        },
+        "equity.EquityMovements": {
+            "type": "object",
+            "properties": {
+                "closing_balance": {
+                    "type": "number"
+                },
+                "current_year_profit": {
+                    "type": "number"
+                },
+                "drawings": {
+                    "type": "number"
+                },
+                "funds_introduced": {
+                    "type": "number"
+                },
+                "net_equity_movement": {
+                    "type": "number"
+                },
+                "opening_balance": {
+                    "type": "number"
+                }
+            }
+        },
+        "equity.OwnerEquityCalculation": {
+            "type": "object",
+            "properties": {
+                "as_of_date": {
+                    "type": "string"
+                },
+                "current_year_profit": {
+                    "description": "This year's profit",
+                    "type": "number"
+                },
+                "drawings": {
+                    "description": "Current year withdrawals",
+                    "type": "number"
+                },
+                "equity_movements": {
+                    "description": "Detailed breakdown",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/equity.EquityMovements"
+                        }
+                    ]
+                },
+                "funds_introduced": {
+                    "description": "Current year contributions",
+                    "type": "number"
+                },
+                "retained_earnings": {
+                    "description": "Prior years' profits",
+                    "type": "number"
+                },
+                "share_capital": {
+                    "description": "Opening capital",
+                    "type": "number"
+                },
+                "total_equity": {
+                    "description": "Sum of all",
                     "type": "number"
                 }
             }
@@ -9798,7 +10064,9 @@ const docTemplate = `{
                     "enum": [
                         "COLLECTION",
                         "COST",
-                        "OTHER_COST"
+                        "OTHER_COST",
+                        "EQUITY_WITHDRAWAL",
+                        "EQUITY_CONTRIBUTION"
                     ]
                 },
                 "slug": {
@@ -9851,7 +10119,9 @@ const docTemplate = `{
                     "enum": [
                         "COLLECTION",
                         "COST",
-                        "OTHER_COST"
+                        "OTHER_COST",
+                        "EQUITY_WITHDRAWAL",
+                        "EQUITY_CONTRIBUTION"
                     ]
                 },
                 "sort_order": {
@@ -10660,139 +10930,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "seed.ClinicDetail": {
-            "type": "object",
-            "properties": {
-                "clinic_id": {
-                    "type": "string"
-                },
-                "clinic_name": {
-                    "type": "string"
-                },
-                "forms": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/seed.FormDetail"
-                    }
-                }
-            }
-        },
-        "seed.FormDetail": {
-            "type": "object",
-            "properties": {
-                "fields": {
-                    "type": "integer"
-                },
-                "form_id": {
-                    "type": "string"
-                },
-                "form_name": {
-                    "type": "string"
-                },
-                "formulas": {
-                    "type": "integer"
-                }
-            }
-        },
-        "seed.RqCleanupData": {
-            "type": "object",
-            "required": [
-                "practitioner_id"
-            ],
-            "properties": {
-                "practitioner_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "seed.RqSeedData": {
-            "type": "object",
-            "required": [
-                "num_clinics",
-                "num_forms"
-            ],
-            "properties": {
-                "num_clinics": {
-                    "type": "integer",
-                    "maximum": 100,
-                    "minimum": 1
-                },
-                "num_fields": {
-                    "type": "integer",
-                    "maximum": 10,
-                    "minimum": 1
-                },
-                "num_forms": {
-                    "type": "integer",
-                    "maximum": 50,
-                    "minimum": 1
-                },
-                "practitioner_id": {
-                    "type": "string"
-                },
-                "verbose": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "seed.RsCleanupData": {
-            "type": "object",
-            "properties": {
-                "addresses_deleted": {
-                    "type": "integer"
-                },
-                "clinics_deleted": {
-                    "type": "integer"
-                },
-                "contacts_deleted": {
-                    "type": "integer"
-                },
-                "duration": {
-                    "type": "string"
-                },
-                "fields_deleted": {
-                    "type": "integer"
-                },
-                "form_versions_deleted": {
-                    "type": "integer"
-                },
-                "forms_deleted": {
-                    "type": "integer"
-                },
-                "practitioner_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "seed.RsSeedData": {
-            "type": "object",
-            "properties": {
-                "clinics_created": {
-                    "type": "integer"
-                },
-                "details": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/seed.ClinicDetail"
-                    }
-                },
-                "duration": {
-                    "type": "string"
-                },
-                "fields_created": {
-                    "type": "integer"
-                },
-                "forms_created": {
-                    "type": "integer"
-                },
-                "formulas_created": {
-                    "type": "integer"
-                },
-                "practitioner_id": {
                     "type": "string"
                 }
             }

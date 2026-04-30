@@ -243,7 +243,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	} else if entry.UserID != nil {
 		if entry.Action == "shared_event.recorded" {
 			userName, err = s.repo.GetAccountantNameForSharedEvents(ctx, *entry.UserID)
-			fmt.Printf("Accountant Name for shared events: %s", userName)
 		} else {
 			userName, err = s.repo.GetUserName(ctx, *entry.UserID)
 		}
@@ -271,21 +270,22 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"permission.revoked": "revoked permissions",
 
 		// Business
-		"clinic.created":  "created clinic",
-		"clinic.updated":  "updated clinic",
-		"clinic.deleted":  "deleted clinic",
-		"form.created":    "created form",
-		"form.updated":    "updated form",
-		"form.deleted":    "deleted form",
-		"entry.created":   "created entry",
-		"entry.updated":   "updated entry",
-		"entry.deleted":   "deleted entry",
-		"entry.confirmed": "confirmed entry",
-		"coa.created":     "created Chart of Accounts",
-		"coa.updated":     "updated Chart of Accounts",
-		"coa.deleted":     "deleted Chart of Accounts",
-		"fy.updated":      "updated Financial Year",
-		"fy.closed":       "closed Financial Year",
+		"clinic.created":    "created clinic",
+		"clinic.updated":    "updated clinic",
+		"clinic.deleted":    "deleted clinic",
+		"form.created":      "created form",
+		"form.updated":      "updated form",
+		"form.deleted":      "deleted form",
+		"entry.created":     "created entry",
+		"entry.updated":     "updated entry",
+		"entry.deleted":     "deleted entry",
+		"entry.confirmed":   "confirmed entry",
+		"coa.created":       "created Chart of Accounts",
+		"coa.updated":       "updated Chart of Accounts",
+		"coa.deleted":       "deleted Chart of Accounts",
+		"fy.updated":        "updated Financial Year",
+		"fy.closed":         "closed Financial Year",
+		"lock_date.updated": "updated lock date",
 
 		// Permissions / Invites
 		"accountant.invite_sent":      "sent an invitation to accountant",
@@ -314,26 +314,61 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"activity_statement.generated": "generated Activity Statement",
 		"transactions.generated":       "generated Transactions",
 	}
-	formattedAction, exists := actionVerbs[entry.Action]
-	if !exists {
-		// Fallback: Replace dots/underscores and title case it
-		formattedAction = strings.NewReplacer(".", " ", "_", " ").Replace(entry.Action)
-	}
 
-	// Get Entity Name
-	var entityNamePtr *string
-	entityName := ""
-	if entry.EntityType != nil && entry.EntityID != nil {
-		entityNamePtr, err = s.repo.GetEntityName(ctx, *entry.EntityType, *entry.EntityID)
-
-		// If the pointer is not nil, use the value
-		if entityNamePtr != nil {
-			entityName = *entityNamePtr
-		}
-	}
-
+	var message string
 	title := "System Activity Alert"
-	message := fmt.Sprintf("%s %s %s", userName, formattedAction, entityName)
+	// Specialized logic for Lock Date messages
+	if entry.Action == auditctx.ActionLockDateUpdated {
+		getLockDate := func(state interface{}) *string {
+			if state == nil {
+				return nil
+			}
+
+			bytes, _ := json.Marshal(state)
+			var data map[string]interface{}
+			json.Unmarshal(bytes, &data)
+
+			// Check for both CamelCase (your struct) and snake_case (common API)
+			val, ok := data["LockDate"]
+			if !ok {
+				val, ok = data["lock_date"]
+			}
+
+			if ok && val != nil {
+				str, isString := val.(string)
+				if isString && str != "" {
+					return &str
+				}
+			}
+			return nil
+		}
+
+		afterDate := getLockDate(entry.AfterState)
+
+		if afterDate == nil {
+			message = fmt.Sprintf("%s unset the lock date", userName)
+		} else {
+			message = fmt.Sprintf("%s changed lock date to \"%s\"", userName, *afterDate)
+		}
+	} else {
+		formattedAction, exists := actionVerbs[entry.Action]
+		if !exists {
+			// Fallback: Replace dots/underscores and title case it
+			formattedAction = strings.NewReplacer(".", " ", "_", " ").Replace(entry.Action)
+		}
+
+		// Get Entity Name
+		var entityNamePtr *string
+		entityName := ""
+		if entry.EntityType != nil && entry.EntityID != nil {
+			entityNamePtr, err = s.repo.GetEntityName(ctx, *entry.EntityType, *entry.EntityID)
+			// If the pointer is not nil, use the value
+			if entityNamePtr != nil {
+				entityName = *entityNamePtr
+			}
+		}
+		message = fmt.Sprintf("%s %s %s", userName, formattedAction, entityName)
+	}
 	message = strings.TrimSpace(message) // Clean up trailing spaces if name was nil
 
 	// Construct Payload

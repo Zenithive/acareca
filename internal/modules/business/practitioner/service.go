@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -35,10 +37,11 @@ type service struct {
 	userSubscription userSubscription.Service
 	coaRepo          coa.Repository
 	invitationRepo   interface{}
+	auditSvc         audit.Service
 }
 
-func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, invitationRepo ...interface{}) IService {
-	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo}
+func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, invitationRepo ...interface{}) IService {
+	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc}
 	if len(invitationRepo) > 0 {
 		svc.invitationRepo = invitationRepo[0]
 	}
@@ -158,8 +161,48 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 		// Example: return fmt.Errorf("lock date cannot be more than 1 year in the future")
 	}
 
-	return s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
+	// Get Metadata for the audit log
+	meta := auditctx.GetMetadata(ctx)
+
+	// Fetch the "Before" state
+	// We need to know what the lock date was before updating
+	beforeState, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
+	if err != nil {
+		return fmt.Errorf("get before state: %w", err)
+	}
+
+	// Perform the update
+	err = s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
+	if err != nil {
+		return err
+	}
+
+	// Fetch the "After" state
+	afterState, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
+	if err != nil {
+		return fmt.Errorf("get after state: %w", err)
+	}
+
+	// Audit Log
+	fyIDStr := fyID.String()
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionLockDateUpdated,
+		Module:      auditctx.ModuleBusiness,
+		EntityType:  strPtr(auditctx.EntityFinancialSettings),
+		EntityID:    &fyIDStr,
+		BeforeState: beforeState,
+		AfterState:  afterState,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
+	})
+
+	return nil
 }
+
+// Helper functions for audit logging
+func strPtr(s string) *string { return &s }
 
 // VerifyAccountantAccessToPractitioner verifies that an accountant has access to a practitioner
 func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
