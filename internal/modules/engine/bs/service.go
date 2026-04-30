@@ -169,7 +169,7 @@ func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid
 	err := s.db.QueryRowContext(ctx, query, args...).Scan(&coaID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, fmt.Errorf("COA account with code %d not found for practitioner %s", accountCode, practitionerID)
 		}
 		return nil, fmt.Errorf("get coa_id for account code %d: %w", accountCode, err)
 	}
