@@ -32,12 +32,22 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UU
 	args := []interface{}{practitionerID}
 	idx := 2
 
+	// if f.ClinicID != nil && *f.ClinicID != "" {
+	// 	clinicID, err := uuid.Parse(*f.ClinicID)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("invalid clinic_id: %w", err)
+	// 	}
+	// 	inner += fmt.Sprintf(" AND clinic_id = $%d", idx)
+	// 	args = append(args, clinicID)
+	// 	idx++
+	// }
+
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		clinicID, err := uuid.Parse(*f.ClinicID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid clinic_id: %w", err)
 		}
-		inner += fmt.Sprintf(" AND clinic_id = $%d", idx)
+		inner += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id IS NULL)", idx)
 		args = append(args, clinicID)
 		idx++
 	}
@@ -52,7 +62,6 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UU
 	query := fmt.Sprintf(`
 		SELECT
 			practitioner_id,
-			clinic_id,
 			account_type,
 			account_code,
 			account_name,
@@ -61,7 +70,7 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UU
 			COUNT(DISTINCT entry_id)                     AS entry_count,
 			TO_CHAR(MAX(submitted_at), 'YYYY-MM-DD')     AS last_transaction_date
 		FROM (%s) filtered
-		GROUP BY practitioner_id, clinic_id, account_type, account_code, account_name, coa_id
+		GROUP BY practitioner_id, account_type, account_code, account_name, coa_id
 		ORDER BY account_type, account_code
 	`, inner)
 
