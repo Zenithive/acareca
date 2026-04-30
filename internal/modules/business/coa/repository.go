@@ -135,9 +135,10 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, 
 	base := `
         SELECT 
             coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
-            coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
+            coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, atyp.name AS account_type_name,coa.created_at, coa.updated_at
         FROM tbl_chart_of_accounts coa
         JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+		JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
         WHERE coa.deleted_at IS NULL
     `
 
@@ -169,6 +170,7 @@ func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID,
 	// Start with the soft-delete filter immediately and JOIN with account_tax table
 	base := ` FROM tbl_chart_of_accounts coa 
 	          JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+			  JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
 	          WHERE coa.deleted_at IS NULL `
 
 	if role == util.RoleAccountant {
