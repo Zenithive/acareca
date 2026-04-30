@@ -22,12 +22,15 @@ type Repository interface {
 	CreateDeliveries(ctx context.Context, notificationID uuid.UUID, channels []Channel) error
 	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	// Delivery worker methods
 	ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error)
 	MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error
 	MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel Channel, errMsg string) error
 	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error
+	// Deduplication check for system error/warning notifications
+	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
 }
 
 type repository struct {
@@ -131,12 +134,34 @@ func (r *repository) MarkRead(ctx context.Context, id uuid.UUID, recipientID uui
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
-// MarkDismissed transitions READ → DISMISSED.
+func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error {
+	query := `
+		UPDATE tbl_notification 
+		SET status = 'READ', read_at = NOW() 
+		WHERE recipient_id = $1 AND status = 'UNREAD'`
+
+	_, err := r.db.ExecContext(ctx, query, recipientID)
+	if err != nil {
+		return fmt.Errorf("mark all read: %w", err)
+	}
+	return nil
+}
+
+// MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.
 func (r *repository) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
+	// First, try to mark as READ if it's UNREAD (this may fail if already READ, which is fine)
+	_, _ = r.db.ExecContext(ctx,
+		`UPDATE tbl_notification
+		 SET status = 'READ', read_at = NOW()
+		 WHERE id = $1 AND recipient_id = $2 AND status = 'UNREAD'`,
+		id, recipientID,
+	)
+
+	// Now mark as DISMISSED (works for both UNREAD and READ status)
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification
 		 SET status = 'DISMISSED'
-		 WHERE id = $1 AND recipient_id = $2 AND status = 'READ'`,
+		 WHERE id = $1 AND recipient_id = $2 AND status IN ('UNREAD', 'READ')`,
 		id, recipientID,
 	)
 	if err != nil {
@@ -152,7 +177,7 @@ func (r *repository) ListFailedInAppDeliveries(ctx context.Context, limit int) (
 		       n.event_type, n.entity_type, n.entity_id, n.payload, n.created_at
 		FROM tbl_notification_delivery d
 		JOIN tbl_notification n ON n.id = d.notification_id
-		WHERE d.channel = 'in_app'
+		WHERE d.channel = 'email'
 		  AND d.status = 'FAILED'
 		  AND d.retry_count < $1
 		  AND n.status != 'DISMISSED'
@@ -227,4 +252,21 @@ func requireOneRow(res interface{ RowsAffected() (int64, error) }, errIfZero err
 		return errIfZero
 	}
 	return nil
+}
+
+// HasActiveSystemNotification checks if an UNREAD system notification already exists
+// for the given entityID + eventType to prevent duplicate alert fatigue.
+func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error) {
+	var count int
+	const q = `
+		SELECT COUNT(*) FROM tbl_notification
+		WHERE entity_id = $1
+		  AND event_type = $2
+		  AND entity_type = 'system'
+		  AND status = 'UNREAD'
+	`
+	if err := r.db.QueryRowContext(ctx, q, entityID, eventType).Scan(&count); err != nil {
+		return false, fmt.Errorf("check active system notification: %w", err)
+	}
+	return count > 0, nil
 }

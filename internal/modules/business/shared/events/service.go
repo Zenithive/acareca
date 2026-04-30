@@ -30,6 +30,19 @@ func NewService(repo Repository, n notification.Service, a audit.Service) Servic
 func (s *service) Record(ctx context.Context, e SharedEvent) error {
 
 	if err := s.repo.Save(ctx, e); err != nil {
+		// SYSTEM ERROR: Failed to log Accountant activity
+		if s.auditSvc != nil {
+			s.auditSvc.LogSystemIssue(
+				ctx,
+				auditctx.ActionSystemError,
+				"events.shared_event_record_failed",
+				fmt.Errorf("failed to save shared event: %w", err),
+				e.AccountantID.String(),
+				e.EntityID.String(),
+				string(e.EntityType),
+				auditctx.ModuleBusiness,
+			)
+		}
 		return err
 	}
 
@@ -52,9 +65,10 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 
 	if s.auditSvc != nil {
 		meta := auditctx.GetMetadata(ctx)
+		userIDStr := e.ActorID.String()
 		auditEntry := &audit.LogEntry{
 			PracticeID: meta.PracticeID,
-			UserID:     meta.UserID,
+			UserID:     &userIDStr,
 			Action:     "shared_event.recorded",
 			Module:     "shared_events",
 			EntityType: strPtr("shared_event"),

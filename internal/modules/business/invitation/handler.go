@@ -1,11 +1,13 @@
 package invitation
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -17,14 +19,17 @@ type IHandler interface {
 	ListInvitations(c *gin.Context)
 	ResendInvitation(c *gin.Context)
 	RevokeInvitation(c *gin.Context)
+	UpdatePermission(c *gin.Context)
+	ListPermissions(c *gin.Context)
 }
 
 type Handler struct {
-	svc Service
+	svc            Service
+	accountantRepo accountant.Repository
 }
 
-func NewHandler(svc Service) IHandler {
-	return &Handler{svc: svc}
+func NewHandler(svc Service, accountantRepo accountant.Repository) IHandler {
+	return &Handler{svc: svc, accountantRepo: accountantRepo}
 }
 
 // @Summary      Send an invitation
@@ -77,7 +82,7 @@ func (h *Handler) GetInvitation(c *gin.Context) {
 		return
 	}
 
-	res, err := h.svc.GetInvitationDetails(c.Request.Context(), inviteID)
+	res, err := h.svc.GetInvitation(c.Request.Context(), inviteID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -131,7 +136,8 @@ func (h *Handler) ProcessInvitation(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /invite [get]
 func (h *Handler) ListInvitations(c *gin.Context) {
-	pIDPtr, aIDPtr, ok := GetRoleBasedIDs(c)
+
+	actorId, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -141,8 +147,9 @@ func (h *Handler) ListInvitations(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+	reqFilter.Role = role
 
-	res, err := h.svc.ListInvitations(c.Request.Context(), pIDPtr, aIDPtr, &reqFilter)
+	res, err := h.svc.ListInvitations(c.Request.Context(), actorId, &reqFilter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -210,13 +217,15 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 	}
 
 	if err := h.svc.RevokeInvite(c.Request.Context(), practID, inviteID); err != nil {
-		switch err.Error() {
-		case "invitation not found":
+		switch {
+		case errors.Is(err, ErrInvitationNotFound):
 			response.Error(c, http.StatusNotFound, err)
-		case "unauthorized: you did not send this invitation":
+		case errors.Is(err, ErrUnauthorizedInvite):
 			response.Error(c, http.StatusForbidden, err)
-		default:
+		case errors.Is(err, ErrInvitationAlreadyUsed), errors.Is(err, ErrCannotRevokeStatus):
 			response.Error(c, http.StatusBadRequest, err)
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
@@ -224,26 +233,79 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "Invitation revoked successfully")
 }
 
-// Helper function to return pointers to Practitioner or Accountant IDs based on the user's role.
-func GetRoleBasedIDs(c *gin.Context) (pID *uuid.UUID, aID *uuid.UUID, ok bool) {
-	role := strings.ToUpper(c.GetString("role"))
-
-	switch role {
-	case util.RolePractitioner:
-		id, exists := util.GetPractitionerID(c)
-		if !exists || id == uuid.Nil {
-			return nil, nil, false
-		}
-		return &id, nil, true
-
-	case util.RoleAccountant:
-		id, exists := util.GetAccountantID(c)
-		if !exists || id == uuid.Nil {
-			return nil, nil, false
-		}
-		return nil, &id, true
-
-	default:
-		return nil, nil, false
+// ListAccountantPermissions godoc
+// @Summary      List Accountant Permissions
+// @Description   Retrieve all active entity permissions (Clinics, Forms) assigned to the logged-in Accountant.
+// @Tags         invitation
+// @Produce      json
+// @Success      200      {object}  util.RsList
+// @Failure      400      {object}  response.RsError
+// @Failure      401      {object}  response.RsError
+// @Failure      500      {object}  response.RsError
+// @Security     BearerToken
+// @Router       /invite/list-permissions [get]
+func (h *Handler) ListPermissions(c *gin.Context) {
+	accId, ok := util.GetAccountantID(c)
+	if !ok {
+		return
 	}
+
+	var reqFilter Filter
+	if err := c.ShouldBindQuery(&reqFilter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	// 2. Call Service with the Accountant ID pointer
+	res, err := h.svc.ListPermissions(c.Request.Context(), accId, &reqFilter)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, res, "Permissions retrieved successfully")
+}
+
+// @Summary      Grant or Update permissions
+// @Description  Practitioner grants or updates specific permissions (read/write access for sales_purchases, lock_dates, manage_users, reports_view_download) to an accountant.
+// @Tags         invitation
+// @Accept       json
+// @Produce      json
+// @Param        request body RqUpdatePermissions true "Permission Details"
+// @Success      200 {object} response.RsBase
+// @Failure      400 {object} response.RsError
+// @Failure      403 {object} response.RsError
+// @Failure      500 {object} response.RsError
+// @Security     BearerToken
+// @Router       /invite/permission [put]
+func (h *Handler) UpdatePermission(c *gin.Context) {
+	practID, ok := util.GetPractitionerID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var req RqUpdatePermissions
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Update permissions
+	updatedPerms, err := h.svc.UpdatePermissions(c.Request.Context(), practID, &req)
+	if err != nil {
+		if strings.Contains(err.Error(), "not linked") {
+			response.Error(c, http.StatusForbidden, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	data := gin.H{
+		"accountant_id": req.AccountantID,
+		"email":         req.Email,
+		"permissions":   updatedPerms,
+	}
+
+	response.JSON(c, http.StatusOK, data, "Permissions updated successfully")
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -97,7 +98,9 @@ func (h *handler) Create(c *gin.Context) {
 // @Router /clinic [get]
 func (h *handler) List(c *gin.Context) {
 	// Get user ID from JWT token context
-	actorID, ok := util.GetPractitionerID(c)
+	var actorID uuid.UUID
+	var ok bool
+	actorID, ok = util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -114,7 +117,7 @@ func (h *handler) List(c *gin.Context) {
 	var err error
 
 	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
-
+		actorID, ok = util.GetAccountantID(c)
 		clinics, err = h.svc.ListClinicsForAccountant(c.Request.Context(), actorID, filter)
 	} else {
 
@@ -141,16 +144,26 @@ func (h *handler) List(c *gin.Context) {
 // @Security BearerToken
 // @Router /clinic/{id} [get]
 func (h *handler) GetByID(c *gin.Context) {
-	// Get user ID from JWT token context
-	actorID, ok := util.GetUserID(c)
-	if !ok {
-		return
-	}
 
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+		return
+	}
+
+	var actorID uuid.UUID
+	var ok bool
+	role := c.GetString("role")
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("profile not found"))
 		return
 	}
 

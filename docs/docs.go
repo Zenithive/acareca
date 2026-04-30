@@ -232,6 +232,898 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/accountant": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetch a paginated list of all accountants with their associated practitioners. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-accountant"
+                ],
+                "summary": "List all accountants with their practitioners (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email address",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by accountant full name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by phone number (partial match)",
+                        "name": "phone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across accountant full name and email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records per page (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: id, first_name, last_name, email (default: id)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/activate-fy/{financial_year_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fy"
+                ],
+                "summary": "Activate a specific financial year",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/accountant/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns accountant KPIs and invite status distribution",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get accountant dashboard overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsAccountantOverview"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/accountant/resource-access-timeseries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns accountant resource access over time by resource type",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get resource access timeseries",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsResourceAccessTimeseries"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/active-users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns DAU, WAU, MAU metrics with DAU/MAU ratio and timeline",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get daily/weekly/monthly active users",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsActiveUsers"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/dashboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns overview metrics, subscription records, and plan distribution in a single call",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get billing dashboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search subscription records by practitioner name or email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter records by plan name",
+                        "name": "plan_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter records by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records per page (default: 20)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsBillingDashboard"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/plan-distribution": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns plan distribution with historical MRR (Monthly Recurring Revenue), subscription counts, and time-series data. Total/active counts reflect all-time data, while time-series shows data within the specified date range.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get plan distribution",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPlanDistribution"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/platform-revenue": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns platform revenue over time",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get platform revenue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Time bucket: day, week, month",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPlatformRevenue"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/billing/subscriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns paginated and filtered list of subscription records. Date filters apply to subscription creation date (created_at). Status values are case-insensitive and must be one of: ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "List subscription records",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search by practitioner name or email (max 100 chars)",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by plan name (partial match, max 100 chars)",
+                        "name": "plan_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by creation date start (YYYY-MM-DD, includes full day)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by creation date end (YYYY-MM-DD, includes full day)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records per page (default: 20, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: created_at, start_date, end_date, status (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioner/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns practitioner KPIs and user bifurcation",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get practitioner dashboard overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPractitionerOverview"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioner/resource-analytics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns resource analytics grouped by entity type with action counts",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-dashboard"
+                ],
+                "summary": "Get resource analytics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group by: entity_type, action",
+                        "name": "group_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsResourceAnalytics"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioners": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns paginated and filtered list of practitioners with their clinics and associated accountants",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "List all practitioners with clinics and accountants",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by phone (partial match)",
+                        "name": "phone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by active subscription",
+                        "name": "has_active_subscription",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by subscription plan name",
+                        "name": "subscription_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across name and email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records per page (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: created_at, email, first_name, last_name (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/practitioners/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns detailed practitioner information including subscription, clinics, and associated accountants",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get practitioner details with clinics and accountants",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsPractitionerDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/subscriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns subscription metrics including MRR, ARR, ARPU, churn rate, and distribution by plan",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get subscription distribution and MRR",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsSubscriptionMetrics"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/analytics/user-growth": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns user growth statistics including total users, new users, active users, growth rate, and retention rate with timeline",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-analytics"
+                ],
+                "summary": "Get user growth and retention metrics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analytics.RsUserGrowth"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/audit": {
             "get": {
                 "security": [
@@ -517,6 +1409,157 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/practitioner": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetch a paginated list of all practitioners with their active subscription details. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-practitioner"
+                ],
+                "summary": "List all practitioners with active subscriptions (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by exact email address",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by practitioner full name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by phone number (partial match)",
+                        "name": "phone",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filter by active subscription (true=with active, false=without active)",
+                        "name": "has_active_subscription",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by subscription plan name (partial match)",
+                        "name": "subscription_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search across practitioner full name and email",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records per page (default: 10, max: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field: id, first_name, last_name, email, created_at (default: created_at)",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order: ASC or DESC (default: DESC)",
+                        "name": "order_by",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/practitioner/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetch a single practitioner with their active subscription details by ID. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-practitioner"
+                ],
+                "summary": "Get practitioner by ID with subscription (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
@@ -1110,7 +2153,7 @@ const docTemplate = `{
         },
         "/auth/google/callback": {
             "get": {
-                "description": "handle Google OAuth callback and return tokens",
+                "description": "handle Google OAuth callback and redirect to frontend with tokens",
                 "produces": [
                     "application/json"
                 ],
@@ -1125,20 +2168,13 @@ const docTemplate = `{
                         "name": "code",
                         "in": "query",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "OAuth state (CSRF token)",
-                        "name": "state",
-                        "in": "query",
-                        "required": true
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "302": {
+                        "description": "Redirect to frontend",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "type": "string"
                         }
                     },
                     "400": {
@@ -1578,14 +2614,84 @@ const docTemplate = `{
                 }
             }
         },
-        "/bas/clinic/{clinic_id}/bas-preparation": {
+        "/bas/activity-statement/report/export": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column.",
+                "description": "Generates a formatted Excel BAS report.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
+                ],
+                "tags": [
+                    "BAS"
+                ],
+                "summary": "Export Business Activity Statement to Excel",
+                "parameters": [
+                    {
+                        "enum": [
+                            "pdf",
+                            "excel"
+                        ],
+                        "type": "string",
+                        "description": "Export format: 'pdf' or 'excel' (default: excel)",
+                        "name": "export_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Quarter UUIDs (can pass multiple)",
+                        "name": "quarter_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Full month name",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/bas-preparation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns a side-by-side comparison of BAS figures across selected quarters/months, plus a calculated Grand Total column. If clinicId is not provided in query params, aggregates data across all clinics. Multiple clinicId values can be provided to aggregate specific clinics.",
                 "produces": [
                     "application/json"
                 ],
@@ -1596,18 +2702,13 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
-                        "in": "path",
-                        "required": true
+                        "description": "Comma-separated Clinic UUIDs",
+                        "name": "clinic_ids",
+                        "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Array of Quarter UUIDs",
+                        "type": "string",
+                        "description": "Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)",
                         "name": "quarter_ids",
                         "in": "query",
                         "required": true
@@ -1637,6 +2738,61 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/bas/bas-preparation/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates an Excel file matching the shared template using GetBASPreparation data.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "Export Quarterly BAS Preparation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUIDs",
+                        "name": "clinic_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "FY UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Export Type: PDF | Excel",
+                        "name": "export_type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
                         }
                     }
                 }
@@ -2050,6 +3206,57 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/calculation.RsLiveCalculate"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/calculate/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.\nUsed when creating a form to preview calculations before saving.\nPass clinic_id, method, shares, field definitions, and field entries.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calculation"
+                ],
+                "summary": "Form preview with complete calculation",
+                "parameters": [
+                    {
+                        "description": "Form configuration, fields, and entries",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/calculation.RqFormPreview"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/calculation.RsFormPreview"
                         }
                     },
                     "400": {
@@ -2770,6 +3977,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Filter by practitioner ID (Accountant only)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Filter by name",
                         "name": "name",
                         "in": "query"
@@ -2910,6 +4123,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Practitioner UUID (for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Chart of Account Key (e.g., patient_fee_account)",
                         "name": "key",
                         "in": "path",
@@ -3009,6 +4228,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get chart of account by ID",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID",
+                        "name": "practitioner_id",
+                        "in": "query",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Chart of Account UUID",
@@ -3133,6 +4359,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Practitioner UUID (required for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Chart of Account UUID",
                         "name": "id",
                         "in": "path",
@@ -3163,6 +4395,273 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/entry/coa-entries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns one row per COA with aggregated amounts and entry counts",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entry"
+                ],
+                "summary": "List grouped COA entries (parent grid)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Zero-based page index",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 10, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by practitioner ID",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic ID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form ID",
+                        "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by COA ID",
+                        "name": "coa_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by tax type ID",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by end date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/entry/coa-entries/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates an Excel file (.xlsx) containing grouped transaction records based on filters.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
+                ],
+                "tags": [
+                    "reporting"
+                ],
+                "summary": "Export transaction report to Excel",
+                "parameters": [
+                    {
+                        "enum": [
+                            "pdf",
+                            "excel"
+                        ],
+                        "type": "string",
+                        "description": "Export format: 'pdf' or 'excel' (default: excel)",
+                        "name": "export_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic ID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form ID",
+                        "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by end date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search by account, field, or clinic name",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Excel file containing transaction report",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request parameters",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error during generation",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/entry/coa-entries/{coa_id}/entries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns detailed entry rows for the expanded COA",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entry"
+                ],
+                "summary": "List entries for a specific COA (child grid)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "COA ID",
+                        "name": "coa_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Zero-based page index",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 10, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by practitioner ID",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic ID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form ID",
+                        "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by tax type ID",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by end date (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -3589,8 +5088,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filter by clinic ID (UUID)",
-                        "name": "clinic_id",
+                        "description": "Filter by clinic IDs (UUID)",
+                        "name": "clinic_ids",
                         "in": "query"
                     },
                     {
@@ -3640,12 +5139,12 @@ const docTemplate = `{
                     },
                     {
                         "enum": [
-                            "asc",
-                            "desc"
+                            "ASC",
+                            "DESC"
                         ],
                         "type": "string",
                         "description": "Sort direction",
-                        "name": "sort_order",
+                        "name": "order_by",
                         "in": "query"
                     },
                     {
@@ -3713,6 +5212,168 @@ const docTemplate = `{
                 "responses": {
                     "201": {
                         "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/form/expenses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Create a new expense form with items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Create expense",
+                "parameters": [
+                    {
+                        "description": "Expense creation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqExpense"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/form/expenses/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get an expense form with all its items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Get expense by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Update an existing expense form",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Update expense",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expense update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqUpdateExpense"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
                         }
@@ -4071,6 +5732,106 @@ const docTemplate = `{
                 }
             }
         },
+        "/invite/list-permissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieve all active entity permissions (Clinics, Forms) assigned to the logged-in Accountant.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "List Accountant Permissions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/invite/permission": {
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Practitioner grants or updates specific permissions (read/write access for sales_purchases, lock_dates, manage_users, reports_view_download) to an accountant.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitation"
+                ],
+                "summary": "Grant or Update permissions",
+                "parameters": [
+                    {
+                        "description": "Permission Details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invitation.RqUpdatePermissions"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/invite/process": {
             "post": {
                 "description": "Accept or Reject an invitation via POST.",
@@ -4334,6 +6095,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/notification/read-all": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks all currently UNREAD notifications as READ for the authenticated entity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Mark all notifications as read",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/notification/{id}/dismissed": {
             "patch": {
                 "security": [
@@ -4543,6 +6347,88 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/pl.RsPLResponsibility"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/pl/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates and downloads a professional Excel file of the P\u0026L report using the specified filters.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "engine/pl"
+                ],
+                "summary": "Export P\u0026L report to Excel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "date_until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by COA UUID",
+                        "name": "coa_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tax type",
+                        "name": "tax_type_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by form UUID",
+                        "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Export Type: PDF | Excel",
+                        "name": "export_type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Profit_and_Loss_Report.xlsx",
+                        "schema": {
+                            "type": "file"
                         }
                     },
                     "400": {
@@ -4821,6 +6707,119 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/practitioner/lock-date": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "practitioner-lock-date"
+                ],
+                "summary": "Get Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID (required for accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Financial Year ID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Set or remove (by sending null) the financial lock date for the authenticated practitioner.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "practitioner-lock-date"
+                ],
+                "summary": "Update Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "description": "Lock Date Update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/practitioner.UpdateLockDateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
@@ -5236,6 +7235,98 @@ const docTemplate = `{
                 }
             }
         },
+        "/seed": {
+            "post": {
+                "description": "Create test clinics, forms, and formulas for a practitioner",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Seed"
+                ],
+                "summary": "Seed test data",
+                "parameters": [
+                    {
+                        "description": "Seed configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/seed.RqSeedData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data seeded successfully",
+                        "schema": {
+                            "$ref": "#/definitions/seed.RsSeedData"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/seed/cleanup": {
+            "post": {
+                "description": "Delete all clinics and forms for a practitioner (preserves COA)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Seed"
+                ],
+                "summary": "Cleanup seeded data",
+                "parameters": [
+                    {
+                        "description": "Cleanup configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/seed.RqCleanupData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data cleaned up successfully",
+                        "schema": {
+                            "$ref": "#/definitions/seed.RsCleanupData"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/setting": {
             "get": {
                 "security": [
@@ -5624,6 +7715,52 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/summary/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetches a grouped list of Chart of Accounts with total amounts for a specific form.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calculation"
+                ],
+                "summary": "Get form summary by form ID (Grouped by COA)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Grouped COA summary",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -5888,6 +8025,560 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                }
+            }
+        },
+        "analytics.AccountantInfo": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.AccountantKPIs": {
+            "type": "object",
+            "properties": {
+                "total_accountants": {
+                    "type": "integer"
+                },
+                "total_invites": {
+                    "type": "integer"
+                },
+                "total_permissions": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ActionCounts": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "integer"
+                },
+                "delete": {
+                    "type": "integer"
+                },
+                "update": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ActiveUsersPoint": {
+            "type": "object",
+            "properties": {
+                "active_users": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.ClinicInfo": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "accountants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.AccountantInfo"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.InvitesStatusPie": {
+            "type": "object",
+            "properties": {
+                "by_status": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.StatusCount"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.PlanCounts": {
+            "type": "object",
+            "properties": {
+                "active_subscriptions": {
+                    "type": "integer"
+                },
+                "total_subscriptions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.PlanDistribution": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "$ref": "#/definitions/analytics.PlanCounts"
+                },
+                "plan_id": {
+                    "type": "string"
+                },
+                "plan_name": {
+                    "type": "string"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.PlanDistributionPoint"
+                    }
+                }
+            }
+        },
+        "analytics.PlanDistributionPoint": {
+            "type": "object",
+            "properties": {
+                "active_subscriptions": {
+                    "type": "integer"
+                },
+                "new_subscriptions": {
+                    "type": "integer"
+                },
+                "revenue": {
+                    "type": "number"
+                },
+                "ts": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.PractitionerKPIs": {
+            "type": "object",
+            "properties": {
+                "active_subscriptions": {
+                    "type": "integer"
+                },
+                "no_active_plan": {
+                    "type": "integer"
+                },
+                "total_invites": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ResourceAnalyticsMeta": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "group_by": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.ResourceRow": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/analytics.ActionCounts"
+                },
+                "entity_type": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.ResourceSeries": {
+            "type": "object",
+            "properties": {
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.TimePoint"
+                    }
+                },
+                "resource_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RevenueMeta": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RevenuePoint": {
+            "type": "object",
+            "properties": {
+                "revenue": {
+                    "type": "number"
+                },
+                "ts": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RoleCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.RsAccountantOverview": {
+            "type": "object",
+            "properties": {
+                "invites_status_pie": {
+                    "$ref": "#/definitions/analytics.InvitesStatusPie"
+                },
+                "kpis": {
+                    "$ref": "#/definitions/analytics.AccountantKPIs"
+                }
+            }
+        },
+        "analytics.RsActiveUsers": {
+            "type": "object",
+            "properties": {
+                "dau": {
+                    "type": "integer"
+                },
+                "dau_to_mau_ratio": {
+                    "type": "number"
+                },
+                "mau": {
+                    "type": "integer"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ActiveUsersPoint"
+                    }
+                },
+                "wau": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.RsBillingDashboard": {
+            "type": "object",
+            "properties": {
+                "overview": {
+                    "$ref": "#/definitions/analytics.RsSubscriptionMetrics"
+                },
+                "plan_distribution": {
+                    "$ref": "#/definitions/analytics.RsPlanDistribution"
+                }
+            }
+        },
+        "analytics.RsPlanDistribution": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.RevenueMeta"
+                },
+                "plans": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.PlanDistribution"
+                    }
+                }
+            }
+        },
+        "analytics.RsPlatformRevenue": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.RevenueMeta"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.RevenuePoint"
+                    }
+                }
+            }
+        },
+        "analytics.RsPractitionerDetail": {
+            "type": "object",
+            "properties": {
+                "clinics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ClinicInfo"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "subscription": {
+                    "$ref": "#/definitions/analytics.SubscriptionInfo"
+                },
+                "total_accountants": {
+                    "type": "integer"
+                },
+                "total_clinics": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.RsPractitionerOverview": {
+            "type": "object",
+            "properties": {
+                "kpis": {
+                    "$ref": "#/definitions/analytics.PractitionerKPIs"
+                },
+                "user_bifurcation": {
+                    "$ref": "#/definitions/analytics.UserBifurcation"
+                }
+            }
+        },
+        "analytics.RsResourceAccessTimeseries": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.TimeseriesMeta"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ResourceSeries"
+                    }
+                }
+            }
+        },
+        "analytics.RsResourceAnalytics": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/analytics.ResourceAnalyticsMeta"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.ResourceRow"
+                    }
+                }
+            }
+        },
+        "analytics.RsSubscriptionMetrics": {
+            "type": "object",
+            "properties": {
+                "arpu": {
+                    "type": "number"
+                },
+                "arr": {
+                    "type": "number"
+                },
+                "churn_rate_percentage": {
+                    "type": "number"
+                },
+                "distribution": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.SubscriptionDistribution"
+                    }
+                },
+                "mrr": {
+                    "type": "number"
+                },
+                "total_active_subscriptions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.RsUserGrowth": {
+            "type": "object",
+            "properties": {
+                "active_users_30_days": {
+                    "type": "integer"
+                },
+                "growth_rate_percentage": {
+                    "type": "number"
+                },
+                "new_users_30_days": {
+                    "type": "integer"
+                },
+                "retention_rate_percentage": {
+                    "type": "number"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.UserGrowthPoint"
+                    }
+                },
+                "total_accountants": {
+                    "type": "integer"
+                },
+                "total_practitioners": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.StatusCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.SubscriptionDistribution": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "percentage": {
+                    "type": "number"
+                },
+                "plan_id": {
+                    "type": "integer"
+                },
+                "plan_name": {
+                    "type": "string"
+                },
+                "revenue": {
+                    "type": "number"
+                }
+            }
+        },
+        "analytics.SubscriptionInfo": {
+            "type": "object",
+            "properties": {
+                "end_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.TimePoint": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "ts": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.TimeseriesMeta": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "analytics.UserBifurcation": {
+            "type": "object",
+            "properties": {
+                "by_role": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analytics.RoleCount"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "analytics.UserGrowthPoint": {
+            "type": "object",
+            "properties": {
+                "active_users": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "new_users": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
                 }
             }
         },
@@ -6284,6 +8975,60 @@ const docTemplate = `{
                 }
             }
         },
+        "calculation.PreviewSummary": {
+            "type": "object",
+            "properties": {
+                "base_remuneration": {
+                    "type": "number"
+                },
+                "clinic_expense_gst": {
+                    "type": "number"
+                },
+                "commission": {
+                    "description": "IC-specific fields (from attachICCalculation)",
+                    "type": "number"
+                },
+                "gst_on_commission": {
+                    "type": "number"
+                },
+                "gst_on_remuneration": {
+                    "type": "number"
+                },
+                "gst_service_fee": {
+                    "type": "number"
+                },
+                "invoice_total": {
+                    "type": "number"
+                },
+                "net_amount": {
+                    "description": "Common fields",
+                    "type": "number"
+                },
+                "other_cost_deduction": {
+                    "type": "number"
+                },
+                "payment_received": {
+                    "type": "number"
+                },
+                "remitted_amount": {
+                    "type": "number"
+                },
+                "service_fee": {
+                    "description": "SERVICE_FEE method fields",
+                    "type": "number"
+                },
+                "super_component": {
+                    "type": "number"
+                },
+                "total_remuneration": {
+                    "description": "INDEPENDENT_CONTRACTOR method fields",
+                    "type": "number"
+                },
+                "total_service_fee": {
+                    "type": "number"
+                }
+            }
+        },
         "calculation.RqCalculateFromEntries": {
             "type": "object",
             "required": [
@@ -6305,6 +9050,62 @@ const docTemplate = `{
                     "type": "number",
                     "maximum": 100,
                     "minimum": 0
+                }
+            }
+        },
+        "calculation.RqFormPreview": {
+            "type": "object",
+            "required": [
+                "clinic_id",
+                "clinic_share",
+                "fields",
+                "method",
+                "owner_share"
+            ],
+            "properties": {
+                "clinic_id": {
+                    "type": "string"
+                },
+                "clinic_share": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "fields": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/calculation.RqPreviewField"
+                    }
+                },
+                "formulas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RqPreviewFormula"
+                    }
+                },
+                "method": {
+                    "type": "string",
+                    "enum": [
+                        "INDEPENDENT_CONTRACTOR",
+                        "SERVICE_FEE"
+                    ]
+                },
+                "owner_share": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "super_component": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RqPreviewEntry"
+                    }
                 }
             }
         },
@@ -6347,6 +9148,87 @@ const docTemplate = `{
                 }
             }
         },
+        "calculation.RqPreviewEntry": {
+            "type": "object",
+            "required": [
+                "field_key"
+            ],
+            "properties": {
+                "field_key": {
+                    "type": "string"
+                },
+                "gross_amount": {
+                    "type": "number"
+                },
+                "gst_amount": {
+                    "type": "number"
+                },
+                "net_amount": {
+                    "type": "number"
+                }
+            }
+        },
+        "calculation.RqPreviewField": {
+            "type": "object",
+            "required": [
+                "key",
+                "label"
+            ],
+            "properties": {
+                "coa_id": {
+                    "type": "string"
+                },
+                "formula": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "is_computed": {
+                    "type": "boolean"
+                },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "payment_responsibility": {
+                    "type": "string"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RqPreviewFormula": {
+            "type": "object",
+            "required": [
+                "expression",
+                "field_key",
+                "name"
+            ],
+            "properties": {
+                "expression": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "field_key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "calculation.RsComputedFieldValue": {
             "type": "object",
             "properties": {
@@ -6375,6 +9257,9 @@ const docTemplate = `{
                 "is_computed": {
                     "type": "boolean"
                 },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
                 "label": {
                     "type": "string"
                 },
@@ -6392,6 +9277,29 @@ const docTemplate = `{
                 "tax_type": {
                     "description": "INCLUSIVE, EXCLUSIVE, MANUAL, ZERO",
                     "type": "string"
+                }
+            }
+        },
+        "calculation.RsFormPreview": {
+            "type": "object",
+            "properties": {
+                "all_fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/calculation.RsPreviewFieldValue"
+                    }
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "form_name": {
+                    "type": "string"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "summary": {
+                    "$ref": "#/definitions/calculation.PreviewSummary"
                 }
             }
         },
@@ -6419,6 +9327,44 @@ const docTemplate = `{
                     }
                 },
                 "form_version_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "calculation.RsPreviewFieldValue": {
+            "type": "object",
+            "properties": {
+                "coa_id": {
+                    "type": "string"
+                },
+                "gross_amount": {
+                    "type": "number"
+                },
+                "gst_amount": {
+                    "type": "number"
+                },
+                "is_computed": {
+                    "type": "boolean"
+                },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "net_amount": {
+                    "type": "number"
+                },
+                "section_type": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "tax_type": {
                     "type": "string"
                 }
             }
@@ -6508,11 +9454,8 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqClinicAddress"
-                    }
+                "address": {
+                    "$ref": "#/definitions/clinic.RqClinicAddress"
                 },
                 "contacts": {
                     "type": "array",
@@ -6566,11 +9509,8 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqUpdateAddress"
-                    }
+                "address": {
+                    "$ref": "#/definitions/clinic.RqUpdateAddress"
                 },
                 "contacts": {
                     "type": "array",
@@ -6643,6 +9583,9 @@ const docTemplate = `{
                 },
                 "exclude_id": {
                     "type": "string"
+                },
+                "practitioner_id": {
+                    "type": "string"
                 }
             }
         },
@@ -6674,6 +9617,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "practitioner_id": {
+                    "type": "string"
                 }
             }
         },
@@ -6696,6 +9642,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "practitioner_id": {
+                    "type": "string"
                 }
             }
         },
@@ -6826,6 +9775,9 @@ const docTemplate = `{
                 "is_formula": {
                     "type": "boolean"
                 },
+                "is_highlighted": {
+                    "type": "boolean"
+                },
                 "key": {
                     "type": "string",
                     "maxLength": 5
@@ -6868,11 +9820,20 @@ const docTemplate = `{
                 "id"
             ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number"
+                },
                 "coa_id": {
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_highlighted": {
+                    "type": "boolean"
                 },
                 "label": {
                     "type": "string",
@@ -6896,6 +9857,68 @@ const docTemplate = `{
                 "sort_order": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "form.ExpenseItem": {
+            "type": "object",
+            "required": [
+                "amount",
+                "business_use",
+                "coa_id",
+                "name"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "form.ExpenseItemUpdate": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 },
                 "tax_type": {
                     "type": "string"
@@ -6939,7 +9962,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INDEPENDENT_CONTRACTOR",
-                        "SERVICE_FEE"
+                        "SERVICE_FEE",
+                        "EXPENSE_ENTRY"
                     ]
                 },
                 "name": {
@@ -6965,6 +9989,29 @@ const docTemplate = `{
                 }
             }
         },
+        "form.RqExpense": {
+            "type": "object",
+            "required": [
+                "date",
+                "items",
+                "name"
+            ],
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItem"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "form.RqFieldsSync": {
             "type": "object",
             "properties": {
@@ -6984,6 +10031,39 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/field.RqUpdateFormField"
+                    }
+                }
+            }
+        },
+        "form.RqUpdateExpense": {
+            "type": "object",
+            "required": [
+                "date",
+                "name"
+            ],
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItem"
+                    }
+                },
+                "date": {
+                    "type": "string"
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItemUpdate"
                     }
                 }
             }
@@ -7052,7 +10132,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INDEPENDENT_CONTRACTOR",
-                        "SERVICE_FEE"
+                        "SERVICE_FEE",
+                        "EXPENSE_ENTRY"
                     ]
                 },
                 "name": {
@@ -7159,6 +10240,23 @@ const docTemplate = `{
                 }
             }
         },
+        "invitation.AccessLevel": {
+            "type": "object",
+            "properties": {
+                "read": {
+                    "type": "boolean"
+                },
+                "write": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "invitation.Permissions": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/definitions/invitation.AccessLevel"
+            }
+        },
         "invitation.RqProcessAction": {
             "type": "object",
             "required": [
@@ -7181,11 +10279,33 @@ const docTemplate = `{
         "invitation.RqSendInvitation": {
             "type": "object",
             "required": [
-                "email"
+                "email",
+                "permissions"
             ],
             "properties": {
                 "email": {
                     "type": "string"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/invitation.Permissions"
+                }
+            }
+        },
+        "invitation.RqUpdatePermissions": {
+            "type": "object",
+            "required": [
+                "email",
+                "permissions"
+            ],
+            "properties": {
+                "accountant_id": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/invitation.Permissions"
                 }
             }
         },
@@ -7194,11 +10314,13 @@ const docTemplate = `{
             "enum": [
                 "PRACTITIONER",
                 "ACCOUNTANT",
+                "ADMIN",
                 "SYSTEM"
             ],
             "x-enum-varnames": [
                 "ActorPractitioner",
                 "ActorAccountant",
+                "ActorAdmin",
                 "ActorSystem"
             ]
         },
@@ -7209,14 +10331,18 @@ const docTemplate = `{
                 "form",
                 "transaction",
                 "document",
-                "invite"
+                "invite",
+                "audit_log",
+                "system"
             ],
             "x-enum-varnames": [
                 "EntityClinic",
                 "EntityForm",
                 "EntityTransaction",
                 "EntityDocument",
-                "EntityInvite"
+                "EntityInvite",
+                "EntityAuditLog",
+                "EntitySystem"
             ]
         },
         "notification.EventType": {
@@ -7230,7 +10356,10 @@ const docTemplate = `{
                 "form.updated",
                 "transaction.created",
                 "transaction.status_changed",
-                "document.uploaded"
+                "document.uploaded",
+                "audit_log.created",
+                "system.error",
+                "system.warning"
             ],
             "x-enum-varnames": [
                 "EventInviteSent",
@@ -7241,7 +10370,10 @@ const docTemplate = `{
                 "EventFormUpdated",
                 "EventTransactionCreated",
                 "EventTransactionUpdated",
-                "EventDocumentUploaded"
+                "EventDocumentUploaded",
+                "EventAuditLogCreated",
+                "EventSystemError",
+                "EventSystemWarning"
             ]
         },
         "notification.Notification": {
@@ -7488,6 +10620,21 @@ const docTemplate = `{
                 }
             }
         },
+        "practitioner.UpdateLockDateRequest": {
+            "type": "object",
+            "required": [
+                "financial_year_id"
+            ],
+            "properties": {
+                "financial_year_id": {
+                    "description": "Use *time.Time to allow null values for removing the lock date",
+                    "type": "string"
+                },
+                "lock_date": {
+                    "type": "string"
+                }
+            }
+        },
         "response.RsBase": {
             "type": "object",
             "properties": {
@@ -7513,6 +10660,139 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "seed.ClinicDetail": {
+            "type": "object",
+            "properties": {
+                "clinic_id": {
+                    "type": "string"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "forms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/seed.FormDetail"
+                    }
+                }
+            }
+        },
+        "seed.FormDetail": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "integer"
+                },
+                "form_id": {
+                    "type": "string"
+                },
+                "form_name": {
+                    "type": "string"
+                },
+                "formulas": {
+                    "type": "integer"
+                }
+            }
+        },
+        "seed.RqCleanupData": {
+            "type": "object",
+            "required": [
+                "practitioner_id"
+            ],
+            "properties": {
+                "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "seed.RqSeedData": {
+            "type": "object",
+            "required": [
+                "num_clinics",
+                "num_forms"
+            ],
+            "properties": {
+                "num_clinics": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1
+                },
+                "num_fields": {
+                    "type": "integer",
+                    "maximum": 10,
+                    "minimum": 1
+                },
+                "num_forms": {
+                    "type": "integer",
+                    "maximum": 50,
+                    "minimum": 1
+                },
+                "practitioner_id": {
+                    "type": "string"
+                },
+                "verbose": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "seed.RsCleanupData": {
+            "type": "object",
+            "properties": {
+                "addresses_deleted": {
+                    "type": "integer"
+                },
+                "clinics_deleted": {
+                    "type": "integer"
+                },
+                "contacts_deleted": {
+                    "type": "integer"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "fields_deleted": {
+                    "type": "integer"
+                },
+                "form_versions_deleted": {
+                    "type": "integer"
+                },
+                "forms_deleted": {
+                    "type": "integer"
+                },
+                "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "seed.RsSeedData": {
+            "type": "object",
+            "properties": {
+                "clinics_created": {
+                    "type": "integer"
+                },
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/seed.ClinicDetail"
+                    }
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "fields_created": {
+                    "type": "integer"
+                },
+                "forms_created": {
+                    "type": "integer"
+                },
+                "formulas_created": {
+                    "type": "integer"
+                },
+                "practitioner_id": {
                     "type": "string"
                 }
             }
@@ -7584,9 +10864,33 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255
                 },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/subscription.RqPermissionEntry"
+                    }
+                },
                 "price": {
                     "type": "number",
                     "minimum": 0
+                }
+            }
+        },
+        "subscription.RqPermissionEntry": {
+            "type": "object",
+            "required": [
+                "key"
+            ],
+            "properties": {
+                "is_enabled": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "usage_limit": {
+                    "type": "integer",
+                    "minimum": -1
                 }
             }
         },
@@ -7637,6 +10941,12 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/subscription.RqPermissionEntry"
+                    }
                 },
                 "price": {
                     "type": "number",

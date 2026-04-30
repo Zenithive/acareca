@@ -3,6 +3,7 @@ package bas
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,9 +18,10 @@ type Repository interface {
 	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
 
-	GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
+	GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
+	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 }
 
 type repository struct {
@@ -213,49 +215,58 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 	return &row, nil
 }
 
-func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
+func (r *repository) GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	// 1. Use ? instead of $1
 	query := `
         SELECT 
             period_quarter,
             section_type,
             bas_category,
+			coa_id,
 			account_name,
             SUM(net_amount) AS net_amount,
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
         FROM vw_bas_line_items
-        WHERE clinic_id = ?
+        WHERE practitioner_id = ?
     `
-	args := []interface{}{clinicID}
+	args := []interface{}{practitionerID}
 
-	// 2. Handle Quarter IDs
-	if len(f.QuarterIDs) > 0 {
-		// sqlx.In replaces (?) with (?, ?, ?)
-		subQuery, qArgs, err := sqlx.In(" AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))", f.QuarterIDs)
-		if err == nil {
-			query += subQuery
-			args = append(args, qArgs...)
-		}
+	// if clinicID != nil && *clinicID != uuid.Nil {
+	// 	query += " AND clinic_id = ?"
+	// 	args = append(args, *clinicID)
+	// } else {
+	// 	query += " AND practitioner_id = ?"
+	// 	args = append(args, practitionerID)
+	// }
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND clinic_id = ?"
+		args = append(args, *clinicID)
+	}
+
+	if len(f.ParsedQuarterIDs) > 0 {
+		// Use IN (?) - sqlx.In will expand this (?) based on the length of the slice
+		query += " AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))"
+
+		// Append the actual slice of UUIDs. sqlx.In is designed to handle slices in the args list.
+		args = append(args, f.ParsedQuarterIDs)
 	}
 
 	// 3. Handle Financial Year (Fall-through logic)
-	if len(f.QuarterIDs) == 0 && f.FinancialYearID != nil {
+	if len(f.ParsedQuarterIDs) == 0 && f.FinancialYearID != nil {
 		query += ` AND period_quarter BETWEEN (
                 SELECT start_date FROM tbl_financial_year WHERE id = ?
             ) AND (
                 SELECT end_date FROM tbl_financial_year WHERE id = ?
             )`
-		// We add the ID twice because there are two '?' placeholders
+
 		args = append(args, *f.FinancialYearID, *f.FinancialYearID)
 	}
 
-	query += ` GROUP BY period_quarter, section_type, bas_category, account_name 
+	query += ` GROUP BY period_quarter, section_type, bas_category, coa_id, account_name 
                ORDER BY period_quarter ASC`
 
-	// --- THE CRITICAL STEP ---
-	// sqlx.In returns a query with '?' placeholders.
-	// Rebind(?) converts all '?' to '$1', '$2', '$3' automatically.
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
 		return nil, err
@@ -264,8 +275,14 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
 	finalQuery := r.db.Rebind(fullQuery)
 
 	var rows []*BASLineItemRow
+
 	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
+	}
+
+	for _, r := range rows {
+		if r.SectionType != nil && strings.Contains(strings.ToUpper(*r.SectionType), "EXPENSE") {
+		}
 	}
 	return rows, nil
 }
@@ -307,4 +324,24 @@ func (r *repository) GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BAS
 		return nil, err
 	}
 	return &info, nil
+}
+
+func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID uuid.UUID) ([]BASQuarterInfo, error) {
+	var list []BASQuarterInfo
+
+	query := `
+        SELECT 
+            id::text, 
+            label as name, 
+            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
+            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+        FROM tbl_financial_quarter 
+        WHERE financial_year_id = $1
+        ORDER BY start_date ASC
+		`
+	if err := r.db.SelectContext(ctx, &list, query, financialYearID); err != nil {
+		return nil, err
+	}
+	return list, nil
 }

@@ -128,16 +128,117 @@ func (r *repository) Update(ctx context.Context, t *Practitioner) (*Practitioner
 }
 
 func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE tbl_practitioner SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
-	res, err := r.db.ExecContext(ctx, query, id)
+	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("delete practitioner: %w", err)
+		return fmt.Errorf("begin transaction: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	defer tx.Rollback()
+
+	// 1. delete Practitioner
+	queryPrac := `UPDATE tbl_practitioner SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id`
+	var pracID uuid.UUID
+	if err := tx.GetContext(ctx, &pracID, queryPrac, id); err != nil {
 		return ErrNotFound
 	}
-	return nil
+
+	// 2. delete linked User
+	queryUser := `UPDATE tbl_user SET deleted_at = now(), email = email || '.del.' || id::text 
+	              WHERE id = (SELECT user_id FROM tbl_practitioner WHERE id = $1)`
+	if _, err := tx.ExecContext(ctx, queryUser, id); err != nil {
+		return fmt.Errorf("delete linked user: %w", err)
+	}
+
+	// 3. Revoke all Accountant Associations
+	queryRevoke := `UPDATE tbl_invite_permissions SET deleted_at = now() WHERE practitioner_id = $1 AND deleted_at IS NULL`
+	if _, err := tx.ExecContext(ctx, queryRevoke, id); err != nil {
+		return fmt.Errorf("revoke accountant permissions: %w", err)
+	}
+
+	// 4. Delete Practitioner Setting
+	querySettings := `UPDATE tbl_practitioner_setting SET deleted_at = now() WHERE practitioner_id = $1 AND deleted_at IS NULL`
+	if _, err := tx.ExecContext(ctx, querySettings, id); err != nil {
+		return fmt.Errorf("delete practitioner settings: %w", err)
+	}
+
+	// 5. Delete Chart of Accounts
+	queryAccounts := `UPDATE tbl_chart_of_accounts SET deleted_at = now() WHERE practitioner_id = $1 AND deleted_at IS NULL`
+	if _, err := tx.ExecContext(ctx, queryAccounts, id); err != nil {
+		return fmt.Errorf("delete chart of accounts: %w", err)
+	}
+
+	// 6. Delete Practitioner Subscriptions
+	querySubscriptions := `UPDATE tbl_practitioner_subscription SET deleted_at = now() WHERE practitioner_id = $1 AND deleted_at IS NULL`
+	if _, err := tx.ExecContext(ctx, querySubscriptions, id); err != nil {
+		return fmt.Errorf("delete practitioner subscriptions: %w", err)
+	}
+
+	// 11. delete Clinics
+	var clinicIDs []uuid.UUID
+	queryClinics := `UPDATE tbl_clinic SET deleted_at = now() WHERE practitioner_id = $1 AND deleted_at IS NULL RETURNING id`
+	if err := tx.SelectContext(ctx, &clinicIDs, queryClinics, id); err != nil {
+		return fmt.Errorf("delete clinics: %w", err)
+	}
+	//  Delete custom form versions
+	var versionIDs []uuid.UUID
+	queryVersions := `UPDATE tbl_custom_form_version 
+                  SET deleted_at = now() 
+                  WHERE practitioner_id = $1 AND deleted_at IS NULL`
+
+	if _, err := tx.ExecContext(ctx, queryVersions, id); err != nil {
+		return fmt.Errorf("delete custom form versions: %w", err)
+	}
+
+	if len(clinicIDs) > 0 {
+		// 11a. Delete Clinic Addresses
+		clinicAddrs, args, _ := sqlx.In(`UPDATE tbl_clinic_address SET deleted_at = now() WHERE clinic_id IN (?) AND deleted_at IS NULL`, clinicIDs)
+		if _, err := tx.ExecContext(ctx, tx.Rebind(clinicAddrs), args...); err != nil {
+			return fmt.Errorf("delete clinic addresses: %w", err)
+		}
+
+		// 11b. Delete Clinic Contacts
+		clinicContacts, args, _ := sqlx.In(`UPDATE tbl_clinic_contact SET deleted_at = now() WHERE clinic_id IN (?) AND deleted_at IS NULL`, clinicIDs)
+		if _, err := tx.ExecContext(ctx, tx.Rebind(clinicContacts), args...); err != nil {
+			return fmt.Errorf("delete clinic contacts: %w", err)
+		}
+
+		// 11c. Delete Clinic Financial Settings
+		FinSettings, args, _ := sqlx.In(`UPDATE tbl_financial_settings SET deleted_at = now() WHERE clinic_id IN (?) AND deleted_at IS NULL`, clinicIDs)
+		if _, err := tx.ExecContext(ctx, tx.Rebind(FinSettings), args...); err != nil {
+			return fmt.Errorf("delete financial settings: %w", err)
+		}
+
+		// 12. Delete Forms
+		var formIDs []uuid.UUID
+		queryForms, args, _ := sqlx.In(`UPDATE tbl_form SET deleted_at = now() WHERE clinic_id IN (?) AND deleted_at IS NULL RETURNING id`, clinicIDs)
+		if err := tx.SelectContext(ctx, &formIDs, tx.Rebind(queryForms), args...); err != nil {
+			return fmt.Errorf("delete forms: %w", err)
+		}
+
+		// 12a. Delete Form Fields linked to those Forms
+		if len(versionIDs) > 0 {
+			queryFields, args, _ := sqlx.In(`UPDATE tbl_form_field SET deleted_at = now() WHERE form_version_id IN (?) AND deleted_at IS NULL`, versionIDs)
+			if _, err := tx.ExecContext(ctx, tx.Rebind(queryFields), args...); err != nil {
+				return fmt.Errorf("delete form fields: %w", err)
+			}
+		}
+
+		// 13. Delete Form Entries
+		var entryIDs []uuid.UUID
+		queryEntries, args, _ := sqlx.In(`UPDATE tbl_form_entry SET deleted_at = now() WHERE clinic_id IN (?) AND deleted_at IS NULL RETURNING id`, clinicIDs)
+		if err := tx.SelectContext(ctx, &entryIDs, tx.Rebind(queryEntries), args...); err != nil {
+			return fmt.Errorf("delete entries: %w", err)
+		}
+
+		// 13a. Delete Entry Values
+		if len(entryIDs) > 0 {
+			queryValues, args, _ := sqlx.In(`UPDATE tbl_form_entry_value SET deleted_at = now() WHERE entry_id IN (?) AND deleted_at IS NULL`, entryIDs)
+			if _, err := tx.ExecContext(ctx, tx.Rebind(queryValues), args...); err != nil {
+				return fmt.Errorf("delete entry values: %w", err)
+			}
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *repository) GetSettingByPractitionerID(ctx context.Context, practitionerID uuid.UUID) (*PractitionerSetting, error) {

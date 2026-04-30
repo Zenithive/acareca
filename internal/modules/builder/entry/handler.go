@@ -1,12 +1,16 @@
 package entry
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -19,15 +23,21 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
+
+	// COA-grouped endpoints
+	ListCoaEntries(c *gin.Context)
+	ListCoaEntryDetails(c *gin.Context)
 	// GetFieldSummary(c *gin.Context)
+	HandleExport(c *gin.Context)
 }
 
 type handler struct {
-	svc IService
+	svc           IService
+	invitationSvc invitation.Service
 }
 
-func NewHandler(svc IService) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc IService, invitationSvc invitation.Service) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc}
 }
 
 // @Summary Create a new form entry
@@ -64,7 +74,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &actorID, actorID, actorID, role)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &actorID, actorID)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -93,16 +103,7 @@ func (h *handler) Get(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	// Get correct ID based on role
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, _ = util.GetAccountantID(c)
-	} else {
-		actorID, _ = util.GetPractitionerID(c)
-	}
-
-	e, err := h.svc.GetByID(c.Request.Context(), id, actorID, role)
+	e, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -151,7 +152,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.svc.Update(c.Request.Context(), id, &req, &actorID, actorID, role)
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, &actorID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -180,19 +181,7 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	// Get ID based on who is logged in
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-	if !ok {
-		return
-	}
-
-	if err := h.svc.Delete(c.Request.Context(), id, actorID, role); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return
@@ -229,9 +218,17 @@ func (h *handler) List(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID
 	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, _ = util.GetAccountantID(c)
+		id, ok := util.GetAccountantID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	} else {
-		actorID, _ = util.GetPractitionerID(c)
+		id, ok := util.GetPractitionerID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	}
 
 	var filter Filter
@@ -269,17 +266,18 @@ func (h *handler) List(c *gin.Context) {
 func (h *handler) ListTransactions(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID
-	var ok bool
-
 	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
+		id, ok := util.GetAccountantID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, nil)
-		return
+		id, ok := util.GetPractitionerID(c)
+		if !ok {
+			return
+		}
+		actorID = id
 	}
 
 	var filter TransactionFilter
@@ -328,3 +326,217 @@ func (h *handler) ListTransactions(c *gin.Context) {
 
 // 	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
 // }
+
+// @Summary List grouped COA entries (parent grid)
+// @Description Returns one row per COA with aggregated amounts and entry counts
+// @Tags entry
+// @Produce json
+// @Param page query int false "Zero-based page index"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param practitioner_id query string false "Filter by practitioner ID"
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param coa_id query string false "Filter by COA ID"
+// @Param tax_type_id query int false "Filter by tax type ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/coa-entries [get]
+func (h *handler) ListCoaEntries(c *gin.Context) {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, _ := util.GetUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	if role == util.RoleAccountant {
+		// If the frontend sent ["uuid"], strip the brackets and quotes
+		if filter.PractitionerID != nil {
+			cleanID := strings.Trim(*filter.PractitionerID, "[]\" ")
+			filter.PractitionerID = &cleanID
+		}
+		if filter.ClinicID != nil {
+			cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
+			filter.ClinicID = &cleanID
+		}
+	}
+
+	filter.Role = role
+
+	result, err := h.svc.ListCoaEntries(c.Request.Context(), filter, *actorID, role, userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "COA entries fetched successfully")
+}
+
+// @Summary List entries for a specific COA (child grid)
+// @Description Returns detailed entry rows for the expanded COA
+// @Tags entry
+// @Produce json
+// @Param coa_id path string true "COA ID"
+// @Param page query int false "Zero-based page index"
+// @Param limit query int false "Page size (default 10, max 100)"
+// @Param practitioner_id query string false "Filter by practitioner ID"
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param tax_type_id query int false "Filter by tax type ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/coa-entries/{coa_id}/entries [get]
+func (h *handler) ListCoaEntryDetails(c *gin.Context) {
+	coaID := c.Param("coa_id")
+	if coaID == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("coa_id is required"))
+		return
+	}
+
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	filter.Role = role
+
+	result, err := h.svc.ListCoaEntryDetails(c.Request.Context(), coaID, filter, *actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "COA entry details fetched successfully")
+}
+
+// @Summary Export transaction report to Excel
+// @Description Generates an Excel file (.xlsx) containing grouped transaction records based on filters.
+// @Tags reporting
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
+// @Param export_type query string false "Export format: 'pdf' or 'excel' (default: excel)" Enums(pdf, excel)
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Param search query string false "Search by account, field, or clinic name"
+// @Success 200 {file} binary "Excel file containing transaction report"
+// @Failure 400 {object} response.RsError "Invalid request parameters"
+// @Failure 500 {object} response.RsError "Internal server error during generation"
+// @Security BearerToken
+// @Router /entry/coa-entries/export [get]
+func (h *handler) HandleExport(c *gin.Context) {
+	// 1. Auth check
+	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, ok := util.GetUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	// --- COLLECTION LOGIC ---
+	// Scenario A: practitioner_id provided in query → scope to that one practitioner only.
+	// Scenario B: no practitioner_id → fetch all linked practitioners.
+	var PracIDs []uuid.UUID
+	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
+
+	if role == util.RoleAccountant {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			// Scenario A
+			pracUUID, err := uuid.Parse(pracIDStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
+				return
+			}
+			PracIDs = []uuid.UUID{pracUUID}
+			notifIDs = []uuid.UUID{pracUUID}
+		} else {
+			// Scenario B
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			if err != nil {
+				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
+				return
+			}
+			if len(linked) == 0 {
+				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
+				return
+			}
+			PracIDs = linked
+			notifIDs = linked
+		}
+	} else {
+		// Practitioner: scope to self, no shared events
+		PracIDs = []uuid.UUID{*actorID}
+		notifIDs = nil // practitioners never receive their own shared events
+	}
+
+	// 2. Get export type from query (default to excel)
+	exportType := c.DefaultQuery("export_type", "excel")
+
+	// 3. Bind filters
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	filter.Role = role
+
+	// Set PractitionerID in the filter.
+	// For accountants Scenario A: the specific practitioner_id is already in PracIDs[0].
+	// For accountants Scenario B: leave empty so the repo uses the full PracIDs list via actorID/role.
+	// For practitioners: always their own ID.
+	if role != util.RoleAccountant {
+		pracIDStr := PracIDs[0].String()
+		filter.PractitionerID = &pracIDStr
+	}
+
+	// 4. Call Service (Service now returns buffer, contentType, and error)
+	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
+		return
+	}
+
+	if contentType == "text/html" {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Disposition", "inline")
+		c.String(http.StatusOK, result.(string))
+		return
+	}
+
+	buf, ok := result.(*bytes.Buffer)
+	if !ok {
+		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export data format"))
+		return
+	}
+
+	fileName := fmt.Sprintf("Transaction_Report_%s.xlsx", time.Now().Format("2006-01-02_1504"))
+
+	// 6. Set Headers
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Cache-Control", "no-cache")
+
+	// 7. Write Data
+	c.Data(http.StatusOK, contentType, buf.Bytes())
+}

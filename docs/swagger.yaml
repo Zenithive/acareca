@@ -174,6 +174,364 @@ definitions:
     - last_name
     - password
     type: object
+  analytics.AccountantInfo:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      permissions:
+        type: string
+      phone:
+        type: string
+    type: object
+  analytics.AccountantKPIs:
+    properties:
+      total_accountants:
+        type: integer
+      total_invites:
+        type: integer
+      total_permissions:
+        type: integer
+      total_practitioners:
+        type: integer
+    type: object
+  analytics.ActionCounts:
+    properties:
+      create:
+        type: integer
+      delete:
+        type: integer
+      update:
+        type: integer
+    type: object
+  analytics.ActiveUsersPoint:
+    properties:
+      active_users:
+        type: integer
+      date:
+        type: string
+    type: object
+  analytics.ClinicInfo:
+    properties:
+      abn:
+        type: string
+      accountants:
+        items:
+          $ref: '#/definitions/analytics.AccountantInfo'
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  analytics.InvitesStatusPie:
+    properties:
+      by_status:
+        items:
+          $ref: '#/definitions/analytics.StatusCount'
+        type: array
+      total:
+        type: integer
+    type: object
+  analytics.PlanCounts:
+    properties:
+      active_subscriptions:
+        type: integer
+      total_subscriptions:
+        type: integer
+    type: object
+  analytics.PlanDistribution:
+    properties:
+      counts:
+        $ref: '#/definitions/analytics.PlanCounts'
+      plan_id:
+        type: string
+      plan_name:
+        type: string
+      series:
+        items:
+          $ref: '#/definitions/analytics.PlanDistributionPoint'
+        type: array
+    type: object
+  analytics.PlanDistributionPoint:
+    properties:
+      active_subscriptions:
+        type: integer
+      new_subscriptions:
+        type: integer
+      revenue:
+        type: number
+      ts:
+        type: string
+    type: object
+  analytics.PractitionerKPIs:
+    properties:
+      active_subscriptions:
+        type: integer
+      no_active_plan:
+        type: integer
+      total_invites:
+        type: integer
+      total_practitioners:
+        type: integer
+    type: object
+  analytics.ResourceAnalyticsMeta:
+    properties:
+      from:
+        type: string
+      group_by:
+        type: string
+      to:
+        type: string
+    type: object
+  analytics.ResourceRow:
+    properties:
+      actions:
+        $ref: '#/definitions/analytics.ActionCounts'
+      entity_type:
+        type: string
+      total:
+        type: integer
+    type: object
+  analytics.ResourceSeries:
+    properties:
+      points:
+        items:
+          $ref: '#/definitions/analytics.TimePoint'
+        type: array
+      resource_type:
+        type: string
+    type: object
+  analytics.RevenueMeta:
+    properties:
+      bucket:
+        type: string
+      currency:
+        type: string
+      from:
+        type: string
+      to:
+        type: string
+    type: object
+  analytics.RevenuePoint:
+    properties:
+      revenue:
+        type: number
+      ts:
+        type: string
+    type: object
+  analytics.RoleCount:
+    properties:
+      count:
+        type: integer
+      role:
+        type: string
+    type: object
+  analytics.RsAccountantOverview:
+    properties:
+      invites_status_pie:
+        $ref: '#/definitions/analytics.InvitesStatusPie'
+      kpis:
+        $ref: '#/definitions/analytics.AccountantKPIs'
+    type: object
+  analytics.RsActiveUsers:
+    properties:
+      dau:
+        type: integer
+      dau_to_mau_ratio:
+        type: number
+      mau:
+        type: integer
+      timeline:
+        items:
+          $ref: '#/definitions/analytics.ActiveUsersPoint'
+        type: array
+      wau:
+        type: integer
+    type: object
+  analytics.RsBillingDashboard:
+    properties:
+      overview:
+        $ref: '#/definitions/analytics.RsSubscriptionMetrics'
+      plan_distribution:
+        $ref: '#/definitions/analytics.RsPlanDistribution'
+    type: object
+  analytics.RsPlanDistribution:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.RevenueMeta'
+      plans:
+        items:
+          $ref: '#/definitions/analytics.PlanDistribution'
+        type: array
+    type: object
+  analytics.RsPlatformRevenue:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.RevenueMeta'
+      series:
+        items:
+          $ref: '#/definitions/analytics.RevenuePoint'
+        type: array
+    type: object
+  analytics.RsPractitionerDetail:
+    properties:
+      clinics:
+        items:
+          $ref: '#/definitions/analytics.ClinicInfo'
+        type: array
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      subscription:
+        $ref: '#/definitions/analytics.SubscriptionInfo'
+      total_accountants:
+        type: integer
+      total_clinics:
+        type: integer
+    type: object
+  analytics.RsPractitionerOverview:
+    properties:
+      kpis:
+        $ref: '#/definitions/analytics.PractitionerKPIs'
+      user_bifurcation:
+        $ref: '#/definitions/analytics.UserBifurcation'
+    type: object
+  analytics.RsResourceAccessTimeseries:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.TimeseriesMeta'
+      series:
+        items:
+          $ref: '#/definitions/analytics.ResourceSeries'
+        type: array
+    type: object
+  analytics.RsResourceAnalytics:
+    properties:
+      meta:
+        $ref: '#/definitions/analytics.ResourceAnalyticsMeta'
+      rows:
+        items:
+          $ref: '#/definitions/analytics.ResourceRow'
+        type: array
+    type: object
+  analytics.RsSubscriptionMetrics:
+    properties:
+      arpu:
+        type: number
+      arr:
+        type: number
+      churn_rate_percentage:
+        type: number
+      distribution:
+        items:
+          $ref: '#/definitions/analytics.SubscriptionDistribution'
+        type: array
+      mrr:
+        type: number
+      total_active_subscriptions:
+        type: integer
+    type: object
+  analytics.RsUserGrowth:
+    properties:
+      active_users_30_days:
+        type: integer
+      growth_rate_percentage:
+        type: number
+      new_users_30_days:
+        type: integer
+      retention_rate_percentage:
+        type: number
+      timeline:
+        items:
+          $ref: '#/definitions/analytics.UserGrowthPoint'
+        type: array
+      total_accountants:
+        type: integer
+      total_practitioners:
+        type: integer
+      total_users:
+        type: integer
+    type: object
+  analytics.StatusCount:
+    properties:
+      count:
+        type: integer
+      status:
+        type: string
+    type: object
+  analytics.SubscriptionDistribution:
+    properties:
+      count:
+        type: integer
+      percentage:
+        type: number
+      plan_id:
+        type: integer
+      plan_name:
+        type: string
+      revenue:
+        type: number
+    type: object
+  analytics.SubscriptionInfo:
+    properties:
+      end_date:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      start_date:
+        type: string
+      status:
+        type: string
+    type: object
+  analytics.TimePoint:
+    properties:
+      count:
+        type: integer
+      ts:
+        type: string
+    type: object
+  analytics.TimeseriesMeta:
+    properties:
+      bucket:
+        type: string
+      from:
+        type: string
+      to:
+        type: string
+    type: object
+  analytics.UserBifurcation:
+    properties:
+      by_role:
+        items:
+          $ref: '#/definitions/analytics.RoleCount'
+        type: array
+      total:
+        type: integer
+    type: object
+  analytics.UserGrowthPoint:
+    properties:
+      active_users:
+        type: integer
+      date:
+        type: string
+      new_users:
+        type: integer
+      total_users:
+        type: integer
+    type: object
   auth.RqChangePassword:
     properties:
       new_password:
@@ -434,6 +792,43 @@ definitions:
       total_sales_net:
         type: number
     type: object
+  calculation.PreviewSummary:
+    properties:
+      base_remuneration:
+        type: number
+      clinic_expense_gst:
+        type: number
+      commission:
+        description: IC-specific fields (from attachICCalculation)
+        type: number
+      gst_on_commission:
+        type: number
+      gst_on_remuneration:
+        type: number
+      gst_service_fee:
+        type: number
+      invoice_total:
+        type: number
+      net_amount:
+        description: Common fields
+        type: number
+      other_cost_deduction:
+        type: number
+      payment_received:
+        type: number
+      remitted_amount:
+        type: number
+      service_fee:
+        description: SERVICE_FEE method fields
+        type: number
+      super_component:
+        type: number
+      total_remuneration:
+        description: INDEPENDENT_CONTRACTOR method fields
+        type: number
+      total_service_fee:
+        type: number
+    type: object
   calculation.RqCalculateFromEntries:
     properties:
       entries:
@@ -450,6 +845,47 @@ definitions:
     required:
     - entries
     - form_id
+    type: object
+  calculation.RqFormPreview:
+    properties:
+      clinic_id:
+        type: string
+      clinic_share:
+        maximum: 100
+        minimum: 0
+        type: integer
+      fields:
+        items:
+          $ref: '#/definitions/calculation.RqPreviewField'
+        minItems: 1
+        type: array
+      formulas:
+        items:
+          $ref: '#/definitions/calculation.RqPreviewFormula'
+        type: array
+      method:
+        enum:
+        - INDEPENDENT_CONTRACTOR
+        - SERVICE_FEE
+        type: string
+      owner_share:
+        maximum: 100
+        minimum: 0
+        type: integer
+      super_component:
+        maximum: 100
+        minimum: 0
+        type: number
+      values:
+        items:
+          $ref: '#/definitions/calculation.RqPreviewEntry'
+        type: array
+    required:
+    - clinic_id
+    - clinic_share
+    - fields
+    - method
+    - owner_share
     type: object
   calculation.RqLiveCalculate:
     properties:
@@ -477,6 +913,60 @@ definitions:
     required:
     - form_field_id
     type: object
+  calculation.RqPreviewEntry:
+    properties:
+      field_key:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      net_amount:
+        type: number
+    required:
+    - field_key
+    type: object
+  calculation.RqPreviewField:
+    properties:
+      coa_id:
+        type: string
+      formula:
+        $ref: '#/definitions/formula.ExprNode'
+      is_computed:
+        type: boolean
+      is_highlighted:
+        type: boolean
+      key:
+        type: string
+      label:
+        type: string
+      payment_responsibility:
+        type: string
+      section_type:
+        type: string
+      slug:
+        type: string
+      sort_order:
+        type: integer
+      tax_type:
+        type: string
+    required:
+    - key
+    - label
+    type: object
+  calculation.RqPreviewFormula:
+    properties:
+      expression:
+        $ref: '#/definitions/formula.ExprNode'
+      field_key:
+        type: string
+      name:
+        type: string
+    required:
+    - expression
+    - field_key
+    - name
+    type: object
   calculation.RsComputedFieldValue:
     properties:
       coa_id:
@@ -497,6 +987,8 @@ definitions:
         type: number
       is_computed:
         type: boolean
+      is_highlighted:
+        type: boolean
       label:
         type: string
       net_amount:
@@ -510,6 +1002,21 @@ definitions:
       tax_type:
         description: INCLUSIVE, EXCLUSIVE, MANUAL, ZERO
         type: string
+    type: object
+  calculation.RsFormPreview:
+    properties:
+      all_fields:
+        items:
+          $ref: '#/definitions/calculation.RsPreviewFieldValue'
+        type: array
+      clinic_name:
+        type: string
+      form_name:
+        type: string
+      method:
+        type: string
+      summary:
+        $ref: '#/definitions/calculation.PreviewSummary'
     type: object
   calculation.RsFormulaCalculate:
     properties:
@@ -527,6 +1034,31 @@ definitions:
           $ref: '#/definitions/calculation.RsComputedFieldValue'
         type: array
       form_version_id:
+        type: string
+    type: object
+  calculation.RsPreviewFieldValue:
+    properties:
+      coa_id:
+        type: string
+      gross_amount:
+        type: number
+      gst_amount:
+        type: number
+      is_computed:
+        type: boolean
+      is_highlighted:
+        type: boolean
+      key:
+        type: string
+      label:
+        type: string
+      net_amount:
+        type: number
+      section_type:
+        type: string
+      sort_order:
+        type: integer
+      tax_type:
         type: string
     type: object
   clinic.RqBulkDeleteClinic:
@@ -584,10 +1116,8 @@ definitions:
     properties:
       abn:
         type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RqClinicAddress'
-        type: array
+      address:
+        $ref: '#/definitions/clinic.RqClinicAddress'
       contacts:
         items:
           $ref: '#/definitions/clinic.RqClinicContact'
@@ -624,10 +1154,8 @@ definitions:
     properties:
       abn:
         type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RqUpdateAddress'
-        type: array
+      address:
+        $ref: '#/definitions/clinic.RqUpdateAddress'
       contacts:
         items:
           $ref: '#/definitions/clinic.RqUpdateContact'
@@ -675,6 +1203,8 @@ definitions:
         type: integer
       exclude_id:
         type: string
+      practitioner_id:
+        type: string
     required:
     - code
     type: object
@@ -694,6 +1224,8 @@ definitions:
         type: boolean
       name:
         maxLength: 255
+        type: string
+      practitioner_id:
         type: string
     required:
     - account_tax_id
@@ -715,6 +1247,8 @@ definitions:
         type: integer
       name:
         maxLength: 255
+        type: string
+      practitioner_id:
         type: string
     type: object
   coa.RsCodeUnique:
@@ -800,6 +1334,8 @@ definitions:
         type: boolean
       is_formula:
         type: boolean
+      is_highlighted:
+        type: boolean
       key:
         maxLength: 5
         type: string
@@ -831,10 +1367,16 @@ definitions:
     type: object
   field.RqUpdateFormField:
     properties:
+      amount:
+        type: number
+      business_use:
+        type: number
       coa_id:
         type: string
       id:
         type: string
+      is_highlighted:
+        type: boolean
       label:
         maxLength: 255
         type: string
@@ -852,6 +1394,49 @@ definitions:
       sort_order:
         minimum: 0
         type: integer
+      tax_type:
+        type: string
+    required:
+    - id
+    type: object
+  form.ExpenseItem:
+    properties:
+      amount:
+        type: number
+      business_use:
+        maximum: 100
+        minimum: 0
+        type: number
+      coa_id:
+        type: string
+      description:
+        type: string
+      name:
+        type: string
+      tax_type:
+        type: string
+    required:
+    - amount
+    - business_use
+    - coa_id
+    - name
+    type: object
+  form.ExpenseItemUpdate:
+    properties:
+      amount:
+        type: number
+      business_use:
+        maximum: 100
+        minimum: 0
+        type: number
+      coa_id:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
       tax_type:
         type: string
     required:
@@ -879,6 +1464,7 @@ definitions:
         enum:
         - INDEPENDENT_CONTRACTOR
         - SERVICE_FEE
+        - EXPENSE_ENTRY
         type: string
       name:
         type: string
@@ -903,6 +1489,22 @@ definitions:
     - name
     - owner_share
     type: object
+  form.RqExpense:
+    properties:
+      date:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/form.ExpenseItem'
+        minItems: 1
+        type: array
+      name:
+        type: string
+    required:
+    - date
+    - items
+    - name
+    type: object
   form.RqFieldsSync:
     properties:
       create:
@@ -917,6 +1519,28 @@ definitions:
         items:
           $ref: '#/definitions/field.RqUpdateFormField'
         type: array
+    type: object
+  form.RqUpdateExpense:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/form.ExpenseItem'
+        type: array
+      date:
+        type: string
+      delete:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      update:
+        items:
+          $ref: '#/definitions/form.ExpenseItemUpdate'
+        type: array
+    required:
+    - date
+    - name
     type: object
   form.RqUpdateFormStatus:
     properties:
@@ -961,6 +1585,7 @@ definitions:
         enum:
         - INDEPENDENT_CONTRACTOR
         - SERVICE_FEE
+        - EXPENSE_ENTRY
         type: string
       name:
         type: string
@@ -1036,6 +1661,17 @@ definitions:
       label:
         type: string
     type: object
+  invitation.AccessLevel:
+    properties:
+      read:
+        type: boolean
+      write:
+        type: boolean
+    type: object
+  invitation.Permissions:
+    additionalProperties:
+      $ref: '#/definitions/invitation.AccessLevel'
+    type: object
   invitation.RqProcessAction:
     properties:
       action:
@@ -1053,18 +1689,35 @@ definitions:
     properties:
       email:
         type: string
+      permissions:
+        $ref: '#/definitions/invitation.Permissions'
     required:
     - email
+    - permissions
+    type: object
+  invitation.RqUpdatePermissions:
+    properties:
+      accountant_id:
+        type: string
+      email:
+        type: string
+      permissions:
+        $ref: '#/definitions/invitation.Permissions'
+    required:
+    - email
+    - permissions
     type: object
   notification.ActorType:
     enum:
     - PRACTITIONER
     - ACCOUNTANT
+    - ADMIN
     - SYSTEM
     type: string
     x-enum-varnames:
     - ActorPractitioner
     - ActorAccountant
+    - ActorAdmin
     - ActorSystem
   notification.EntityType:
     enum:
@@ -1073,6 +1726,8 @@ definitions:
     - transaction
     - document
     - invite
+    - audit_log
+    - system
     type: string
     x-enum-varnames:
     - EntityClinic
@@ -1080,6 +1735,8 @@ definitions:
     - EntityTransaction
     - EntityDocument
     - EntityInvite
+    - EntityAuditLog
+    - EntitySystem
   notification.EventType:
     enum:
     - invite.sent
@@ -1091,6 +1748,9 @@ definitions:
     - transaction.created
     - transaction.status_changed
     - document.uploaded
+    - audit_log.created
+    - system.error
+    - system.warning
     type: string
     x-enum-varnames:
     - EventInviteSent
@@ -1102,6 +1762,9 @@ definitions:
     - EventTransactionCreated
     - EventTransactionUpdated
     - EventDocumentUploaded
+    - EventAuditLogCreated
+    - EventSystemError
+    - EventSystemWarning
   notification.Notification:
     properties:
       createdAt:
@@ -1264,6 +1927,16 @@ definitions:
       period_month:
         type: string
     type: object
+  practitioner.UpdateLockDateRequest:
+    properties:
+      financial_year_id:
+        description: Use *time.Time to allow null values for removing the lock date
+        type: string
+      lock_date:
+        type: string
+    required:
+    - financial_year_id
+    type: object
   response.RsBase:
     properties:
       data: {}
@@ -1281,6 +1954,95 @@ definitions:
       detail:
         type: string
       message:
+        type: string
+    type: object
+  seed.ClinicDetail:
+    properties:
+      clinic_id:
+        type: string
+      clinic_name:
+        type: string
+      forms:
+        items:
+          $ref: '#/definitions/seed.FormDetail'
+        type: array
+    type: object
+  seed.FormDetail:
+    properties:
+      fields:
+        type: integer
+      form_id:
+        type: string
+      form_name:
+        type: string
+      formulas:
+        type: integer
+    type: object
+  seed.RqCleanupData:
+    properties:
+      practitioner_id:
+        type: string
+    required:
+    - practitioner_id
+    type: object
+  seed.RqSeedData:
+    properties:
+      num_clinics:
+        maximum: 100
+        minimum: 1
+        type: integer
+      num_fields:
+        maximum: 10
+        minimum: 1
+        type: integer
+      num_forms:
+        maximum: 50
+        minimum: 1
+        type: integer
+      practitioner_id:
+        type: string
+      verbose:
+        type: boolean
+    required:
+    - num_clinics
+    - num_forms
+    type: object
+  seed.RsCleanupData:
+    properties:
+      addresses_deleted:
+        type: integer
+      clinics_deleted:
+        type: integer
+      contacts_deleted:
+        type: integer
+      duration:
+        type: string
+      fields_deleted:
+        type: integer
+      form_versions_deleted:
+        type: integer
+      forms_deleted:
+        type: integer
+      practitioner_id:
+        type: string
+    type: object
+  seed.RsSeedData:
+    properties:
+      clinics_created:
+        type: integer
+      details:
+        items:
+          $ref: '#/definitions/seed.ClinicDetail'
+        type: array
+      duration:
+        type: string
+      fields_created:
+        type: integer
+      forms_created:
+        type: integer
+      formulas_created:
+        type: integer
+      practitioner_id:
         type: string
     type: object
   setting.RqCreatePractitioner:
@@ -1326,12 +2088,28 @@ definitions:
       name:
         maxLength: 255
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/subscription.RqPermissionEntry'
+        type: array
       price:
         minimum: 0
         type: number
     required:
     - duration_days
     - name
+    type: object
+  subscription.RqPermissionEntry:
+    properties:
+      is_enabled:
+        type: boolean
+      key:
+        type: string
+      usage_limit:
+        minimum: -1
+        type: integer
+    required:
+    - key
     type: object
   subscription.RqUpdatePermission:
     properties:
@@ -1365,6 +2143,10 @@ definitions:
       name:
         maxLength: 255
         type: string
+      permissions:
+        items:
+          $ref: '#/definitions/subscription.RqPermissionEntry'
+        type: array
       price:
         minimum: 0
         type: number
@@ -1594,6 +2376,585 @@ paths:
       summary: Get Admin Detail
       tags:
       - admin
+  /admin/accountant:
+    get:
+      description: Fetch a paginated list of all accountants with their associated
+        practitioners. Admin only.
+      parameters:
+      - description: Filter by exact email address
+        in: query
+        name: email
+        type: string
+      - description: Filter by accountant full name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by phone number (partial match)
+        in: query
+        name: phone
+        type: string
+      - description: Search across accountant full name and email
+        in: query
+        name: search
+        type: string
+      - description: 'Number of records per page (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: id, first_name, last_name, email (default: id)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all accountants with their practitioners (Admin)
+      tags:
+      - admin-accountant
+  /admin/activate-fy/{financial_year_id}:
+    patch:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Activate a specific financial year
+      tags:
+      - fy
+  /admin/analytics/accountant/overview:
+    get:
+      description: Returns accountant KPIs and invite status distribution
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsAccountantOverview'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get accountant dashboard overview
+      tags:
+      - admin-dashboard
+  /admin/analytics/accountant/resource-access-timeseries:
+    get:
+      description: Returns accountant resource access over time by resource type
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsResourceAccessTimeseries'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get resource access timeseries
+      tags:
+      - admin-dashboard
+  /admin/analytics/active-users:
+    get:
+      description: Returns DAU, WAU, MAU metrics with DAU/MAU ratio and timeline
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsActiveUsers'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get daily/weekly/monthly active users
+      tags:
+      - admin-analytics
+  /admin/analytics/billing/dashboard:
+    get:
+      description: Returns overview metrics, subscription records, and plan distribution
+        in a single call
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      - description: Search subscription records by practitioner name or email
+        in: query
+        name: search
+        type: string
+      - description: Filter records by plan name
+        in: query
+        name: plan_name
+        type: string
+      - description: Filter records by status
+        in: query
+        name: status
+        type: string
+      - description: 'Records per page (default: 20)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsBillingDashboard'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get billing dashboard
+      tags:
+      - admin-dashboard
+  /admin/analytics/billing/plan-distribution:
+    get:
+      description: Returns plan distribution with historical MRR (Monthly Recurring
+        Revenue), subscription counts, and time-series data. Total/active counts reflect
+        all-time data, while time-series shows data within the specified date range.
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPlanDistribution'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get plan distribution
+      tags:
+      - admin-dashboard
+  /admin/analytics/billing/platform-revenue:
+    get:
+      description: Returns platform revenue over time
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Time bucket: day, week, month'
+        in: query
+        name: bucket
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPlatformRevenue'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get platform revenue
+      tags:
+      - admin-dashboard
+  /admin/analytics/billing/subscriptions:
+    get:
+      description: 'Returns paginated and filtered list of subscription records. Date
+        filters apply to subscription creation date (created_at). Status values are
+        case-insensitive and must be one of: ACTIVE, PAST_DUE, CANCELLED, PAUSED,
+        EXPIRED.'
+      parameters:
+      - description: Search by practitioner name or email (max 100 chars)
+        in: query
+        name: search
+        type: string
+      - description: Filter by plan name (partial match, max 100 chars)
+        in: query
+        name: plan_name
+        type: string
+      - description: Filter by status (ACTIVE, PAST_DUE, CANCELLED, PAUSED, EXPIRED)
+        in: query
+        name: status
+        type: string
+      - description: Filter by creation date start (YYYY-MM-DD, includes full day)
+        in: query
+        name: from
+        type: string
+      - description: Filter by creation date end (YYYY-MM-DD, includes full day)
+        in: query
+        name: to
+        type: string
+      - description: 'Records per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: created_at, start_date, end_date, status (default:
+          created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List subscription records
+      tags:
+      - admin-dashboard
+  /admin/analytics/practitioner/overview:
+    get:
+      description: Returns practitioner KPIs and user bifurcation
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPractitionerOverview'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner dashboard overview
+      tags:
+      - admin-dashboard
+  /admin/analytics/practitioner/resource-analytics:
+    get:
+      description: Returns resource analytics grouped by entity type with action counts
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      - description: 'Group by: entity_type, action'
+        in: query
+        name: group_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsResourceAnalytics'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get resource analytics
+      tags:
+      - admin-dashboard
+  /admin/analytics/practitioners:
+    get:
+      description: Returns paginated and filtered list of practitioners with their
+        clinics and associated accountants
+      parameters:
+      - description: Filter by exact email
+        in: query
+        name: email
+        type: string
+      - description: Filter by name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by phone (partial match)
+        in: query
+        name: phone
+        type: string
+      - description: Filter by active subscription
+        in: query
+        name: has_active_subscription
+        type: boolean
+      - description: Filter by subscription plan name
+        in: query
+        name: subscription_name
+        type: string
+      - description: Search across name and email
+        in: query
+        name: search
+        type: string
+      - description: 'Records per page (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: created_at, email, first_name, last_name (default:
+          created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all practitioners with clinics and accountants
+      tags:
+      - admin-analytics
+  /admin/analytics/practitioners/{id}:
+    get:
+      description: Returns detailed practitioner information including subscription,
+        clinics, and associated accountants
+      parameters:
+      - description: Practitioner ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsPractitionerDetail'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner details with clinics and accountants
+      tags:
+      - admin-analytics
+  /admin/analytics/subscriptions:
+    get:
+      description: Returns subscription metrics including MRR, ARR, ARPU, churn rate,
+        and distribution by plan
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsSubscriptionMetrics'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get subscription distribution and MRR
+      tags:
+      - admin-analytics
+  /admin/analytics/user-growth:
+    get:
+      description: Returns user growth statistics including total users, new users,
+        active users, growth rate, and retention rate with timeline
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analytics.RsUserGrowth'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get user growth and retention metrics
+      tags:
+      - admin-analytics
   /admin/audit:
     get:
       consumes:
@@ -1790,6 +3151,107 @@ paths:
       summary: Get all quarters for a specific financial year
       tags:
       - fy
+  /admin/practitioner:
+    get:
+      description: Fetch a paginated list of all practitioners with their active subscription
+        details. Admin only.
+      parameters:
+      - description: Filter by exact email address
+        in: query
+        name: email
+        type: string
+      - description: Filter by practitioner full name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by phone number (partial match)
+        in: query
+        name: phone
+        type: string
+      - description: Filter by active subscription (true=with active, false=without
+          active)
+        in: query
+        name: has_active_subscription
+        type: boolean
+      - description: Filter by subscription plan name (partial match)
+        in: query
+        name: subscription_name
+        type: string
+      - description: Search across practitioner full name and email
+        in: query
+        name: search
+        type: string
+      - description: 'Number of records per page (default: 10, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Number of records to skip (default: 0)'
+        in: query
+        name: offset
+        type: integer
+      - description: 'Sort field: id, first_name, last_name, email, created_at (default:
+          created_at)'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Sort order: ASC or DESC (default: DESC)'
+        in: query
+        name: order_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all practitioners with active subscriptions (Admin)
+      tags:
+      - admin-practitioner
+  /admin/practitioner/{id}:
+    get:
+      description: Fetch a single practitioner with their active subscription details
+        by ID. Admin only.
+      parameters:
+      - description: Practitioner ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner by ID with subscription (Admin)
+      tags:
+      - admin-practitioner
   /admin/subscription:
     get:
       consumes:
@@ -2129,25 +3591,20 @@ paths:
       - auth
   /auth/google/callback:
     get:
-      description: handle Google OAuth callback and return tokens
+      description: handle Google OAuth callback and redirect to frontend with tokens
       parameters:
       - description: OAuth authorization code
         in: query
         name: code
         required: true
         type: string
-      - description: OAuth state (CSRF token)
-        in: query
-        name: state
-        required: true
-        type: string
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "302":
+          description: Redirect to frontend
           schema:
-            $ref: '#/definitions/response.RsBase'
+            type: string
         "400":
           description: Bad Request
           schema:
@@ -2431,24 +3888,68 @@ paths:
       summary: Verify user email address
       tags:
       - auth
-  /bas/clinic/{clinic_id}/bas-preparation:
+  /bas/activity-statement/report/export:
     get:
-      description: Returns a side-by-side comparison of BAS figures across selected
-        quarters/months, plus a calculated Grand Total column.
+      description: Generates a formatted Excel BAS report.
       parameters:
-      - description: Clinic UUID
-        in: path
-        name: clinic_id
+      - description: 'Export format: ''pdf'' or ''excel'' (default: excel)'
+        enum:
+        - pdf
+        - excel
+        in: query
+        name: export_type
+        type: string
+      - description: Financial Year UUID
+        in: query
+        name: financial_year_id
         required: true
         type: string
       - collectionFormat: multi
-        description: Array of Quarter UUIDs
+        description: Quarter UUIDs (can pass multiple)
         in: query
         items:
           type: string
+        name: quarter_id
+        type: array
+      - description: Full month name
+        in: query
+        name: month
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Export Business Activity Statement to Excel
+      tags:
+      - BAS
+  /bas/bas-preparation:
+    get:
+      description: Returns a side-by-side comparison of BAS figures across selected
+        quarters/months, plus a calculated Grand Total column. If clinicId is not
+        provided in query params, aggregates data across all clinics. Multiple clinicId
+        values can be provided to aggregate specific clinics.
+      parameters:
+      - description: Comma-separated Clinic UUIDs
+        in: query
+        name: clinic_ids
+        type: string
+      - description: Comma-separated Quarter UUIDs (e.g. uuid1,uuid2)
+        in: query
         name: quarter_ids
         required: true
-        type: array
+        type: string
       - description: Restrict to a financial year by UUID
         in: query
         name: financial_year_id
@@ -2472,6 +3973,43 @@ paths:
       security:
       - BearerToken: []
       summary: Full BAS Preparation Report
+      tags:
+      - engine/bas
+  /bas/bas-preparation/export:
+    get:
+      description: Generates an Excel file matching the shared template using GetBASPreparation
+        data.
+      parameters:
+      - description: Clinic UUIDs
+        in: query
+        name: clinic_ids
+        type: string
+      - description: Quarter UUIDs
+        in: query
+        name: quarter_ids
+        required: true
+        type: string
+      - description: FY UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      - description: 'Export Type: PDF | Excel'
+        in: query
+        name: export_type
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      security:
+      - BearerToken: []
+      summary: Export Quarterly BAS Preparation
       tags:
       - engine/bas
   /bas/clinic/{clinic_id}/by-account:
@@ -2797,6 +4335,41 @@ paths:
       security:
       - BearerToken: []
       summary: Live calculation based on form version ID
+      tags:
+      - calculation
+  /calculate/preview:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.
+        Used when creating a form to preview calculations before saving.
+        Pass clinic_id, method, shares, field definitions, and field entries.
+      parameters:
+      - description: Form configuration, fields, and entries
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/calculation.RqFormPreview'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/calculation.RsFormPreview'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Form preview with complete calculation
       tags:
       - calculation
   /clinic:
@@ -3197,6 +4770,10 @@ paths:
   /coa/chart-of-account:
     get:
       parameters:
+      - description: Filter by practitioner ID (Accountant only)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Filter by name
         in: query
         name: name
@@ -3286,6 +4863,10 @@ paths:
   /coa/chart-of-account/{id}:
     delete:
       parameters:
+      - description: Practitioner UUID (required for Accountants)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Chart of Account UUID
         in: path
         name: id
@@ -3323,6 +4904,11 @@ paths:
       - coa
     get:
       parameters:
+      - description: Practitioner UUID
+        in: query
+        name: practitioner_id
+        required: true
+        type: string
       - description: Chart of Account UUID
         in: path
         name: id
@@ -3402,6 +4988,10 @@ paths:
   /coa/chart-of-account/by-key/{key}:
     get:
       parameters:
+      - description: Practitioner UUID (for Accountants)
+        in: query
+        name: practitioner_id
+        type: string
       - description: Chart of Account Key (e.g., patient_fee_account)
         in: path
         name: key
@@ -3561,6 +5151,180 @@ paths:
       summary: Update a form entry
       tags:
       - entry
+  /entry/coa-entries:
+    get:
+      description: Returns one row per COA with aggregated amounts and entry counts
+      parameters:
+      - description: Zero-based page index
+        in: query
+        name: page
+        type: integer
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by practitioner ID
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by COA ID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by tax type ID
+        in: query
+        name: tax_type_id
+        type: integer
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List grouped COA entries (parent grid)
+      tags:
+      - entry
+  /entry/coa-entries/{coa_id}/entries:
+    get:
+      description: Returns detailed entry rows for the expanded COA
+      parameters:
+      - description: COA ID
+        in: path
+        name: coa_id
+        required: true
+        type: string
+      - description: Zero-based page index
+        in: query
+        name: page
+        type: integer
+      - description: Page size (default 10, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by practitioner ID
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by tax type ID
+        in: query
+        name: tax_type_id
+        type: integer
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List entries for a specific COA (child grid)
+      tags:
+      - entry
+  /entry/coa-entries/export:
+    get:
+      description: Generates an Excel file (.xlsx) containing grouped transaction
+        records based on filters.
+      parameters:
+      - description: 'Export format: ''pdf'' or ''excel'' (default: excel)'
+        enum:
+        - pdf
+        - excel
+        in: query
+        name: export_type
+        type: string
+      - description: Filter by clinic ID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Filter by form ID
+        in: query
+        name: form_id
+        type: string
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: Search by account, field, or clinic name
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
+      responses:
+        "200":
+          description: Excel file containing transaction report
+          schema:
+            type: file
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error during generation
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export transaction report to Excel
+      tags:
+      - reporting
   /entry/transactions:
     get:
       description: Returns flat rows (one per entry value) enriched with clinic, form,
@@ -3723,9 +5487,9 @@ paths:
         in: query
         name: practitioner_id
         type: string
-      - description: Filter by clinic ID (UUID)
+      - description: Filter by clinic IDs (UUID)
         in: query
-        name: clinic_id
+        name: clinic_ids
         type: string
       - description: Filter by form name (partial match)
         in: query
@@ -3761,10 +5525,10 @@ paths:
         type: string
       - description: Sort direction
         enum:
-        - asc
-        - desc
+        - ASC
+        - DESC
         in: query
-        name: sort_order
+        name: order_by
         type: string
       - description: Page size
         in: query
@@ -3949,6 +5713,109 @@ paths:
       summary: Update form status
       tags:
       - form
+  /form/expenses:
+    post:
+      consumes:
+      - application/json
+      description: Create a new expense form with items
+      parameters:
+      - description: Expense creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqExpense'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create expense
+      tags:
+      - form/expense
+  /form/expenses/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get an expense form with all its items
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get expense by ID
+      tags:
+      - form/expense
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing expense form
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Expense update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateExpense'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update expense
+      tags:
+      - form/expense
   /invite:
     get:
       description: Retrieve a paginated list of invitations. If logged in as a Practitioner,
@@ -4139,6 +6006,72 @@ paths:
       summary: Revoke an accepted/completed invitation
       tags:
       - invitation
+  /invite/list-permissions:
+    get:
+      description: Retrieve all active entity permissions (Clinics, Forms) assigned
+        to the logged-in Accountant.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List Accountant Permissions
+      tags:
+      - invitation
+  /invite/permission:
+    put:
+      consumes:
+      - application/json
+      description: Practitioner grants or updates specific permissions (read/write
+        access for sales_purchases, lock_dates, manage_users, reports_view_download)
+        to an accountant.
+      parameters:
+      - description: Permission Details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invitation.RqUpdatePermissions'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Grant or Update permissions
+      tags:
+      - invitation
   /invite/process:
     post:
       consumes:
@@ -4278,6 +6211,34 @@ paths:
       summary: Mark notification as read
       tags:
       - notification
+  /notification/read-all:
+    patch:
+      description: Marks all currently UNREAD notifications as READ for the authenticated
+        entity.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Mark all notifications as read
+      tags:
+      - notification
   /pl/by-account:
     get:
       description: Returns monthly totals broken down per Chart of Accounts entry,
@@ -4355,6 +6316,60 @@ paths:
       security:
       - BearerToken: []
       summary: P&L split by payment responsibility
+      tags:
+      - engine/pl
+  /pl/export:
+    get:
+      description: Generates and downloads a professional Excel file of the P&L report
+        using the specified filters.
+      parameters:
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: date_until
+        type: string
+      - description: Filter by COA UUID
+        in: query
+        name: coa_id
+        type: string
+      - description: Filter by tax type
+        in: query
+        name: tax_type_id
+        type: string
+      - description: Filter by form UUID
+        in: query
+        name: form_id
+        type: string
+      - description: 'Export Type: PDF | Excel'
+        in: query
+        name: export_type
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Profit_and_Loss_Report.xlsx
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export P&L report to Excel
       tags:
       - engine/pl
   /pl/fy-summary:
@@ -4554,6 +6569,80 @@ paths:
       summary: Get practitioner by ID
       tags:
       - practitioner
+  /practitioner/lock-date:
+    get:
+      description: Retrieve the current financial lock date for the authenticated
+        practitioner or associated practitioners (for accountants).
+      parameters:
+      - description: Practitioner ID (required for accountants)
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Financial Year ID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Practitioner Lock Date
+      tags:
+      - practitioner-lock-date
+    patch:
+      consumes:
+      - application/json
+      description: Set or remove (by sending null) the financial lock date for the
+        authenticated practitioner.
+      parameters:
+      - description: Lock Date Update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/practitioner.UpdateLockDateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update Practitioner Lock Date
+      tags:
+      - practitioner-lock-date
   /practitioner/subscription:
     get:
       consumes:
@@ -4791,6 +6880,66 @@ paths:
       summary: Get subscription history
       tags:
       - subscription
+  /seed:
+    post:
+      consumes:
+      - application/json
+      description: Create test clinics, forms, and formulas for a practitioner
+      parameters:
+      - description: Seed configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/seed.RqSeedData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data seeded successfully
+          schema:
+            $ref: '#/definitions/seed.RsSeedData'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Seed test data
+      tags:
+      - Seed
+  /seed/cleanup:
+    post:
+      consumes:
+      - application/json
+      description: Delete all clinics and forms for a practitioner (preserves COA)
+      parameters:
+      - description: Cleanup configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/seed.RqCleanupData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data cleaned up successfully
+          schema:
+            $ref: '#/definitions/seed.RsCleanupData'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Cleanup seeded data
+      tags:
+      - Seed
   /setting:
     delete:
       consumes:
@@ -5037,6 +7186,36 @@ paths:
       summary: Upsert a setting by practitioner ID
       tags:
       - setting
+  /summary/{id}:
+    get:
+      description: Fetches a grouped list of Chart of Accounts with total amounts
+        for a specific form.
+      parameters:
+      - description: Form ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grouped COA summary
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get form summary by form ID (Grouped by COA)
+      tags:
+      - calculation
 schemes:
 - http
 - https

@@ -1,11 +1,18 @@
 package pl
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/xuri/excelize/v2"
 )
 
 // IHandler declares all HTTP entry points for the P&L module.
@@ -15,14 +22,16 @@ type IHandler interface {
 	GetByResponsibility(c *gin.Context)
 	GetFYSummary(c *gin.Context)
 	GetReport(c *gin.Context)
+	ExportReport(c *gin.Context)
 }
 
 type handler struct {
-	svc Service
+	svc           Service
+	invitationSvc invitation.Service
 }
 
-func NewHandler(svc Service) IHandler {
-	return &handler{svc: svc}
+func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc}
 }
 
 // GetMonthlySummary godoc
@@ -173,6 +182,7 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
+	role := c.GetString("role")
 	actorID, ok := util.GetUserID(c)
 	if !ok {
 		return
@@ -183,13 +193,144 @@ func (h *handler) GetReport(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	//f.PractitionerID = pracID.String()
 
-	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f)
+	var targetNotifIDs []uuid.UUID
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		// Scenario A: practitioner_id in query
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			f.PractitionerID = pracIDStr
+			if pID, err := uuid.Parse(pracIDStr); err == nil {
+				targetNotifIDs = []uuid.UUID{pID}
+			}
+		} else {
+			// Scenario B: No practitioner_id -> Fetch all linked practitioners
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), actorID)
+			if err == nil {
+				targetNotifIDs = linked
+			}
+		}
+	} else {
+		// Practitioner: Only notify self
+		targetNotifIDs = []uuid.UUID{actorID}
+		f.PractitionerID = actorID.String()
+	}
+
+	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f, role, targetNotifIDs)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
 	response.JSON(c, http.StatusOK, result, "Profit and Loss report fetched successfully")
+}
+
+// ExportReport godoc
+// @Summary      Export P&L report to Excel
+// @Description  Generates and downloads a professional Excel file of the P&L report using the specified filters.
+// @Tags         engine/pl
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param        clinic_id    query    string  false  "Clinic UUID"
+// @Param        date_from    query    string  false  "Start date (YYYY-MM-DD)"
+// @Param        date_until   query    string  false  "End date (YYYY-MM-DD)"
+// @Param        coa_id       query    string  false  "Filter by COA UUID"
+// @Param        tax_type_id  query    string  false  "Filter by tax type"
+// @Param        form_id      query    string  false  "Filter by form UUID"
+// @Param        export_type 	   query    string  true   "Export Type: PDF | Excel"
+// @Success      200          {file}   binary  "Profit_and_Loss_Report.xlsx"
+// @Failure      400          {object} response.RsError
+// @Failure      500          {object} response.RsError
+// @Security     BearerToken
+// @Router       /pl/export [get]
+func (h *handler) ExportReport(c *gin.Context) {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, okUser := util.GetUserID(c)
+	if !ok || !okUser {
+		return
+	}
+
+	// Get the export type from query params (default to excel)
+	exportType := strings.ToLower(c.DefaultQuery("export_type", "excel"))
+
+	var f PLReportFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Resolve PracIDs (for data scoping) and notifIDs (for Shared Events).
+	// Scenario A: practitioner_id in query → scope + notify only that one.
+	// Scenario B: no practitioner_id → fetch all linked, notify all.
+	// Practitioner: scope to self, no shared events.
+	var PracIDs []uuid.UUID
+	var notifIDs []uuid.UUID
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			// Scenario A
+			pracUUID, err := uuid.Parse(pracIDStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
+				return
+			}
+			f.PractitionerID = pracIDStr
+			PracIDs = []uuid.UUID{pracUUID}
+			notifIDs = []uuid.UUID{pracUUID}
+		} else {
+			// Scenario B
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			if err != nil {
+				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
+				return
+			}
+			if len(linked) == 0 {
+				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
+				return
+			}
+			PracIDs = linked
+			notifIDs = linked
+			// f.PractitionerID left empty — service resolves via clinicRepo
+		}
+	} else {
+		PracIDs = []uuid.UUID{*actorID}
+		notifIDs = nil // practitioners never receive their own shared events
+	}
+
+	// Safely handle optional ClinicID
+	clinicIDParam := ""
+	if f.ClinicID != nil {
+		clinicIDParam = *f.ClinicID
+	}
+
+	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
+	reportData, err := h.svc.GetReport(c.Request.Context(), userID, &f, role, notifIDs)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Generate the Excel/PDF file
+	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, clinicIDParam)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	_ = PracIDs // used for scoping context; notifIDs drives notifications
+
+	switch v := excelFile.(type) {
+	case *excelize.File:
+		fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
+		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		c.Header("Content-Disposition", "attachment; filename="+fileName)
+		v.Write(c.Writer)
+
+	case string:
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Disposition", "inline")
+		c.String(http.StatusOK, v)
+
+	default:
+		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
+	}
 }

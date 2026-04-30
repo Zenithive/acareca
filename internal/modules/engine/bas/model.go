@@ -3,9 +3,11 @@ package bas
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 var ErrClinicNotFound = errors.New("clinic not found")
@@ -79,10 +81,68 @@ type BASMonthlyRow struct {
 }
 
 type BASFilter struct {
-	FromDate        *string      `form:"from_date"`         // YYYY-MM-DD
-	ToDate          *string      `form:"to_date"`           // YYYY-MM-DD
-	FinancialYearID *string      `form:"financial_year_id"` // UUID — maps quarter to FY
-	QuarterIDs      []*uuid.UUID `form:"quarterIds"`
+	ClinicIds       *string `form:"clinic_ids"`
+	FromDate        *string `form:"from_date"`         // YYYY-MM-DD
+	ToDate          *string `form:"to_date"`           // YYYY-MM-DD
+	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
+	QuarterIDs      *string `form:"quarter_ids"`       // UUIDs of tbl_financial_quarter
+
+	ParsedQuarterIDs []uuid.UUID
+	ParsedClinicIDs  []uuid.UUID
+}
+
+// MapToFilter returns the BASFilter as a common.Filter, omitting nil values.
+func (f *BASFilter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	operators := map[string]common.Operator{}
+
+	if f.QuarterIDs != nil && *f.QuarterIDs != "" {
+		f.ParsedQuarterIDs = nil
+		idStrings := strings.Split(*f.QuarterIDs, ",")
+		for _, s := range idStrings {
+			parsedID, err := uuid.Parse(strings.TrimSpace(s))
+			if err == nil {
+				f.ParsedQuarterIDs = append(f.ParsedQuarterIDs, parsedID)
+			}
+		}
+
+		if len(f.ParsedQuarterIDs) > 0 {
+			filters["quarter_ids"] = f.ParsedQuarterIDs
+		}
+	}
+
+	if f.ClinicIds != nil && *f.ClinicIds != "" {
+		f.ParsedClinicIDs = nil
+		cStrings := strings.Split(*f.ClinicIds, ",")
+		for _, s := range cStrings {
+			if parsedID, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
+				f.ParsedClinicIDs = append(f.ParsedClinicIDs, parsedID)
+			}
+		}
+		if len(f.ParsedClinicIDs) > 0 {
+			filters["clinic_ids"] = f.ParsedClinicIDs
+		}
+	}
+
+	if f.FromDate != nil {
+		filters["from_date"] = *f.FromDate
+	}
+	if f.ToDate != nil {
+		filters["to_date"] = *f.ToDate
+	}
+	if f.FinancialYearID != nil {
+		filters["financial_year_id"] = *f.FinancialYearID
+	}
+
+	return common.NewFilter(
+		nil,
+		filters,
+		operators,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }
 
 // BASReportFilter is used by the /bas/report endpoint.
@@ -90,6 +150,13 @@ type BASReportFilter struct {
 	PractitionerID string  `form:"-"`          // set from JWT
 	QuarterID      *string `form:"quarter_id"` // UUID of tbl_financial_quarter
 	Month          *string `form:"month"`      // e.g. "January"
+}
+
+type BASExportFilter struct {
+	PractitionerID  string   `form:"-"` // set from JWT
+	FinancialYearID *string  `form:"financial_year_id" binding:"required"`
+	QuarterIDs      []string `form:"quarter_id" `
+	Month           *string  `form:"month"`
 }
 
 // RsBASReport is the flat totals response for /bas/report.
@@ -270,6 +337,7 @@ type BASLineItemRow struct {
 	NetAmount     float64   `db:"net_amount"`
 	GstAmount     float64   `db:"gst_amount"`
 	GrossAmount   float64   `db:"gross_amount"`
+	CoaID         string    `db:"coa_id"`
 }
 
 type BASColumn struct {

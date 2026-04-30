@@ -110,11 +110,12 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 }
 
 type RqCreateChartOfAccountOfAccount struct {
-	AccountTypeID int16  `json:"account_type_id" validate:"required,min=1"`
-	AccountTaxID  int16  `json:"account_tax_id" validate:"required,min=1"`
-	Code          int16  `json:"code" validate:"required,gte=100,lte=9999"`
-	Name          string `json:"name" validate:"required,max=255"`
-	IsSystem      *bool  `json:"is_system"`
+	PractitionerID uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  int16     `json:"account_type_id" validate:"required,min=1"`
+	AccountTaxID   int16     `json:"account_tax_id" validate:"required,min=1"`
+	Code           int16     `json:"code" validate:"required,gte=100,lte=9999"`
+	Name           string    `json:"name" validate:"required,max=255"`
+	IsSystem       *bool     `json:"is_system"`
 }
 
 type RsCodeUnique struct {
@@ -122,15 +123,17 @@ type RsCodeUnique struct {
 }
 
 type RqCheckCodeUnique struct {
-	Code      int16      `json:"code" validate:"required,gte=100,lte=9999"`
-	ExcludeID *uuid.UUID `json:"exclude_id"`
+	PractitionerID uuid.UUID  `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	Code           int16      `json:"code" validate:"required,gte=100,lte=9999"`
+	ExcludeID      *uuid.UUID `json:"exclude_id"`
 }
 
 type RqUpdateCharOfAccountOfAccount struct {
-	AccountTypeID *int16  `json:"account_type_id" validate:"omitempty,min=1"`
-	AccountTaxID  *int16  `json:"account_tax_id" validate:"omitempty,min=1"`
-	Code          *int16  `json:"code" validate:"omitempty,gte=100,lte=9999"`
-	Name          *string `json:"name" validate:"omitempty,max=255"`
+	PractitionerID *uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  *int16     `json:"account_type_id" validate:"omitempty,min=1"`
+	AccountTaxID   *int16     `json:"account_tax_id" validate:"omitempty,min=1"`
+	Code           *int16     `json:"code" validate:"omitempty,gte=100,lte=9999"`
+	Name           *string    `json:"name" validate:"omitempty,max=255"`
 }
 
 // RsChartOfAccountList is the paginated list response for chart of accounts.
@@ -142,11 +145,13 @@ type RsChartOfAccountList struct {
 }
 
 type Filter struct {
-	Name          *string `form:"name"`
-	Id            *string `form:"id"`
-	Code          *int    `form:"code"`
-	AccountType   *string `form:"account_type"`
-	AccountTypeID *int16  `form:"-"`
+	PractitionerID *uuid.UUID `form:"-"`
+	Name           *string    `form:"name"`
+	Id             *string    `form:"id"`
+	Code           *int       `form:"code"`
+	AccountType    *string    `form:"account_type"`
+	AccountTypeID  *int16     `form:"-"`
+	AccountTaxID   *int16     `form:"account_tax_id"`
 	common.Filter
 }
 
@@ -160,14 +165,18 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["id"] = uuid.UUID(id)
 	}
 	if filter.Name != nil {
-		filters["name"] = *filter.Name
+		filters["name"] = filter.Name
 	}
 	if filter.Code != nil {
-		filters["code"] = *filter.Code
+		filters["code"] = filter.Code
 	}
 
 	if filter.AccountTypeID != nil {
-		filters["account_type_id"] = *filter.AccountTypeID
+		filters["account_type_id"] = filter.AccountTypeID
+	}
+
+	if filter.AccountTaxID != nil {
+		filters["account_tax_id"] = filter.AccountTaxID
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)

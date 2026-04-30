@@ -11,12 +11,14 @@ import (
 type Operator string
 
 const (
-	OpEq    Operator = "eq"
-	OpLike  Operator = "like"
-	OpIn    Operator = "in"
-	OpGt    Operator = "gt"
-	OpLt    Operator = "lt"
-	OpNotEq Operator = "neq"
+	OpEq     Operator = "eq"
+	OpLike   Operator = "like"
+	OpIn     Operator = "in"
+	OpGt     Operator = "gt"
+	OpLt     Operator = "lt"
+	OpNotEq  Operator = "neq"
+	OpIsNull Operator = "isnull"
+	OpRaw    Operator = "raw"
 )
 
 type Condition struct {
@@ -71,6 +73,15 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 		case OpNotEq:
 			conditions = append(conditions, fmt.Sprintf("%s != ?", col))
 			args = append(args, c.Value)
+
+		case OpIsNull:
+			conditions = append(conditions, fmt.Sprintf("%s IS NULL", col))
+
+		case OpRaw:
+			conditions = append(conditions, c.Field)
+			if c.Value != nil {
+				args = append(args, c.Value)
+			}
 		}
 	}
 
@@ -191,7 +202,7 @@ func NewFilter(search *string, filters map[string]interface{}, operators map[str
 
 	// 🔥 safe defaults
 	l, o := 10, 0
-	if limit != nil && *limit > 0 && *limit <= 100 {
+	if limit != nil && *limit > 0 && *limit <= 100000 {
 		l = *limit
 	}
 	if offset != nil && *offset >= 0 {

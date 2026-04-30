@@ -196,6 +196,12 @@ func GetMonthRange(monthName string) (time.Time, time.Time, error) {
 	now := time.Now()
 	loc := now.Location()
 
+	if strings.ToLower(monthName) == "all" {
+		startOfYear := time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, loc)
+		endOfYear := startOfYear.AddDate(1, 0, 0).Add(-time.Nanosecond)
+		return startOfYear, endOfYear, nil
+	}
+
 	months := map[string]time.Month{
 		"january":   time.January,
 		"february":  time.February,
@@ -257,4 +263,44 @@ func GetEntityID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// Helper function to return pointers to Practitioner or Accountant IDs based on the user's role.
+func GetRoleBasedID(c *gin.Context) (actorId *uuid.UUID, role string, ok bool) {
+	role = strings.ToUpper(c.GetString("role"))
+
+	switch role {
+	case RolePractitioner:
+		id, exists := GetPractitionerID(c)
+		if !exists || id == uuid.Nil {
+			return nil, role, false
+		}
+		return &id, role, true
+
+	case RoleAccountant:
+		id, exists := GetAccountantID(c)
+		if !exists || id == uuid.Nil {
+			return nil, role, false
+		}
+		return &id, role, true
+
+	default:
+		return nil, role, false
+	}
+}
+
+// InvitationConfig holds configurable values for invitation management
+type InvitationConfig struct {
+	ExpirationDays   int
+	DailyInviteLimit int
+	EmailTimeout     time.Duration
+}
+
+// DefaultConfig returns default invitation configuration
+func InviteDefaultConfig() InvitationConfig {
+	return InvitationConfig{
+		ExpirationDays:   7,
+		DailyInviteLimit: 5,
+		EmailTimeout:     10 * time.Second,
+	}
 }

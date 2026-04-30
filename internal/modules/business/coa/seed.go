@@ -38,7 +38,7 @@ func DefaultChartOfAccounts() []DefaultChartRow {
 		{Code: 410, Name: "M/V Registration", AccountTypeID: 5, AccountTaxID: 3, IsSystem: false},
 		{Code: 411, Name: "M/V Fuel", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 412, Name: "M/V Repairs/Maintenance", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
-		{Code: 413, Name: "Management Fee (Gross Up)", AccountTypeID: 5, AccountTaxID: 4, IsSystem: false},
+		{Code: 413, Name: "Management Fee (Gross Up)", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 414, Name: "Materials/Dental Supplies", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 415, Name: "Office Supplies", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
 		{Code: 416, Name: "Postage", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
@@ -74,11 +74,11 @@ func DefaultChartOfAccounts() []DefaultChartRow {
 		{Code: 850, Name: "Suspense", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 		{Code: 860, Name: "Rounding", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 		{Code: 877, Name: "Tracking Transfers", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
-		{Code: 880, Name: "Owner A Drawings", AccountTypeID: 2, AccountTaxID: 4, IsSystem: true},         // owner fund side
-		{Code: 881, Name: "Owner A Funds Introduced", AccountTypeID: 2, AccountTaxID: 4, IsSystem: true}, // owner fund side
 		{Code: 900, Name: "Loan", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 
 		// Equity accounts (owner fund side)
+		{Code: 880, Name: "Owner A Drawings", AccountTypeID: 3, AccountTaxID: 4, IsSystem: true},         // owner fund side - FIXED: Changed from Liability (2) to Equity (3)
+		{Code: 881, Name: "Owner A Funds Introduced", AccountTypeID: 3, AccountTaxID: 4, IsSystem: true}, // owner fund side - FIXED: Changed from Liability (2) to Equity (3)
 		{Code: 960, Name: "Retained Earnings", AccountTypeID: 3, AccountTaxID: 4, IsSystem: true},
 		{Code: 970, Name: "Owner A Share Capital", AccountTypeID: 3, AccountTaxID: 4, IsSystem: true},
 	}

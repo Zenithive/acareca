@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -16,13 +17,14 @@ type Service interface {
 	ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 
-	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
+	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
-	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*RsChartOfAccount, error)
+	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
+	GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOfAccount, error)
 }
 
 type service struct {
@@ -85,7 +87,7 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 	return &rs, nil
 }
 
-func (s *service) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
+func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error) {
 	if f.AccountType != nil {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
@@ -95,11 +97,33 @@ func (s *service) ListChartOfAccount(ctx context.Context, practitionerID uuid.UU
 		f.AccountTypeID = &typeID
 	}
 	ft := f.MapToFilter()
-	list, err := s.repo.ListChartOfAccount(ctx, practitionerID, ft)
+
+	// Logic for Practitioner vs Accountant
+	if role == util.RolePractitioner {
+		// PRACTITIONER: Force filter to their own ID to prevent seeing other's data
+		ft.Where = append(ft.Where, common.Condition{
+			Field:    "practitioner_id",
+			Operator: common.OpEq,
+			Value:    actorID,
+		})
+	} else if role == util.RoleAccountant {
+		// ACCOUNTANT:
+		// If they passed a practitioner_id in the query, use it.
+		// If not, SQL will return all COAs
+		if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
+			ft.Where = append(ft.Where, common.Condition{
+				Field:    "practitioner_id",
+				Operator: common.OpEq,
+				Value:    *f.PractitionerID,
+			})
+		}
+	}
+
+	list, err := s.repo.ListChartOfAccount(ctx, actorID, role, ft)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountChartOfAccount(ctx, practitionerID, ft)
+	total, err := s.repo.CountChartOfAccount(ctx, actorID, role, ft)
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +148,15 @@ func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitio
 	return &rs, nil
 }
 
-func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*RsChartOfAccount, error) {
-	c, err := s.repo.GetChartOfAccountByKey(ctx, key, practitionerID)
+func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error) {
+	targetID := actorID
+
+	// Accountants search globally by key
+	if role == util.RoleAccountant {
+		targetID = uuid.Nil
+	}
+
+	c, err := s.repo.GetChartOfAccountByKey(ctx, key, targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +312,16 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 func (s *service) CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error) {
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, code, practitionerID, excludeID)
 	return &RsCodeUnique{IsUnique: existing == nil}, nil
+}
+
+func (s *service) GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOfAccount, error) {
+	c, err := s.repo.GetByIDInternal(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	rs := c.ToRs()
+	return &rs, nil
 }
 
 func strPtr(s string) *string { return &s }

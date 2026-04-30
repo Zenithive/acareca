@@ -52,6 +52,7 @@ const (
 	ActionFYCreated           = "fy.created"
 	ActionFYUpdated           = "fy.updated"
 	ActionFYClosed            = "fy.closed"
+	ActionFYActivated         = "fy.activated"
 )
 
 // Action constants - Forms module
@@ -75,15 +76,17 @@ const (
 	EntityClinic                 = "tbl_clinic"
 	EntityClinicAddress          = "tbl_clinic_address"
 	EntityClinicContact          = "tbl_clinic_contact"
-	EntityCOA                    = "tbl_clinic_chart_of_accounts"
+	EntityCOA                    = "tbl_chart_of_accounts"
 	EntityFinancialYear          = "tbl_financial_year"
-	EntityFinancialSettings      = "tbl_clinic_financial_settings"
+	EntityFinancialSettings      = "tbl_financial_settings"
 	EntityForm                   = "tbl_form"
-	EntityFormFieldEntry         = "tbl_form_field_entry"
+	EntityFormFieldEntry         = "tbl_form_entry"
 	EntityPlanPermission         = "tbl_plan_permission"
 	EntitySubscriptionPermission = "tbl_subscription_permission"
 	EntityVerificationToken      = "tbl_verification_token"
 	EntityInvitation             = "tbl_invitation"
+	EntityPermission             = "tbl_invite_permissions"
+	EntitySystem                 = "system"
 )
 
 // Action Constants -Accountant module
@@ -94,4 +97,40 @@ const (
 	ActionInviteExpired   = "accountant.invite_expired"
 	ActionInviteCompleted = "accountant.invite_completed"
 	ActionInviteRevoked   = "accountant.invite_revoked"
+)
+
+// Action Constants - Invite Permissions
+const (
+	ActionPermissionAssigned = "invite.permission_assigned"
+	ActionPermissionUpdated  = "invite.permission_updated"
+)
+
+// Module constant - System
+const ModuleSystem = "system"
+
+// Action constants - System-level errors and warnings
+const (
+	ActionSystemError   = "system.error"
+	ActionSystemWarning = "system.warning"
+)
+
+// Report Export Logs
+const ModuleReport = "report"
+
+const (
+	EntityBASReport         = "bas_report"
+	EntityPLReport          = "pl_report"
+	EntityActivityStatement = "activity_statement"
+	EntityTransactions      = "transactions"
+)
+
+const (
+	ActionBASReportExported          = "bas_report.exported"
+	ActionPLReportExported           = "pl_report.exported"
+	ActionActivityStatementExported  = "activity_statement.exported"
+	ActitionTransactionsExported     = "transactions.exported"
+	ActionBASReportGenerated         = "bas_report.generated"
+	ActionPLReportGenerated          = "pl_report.generated"
+	ActionActivityStatementGenerated = "activity_statement.generated"
+	ActitionTransactionsGenerated    = "transactions.generated"
 )

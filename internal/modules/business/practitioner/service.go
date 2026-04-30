@@ -2,12 +2,16 @@ package practitioner
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
+
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -20,6 +24,9 @@ type IService interface {
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
+	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
+	VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error
 }
 
 type service struct {
@@ -27,10 +34,15 @@ type service struct {
 	subscription     subscription.Service
 	userSubscription userSubscription.Service
 	coaRepo          coa.Repository
+	invitationRepo   interface{}
 }
 
-func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository) IService {
-	return &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo}
+func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, invitationRepo ...interface{}) IService {
+	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo}
+	if len(invitationRepo) > 0 {
+		svc.invitationRepo = invitationRepo[0]
+	}
+	return svc
 }
 
 func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error) {
@@ -90,14 +102,31 @@ func (s *service) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) 
 // ListPractitioners implements [IService].
 func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error) {
 	ft := f.MapToFilter()
-	list, err := s.repo.ListPractitioners(ctx, ft)
-	if err != nil {
-		return nil, err
-	}
 
-	total, err := s.repo.CountPractitioners(ctx, ft)
-	if err != nil {
-		return nil, err
+	var (
+		list  []*PractitionerWithUser
+		total int
+		err   error
+	)
+
+	if f.AccountantID != nil {
+		list, err = s.repo.ListPractitionersForAccountant(ctx, *f.AccountantID, ft)
+		if err != nil {
+			return nil, err
+		}
+		total, err = s.repo.CountPractitionersForAccountant(ctx, *f.AccountantID, ft)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		list, err = s.repo.ListPractitioners(ctx, ft)
+		if err != nil {
+			return nil, err
+		}
+		total, err = s.repo.CountPractitioners(ctx, ft)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	data := make([]*RsPractitioner, 0, len(list))
@@ -108,4 +137,58 @@ func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsLis
 	var rsList util.RsList
 	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
+}
+
+// GetLockDate retrieves the lock date for a specific practitioner and financial year
+func (s *service) GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error) {
+	settings, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil {
+		return nil, nil
+	}
+	return settings.LockDate, nil
+}
+
+// UpdateLockDate updates or clears the lock date
+func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
+	// Business Logic: You might want to prevent setting a lock date too far in the future
+	if lockDate != nil && *lockDate != "" {
+		// Example: return fmt.Errorf("lock date cannot be more than 1 year in the future")
+	}
+
+	return s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
+}
+
+// VerifyAccountantAccessToPractitioner verifies that an accountant has access to a practitioner
+func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
+	if s.invitationRepo == nil {
+		return errors.New("invitation repository not available")
+	}
+
+	// Cast the invitationRepo to the correct type
+	invitationRepo, ok := s.invitationRepo.(invitationPkg.Repository)
+	if !ok {
+		return errors.New("invalid invitation repository type")
+	}
+
+	// Get permissions for this accountant-practitioner relationship
+	perms, err := invitationRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
+	if err != nil {
+		return fmt.Errorf("failed to get permissions: %w", err)
+	}
+
+	// If no permissions exist, the accountant doesn't have access
+	if perms == nil {
+		return errors.New("accountant does not have access to this practitioner")
+	}
+
+	// Check if accountant has read access to lock_dates
+	lockDatePerms, exists := (*perms)[invitationPkg.PermLockDates]
+	if !exists || !lockDatePerms.Read {
+		return errors.New("accountant does not have read permission for lock dates")
+	}
+
+	return nil
 }

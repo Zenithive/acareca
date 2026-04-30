@@ -1,6 +1,8 @@
 package detail
 
 import (
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
@@ -12,7 +14,7 @@ const (
 
 type Filter struct {
 	PractitionerID *string `form:"practitioner_id"`
-	ClinicID       *string `form:"clinic_id"`
+	ClinicIDs      *string `form:"clinic_ids"`
 	FormName       *string `form:"name"`
 	Method         *string `form:"method"`
 	Status         *string `form:"status"`
@@ -27,10 +29,21 @@ func (filter *Filter) MapToFilter() common.Filter {
 			filters["practitioner_id"] = id // Pass as uuid.UUID type to common.Filter
 		}
 	}
-	if filter.ClinicID != nil {
-		id, err := uuid.Parse(*filter.ClinicID)
-		if err == nil {
-			filters["clinic_id"] = id // Pass as uuid.UUID type to common.Filter
+	if filter.ClinicIDs != nil && *filter.ClinicIDs != "" {
+		// Split the string by commas
+		rawIDs := strings.Split(*filter.ClinicIDs, ",")
+		parsedIDs := make([]uuid.UUID, 0, len(rawIDs))
+
+		for _, idStr := range rawIDs {
+			// Trim whitespace and parse each UUID
+			if id, err := uuid.Parse(strings.TrimSpace(idStr)); err == nil {
+				parsedIDs = append(parsedIDs, id)
+			}
+		}
+
+		if len(parsedIDs) > 0 {
+			// Use "clinic_ids" as the key to match the repository's allowedColumns
+			filters["clinic_ids"] = parsedIDs
 		}
 	}
 	if filter.Status != nil {
@@ -51,7 +64,7 @@ type RqFormDetail struct {
 	Name           string   `json:"name" validate:"required"`
 	Description    *string  `json:"description" validate:"omitempty"`
 	Status         string   `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
-	Method         string   `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	Method         string   `json:"method" validate:"required,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE EXPENSE_ENTRY"`
 	OwnerShare     int      `json:"owner_share" validate:"required,min=0,max=100"`
 	ClinicShare    int      `json:"clinic_share" validate:"required,min=0,max=100"`
 	SuperComponent *float64 `json:"super_component" validate:"omitempty,min=0,max=100"`
@@ -62,7 +75,7 @@ type RqUpdateFormDetail struct {
 	Name           *string   `json:"name" validate:"omitempty"`
 	Description    *string   `json:"description" validate:"omitempty"`
 	Status         *string   `json:"status" validate:"omitempty,oneof=DRAFT PUBLISHED"`
-	Method         *string   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE"`
+	Method         *string   `json:"method" validate:"omitempty,oneof=INDEPENDENT_CONTRACTOR SERVICE_FEE EXPENSE_ENTRY"`
 	OwnerShare     *int      `json:"owner_share" validate:"omitempty,min=0,max=100"`
 	ClinicShare    *int      `json:"clinic_share" validate:"omitempty,min=0,max=100"`
 	SuperComponent *float64  `json:"super_component" validate:"omitempty,min=0,max=100"`
@@ -124,31 +137,37 @@ func (r *RqUpdateFormDetail) Update() *FormDetail {
 }
 
 func (d *FormDetail) ToRs() *RsFormDetail {
-	return &RsFormDetail{
+	rs := &RsFormDetail{
 		ID:              d.ID,
-		ClinicID:        d.ClinicID,
 		Name:            d.Name,
 		Description:     d.Description,
 		Status:          d.Status,
 		Method:          d.Method,
-		OwnerShare:      d.OwnerShare,
-		ClinicShare:     d.ClinicShare,
 		SuperComponent:  d.SuperComponent,
 		ActiveVersionID: d.ActiveVersionID,
 		CreatedAt:       d.CreatedAt,
 		UpdatedAt:       d.UpdatedAt,
 	}
+
+	// Only include clinic_id, owner_share, and clinic_share for non-expense forms
+	if d.Method != "EXPENSE_ENTRY" {
+		rs.ClinicID = &d.ClinicID
+		rs.OwnerShare = &d.OwnerShare
+		rs.ClinicShare = &d.ClinicShare
+	}
+
+	return rs
 }
 
 type RsFormDetail struct {
 	ID              uuid.UUID  `json:"id"`
-	ClinicID        uuid.UUID  `json:"clinic_id"`
+	ClinicID        *uuid.UUID `json:"clinic_id,omitempty"`
 	Name            string     `json:"name"`
 	Description     *string    `json:"description,omitempty"`
 	Status          string     `json:"status"`
 	Method          string     `json:"method"`
-	OwnerShare      int        `json:"owner_share"`
-	ClinicShare     int        `json:"clinic_share"`
+	OwnerShare      *int       `json:"owner_share,omitempty"`
+	ClinicShare     *int       `json:"clinic_share,omitempty"`
 	SuperComponent  *float64   `json:"super_component,omitempty"`
 	ActiveVersionID *uuid.UUID `json:"active_version_id,omitempty"`
 	CreatedAt       string     `json:"created_at"`

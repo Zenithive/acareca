@@ -19,7 +19,7 @@ type IService interface {
 	Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error)
-	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error)
+	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error)
 	UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
 	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 }
@@ -121,6 +121,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 	if req.SortOrder != nil {
 		existing.SortOrder = *req.SortOrder
 	}
+	if req.IsHighlighted != nil {
+		existing.IsHighlighted = *req.IsHighlighted
+	}
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
@@ -148,7 +151,7 @@ func (s *Service) GetFieldMap(ctx context.Context, formVersionID uuid.UUID) (map
 	return m, nil
 }
 
-func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error) {
+func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error) {
 	current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
 	if err != nil {
 		return nil, err
@@ -221,6 +224,15 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clini
 	}
 	if req.SortOrder != nil {
 		existing.SortOrder = *req.SortOrder
+	}
+	if req.IsHighlighted != nil {
+		existing.IsHighlighted = *req.IsHighlighted
+	}
+	if req.Amount != nil {
+		existing.Amount = req.Amount
+	}
+	if req.BusinessUse != nil {
+		existing.BusinessUse = req.BusinessUse
 	}
 	updated, err := s.repo.UpdateTx(ctx, tx, existing)
 	if err != nil {

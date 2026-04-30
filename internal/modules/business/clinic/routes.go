@@ -6,13 +6,14 @@ import (
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAdapter *middleware.PermissionAdapter) {
 	clinic := rg.Group("/clinic")
-	clinic.Use(middleware.Auth(cfg), middleware.AuditContext())
+	clinic.Use(middleware.Auth(cfg), middleware.AuditContext(), middleware.SetPractitionerIDFromAuth())
 
-	clinic.POST("", h.Create)
+	// All clinic operations - no permission checks
 	clinic.GET("", h.List)
 	clinic.GET("/:id", h.GetByID)
+	clinic.POST("", h.Create)
 	clinic.PUT("/:id", h.Update)
 	clinic.PUT("/bulk-update", h.BulkUpdate)
 	clinic.DELETE("/:id", h.Delete)

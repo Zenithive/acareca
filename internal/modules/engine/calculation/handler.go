@@ -16,10 +16,15 @@ import (
 )
 
 type IHandler interface {
+	LiveCalculate(c *gin.Context)
+	FormPreview(c *gin.Context)
+
+	// Legacy Code
 	Calculation(c *gin.Context)
 	CalculateFromEntries(c *gin.Context)
 	FormulaCalculate(c *gin.Context)
-	LiveCalculate(c *gin.Context)
+
+	GetFormSummary(c *gin.Context)
 }
 
 type handler struct {
@@ -31,6 +36,84 @@ func NewHandler(svc Service) IHandler {
 		svc: svc,
 	}
 }
+
+// LiveCalculate godoc
+// @Summary Live calculation based on form version ID
+// @Description Evaluates all is_computed=true fields for a form version using provided field entries.
+// @Description Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
+// @Description Pass form_field_id with net_amount, gst_amount, and gross_amount for each field.
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body RqLiveCalculate true "Form version ID and field entries"
+// @Success 200 {object} RsLiveCalculate
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate/live [post]
+func (h *handler) LiveCalculate(c *gin.Context) {
+	var req RqLiveCalculate
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.LiveCalculate(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "Live calculation completed successfully")
+}
+
+// FormPreview godoc
+// @Summary Form preview with complete calculation
+// @Description Provides a complete preview of form entry including all fields (manual + computed) and calculation summary.
+// @Description Used when creating a form to preview calculations before saving.
+// @Description Pass clinic_id, method, shares, field definitions, and field entries.
+// @Tags calculation
+// @Accept json
+// @Produce json
+// @Param request body RqFormPreview true "Form configuration, fields, and entries"
+// @Success 200 {object} RsFormPreview
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /calculate/preview [post]
+func (h *handler) FormPreview(c *gin.Context) {
+	var req RqFormPreview
+	if err := util.BindAndValidate(c, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	// Get role and actor ID for permission checks
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	result, err := h.svc.FormPreview(c.Request.Context(), &req, actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "Form preview completed successfully")
+}
+
+//Legacy code
 
 // Calculation godoc
 // @Summary Run calculation for a form
@@ -201,32 +284,43 @@ func (h *handler) FormulaCalculate(c *gin.Context) {
 	response.JSON(c, http.StatusOK, result, "Formula calculation completed successfully")
 }
 
-// LiveCalculate godoc
-// @Summary Live calculation based on form version ID
-// @Description Evaluates all is_computed=true fields for a form version using provided field entries.
-// @Description Returns net amount for each computed field; net/gst/gross when the field has a tax_type.
-// @Description Pass form_field_id with net_amount, gst_amount, and gross_amount for each field.
-// @Tags calculation
-// @Accept json
-// @Produce json
-// @Param request body RqLiveCalculate true "Form version ID and field entries"
-// @Success 200 {object} RsLiveCalculate
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Security BearerToken
-// @Router /calculate/live [post]
-func (h *handler) LiveCalculate(c *gin.Context) {
-	var req RqLiveCalculate
-	if err := util.BindAndValidate(c, &req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
+// GetFormSummary godoc
+// @Summary      Get form summary by form ID (Grouped by COA)
+// @Description  Fetches a grouped list of Chart of Accounts with total amounts for a specific form.
+// @Tags         calculation
+// @Produce      json
+// @Param        id    path      string  true  "Form ID (UUID)"
+// @Success      200   {object}  util.RsList "Grouped COA summary"
+// @Failure      401   {object}  response.RsError
+// @Failure      500   {object}  response.RsError
+// @Security     BearerToken
+// @Router       /summary/{id} [get]
+func (h *handler) GetFormSummary(c *gin.Context) {
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
 		return
 	}
 
-	result, err := h.svc.LiveCalculate(c.Request.Context(), &req)
+	role := c.GetString("role")
+	actorID, ok := h.getActorID(c, role)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, fmt.Errorf("unauthorized access"))
+		return
+	}
+
+	data, err := h.svc.GetFormSummary(c.Request.Context(), id.String(), actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	response.JSON(c, http.StatusOK, result, "Live calculation completed successfully")
+	response.JSON(c, http.StatusOK, data, "Form summary fetched successfully")
+}
+
+// Helper to extract actorID based on role
+func (h *handler) getActorID(c *gin.Context, role string) (uuid.UUID, bool) {
+	if strings.EqualFold(role, util.RoleAccountant) {
+		return util.GetAccountantID(c)
+	}
+	return util.GetPractitionerID(c)
 }

@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -24,8 +26,8 @@ type Repository interface {
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 	GetAccountTypeByName(ctx context.Context, name string) (int, error)
 
-	ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error)
-	CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error)
+	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error)
+	CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
@@ -33,6 +35,7 @@ type Repository interface {
 	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
+	GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error)
 }
 
 type repository struct {
@@ -115,6 +118,7 @@ func (r *repository) GetAccountTax(ctx context.Context, id int16) (*AccountTax, 
 }
 
 var chartOfAccountColumns = map[string]string{
+	"practitioner_id": "practitioner_id",
 	"id":              "coa.id",
 	"account_type_id": "coa.account_type_id",
 	"account_tax_id":  "coa.account_tax_id",
@@ -127,42 +131,67 @@ var chartOfAccountColumns = map[string]string{
 
 var coaSearchColumns = []string{"coa.name", "CAST(coa.code AS TEXT)"}
 
-func (r *repository) ListChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*ChartOfAccount, error) {
+func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error) {
 	base := `
-		SELECT 
-			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
-			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		WHERE coa.practitioner_id = ?
-		AND coa.deleted_at IS NULL
-	`
+        SELECT 
+            coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
+            coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.created_at, coa.updated_at
+        FROM tbl_chart_of_accounts coa
+        JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+        WHERE coa.deleted_at IS NULL
+    `
 
-	baseArgs := []interface{}{practitionerID}
+	// Use "AND" instead of "WHERE" since we started with deleted_at IS NULL
+	if role == util.RoleAccountant {
+		base += fmt.Sprintf(` AND EXISTS (
+                SELECT 1 FROM tbl_invitation inv 
+                WHERE inv.practitioner_id = coa.practitioner_id 
+                AND inv.accountant_id = '%s' 
+                AND inv.status = 'COMPLETED'
+            )`, actorID.String())
+	} else {
+		base += fmt.Sprintf(` AND coa.practitioner_id = '%s'`, actorID.String())
+	}
+
+	// Now BuildQuery will correctly append any EXTRA search/filter params from the UI
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, false)
 	query = r.db.Rebind(query)
 
 	var list []*ChartOfAccount
-	if err := r.db.SelectContext(ctx, &list, query, append(baseArgs, filterArgs...)...); err != nil {
+	if err := r.db.SelectContext(ctx, &list, query, filterArgs...); err != nil {
 		return nil, fmt.Errorf("list chart of accounts: %w", err)
 	}
 
 	return list, nil
 }
 
-func (r *repository) CountChartOfAccount(ctx context.Context, practitionerID uuid.UUID, f common.Filter) (int, error) {
-	base := `
-		FROM tbl_chart_of_accounts coa
-		WHERE coa.practitioner_id = ?
-		AND coa.deleted_at IS NULL
-	`
+func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error) {
+	// Start with the soft-delete filter immediately and JOIN with account_tax table
+	base := ` FROM tbl_chart_of_accounts coa 
+	          JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+	          WHERE coa.deleted_at IS NULL `
 
-	baseArgs := []interface{}{practitionerID}
+	if role == util.RoleAccountant {
+		base += fmt.Sprintf(` AND EXISTS (
+                SELECT 1 FROM tbl_invitation
+                WHERE practitioner_id = coa.practitioner_id 
+                AND accountant_id = '%s' 
+                AND status = 'COMPLETED'
+            )`, actorID.String())
+	} else {
+		base += fmt.Sprintf(` AND coa.practitioner_id = '%s'`, actorID.String())
+	}
+
 	query, filterArgs := common.BuildQuery(base, f, chartOfAccountColumns, coaSearchColumns, true)
+
+	if strings.Contains(query, "ORDER BY") {
+		query = strings.Split(query, "ORDER BY")[0]
+	}
+
 	query = r.db.Rebind(query)
 
 	var count int
-	if err := r.db.GetContext(ctx, &count, query, append(baseArgs, filterArgs...)...); err != nil {
+	if err := r.db.GetContext(ctx, &count, query, filterArgs...); err != nil {
 		return 0, fmt.Errorf("count chart of accounts: %w", err)
 	}
 
@@ -189,12 +218,14 @@ func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practi
 
 func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
 	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		WHERE coa.key = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
-	`
+        SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
+               coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+        FROM tbl_chart_of_accounts coa
+        JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+        WHERE coa.key = $1 
+          AND ($2 = '00000000-0000-0000-0000-000000000000'::uuid OR coa.practitioner_id = $2)
+          AND coa.deleted_at IS NULL
+    `
 	var c ChartOfAccount
 	if err := r.db.QueryRowxContext(ctx, query, key, practitionerID).StructScan(&c); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -210,12 +241,12 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
 		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+	 JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.code = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
 	`
 	args := []interface{}{code, practitionerID}
 	if excludeID != nil {
-		query += ` AND id != $3`
+		query += ` AND coa.id != $3`
 		args = append(args, *excludeID)
 	}
 	query += ` LIMIT 1`
@@ -333,4 +364,20 @@ func (r *repository) GetAccountTypeByName(ctx context.Context, name string) (int
 		return 0, fmt.Errorf("get account type: %w", err)
 	}
 	return int(a.ID), nil
+}
+
+// GetByIDInternal ignores the practitionerID check because it's only used for internal ID resolution
+func (r *repository) GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error) {
+	query := `
+		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
+		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		FROM tbl_chart_of_accounts coa
+		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
+		WHERE coa.id = $1 AND coa.deleted_at IS NULL
+	`
+	var c ChartOfAccount
+	if err := r.db.GetContext(ctx, &c, query, id); err != nil {
+		return nil, err
+	}
+	return &c, nil
 }

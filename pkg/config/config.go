@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -23,6 +24,7 @@ type Config struct {
 	LocalUrl           string
 	AllowedOrigins     string
 	StripeSecretKey    string
+	FrontendURL        string
 }
 
 func getEnv(key, fallback string) string {
@@ -52,6 +54,17 @@ func NewConfig() *Config {
 		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
 		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
-		StripeSecretKey:    os.Getenv("STRIPE_SECRET_KEY"),
+		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
+		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
+	}
+}
+
+func (c *Config) GetBaseURL() (string, error) {
+	if c.Env == "" {
+		return "", fmt.Errorf("environment not set")
+	} else if c.Env == "production" {
+		return c.DevUrl, nil
+	} else {
+		return c.LocalUrl, nil
 	}
 }

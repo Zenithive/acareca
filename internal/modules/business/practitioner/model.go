@@ -41,11 +41,12 @@ type RqCreatePractitioner struct {
 }
 
 type RsUserInfo struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Phone     *string   `json:"phone,omitempty"`
+	ID         uuid.UUID `json:"id"`
+	Email      string    `json:"email"`
+	FirstName  string    `json:"first_name"`
+	LastName   string    `json:"last_name"`
+	Phone      *string   `json:"phone,omitempty"`
+	JoinedDate time.Time `json:"joined_date"`
 }
 
 type RsPractitioner struct {
@@ -69,22 +70,24 @@ func (p *PractitionerWithUser) ToRs() *RsPractitioner {
 		ABN:      p.ABN,
 		Verified: p.Verified,
 		User: &RsUserInfo{
-			ID:        p.UserID,
-			Email:     p.Email,
-			FirstName: p.FirstName,
-			LastName:  p.LastName,
-			Phone:     p.Phone,
+			ID:         p.UserID,
+			Email:      p.Email,
+			FirstName:  p.FirstName,
+			LastName:   p.LastName,
+			Phone:      p.Phone,
+			JoinedDate: p.CreatedAt,
 		},
 	}
 }
 
 type Filter struct {
-	ID        *uuid.UUID `form:"id"`
-	Email     *string    `form:"email"`
-	FirstName *string    `form:"first_name"`
-	LastName  *string    `form:"last_name"`
-	Phone     *string    `form:"phone"`
-	ABN       *string    `form:"abn"`
+	ID           *uuid.UUID `form:"id"`
+	Email        *string    `form:"email"`
+	FirstName    *string    `form:"first_name"`
+	LastName     *string    `form:"last_name"`
+	Phone        *string    `form:"phone"`
+	ABN          *string    `form:"abn"`
+	AccountantID *uuid.UUID `form:"-"` //internal used only
 	common.Filter
 }
 
@@ -112,4 +115,14 @@ func (filter *Filter) MapToFilter() common.Filter {
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 	return f
+}
+
+type FinancialSettings struct {
+	ID              uuid.UUID `db:"id"`
+	ClinicID        uuid.UUID `db:"clinic_id"`
+	PractitionerID  uuid.UUID `db:"practitioner_id"`
+	FinancialYearID uuid.UUID `db:"financial_year_id"`
+	LockDate        *string   `db:"lock_date"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }

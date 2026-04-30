@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 ALTER TABLE tbl_form_field
-    ADD COLUMN is_formula BOOLEAN DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS is_formula BOOLEAN DEFAULT FALSE;
 -- +goose StatementEnd
 
 -- +goose Down

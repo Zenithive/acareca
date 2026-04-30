@@ -11,10 +11,12 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	bas.Use(middleware.Auth(cfg))
 
 	bas.GET("/report", h.GetReport)
+	bas.GET("/bas-preparation", h.GetBASPreparation)
+	bas.GET("/activity-statement/report/export", h.ExportBASReport)
+	bas.GET("/bas-preparation/export", h.ExportBASPreparation)
 
 	clinic := bas.Group("/clinic/:clinic_id")
 	clinic.GET("/summary", h.GetQuarterlySummary)
 	clinic.GET("/by-account", h.GetByAccount)
 	clinic.GET("/monthly", h.GetMonthly)
-	clinic.GET("/bas-preparation", h.GetBASPreparation)
 }

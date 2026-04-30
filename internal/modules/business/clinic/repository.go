@@ -26,7 +26,7 @@ type Repository interface {
 	DeleteClinicTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) error
 
-	GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error)
+	GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID) (*FinancialSettings, error)
 
 	CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error)
 	CreateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, address *ClinicAddress) (*ClinicAddress, error)
@@ -55,6 +55,9 @@ type Repository interface {
 	DeletePermissionsByEntity(ctx context.Context, entityID uuid.UUID, entityType string) error
 	IsAccountantInvitedByPractitioner(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (bool, error)
 	GetPractitionerForAccountant(ctx context.Context, accountantID uuid.UUID) (*uuid.UUID, error)
+
+	DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
+	DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error
 }
 
 type repository struct {
@@ -85,7 +88,7 @@ func (r *repository) GetClinicAddresses(ctx context.Context, clinicID uuid.UUID)
 	query := `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_clinic_address
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var addresses []ClinicAddress
@@ -99,7 +102,7 @@ func (r *repository) GetClinicContacts(ctx context.Context, clinicID uuid.UUID) 
 	query := `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_clinic_contact
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var contacts []ClinicContact
@@ -109,14 +112,14 @@ func (r *repository) GetClinicContacts(ctx context.Context, clinicID uuid.UUID) 
 	return contacts, nil
 }
 
-func (r *repository) GetFinancialSettings(ctx context.Context, clinicID uuid.UUID) (*FinancialSettings, error) {
+func (r *repository) GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID) (*FinancialSettings, error) {
 	query := `
-		SELECT id, clinic_id, financial_year_id, lock_date, created_at, updated_at
+		SELECT id, practitioner_id, financial_year_id, lock_date, created_at, updated_at
 		FROM tbl_financial_settings
-		WHERE clinic_id = $1
+		WHERE practitioner_id = $1
 	`
 	var fs FinancialSettings
-	if err := r.db.QueryRowxContext(ctx, query, clinicID).StructScan(&fs); err != nil {
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID).StructScan(&fs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -193,7 +196,6 @@ func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerI
 	query = r.db.Rebind(query)
 
 	var list []*Clinic
-	fmt.Printf("DEBUG QUERY: %s | ARGS: %v\n", query, append(baseArgs, filterArgs...))
 	if err := r.db.SelectContext(ctx, &list, query, append(baseArgs, filterArgs...)...); err != nil {
 		return nil, fmt.Errorf("list clinics: %w", err)
 	}
@@ -246,21 +248,15 @@ func (r *repository) BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) err
 	return nil
 }
 
-// GetDB returns the database connection for transactions
-func (r *repository) GetDB() *sqlx.DB {
-	return r.db
-}
-
 // Transaction-based methods
 func (r *repository) CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
 	query := `
-		INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, TRUE))
-		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
-	`
+        INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
+        VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
+        RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+    `
 	var c Clinic
-	err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID,
-		clinic.EntityID, clinic.ProfilePicture, clinic.Name,
+	err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
 		clinic.ABN, clinic.Description, clinic.IsActive,
 	).StructScan(&c)
 	if err != nil {
@@ -305,13 +301,13 @@ func (r *repository) CreateClinicContactTx(ctx context.Context, tx *sqlx.Tx, con
 
 func (r *repository) CreateFinancialSettingsTx(ctx context.Context, tx *sqlx.Tx, settings *FinancialSettings) (*FinancialSettings, error) {
 	query := `
-		INSERT INTO tbl_financial_settings (clinic_id, financial_year_id, lock_date)
-		VALUES ($1, $2, $3)
-		RETURNING id, clinic_id, financial_year_id, lock_date, created_at, updated_at
-	`
+        INSERT INTO tbl_financial_settings (clinic_id, practitioner_id, financial_year_id, lock_date)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, clinic_id, practitioner_id, financial_year_id, lock_date, created_at, updated_at
+    `
 	var fs FinancialSettings
 	err := tx.QueryRowxContext(ctx, query,
-		settings.ClinicID, settings.FinancialYearID, settings.LockDate,
+		settings.ClinicID, settings.PractitionerID, settings.FinancialYearID, settings.LockDate,
 	).StructScan(&fs)
 	if err != nil {
 		return nil, fmt.Errorf("create financial settings tx: %w", err)
@@ -367,7 +363,7 @@ func (r *repository) GetClinicAddressesTx(ctx context.Context, tx *sqlx.Tx, clin
 	query := `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_clinic_address
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var addresses []ClinicAddress
@@ -381,7 +377,7 @@ func (r *repository) GetClinicContactsTx(ctx context.Context, tx *sqlx.Tx, clini
 	query := `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_clinic_contact
-		WHERE clinic_id = $1
+		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
 	var contacts []ClinicContact
@@ -411,7 +407,7 @@ func (r *repository) GetAddressByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 	query := `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_clinic_address
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 	var a ClinicAddress
 	if err := tx.QueryRowxContext(ctx, query, id).StructScan(&a); err != nil {
@@ -427,7 +423,7 @@ func (r *repository) GetContactByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 	query := `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_clinic_contact
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 	var c ClinicContact
 	if err := tx.QueryRowxContext(ctx, query, id).StructScan(&c); err != nil {
@@ -465,7 +461,7 @@ func (r *repository) UpdateClinicAddressTx(ctx context.Context, tx *sqlx.Tx, add
 	query := `
 		UPDATE tbl_clinic_address 
 		SET address = $1, city = $2, state = $3, postcode = $4, is_primary = $5, updated_at = now()
-		WHERE id = $6
+		WHERE id = $6 AND deleted_at IS NULL
 	`
 	_, err := tx.ExecContext(ctx, query,
 		address.Address, address.City, address.State,
@@ -481,7 +477,7 @@ func (r *repository) UpdateClinicContactTx(ctx context.Context, tx *sqlx.Tx, con
 	query := `
 		UPDATE tbl_clinic_contact 
 		SET value = $1, label = $2, is_primary = $3, updated_at = now()
-		WHERE id = $4
+		WHERE id = $4 AND deleted_at IS NULL
 	`
 	_, err := tx.ExecContext(ctx, query,
 		contact.Value, contact.Label, contact.IsPrimary, contact.ID,
@@ -508,7 +504,7 @@ func (r *repository) UpdateFinancialSettingsTx(ctx context.Context, tx *sqlx.Tx,
 }
 
 func (r *repository) UnsetPrimaryAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, excludeID uuid.UUID) error {
-	query := `UPDATE tbl_clinic_address SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2`
+	query := `UPDATE tbl_clinic_address SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, clinicID, excludeID)
 	if err != nil {
 		return fmt.Errorf("unset primary address tx: %w", err)
@@ -517,7 +513,7 @@ func (r *repository) UnsetPrimaryAddressTx(ctx context.Context, tx *sqlx.Tx, cli
 }
 
 func (r *repository) UnsetPrimaryContactTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, excludeID uuid.UUID) error {
-	query := `UPDATE tbl_clinic_contact SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2`
+	query := `UPDATE tbl_clinic_contact SET is_primary = FALSE WHERE clinic_id = $1 AND id != $2 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, clinicID, excludeID)
 	if err != nil {
 		return fmt.Errorf("unset primary contact tx: %w", err)
@@ -526,12 +522,11 @@ func (r *repository) UnsetPrimaryContactTx(ctx context.Context, tx *sqlx.Tx, cli
 }
 
 func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uuid.UUID, filter common.Filter) ([]*Clinic, error) {
-	// 1. Join with tbl_invite_permissions using entity_id and entity_type
+	// Join with tbl_invitation to get clinics for this accountant
 	base := `
         SELECT 
             c.id, 
 			c.practitioner_id,
-            p.id AS entity_id, -- We map the Permission ID to EntityID for context
             c.profile_picture, 
             c.name, 
             c.abn, 
@@ -540,11 +535,9 @@ func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uu
             c.created_at, 
             c.updated_at
         FROM tbl_clinic c
-        INNER JOIN tbl_invite_permissions p ON c.id = p.entity_id
-        WHERE p.accountant_id = ? 
-          AND p.entity_type = 'CLINIC' 
-		 AND (p.permissions->>'read')::boolean = true
-          AND p.deleted_at IS NULL 
+        INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+        WHERE i.accountant_id = ? 
+          AND i.status = 'COMPLETED'
           AND c.deleted_at IS NULL`
 
 	baseArgs := []interface{}{accountantID}
@@ -555,7 +548,7 @@ func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uu
 		baseArgs = append(baseArgs, *filter.PractitionerID)
 	}
 
-	// 2. Use the same BuildQuery and Rebind logic as the Practitioner list
+	// Use the same BuildQuery and Rebind logic as the Practitioner list
 	query, filterArgs := common.BuildQuery(base, filter, clinicAllowedColumns, clinicSearchColumns, false)
 	query = r.db.Rebind(query)
 
@@ -569,11 +562,9 @@ func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uu
 func (r *repository) CountClinicByAccountant(ctx context.Context, actorID uuid.UUID, filter common.Filter) (int, error) {
 	base := `
         FROM tbl_clinic c
-        INNER JOIN tbl_invite_permissions p ON c.id = p.entity_id
-        WHERE p.accountant_id = ? 
-          AND p.entity_type = 'CLINIC' 
-		  AND (p.permissions->>'read')::boolean = true
-          AND p.deleted_at IS NULL 
+        INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
+        WHERE i.accountant_id = ? 
+          AND i.status = 'COMPLETED'
           AND c.deleted_at IS NULL`
 
 	query, filterArgs := common.BuildQuery(base, filter, clinicAllowedColumns, clinicSearchColumns, true)
@@ -591,17 +582,17 @@ func (r *repository) CountClinicByAccountant(ctx context.Context, actorID uuid.U
 func (r *repository) GetAccountantPermission(ctx context.Context, accountantID uuid.UUID, clinicID uuid.UUID) (*AccountantPermission, error) {
 	var permission AccountantPermission
 
-	// Logic: Find an active invite where the accountant is assigned to this clinic.
-	// We select the practitioner_id so the service knows who the 'owner' is.
+	// Check if accountant has access to this clinic through invitation
 	query := `
         SELECT 
-            practitioner_id, 
-            entity_id as clinic_id
-        FROM tbl_invite_permissions
-        WHERE accountant_id = $1 
-          AND entity_id = $2 
-          AND entity_type = 'CLINIC'
-          AND deleted_at IS NULL 
+            i.practitioner_id, 
+            c.id as clinic_id
+        FROM tbl_invitation i
+        INNER JOIN tbl_clinic c ON c.practitioner_id = i.practitioner_id
+        WHERE i.accountant_id = $1 
+          AND c.id = $2
+          AND i.status = 'COMPLETED'
+          AND c.deleted_at IS NULL 
         LIMIT 1`
 
 	err := r.db.GetContext(ctx, &permission, query, accountantID, clinicID)
@@ -618,7 +609,7 @@ func (r *repository) GetAccountantPermission(ctx context.Context, accountantID u
 func (r *repository) IsClinicOwner(ctx context.Context, practitionerID uuid.UUID, clinicID uuid.UUID) (bool, error) {
 	var exists bool
 	// Adjust table/column names to match your schema (e.g., tbl_clinics)
-	query := `SELECT EXISTS(SELECT 1 FROM clinics WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL)`
+	query := `SELECT EXISTS(SELECT 1 FROM tbl_clinic WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL)`
 
 	err := r.db.GetContext(ctx, &exists, query, clinicID, practitionerID)
 	if err != nil {
@@ -630,49 +621,40 @@ func (r *repository) IsClinicOwner(ctx context.Context, practitionerID uuid.UUID
 
 func (r *repository) HasPermission(ctx context.Context, practitionerID, accountantID uuid.UUID, entityType string, entityID *uuid.UUID, requiredPerm string) (bool, error) {
 	var exists bool
-	// This query checks if a record exists for this pair and if the 'permissions' JSONB
-	// contains the required permission (e.g., {"write": true})
+	// Check if accountant has access through completed invitation
 	query := `
         SELECT EXISTS (
-            SELECT 1 FROM tbl_invite_permissions 
-            WHERE practitioner_id = $1 
-              AND accountant_id = $2 
-              AND entity_type = $3 
-              AND permissions->>$4 = 'true'
-              AND deleted_at IS NULL
+            SELECT 1 FROM tbl_invitation i
+            INNER JOIN tbl_invite_permissions ip ON ip.invitation_id = i.id
+            INNER JOIN tbl_permission p ON p.id = ip.permission_id
+            WHERE i.practitioner_id = $1 
+              AND i.accountant_id = $2 
+              AND i.status = 'COMPLETED'
+              AND p.name = $3
+              AND (
+                  ($3 = 'sales_purchases' AND ip.can_write = true) OR
+                  ($3 = 'lock_dates' AND ip.can_write = true) OR
+                  ($3 = 'manage_users' AND ip.can_write = true) OR
+                  ($3 = 'reports_view_download' AND ip.can_read = true)
+              )
         )`
 
-	err := r.db.GetContext(ctx, &exists, query, practitionerID, accountantID, entityType, requiredPerm)
-	fmt.Printf(">>> DB PERMISSION CHECK: [Prac: %s] [Acc: %s] [Type: %s] [Result: %v]\n",
-		practitionerID, accountantID, entityType, exists)
+	err := r.db.GetContext(ctx, &exists, query, practitionerID, accountantID, requiredPerm)
+	fmt.Printf(">>> DB PERMISSION CHECK: [Prac: %s] [Acc: %s] [Perm: %s] [Result: %v]\n",
+		practitionerID, accountantID, requiredPerm, exists)
 	return exists, err
 }
 
-// DeletePermissionsByEntity standard entry point
+// DeletePermissionsByEntity - No longer needed with new schema
+// Permissions are tied to invitations, not entities
 func (r *repository) DeletePermissionsByEntity(ctx context.Context, entityID uuid.UUID, entityType string) error {
-	return r.DeletePermissionsByEntityTx(ctx, nil, entityID, entityType)
+	// No-op: permissions are now managed at invitation level
+	return nil
 }
 
-// DeletePermissionsByEntityTx the version used inside your service's transaction
+// DeletePermissionsByEntityTx - No longer needed with new schema
 func (r *repository) DeletePermissionsByEntityTx(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID, entityType string) error {
-	query := `
-        UPDATE tbl_invite_permissions 
-        SET deleted_at = NOW(),
-            updated_at = NOW() 
-        WHERE entity_id = $1 
-          AND entity_type = $2 
-          AND deleted_at IS NULL`
-
-	var err error
-	if tx != nil {
-		_, err = tx.ExecContext(ctx, query, entityID, entityType)
-	} else {
-		_, err = r.db.ExecContext(ctx, query, entityID, entityType)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to soft-delete permissions: %w", err)
-	}
+	// No-op: permissions are now managed at invitation level
 	return nil
 }
 
@@ -680,10 +662,10 @@ func (r *repository) IsAccountantInvitedByPractitioner(ctx context.Context, acco
 	query := `
         SELECT EXISTS (
             SELECT 1 
-            FROM tbl_invite_permissions 
+            FROM tbl_invitation 
             WHERE accountant_id = $1 
               AND practitioner_id = $2 
-              AND deleted_at IS NULL
+              AND status = 'COMPLETED'
         )`
 
 	var exists bool
@@ -695,10 +677,23 @@ func (r *repository) GetPractitionerForAccountant(ctx context.Context, accountan
 	var practitionerID uuid.UUID
 	query := `
         SELECT practitioner_id 
-        FROM tbl_invite_permissions 
+        FROM tbl_invitation 
         WHERE accountant_id = $1 
-        LIMIT 1` // Gets the first associated doctor
+          AND status = 'COMPLETED'
+        LIMIT 1` // Gets the first associated practitioner
 
 	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
 	return &practitionerID, err
+}
+
+func (r *repository) DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error {
+	query := `UPDATE tbl_clinic_address SET deleted_at = NOW() WHERE clinic_id = $1 AND deleted_at IS NULL`
+	_, err := tx.ExecContext(ctx, query, clinicID)
+	return err
+}
+
+func (r *repository) DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error {
+	query := `UPDATE tbl_clinic_contact SET deleted_at = NOW() WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL`
+	_, err := tx.ExecContext(ctx, query, id, clinicID)
+	return err
 }

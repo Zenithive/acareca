@@ -49,22 +49,7 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// --- NEW PERMISSION CHECK ---
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		// Resolve the Accountant Profile ID from the UserID in the token
-		actorUserID, _ := uuid.Parse(*meta.UserID)
-		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-		if err != nil {
-			return nil, fmt.Errorf("could not find accountant profile: %w", err)
-		}
-
-		// Check if this Accountant has permission to 'CLINIC' entities for this Practitioner
-		// You'll need a method like 'HasPermission' in your repo
-		hasAccess, err := s.repo.HasPermission(ctx, practitionerID, accProfile.ID, "CLINIC", nil, "write")
-		if err != nil || !hasAccess {
-			return nil, fmt.Errorf("permission denied: accountant does not have write access for this practice")
-		}
-	}
+	// Permission checks are handled by middleware - no need to check here
 
 	limitCheckID := practitionerID
 
@@ -112,6 +97,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 		// Create financial settings
 		financialSettings := &FinancialSettings{
 			ClinicID:        created.ID,
+			PractitionerID:  practitionerID,
 			FinancialYearID: *activeFinancialYearID,
 			LockDate:        nil,
 		}
@@ -121,20 +107,21 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			return fmt.Errorf("create financial settings: %w", err)
 		}
 
-		// Create Addresses
-		var addresses []RsClinicAddress
-		for _, addr := range req.Addresses {
-			isPrimary := false
-			if addr.IsPrimary != nil {
-				isPrimary = *addr.IsPrimary
+		// Create Address
+		var rsAddress *RsClinicAddress
+		if req.Address != nil {
+			isPrimary := true // Default to true for singular address
+			if req.Address.IsPrimary != nil {
+				isPrimary = *req.Address.IsPrimary
 			}
 
 			clinicAddr := &ClinicAddress{
+				ID:        uuid.New(),
 				ClinicID:  created.ID,
-				Address:   addr.Address,
-				City:      addr.City,
-				State:     addr.State,
-				Postcode:  addr.Postcode,
+				Address:   req.Address.Address,
+				City:      req.Address.City,
+				State:     req.Address.State,
+				Postcode:  req.Address.Postcode,
 				IsPrimary: isPrimary,
 			}
 
@@ -143,14 +130,14 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 				return fmt.Errorf("create address: %w", err)
 			}
 
-			addresses = append(addresses, RsClinicAddress{
+			rsAddress = &RsClinicAddress{
 				ID:        createdAddr.ID,
 				Address:   createdAddr.Address,
 				City:      createdAddr.City,
 				State:     createdAddr.State,
 				Postcode:  createdAddr.Postcode,
 				IsPrimary: createdAddr.IsPrimary,
-			})
+			}
 		}
 
 		// Create Contacts
@@ -193,7 +180,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			ABN:            created.ABN,
 			Description:    created.Description,
 			IsActive:       created.IsActive,
-			Addresses:      addresses,
+			Address:        rsAddress,
 			Contacts:       contacts,
 			FinancialSettings: &RsFinancialSettings{
 				ID:              createdFS.ID,
@@ -279,13 +266,6 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
-	// 1. CRITICAL STEP: Convert the Auth User ID to the Practitioner ID
-	// Based on your Beekeeper screenshot, the table stores Profile IDs, not Auth IDs.
-	/*prac, err := s.practitionerRepo.GetByUserID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("resolve practitioner profile: %w", err)
-	}*/
-
 	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
 	if err != nil {
 		return nil, err
@@ -297,9 +277,17 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 		if addrErr != nil {
 			return nil, addrErr
 		}
-		rsAddresses := make([]RsClinicAddress, len(addresses))
-		for i, addr := range addresses {
-			rsAddresses[i] = RsClinicAddress{
+		var rsAddress *RsClinicAddress
+		if len(addresses) > 0 {
+			// Find the primary address, or default to the first one
+			addr := addresses[0]
+			for _, a := range addresses {
+				if a.IsPrimary {
+					addr = a
+					break
+				}
+			}
+			rsAddress = &RsClinicAddress{
 				ID:        addr.ID,
 				Address:   addr.Address,
 				City:      addr.City,
@@ -346,7 +334,7 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
 			IsActive:          clinic.IsActive,
-			Addresses:         rsAddresses,
+			Address:           rsAddress,
 			Contacts:          rsContacts,
 			FinancialSettings: rsFinancialSettings,
 			CreatedAt:         clinic.CreatedAt,
@@ -373,31 +361,31 @@ func (s *service) CountClinic(ctx context.Context, practitionerID uuid.UUID, fil
 func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// 1. Basic Link Check: Does this Accountant work for this Practitioner?
-	// This call likely returns the Practitioner's ID (ownerID)
-	ownerID, err := s.CheckPermission(ctx, actorID, id)
-	if err != nil {
-		return nil, err // Returns 403 or 404
-	}
+	var ownerID uuid.UUID
+	var err error
 
-	// 2. EXPLICIT ACCOUNTANT CHECK (The "Hard Gate")
+	// 1. ROLE-BASED IDENTITY RESOLUTION
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		actorUserID, _ := uuid.Parse(*meta.UserID)
-		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-		if err != nil {
-			return nil, fmt.Errorf("accountant profile not found: %w", err)
-		}
+		// --- ACCOUNTANT FLOW ---
+		// actorID is the Accountant Profile ID from your Handler
 
-		// Check if the 'read' key is true in JSONB
-		hasRead, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "read")
-		if err != nil || !hasRead {
-			// This is the specific error message the accountant will see
-			return nil, fmt.Errorf("permission denied: you do not have read access for this clinic")
+		// Find which Practitioner owns this clinic context
+		ownerID, err = s.CheckPermission(ctx, actorID, id)
+		if err != nil {
+			return nil, err
 		}
+	} else {
+		// --- PRACTITIONER FLOW ---
+		// actorID is already the PractitionerID
+		ownerID = actorID
 	}
 
+	// 2. FETCH CLINIC
+	// Now ownerID is guaranteed to be the Practitioner's ID for both roles
 	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, ownerID)
 	if err != nil {
+		// If it fails here for a Practitioner, it means the actorID
+		// in the token doesn't match the practitioner_id in tbl_clinic
 		return nil, err
 	}
 
@@ -416,16 +404,24 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		return nil, err
 	}
 
-	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-	for _, addr := range addresses {
-		rsAddresses = append(rsAddresses, RsClinicAddress{
+	var rsAddress *RsClinicAddress
+	if len(addresses) > 0 {
+		// Default to first, but try to find the marked primary
+		addr := addresses[0]
+		for _, a := range addresses {
+			if a.IsPrimary {
+				addr = a
+				break
+			}
+		}
+		rsAddress = &RsClinicAddress{
 			ID:        addr.ID,
 			Address:   addr.Address,
 			City:      addr.City,
 			State:     addr.State,
 			Postcode:  addr.Postcode,
 			IsPrimary: addr.IsPrimary,
-		})
+		}
 	}
 
 	rsContacts := make([]RsClinicContact, 0, len(contacts))
@@ -449,15 +445,15 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 	}
 
 	return &RsClinic{
-		ID:                clinic.ID,
-		EntityID:          clinic.EntityID,
+		ID: clinic.ID,
+		//EntityID:          clinic.EntityID,
 		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
 		IsActive:          clinic.IsActive,
-		Addresses:         rsAddresses,
+		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
 		CreatedAt:         clinic.CreatedAt,
@@ -475,20 +471,6 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-			actorUserID, _ := uuid.Parse(*meta.UserID)
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err != nil {
-				return fmt.Errorf("could not find accountant profile: %w", err)
-			}
-
-			// Check if the permission array actually contains "delete"
-			hasDeleteAccess, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "delete")
-			if err != nil || !hasDeleteAccess {
-				return fmt.Errorf("permission denied: accountant does not have 'delete' access for this clinic")
-			}
-		}
-
 		existing, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
 		if err != nil {
 			fmt.Printf(">>> DEBUG ERROR: Clinic not found for deletion: %v\n", err)
@@ -503,6 +485,9 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		if err := s.repo.DeletePermissionsByEntity(ctx, id, "CLINIC"); err != nil {
 			// Log the error but don't fail the request since the clinic is already deleted
 			fmt.Printf("Alert: Clinic %s deleted but permissions cleanup failed: %v\n", id, err)
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, "clinic.delete_permissions",
+				err, "", id.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
+			)
 		}
 		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
 
@@ -571,28 +556,14 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 }
 
 func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
+
 	ownerID, err := s.CheckPermission(ctx, actorID, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// --- EXPLICIT PERMISSION CHECK (Matches CreateClinic logic) ---
+	// Permission checks are handled by middleware
 	meta := auditctx.GetMetadata(ctx)
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		// Resolve the Accountant Profile ID
-		actorUserID, _ := uuid.Parse(*meta.UserID)
-		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-		if err != nil {
-			return nil, fmt.Errorf("could not find accountant profile: %w", err)
-		}
-
-		// Check 'write' permission for this specific Clinic ID
-		// Note: Passing &id ensures the accountant has access to THIS clinic
-		hasAccess, err := s.repo.HasPermission(ctx, ownerID, accProfile.ID, "CLINIC", &id, "update")
-		if err != nil || !hasAccess {
-			return nil, fmt.Errorf("permission denied: accountant does not have write access for this clinic")
-		}
-	}
 
 	var result *RsClinic
 
@@ -631,98 +602,101 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 			return fmt.Errorf("update clinic: %w", err)
 		}
 
-		// Update addresses
-		for _, addr := range req.Addresses {
-			if addr.ID != nil {
-				existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *addr.ID)
-				if err != nil {
-					return fmt.Errorf("get address by id: %w", err)
-				}
+		// Update address
+		if req.Address != nil {
+			if req.Address.ID != nil && *req.Address.ID != uuid.Nil {
+				// UPDATE EXISTING
+				existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *req.Address.ID)
+				if err == nil && existingAddr.ClinicID == clinic.ID {
+					if req.Address.Address != nil {
+						existingAddr.Address = req.Address.Address
+					}
+					if req.Address.City != nil {
+						existingAddr.City = req.Address.City
+					}
+					if req.Address.State != nil {
+						existingAddr.State = req.Address.State
+					}
+					if req.Address.Postcode != nil {
+						existingAddr.Postcode = req.Address.Postcode
+					}
+					existingAddr.IsPrimary = true // Usually single address is primary
 
-				if existingAddr.ClinicID != clinic.ID {
-					return fmt.Errorf("address %s does not belong to clinic %s", addr.ID.String(), clinic.ID.String())
-				}
-
-				if addr.Address != nil {
-					existingAddr.Address = addr.Address
-				}
-				if addr.City != nil {
-					existingAddr.City = addr.City
-				}
-				if addr.State != nil {
-					existingAddr.State = addr.State
-				}
-				if addr.Postcode != nil {
-					existingAddr.Postcode = addr.Postcode
-				}
-				if addr.IsPrimary != nil {
-					existingAddr.IsPrimary = *addr.IsPrimary
-					if *addr.IsPrimary {
-						if err := s.repo.UnsetPrimaryAddressTx(ctx, tx, clinic.ID, *addr.ID); err != nil {
-							return fmt.Errorf("unset primary address: %w", err)
-						}
+					err = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
+					if err != nil {
+						return fmt.Errorf("update address: %w", err)
 					}
 				}
-
-				if err := s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr); err != nil {
-					return fmt.Errorf("update address: %w", err)
+			} else {
+				// CREATE NEW
+				newAddr := &ClinicAddress{
+					ID:        uuid.New(),
+					ClinicID:  clinic.ID,
+					Address:   req.Address.Address,
+					City:      req.Address.City,
+					State:     req.Address.State,
+					Postcode:  req.Address.Postcode,
+					IsPrimary: true,
 				}
+				_, err = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
+				if err != nil {
+					return fmt.Errorf("create address: %w", err)
+				}
+			}
+		} else {
+			// ABSENCE = DELETE
+			err = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
+			if err != nil {
+				return fmt.Errorf("delete address: %w", err)
 			}
 		}
 
 		// Update contacts
+		existingContacts, _ := s.repo.GetClinicContactsTx(ctx, tx, clinic.ID)
+		incomingIDs := make(map[uuid.UUID]bool)
+
 		for _, cont := range req.Contacts {
-			if cont.ID != nil {
-				existingContact, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
-				if err != nil {
-					return fmt.Errorf("get contact by id: %w", err)
-				}
-
-				if existingContact.ClinicID != clinic.ID {
-					return fmt.Errorf("contact %s does not belong to clinic %s", cont.ID.String(), clinic.ID.String())
-				}
-
-				if cont.ContactType != nil {
-					existingContact.ContactType = *cont.ContactType
-				}
-				if cont.Value != nil {
-					existingContact.Value = *cont.Value
-				}
-				if cont.Label != nil {
-					existingContact.Label = cont.Label
-				}
-				if cont.IsPrimary != nil {
-					existingContact.IsPrimary = *cont.IsPrimary
-					if *cont.IsPrimary {
-						if err := s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID); err != nil {
-							return fmt.Errorf("unset primary contact: %w", err)
-						}
+			if cont.ID != nil && *cont.ID != uuid.Nil {
+				// UPDATE EXISTING
+				incomingIDs[*cont.ID] = true
+				existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
+				if err == nil && existing.ClinicID == clinic.ID {
+					if cont.ContactType != nil {
+						existing.ContactType = *cont.ContactType
+					}
+					if cont.Value != nil {
+						existing.Value = *cont.Value
+					}
+					if cont.IsPrimary != nil {
+						existing.IsPrimary = *cont.IsPrimary
+					}
+					err = s.repo.UpdateClinicContactTx(ctx, tx, existing)
+					if err != nil {
+						return fmt.Errorf("update contact: %w", err)
 					}
 				}
-
-				if err := s.repo.UpdateClinicContactTx(ctx, tx, existingContact); err != nil {
-					return fmt.Errorf("update contact: %w", err)
+			} else {
+				// CREATE NEW
+				newCont := &ClinicContact{
+					ID:          uuid.New(),
+					ClinicID:    clinic.ID,
+					ContactType: *cont.ContactType,
+					Value:       *cont.Value,
+					IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
+				}
+				_, err = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+				if err != nil {
+					return fmt.Errorf("create contact: %w", err)
 				}
 			}
 		}
 
-		// Update financial settings if provided
-		if req.FinancialYearID != nil || req.LockDate != nil {
-			financialSettings, err := s.repo.GetFinancialSettingsTx(ctx, tx, clinic.ID)
-			if err != nil {
-				return fmt.Errorf("get financial settings: %w", err)
-			}
-
-			if financialSettings != nil {
-				if req.FinancialYearID != nil {
-					financialSettings.FinancialYearID = *req.FinancialYearID
-				}
-				if req.LockDate != nil {
-					financialSettings.LockDate = req.LockDate
-				}
-
-				if err := s.repo.UpdateFinancialSettingsTx(ctx, tx, financialSettings); err != nil {
-					return fmt.Errorf("update financial settings: %w", err)
+		// DELETE contacts that weren't in the request
+		for _, ex := range existingContacts {
+			if !incomingIDs[ex.ID] {
+				err = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
+				if err != nil {
+					return fmt.Errorf("delete contact: %w", err)
 				}
 			}
 		}
@@ -735,7 +709,6 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		result = updatedClinic
 
 		// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
-		meta := auditctx.GetMetadata(ctx)
 		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
 			actorUserID, err := uuid.Parse(*meta.UserID)
 			if err == nil {
@@ -817,16 +790,24 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		return nil, err
 	}
 
-	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-	for _, addr := range addresses {
-		rsAddresses = append(rsAddresses, RsClinicAddress{
+	var rsAddress *RsClinicAddress
+	if len(addresses) > 0 {
+		// Default to first, but try to find the marked primary
+		addr := addresses[0]
+		for _, a := range addresses {
+			if a.IsPrimary {
+				addr = a
+				break
+			}
+		}
+		rsAddress = &RsClinicAddress{
 			ID:        addr.ID,
 			Address:   addr.Address,
 			City:      addr.City,
 			State:     addr.State,
 			Postcode:  addr.Postcode,
 			IsPrimary: addr.IsPrimary,
-		})
+		}
 	}
 
 	rsContacts := make([]RsClinicContact, 0, len(contacts))
@@ -857,7 +838,7 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
 		IsActive:          clinic.IsActive,
-		Addresses:         rsAddresses,
+		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
 		CreatedAt:         clinic.CreatedAt,
@@ -925,16 +906,24 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		return nil, err
 	}
 
-	rsAddresses := make([]RsClinicAddress, 0, len(addresses))
-	for _, addr := range addresses {
-		rsAddresses = append(rsAddresses, RsClinicAddress{
+	var rsAddress *RsClinicAddress
+	if len(addresses) > 0 {
+		// Default to first, but try to find the marked primary
+		addr := addresses[0]
+		for _, a := range addresses {
+			if a.IsPrimary {
+				addr = a
+				break
+			}
+		}
+		rsAddress = &RsClinicAddress{
 			ID:        addr.ID,
 			Address:   addr.Address,
 			City:      addr.City,
 			State:     addr.State,
 			Postcode:  addr.Postcode,
 			IsPrimary: addr.IsPrimary,
-		})
+		}
 	}
 
 	rsContacts := make([]RsClinicContact, 0, len(contacts))
@@ -966,7 +955,7 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
 		IsActive:          clinic.IsActive,
-		Addresses:         rsAddresses,
+		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
 		CreatedAt:         clinic.CreatedAt,
@@ -1008,86 +997,93 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 		return nil, fmt.Errorf("update clinic: %w", err)
 	}
 
-	// Update addresses
-	for _, addr := range req.Addresses {
-		if addr.ID != nil {
-			// Get existing address to update only provided fields
-			existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *addr.ID)
-			if err != nil {
-				return nil, fmt.Errorf("get address by id: %w", err)
-			}
-
-			// Validate that the address belongs to this clinic
-			if existingAddr.ClinicID != clinic.ID {
-				return nil, fmt.Errorf("address %s does not belong to clinic %s", addr.ID.String(), clinic.ID.String())
-			}
-
-			// Update only provided fields
-			if addr.Address != nil {
-				existingAddr.Address = addr.Address
-			}
-			if addr.City != nil {
-				existingAddr.City = addr.City
-			}
-			if addr.State != nil {
-				existingAddr.State = addr.State
-			}
-			if addr.Postcode != nil {
-				existingAddr.Postcode = addr.Postcode
-			}
-			if addr.IsPrimary != nil {
-				existingAddr.IsPrimary = *addr.IsPrimary
-				// If setting as primary, unset other primary addresses for this clinic
-				if *addr.IsPrimary {
-					if err := s.repo.UnsetPrimaryAddressTx(ctx, tx, clinic.ID, *addr.ID); err != nil {
-						return nil, fmt.Errorf("unset primary address: %w", err)
-					}
+	// Update address
+	if req.Address != nil {
+		if req.Address.ID != nil && *req.Address.ID != uuid.Nil {
+			// UPDATE
+			existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *req.Address.ID)
+			if err == nil && existingAddr.ClinicID == clinic.ID {
+				if req.Address.Address != nil {
+					existingAddr.Address = req.Address.Address
 				}
+				if req.Address.City != nil {
+					existingAddr.City = req.Address.City
+				}
+				if req.Address.State != nil {
+					existingAddr.State = req.Address.State
+				}
+				if req.Address.Postcode != nil {
+					existingAddr.Postcode = req.Address.Postcode
+				}
+				existingAddr.IsPrimary = true
+				_ = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
 			}
-
-			if err := s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr); err != nil {
-				return nil, fmt.Errorf("update address: %w", err)
+		} else {
+			// CREATE
+			newAddr := &ClinicAddress{
+				ID:        uuid.New(),
+				ClinicID:  clinic.ID,
+				Address:   req.Address.Address,
+				City:      req.Address.City,
+				State:     req.Address.State,
+				Postcode:  req.Address.Postcode,
+				IsPrimary: true,
 			}
+			_, _ = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
 		}
+	} else {
+		// ABSENCE = DELETE
+		_ = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
 	}
 
 	// Update contacts
+	existingContacts, _ := s.repo.GetClinicContactsTx(ctx, tx, clinic.ID)
+	incomingIDs := make(map[uuid.UUID]bool)
+
 	for _, cont := range req.Contacts {
-		if cont.ID != nil {
-			// Get existing contact to update only provided fields
-			existingContact, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
-			if err != nil {
-				return nil, fmt.Errorf("get contact by id: %w", err)
-			}
-
-			// Validate that the contact belongs to this clinic
-			if existingContact.ClinicID != clinic.ID {
-				return nil, fmt.Errorf("contact %s does not belong to clinic %s", cont.ID.String(), clinic.ID.String())
-			}
-
-			// Update only provided fields
-			if cont.ContactType != nil {
-				existingContact.ContactType = *cont.ContactType
-			}
-			if cont.Value != nil {
-				existingContact.Value = *cont.Value
-			}
-			if cont.Label != nil {
-				existingContact.Label = cont.Label
-			}
-			if cont.IsPrimary != nil {
-				existingContact.IsPrimary = *cont.IsPrimary
-				// If setting as primary, unset other primary contacts for this clinic
-				if *cont.IsPrimary {
-					if err := s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID); err != nil {
-						return nil, fmt.Errorf("unset primary contact: %w", err)
+		if cont.ID != nil && *cont.ID != uuid.Nil {
+			// UPDATE
+			incomingIDs[*cont.ID] = true
+			existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
+			if err == nil && existing.ClinicID == clinic.ID {
+				if cont.ContactType != nil {
+					existing.ContactType = *cont.ContactType
+				}
+				if cont.Value != nil {
+					existing.Value = *cont.Value
+				}
+				if cont.Label != nil {
+					existing.Label = cont.Label
+				}
+				if cont.IsPrimary != nil {
+					existing.IsPrimary = *cont.IsPrimary
+					if *cont.IsPrimary {
+						_ = s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID)
 					}
 				}
+				_ = s.repo.UpdateClinicContactTx(ctx, tx, existing)
 			}
+		} else {
+			// CREATE
+			newCont := &ClinicContact{
+				ID:          uuid.New(),
+				ClinicID:    clinic.ID,
+				ContactType: *cont.ContactType,
+				Value:       *cont.Value,
+				Label:       cont.Label,
+				IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
+			}
+			if newCont.IsPrimary {
+				_ = s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, uuid.Nil)
+			}
+			_, _ = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+		}
+	}
 
-			if err := s.repo.UpdateClinicContactTx(ctx, tx, existingContact); err != nil {
-				return nil, fmt.Errorf("update contact: %w", err)
-			}
+	// DELETE contacts not present in request
+	for _, ex := range existingContacts {
+		if !incomingIDs[ex.ID] {
+			_ = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
 		}
 	}
 
@@ -1140,15 +1136,23 @@ func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinic
 
 	// 1. Accountant Flow
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		// --- STEP A: Resolve User ID to Accountant Profile ID ---
-		// actorID is the User UUID, we need the Profile UUID (e92e4fdb...)
+
 		accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
+		var finalAccountantID uuid.UUID
+
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("accountant profile not found for user %s: %w", actorID, err)
+
+			finalAccountantID = actorID
+		} else {
+
+			finalAccountantID = accProfile.ID
 		}
 		// Query tbl_invite_permissions
-		permission, err := s.repo.GetAccountantPermission(ctx, accProfile.ID, clinicID)
+		permission, err := s.repo.GetAccountantPermission(ctx, finalAccountantID, clinicID)
 		if err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "clinic.check_permission",
+				err, finalAccountantID.String(), clinicID.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
+			)
 			// Return a clear error for the handler to map to 403 Forbidden
 			return uuid.Nil, fmt.Errorf("accountant access denied for clinic %s: %w", clinicID, err)
 		}
@@ -1156,18 +1160,31 @@ func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinic
 		// Return the Practitioner who owns the data
 		return permission.PractitionerID, nil
 	}
+
+	// 2. Practitioner Flow
+	pracIDPtr, err := s.repo.GetPractitionerIDByUserID(ctx, actorID.String())
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("practitioner profile not found: %w", err)
+	}
+
+	ownerID := *pracIDPtr
+
 	// 2. Practitioner Flow - check if they own the clinic
-	exists, err := s.repo.IsClinicOwner(ctx, actorID, clinicID)
+	exists, err := s.repo.IsClinicOwner(ctx, ownerID, clinicID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("database error checking ownership: %w", err)
 	}
 	if !exists {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "clinic.check_permission",
+			fmt.Errorf("practitioner %s attempted to access clinic %s they do not own", actorID, clinicID),
+			actorID.String(), clinicID.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
+		)
 		return uuid.Nil, fmt.Errorf("practitioner %s does not own clinic %s", actorID, clinicID)
 	}
 
-	// Since they are the owner, the actorID IS the ownerID
-	return actorID, nil
+	return ownerID, nil
 }
+
 func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
@@ -1189,9 +1206,17 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 		if addrErr != nil {
 			return nil, addrErr
 		}
-		rsAddresses := make([]RsClinicAddress, len(addresses))
-		for i, addr := range addresses {
-			rsAddresses[i] = RsClinicAddress{
+		var rsAddress *RsClinicAddress
+		if len(addresses) > 0 {
+			// Default to first, but try to find the marked primary
+			addr := addresses[0]
+			for _, a := range addresses {
+				if a.IsPrimary {
+					addr = a
+					break
+				}
+			}
+			rsAddress = &RsClinicAddress{
 				ID:        addr.ID,
 				Address:   addr.Address,
 				City:      addr.City,
@@ -1241,7 +1266,7 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
 			IsActive:          clinic.IsActive,
-			Addresses:         rsAddresses,
+			Address:           rsAddress,
 			Contacts:          rsContacts,
 			FinancialSettings: rsFinancialSettings,
 			CreatedAt:         clinic.CreatedAt,

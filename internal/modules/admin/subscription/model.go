@@ -22,12 +22,21 @@ type Subscription struct {
 	DeletedAt       *time.Time `db:"deleted_at"`
 }
 
+// RqPermissionEntry sets a permission key's limit and enabled state at subscription creation.
+// UsageLimit: -1 = unlimited, 0 = blocked, >0 = capped
+type RqPermissionEntry struct {
+	Key        string `json:"key" validate:"required"`
+	UsageLimit int    `json:"usage_limit" validate:"min=-1"`
+	IsEnabled  bool   `json:"is_enabled"`
+}
+
 type RqCreateSubscription struct {
-	Name         string  `json:"name" validate:"required,max=255"`
-	Description  *string `json:"description"`
-	Price        float64 `json:"price" validate:"min=0"`
-	DurationDays int     `json:"duration_days" validate:"required,min=1"`
-	IsActive     *bool   `json:"is_active"`
+	Name         string               `json:"name" validate:"required,max=255"`
+	Description  *string              `json:"description"`
+	Price        float64              `json:"price" validate:"min=0"`
+	DurationDays int                  `json:"duration_days" validate:"required,min=1"`
+	IsActive     *bool                `json:"is_active"`
+	Permissions  []*RqPermissionEntry `json:"permissions"`
 }
 
 func (r *RqCreateSubscription) ToSubscription() *Subscription {
@@ -47,22 +56,24 @@ func (r *RqCreateSubscription) ToSubscription() *Subscription {
 }
 
 type RqUpdateSubscription struct {
-	Name         *string  `json:"name" validate:"omitempty,max=255"`
-	Description  *string  `json:"description"`
-	Price        *float64 `json:"price" validate:"omitempty,min=0"`
-	DurationDays *int     `json:"duration_days" validate:"omitempty,min=1"`
-	IsActive     *bool    `json:"is_active"`
+	Name         *string              `json:"name" validate:"omitempty,max=255"`
+	Description  *string              `json:"description"`
+	Price        *float64             `json:"price" validate:"omitempty,min=0"`
+	DurationDays *int                 `json:"duration_days" validate:"omitempty,min=1"`
+	IsActive     *bool                `json:"is_active"`
+	Permissions  []*RqPermissionEntry `json:"permissions"`
 }
 
 type RsSubscription struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Description  *string   `json:"description,omitempty"`
-	Price        float64   `json:"price"`
-	DurationDays int       `json:"duration_days"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int                         `json:"id"`
+	Name         string                      `json:"name"`
+	Description  *string                     `json:"description,omitempty"`
+	Price        float64                     `json:"price"`
+	DurationDays int                         `json:"duration_days"`
+	IsActive     bool                        `json:"is_active"`
+	CreatedAt    time.Time                   `json:"created_at"`
+	UpdatedAt    time.Time                   `json:"updated_at"`
+	Permissions  []*RsSubscriptionPermission `json:"permissions"`
 }
 
 func (s *Subscription) ToRs() *RsSubscription {

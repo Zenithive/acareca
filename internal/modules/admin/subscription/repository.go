@@ -27,6 +27,8 @@ type Repository interface {
 	// Permission management
 	ListPermissions(ctx context.Context, subscriptionID int) ([]*SubscriptionPermission, error)
 	UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*SubscriptionPermission, error)
+	BulkInsertPermissions(ctx context.Context, subscriptionID int, perms []*RqPermissionEntry) error
+	DeletePermissions(ctx context.Context, subscriptionID int) error
 }
 
 type repository struct {
@@ -206,4 +208,32 @@ func (r *repository) Count(ctx context.Context, f common.Filter) (int, error) {
 		return 0, fmt.Errorf("count subscriptions: %w", err)
 	}
 	return count, nil
+}
+
+func (r *repository) BulkInsertPermissions(ctx context.Context, subscriptionID int, perms []*RqPermissionEntry) error {
+	if len(perms) == 0 {
+		return nil
+	}
+	const q = `
+		INSERT INTO tbl_subscription_permission (subscription_id, permission_id, is_enabled, usage_limit, created_at, updated_at)
+		SELECT $1, pp.id, $3, $4, NOW(), NOW()
+		FROM tbl_plan_permission pp
+		WHERE pp.key = $2 AND pp.deleted_at IS NULL
+		ON CONFLICT (subscription_id, permission_id) DO UPDATE
+		  SET is_enabled = EXCLUDED.is_enabled,
+		      usage_limit = EXCLUDED.usage_limit,
+		      updated_at = NOW()
+	`
+	for _, p := range perms {
+		if _, err := r.db.ExecContext(ctx, q, subscriptionID, p.Key, p.IsEnabled, p.UsageLimit); err != nil {
+			return fmt.Errorf("insert permission %q: %w", p.Key, err)
+		}
+	}
+	return nil
+}
+
+func (r *repository) DeletePermissions(ctx context.Context, subscriptionID int) error {
+	const q = `UPDATE tbl_subscription_permission SET deleted_at = NOW(), updated_at = NOW() WHERE subscription_id = $1 AND deleted_at IS NULL`
+	_, err := r.db.ExecContext(ctx, q, subscriptionID)
+	return err
 }
