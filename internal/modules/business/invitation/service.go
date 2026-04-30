@@ -165,9 +165,9 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		EntityType:  &permEntityType,
 		EntityID:    &entityID,
 		BeforeState: nil,
-		// AfterState:  processedPerms,
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
+		AfterState:  req.Permissions,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
 	})
 
 	return &RsInvitation{
@@ -427,6 +427,9 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 		return fmt.Errorf("failed to link permissions: %w", err)
 	}
 
+	afterState := inv
+	afterState.Status = StatusCompleted
+
 	// Audit log: invitation completed
 	meta := auditctx.GetMetadata(ctx)
 	pIDStr := inv.PractitionerID.String()
@@ -441,7 +444,7 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 		EntityType:  &entityType,
 		EntityID:    &entityIDStr,
 		BeforeState: inv,
-		AfterState:  "COMPLETED",
+		AfterState:  afterState,
 		IPAddress:   meta.IPAddress,
 		UserAgent:   meta.UserAgent,
 	})

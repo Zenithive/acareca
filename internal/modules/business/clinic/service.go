@@ -566,8 +566,15 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 	meta := auditctx.GetMetadata(ctx)
 
 	var result *RsClinic
+	var beforeState *RsClinic
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// FETCH FULL CLINIC DETAILS FOR BEFORE STATE
+		beforeState, err = s.getClinicByIDInternalTx(ctx, tx, id)
+		if err != nil {
+			return fmt.Errorf("get before state: %w", err)
+		}
+
 		clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
 		if err != nil {
 			return fmt.Errorf("get clinic: %w", err)
@@ -754,15 +761,16 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 
 	idStr := id.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
-		Action:     auditctx.ActionClinicUpdated,
-		Module:     auditctx.ModuleClinic,
-		EntityType: strPtr(auditctx.EntityClinic),
-		EntityID:   &idStr,
-		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
+		PracticeID:  meta.PracticeID,
+		UserID:      meta.UserID,
+		Action:      auditctx.ActionClinicUpdated,
+		Module:      auditctx.ModuleClinic,
+		EntityType:  strPtr(auditctx.EntityClinic),
+		EntityID:    &idStr,
+		BeforeState: beforeState,
+		AfterState:  result,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
 	})
 
 	return result, nil
