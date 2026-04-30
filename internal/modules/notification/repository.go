@@ -21,6 +21,7 @@ type Repository interface {
 	CreateNotification(ctx context.Context, notification Notification) (uuid.UUID, error)
 	CreateDeliveries(ctx context.Context, notificationID uuid.UUID, channels []Channel) error
 	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, int, int, error)
+	GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
@@ -121,6 +122,13 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	}
 
 	return rows, total, page, limit, nil
+}
+
+func (r *repository) GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM tbl_notification WHERE recipient_id = $1 AND status = 'UNREAD'`
+	err := r.db.GetContext(ctx, &count, query, recipientID)
+	return count, err
 }
 
 // MarkRead transitions UNREAD → READ.
