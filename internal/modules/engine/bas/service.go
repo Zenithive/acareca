@@ -292,8 +292,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	}
 	var rawRows []*BASLineItemRow
 
-	// 1. Fetch ALL data for the practitioner in one single call.
-	// By passing uuid.Nil to the reverted repo, it pulls both clinic data and manual expenses.
 	nilClinic := uuid.Nil
 	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
 	if err != nil {
@@ -301,51 +299,22 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	}
 	rawRows = append(rawRows, rows...)
 
-	for i, r := range rawRows {
-		sec := "NIL"
+	masterAccounts := make(map[string]*BASLineItemRow)
+	for _, r := range rawRows {
+		sec := ""
 		if r.SectionType != nil {
 			sec = *r.SectionType
 		}
-		fmt.Printf("[%d] Name: %-15s | Section: %-15s | Quarter: %s | Gross: %10.2f\n",
-			i, r.AccountName, sec, r.PeriodQuarter.Format("2006-01-02"), r.GrossAmount)
-	}
+		// Use a unique key for the map
+		key := fmt.Sprintf("%s-%s", r.AccountName, sec)
 
-	unifiedMap := make(map[string]*BASLineItemRow)
-	for _, r := range rawRows {
-		section := ""
-		if r.SectionType != nil {
-
-			section = strings.ToUpper(*r.SectionType)
+		if _, exists := masterAccounts[key]; !exists {
+			masterAccounts[key] = r
 		}
-
-		key := fmt.Sprintf("%s-%s-%s-%s",
-			r.PeriodQuarter.Format("2006-01-02"),
-			section,
-			r.BasCategory,
-			r.CoaID,
-		)
-
-		if existing, found := unifiedMap[key]; found {
-			existing.NetAmount += r.NetAmount
-			existing.GstAmount += r.GstAmount
-			existing.GrossAmount += r.GrossAmount
-		} else {
-			unifiedMap[key] = r
-		}
-	}
-
-	for k, v := range unifiedMap {
-		fmt.Printf("Key: %-40s | Name: %s\n", k, v.AccountName)
-	}
-
-	// 3. Convert Map back to Slice
-	var allRows []*BASLineItemRow
-	for _, r := range unifiedMap {
-		allRows = append(allRows, r)
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
-	for _, r := range allRows {
+	for _, r := range rawRows {
 		k := r.PeriodQuarter.Format("2006-01-02")
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
@@ -354,37 +323,49 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
-	// --- Iterate over SELECTED Quarters first ---
+	// --- STEP 3: ITERATE SELECTED QUARTERS & NORMALIZE ---
 	if len(f.ParsedQuarterIDs) > 0 {
 		for _, qID := range f.ParsedQuarterIDs {
-
-			// Get metadata by ID (Always works even if no transactions)
 			qInfo, err := s.repo.GetQuarterInfoByID(ctx, qID)
 			if err != nil {
 				continue
 			}
 
-			// Get data from our map (might be nil/empty)
-			qRows := quarterGroups[qInfo.StartDate]
+			currentQuarterRows := quarterGroups[qInfo.StartDate]
 
-			finalizedRowsForTotal = append(finalizedRowsForTotal, qRows...)
+			normalizedRows := make([]*BASLineItemRow, 0)
+			for _, master := range masterAccounts {
+				var foundRow *BASLineItemRow
+				for _, qr := range currentQuarterRows {
+					if qr.AccountName == master.AccountName {
+						foundRow = qr
+						break
+					}
+				}
 
-			// Map to column (mapToBASColumn handles nil/empty rows by returning $0)
-			col := s.mapToBASColumn(qRows)
-			col.Quarter = *qInfo
-			resp.Columns = append(resp.Columns, col)
-		}
-	} else {
-		// Fallback for when no specific quarters are selected (Show what exists)
-		for key, qRows := range quarterGroups {
-			finalizedRowsForTotal = append(finalizedRowsForTotal, qRows...)
+				if foundRow != nil {
+					normalizedRows = append(normalizedRows, foundRow)
+				} else {
 
-			col := s.mapToBASColumn(qRows)
-			quarterDate, _ := time.Parse("2006-01-02", key)
-			qInfo, _ := s.repo.GetQuarterInfoByDate(ctx, quarterDate)
-			if qInfo != nil {
-				col.Quarter = *qInfo
+					parsedTime, _ := time.Parse("2006-01-02", qInfo.StartDate)
+					normalizedRows = append(normalizedRows, &BASLineItemRow{
+						AccountName:   master.AccountName,
+						SectionType:   master.SectionType,
+						BasCategory:   master.BasCategory,
+						CoaID:         master.CoaID,
+						GrossAmount:   0,
+						GstAmount:     0,
+						NetAmount:     0,
+						PeriodQuarter: parsedTime,
+					})
+				}
 			}
+
+			finalizedRowsForTotal = append(finalizedRowsForTotal, normalizedRows...)
+
+			// Map the normalized rows to the column
+			col := s.mapToBASColumn(normalizedRows)
+			col.Quarter = *qInfo
 			resp.Columns = append(resp.Columns, col)
 		}
 	}
