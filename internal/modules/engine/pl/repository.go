@@ -205,15 +205,18 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			SUM(li.gross_amount) AS gross_amount
 		FROM vw_pl_line_items li
 		LEFT JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
-		WHERE 1=1
+		WHERE li.practitioner_id = $1
 	`
-	args := []interface{}{}
-	idx := 1
+	args := []interface{}{f.PractitionerID}
+	idx := 2
 
-	if f.ClinicID != nil {
-		query += fmt.Sprintf(" AND li.clinic_id = $%d", idx)
-		args = append(args, *f.ClinicID)
-		idx++
+	if f.ClinicID != nil && *f.ClinicID != "" {
+		// We match the selected ClinicID OR the Zero UUID (Manual Expenses)
+		zeroUUID := "00000000-0000-0000-0000-000000000000"
+
+		query += fmt.Sprintf(" AND (li.clinic_id = $%d OR li.clinic_id = $%d OR li.clinic_id IS NULL)", idx, idx+1)
+		args = append(args, *f.ClinicID, zeroUUID)
+		idx += 2
 	} else {
 		// scope to practitioner via the view's practitioner_id column
 		query += fmt.Sprintf(" AND li.practitioner_id = $%d", idx)
@@ -274,9 +277,10 @@ func (r *repository) GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSu
 	idx := 2
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
-		query += fmt.Sprintf(" AND clinic_id = $%d", idx)
-		args = append(args, *f.ClinicID)
-		idx++
+		zeroUUID := "00000000-0000-0000-0000-000000000000"
+		query += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id = $%d OR clinic_id IS NULL)", idx, idx+1)
+		args = append(args, *f.ClinicID, zeroUUID)
+		idx += 2
 	}
 
 	if f.DateFrom != nil {
