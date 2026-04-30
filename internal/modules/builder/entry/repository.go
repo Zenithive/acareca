@@ -612,6 +612,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			coa.id          AS coa_id,
 			coa.name        AS coa_name,
 			COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
+			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
 			COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
 			COUNT(DISTINCT ev.id)             AS entry_count
 		FROM tbl_chart_of_accounts coa
@@ -643,6 +644,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		CoaID            uuid.UUID `db:"coa_id"`
 		CoaName          string    `db:"coa_name"`
 		TotalNetAmount   float64   `db:"total_net_amount"`
+		TotalGSTAmount   float64   `db:"total_gst_amount"`
 		TotalGrossAmount float64   `db:"total_gross_amount"`
 		EntryCount       int       `db:"entry_count"`
 	}
@@ -659,6 +661,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			CoaID:            row.CoaID.String(),
 			CoaName:          row.CoaName,
 			TotalNetAmount:   row.TotalNetAmount,
+			TotalGSTAmount:   row.TotalGSTAmount,
 			TotalGrossAmount: row.TotalGrossAmount,
 			EntryCount:       row.EntryCount,
 		})
