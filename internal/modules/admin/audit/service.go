@@ -305,14 +305,17 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"billing.activation_successful": "successfully activated subscription for",
 
 		// Report Generate and Export
-		"bas_report.exported":          "exported BAS Report",
-		"pl_report.exported":           "exported Profit and Loss Report",
-		"activity_statement.exported":  "exported Activity Statement",
-		"transactions.exported":        "exported Transactions",
+		"bas_report.exported":         "exported BAS Report",
+		"pl_report.exported":          "exported Profit and Loss Report",
+		"activity_statement.exported": "exported Activity Statement",
+		"transactions.exported":       "exported Transactions",
+		"balance_sheet.exported":      "exported Balance Sheet",
+
 		"bas_report.generated":         "generated BAS Report",
 		"pl_report.generated":          "generated Profit and Loss Report",
 		"activity_statement.generated": "generated Activity Statement",
 		"transactions.generated":       "generated Transactions",
+		"balance_sheet.generated":      "generated Balance Sheet",
 	}
 
 	var message string

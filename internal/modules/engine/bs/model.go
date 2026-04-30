@@ -19,8 +19,9 @@ type BSRow struct {
 
 // BSFilter defines query parameters for balance sheet
 type BSFilter struct {
-	ClinicID *string `form:"clinic_id"`
-	AsOfDate *string `form:"as_of_date"` // Show balances as of this date (YYYY-MM-DD)
+	PractitionerID *string `form:"practitioner_id"`
+	ClinicID       *string `form:"clinic_id"`
+	AsOfDate       *string `form:"as_of_date"` // Show balances as of this date (YYYY-MM-DD)
 }
 
 // RsBalanceSheet is the complete balance sheet response

@@ -276,7 +276,7 @@ func (h *handler) GetBASPreparation(c *gin.Context) {
 // ExportBASReport godoc
 // @Summary Export Business Activity Statement to Excel
 // @Description Generates a formatted Excel BAS report.
-// @Tags BAS
+// @Tags engine/bas
 // @Security BearerToken
 // @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param export_type query string false "Export format: 'pdf' or 'excel' (default: excel)" Enums(pdf, excel)

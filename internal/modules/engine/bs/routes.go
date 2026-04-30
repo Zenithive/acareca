@@ -12,5 +12,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, cfg *config.Config) {
 	routes.Use(middleware.SetPractitionerIDFromAuth())
 	{
 		routes.GET("", h.GetBalanceSheet)
+		routes.GET("/export", h.ExportBalanceSheet)
 	}
 }
