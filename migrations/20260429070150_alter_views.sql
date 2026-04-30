@@ -325,28 +325,32 @@ WHERE fe.status = 'SUBMITTED'
   AND ff.deleted_at IS NULL
   AND coa.deleted_at IS NULL
   AND ff.coa_id IS NOT NULL;
+
 CREATE OR REPLACE VIEW vw_bas_summary AS
 WITH base AS (
-    SELECT clinic_id, practitioner_id, period_month, period_quarter, period_year,
-           section_type, bas_category, net_amount, gst_amount, gross_amount
-    FROM vw_bas_line_items WHERE bas_category != 'BAS_EXCLUDED'
+    SELECT practitioner_id, period_month, period_quarter, period_year,
+           section_type, bas_category, net_amount, gst_amount, gross_amount,field_label
+    FROM vw_bas_line_items
 )
 SELECT
-    clinic_id, practitioner_id, period_quarter, period_year,
+    practitioner_id, period_quarter, period_year,
     COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS g1_total_sales_gross,
-    COALESCE(SUM(net_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'GST_FREE'), 0) AS g3_gst_free_sales,
-    COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'GST_FREE'), 0) AS g8_taxable_sales,
     COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0) AS label_1a_gst_on_sales,
-    COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY')), 0) AS g11_total_purchases_gross,
-    COALESCE(SUM(net_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'GST_FREE'), 0) AS g14_gst_free_purchases,
-    COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY')), 0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'GST_FREE'), 0) AS g15_taxable_purchases,
-    COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'TAXABLE'), 0) AS label_1b_gst_on_purchases,
-    COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0) - COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'TAXABLE'), 0) AS net_gst_payable,
+    COALESCE(SUM(gross_amount) FILTER (
+        WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
+        AND bas_category != 'BAS_EXCLUDED'
+    ), 0) AS g11_total_purchases_gross,
+    COALESCE(SUM(gst_amount) FILTER (
+        WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
+        AND bas_category != 'BAS_EXCLUDED'
+    ), 0) AS label_1b_gst_on_purchases,
+    COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0)
+        - COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'TAXABLE'), 0) AS net_gst_payable,
     COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS total_sales_net,
     COALESCE(SUM(net_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY')), 0) AS total_purchases_net
 FROM base
-GROUP BY clinic_id, practitioner_id, period_quarter, period_year
-ORDER BY clinic_id, period_year, period_quarter;
+GROUP BY practitioner_id, period_quarter, period_year
+ORDER BY period_year, period_quarter;
 -- +goose StatementEnd
 
 
@@ -354,7 +358,7 @@ ORDER BY clinic_id, period_year, period_quarter;
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_bas_monthly AS
 WITH base AS (
-    SELECT clinic_id, practitioner_id, period_month, section_type, bas_category, net_amount, gst_amount, gross_amount
+    SELECT clinic_id, practitioner_id, period_month, section_type, bas_category, net_amount, gst_amount, gross_amount, field_label
     FROM vw_bas_line_items WHERE bas_category != 'BAS_EXCLUDED'
 )
 SELECT
@@ -362,12 +366,12 @@ SELECT
     COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS g1_total_sales_gross,
     COALESCE(SUM(net_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'GST_FREE'), 0) AS g3_gst_free_sales,
     COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0) AS label_1a_gst_on_sales,
-    COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY')), 0) AS g11_total_purchases_gross,
-    COALESCE(SUM(net_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'GST_FREE'), 0) AS g14_gst_free_purchases,
-    COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'TAXABLE'), 0) AS label_1b_gst_on_purchases,
-    COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0) - COALESCE(SUM(gst_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY') AND bas_category = 'TAXABLE'), 0) AS net_gst_payable,
+    COALESCE(SUM(gross_amount) FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')), 0) AS g11_total_purchases_gross,
+    COALESCE(SUM(net_amount)   FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee') AND bas_category = 'GST_FREE'), 0) AS g14_gst_free_purchases,
+    COALESCE(SUM(gst_amount)   FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee') AND bas_category = 'TAXABLE'), 0) AS label_1b_gst_on_purchases,
+    COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category = 'TAXABLE'), 0) - COALESCE(SUM(gst_amount) FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee') AND bas_category = 'TAXABLE'), 0) AS net_gst_payable,
     COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS total_sales_net,
-    COALESCE(SUM(net_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST','EXPENSE_ENTRY')), 0) AS total_purchases_net
+    COALESCE(SUM(net_amount) FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')), 0) AS total_purchases_net
 FROM base
 GROUP BY clinic_id, practitioner_id, period_month
 ORDER BY clinic_id, period_month;
