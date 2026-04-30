@@ -1,6 +1,7 @@
 package entry
 
 import (
+	"errors"
 	"log"
 
 	"github.com/google/uuid"
@@ -13,11 +14,27 @@ const (
 )
 
 type RqEntryValue struct {
-	FormFieldID string   `json:"form_field_id" validate:"required,uuid"`
+	FormFieldID *string  `json:"form_field_id" validate:"omitempty,uuid"`
+	CoaID       *string  `json:"coa_id" validate:"omitempty,uuid"`
 	Amount      float64  `json:"amount" validate:"omitempty,min=0"`
 	NetAmount   *float64 `json:"net_amount,omitempty"`
 	GstAmount   *float64 `json:"gst_amount,omitempty"`
 	GrossAmount *float64 `json:"gross_amount,omitempty"`
+	Description *string  `json:"description,omitempty"` // For direct COA entries
+}
+
+// Validate ensures either form_field_id OR coa_id is provided (not both, not neither)
+func (r *RqEntryValue) Validate() error {
+	hasFormField := r.FormFieldID != nil && *r.FormFieldID != ""
+	hasCoaID := r.CoaID != nil && *r.CoaID != ""
+
+	if !hasFormField && !hasCoaID {
+		return errors.New("either form_field_id or coa_id must be provided")
+	}
+	if hasFormField && hasCoaID {
+		return errors.New("cannot provide both form_field_id and coa_id")
+	}
+	return nil
 }
 
 type RqFormEntry struct {
@@ -47,17 +64,16 @@ type FormEntry struct {
 }
 
 type FormEntryValue struct {
-	ID          uuid.UUID `db:"id"`
-	EntryID     uuid.UUID `db:"entry_id"`
-	FormFieldID uuid.UUID `db:"form_field_id"`
-	NetAmount   *float64  `db:"net_amount"`
-	GstAmount   *float64  `db:"gst_amount"`
-	GrossAmount *float64  `db:"gross_amount"`
-	Description *string   `db:"description"`
-	CreatedAt   string    `db:"created_at"`
-	UpdatedAt   *string   `db:"updated_at"`
-	TaxType     *string   `db:"tax_type"`
-	BusinessUse *float64  `db:"business_use"`
+	ID          uuid.UUID  `db:"id"`
+	EntryID     uuid.UUID  `db:"entry_id"`
+	FormFieldID *uuid.UUID `db:"form_field_id"`
+	CoaID       *uuid.UUID `db:"coa_id"`
+	NetAmount   *float64   `db:"net_amount"`
+	GstAmount   *float64   `db:"gst_amount"`
+	GrossAmount *float64   `db:"gross_amount"`
+	Description *string    `db:"description"`
+	CreatedAt   string     `db:"created_at"`
+	UpdatedAt   *string    `db:"updated_at"`
 }
 
 func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
@@ -78,6 +94,8 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 	for _, v := range values {
 		ev := RsEntryValue{
 			FormFieldID: v.FormFieldID,
+			CoaID:       v.CoaID,
+			Description: v.Description,
 		}
 		if v.GstAmount != nil {
 			ev.NetAmount = v.NetAmount
@@ -110,10 +128,12 @@ type RsFormEntry struct {
 }
 
 type RsEntryValue struct {
-	FormFieldID uuid.UUID `json:"form_field_id"`
-	FieldKey    string    `json:"field_key,omitempty"`
-	Label       string    `json:"label,omitempty"`
-	IsComputed  bool      `json:"is_computed"`
+	FormFieldID *uuid.UUID `json:"form_field_id,omitempty"` // Nullable for direct COA entries
+	CoaID       *uuid.UUID `json:"coa_id,omitempty"`        // For direct COA entries
+	FieldKey    string     `json:"field_key,omitempty"`
+	Label       string     `json:"label,omitempty"`
+	IsComputed  bool       `json:"is_computed"`
+	Description *string    `json:"description,omitempty"` // For direct COA entries
 	// Amount is used when there is no GST (net == gross).
 	Amount *float64 `json:"amount,omitempty"`
 	// NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.

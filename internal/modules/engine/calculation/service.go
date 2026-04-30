@@ -75,7 +75,12 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 	)
 
 	for _, v := range formValue {
-		f, ok := fieldMap[v.FormFieldID]
+		// Skip direct COA entries (they don't have form fields)
+		if v.FormFieldID == nil {
+			continue
+		}
+		
+		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
 		}
@@ -154,7 +159,12 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 	)
 
 	for _, v := range formValue {
-		f, ok := fieldMap[v.FormFieldID]
+		// Skip direct COA entries (they don't have form fields)
+		if v.FormFieldID == nil {
+			continue
+		}
+		
+		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
 		}
