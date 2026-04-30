@@ -2,11 +2,14 @@ package bs
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -16,12 +19,14 @@ type Service interface {
 type service struct {
 	repo      Repository
 	equitySvc equity.Service
+	db        sqlx.DB
 }
 
-func NewService(repo Repository, equitySvc equity.Service) Service {
+func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB) Service {
 	return &service{
 		repo:      repo,
 		equitySvc: equitySvc,
+		db:        db,
 	}
 }
 
@@ -80,7 +85,13 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 
 	// Build equity section from calculated values
 	if ownerEquity.ShareCapital != 0 {
+		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 970)
+		if err != nil {
+			return nil, err
+		}
+
 		equity = append(equity, RsAccount{
+			CoaId:   *coaId,
 			Code:    970,
 			Name:    "Owner A Share Capital",
 			Balance: ownerEquity.ShareCapital,
@@ -88,7 +99,12 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 	}
 
 	if ownerEquity.FundsIntroduced != 0 {
+		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 881)
+		if err != nil {
+			return nil, err
+		}
 		equity = append(equity, RsAccount{
+			CoaId:   *coaId,
 			Code:    881,
 			Name:    "Owner A Funds Introduced",
 			Balance: ownerEquity.FundsIntroduced,
@@ -96,7 +112,12 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 	}
 
 	if ownerEquity.Drawings != 0 {
+		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 880)
+		if err != nil {
+			return nil, err
+		}
 		equity = append(equity, RsAccount{
+			CoaId:   *coaId,
 			Code:    880,
 			Name:    "Owner A Drawings",
 			Balance: -ownerEquity.Drawings,
@@ -104,18 +125,15 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 	}
 
 	if ownerEquity.RetainedEarnings != 0 {
+		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 960)
+		if err != nil {
+			return nil, err
+		}
 		equity = append(equity, RsAccount{
+			CoaId:   *coaId,
 			Code:    960,
 			Name:    "Retained Earnings",
 			Balance: ownerEquity.RetainedEarnings,
-		})
-	}
-
-	if ownerEquity.CurrentYearProfit != 0 {
-		equity = append(equity, RsAccount{
-			Code:    961,
-			Name:    "Current Year Profit",
-			Balance: ownerEquity.CurrentYearProfit,
 		})
 	}
 
@@ -133,4 +151,27 @@ func (s *service) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID,
 		TotalEquity:               totalEquity,
 		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
 	}, nil
+}
+
+// getCoaIDByAccountCode retrieves the coa_id for a given account code
+func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid.UUID, accountCode int16) (*uuid.UUID, error) {
+	query := `
+		SELECT id
+		FROM tbl_chart_of_accounts
+		WHERE practitioner_id = $1
+		  AND code = $2
+		  AND deleted_at IS NULL
+		LIMIT 1
+	`
+	args := []interface{}{practitionerID, accountCode}
+
+	var coaID uuid.UUID
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&coaID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("COA account with code %d not found for practitioner %s", accountCode, practitionerID)
+		}
+		return nil, fmt.Errorf("get coa_id for account code %d: %w", accountCode, err)
+	}
+	return &coaID, nil
 }
