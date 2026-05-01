@@ -3,7 +3,6 @@
 DROP VIEW IF EXISTS vw_balance_sheet_summary CASCADE;
 DROP VIEW IF EXISTS vw_balance_sheet_line_items CASCADE;
 
-
 CREATE OR REPLACE VIEW vw_balance_sheet_line_items AS
 SELECT fe.clinic_id,
     COALESCE(cfv.practitioner_id, p.id) AS practitioner_id,
@@ -22,6 +21,8 @@ SELECT fe.clinic_id,
     COALESCE(fev.net_amount, 0) AS net_amount,
     COALESCE(fev.gross_amount, 0) AS gross_amount,
     fev.description,
+    cfv.form_id AS form_id,             
+    coa.account_tax_id AS tax_id,
     CASE
         WHEN coa.code = 880 THEN - COALESCE(fev.net_amount, 0) -- Drawings (reduces equity)
         WHEN coa.code = 881 THEN COALESCE(fev.net_amount, 0) -- Funds Introduced (increases equity)
@@ -70,7 +71,6 @@ WHERE fe.status = 'SUBMITTED'
             AND fev.coa_id IS NOT NULL
         ) -- Direct COA entry
     );
-
 
 
 CREATE OR REPLACE VIEW vw_balance_sheet_summary AS
