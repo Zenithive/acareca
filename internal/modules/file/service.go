@@ -20,15 +20,14 @@ import (
 
 type Service interface {
 	UploadFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, req *RqUploadFile, ownerID uuid.UUID, ownerRole string) (*RsUploadDocument, error)
-	UploadMultipleFiles(ctx context.Context, files []*multipart.FileHeader, req *RqUploadFile, ownerID uuid.UUID, ownerRole string) ([]*RsUploadDocument, error)
 	GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*RsDocument, error)
 	DownloadFile(ctx context.Context, id uuid.UUID, userID uuid.UUID) (io.ReadCloser, *Document, error)
 	ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error)
 	ListDocumentsByEntity(ctx context.Context, entityType string, entityID uuid.UUID, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error)
 	UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*RsDocument, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
-	GenerateShareLink(ctx context.Context, id uuid.UUID, userID uuid.UUID, expiresIn int) (*RsShareLink, error)
-	GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string) (*RsPresignedUploadURL, error)
+
+	GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error)
 	ConfirmUpload(ctx context.Context, documentID uuid.UUID, userID uuid.UUID) error
 }
 
@@ -98,45 +97,24 @@ func (s *service) UploadFile(ctx context.Context, file multipart.File, header *m
 	now := time.Now()
 	doc.UploadedAt = &now
 
-	created, err := s.repo.Create(ctx, doc, nil)
+	var created *Document
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		created, err = s.repo.Create(ctx, doc, tx)
+		if err != nil {
+			s.storage.Delete(ctx, storedKey)
+			return fmt.Errorf("save document record: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		s.storage.Delete(ctx, storedKey)
-		return nil, fmt.Errorf("save document record: %w", err)
+		return nil, err
 	}
 
 	s.logFileUpload(ctx, created, ownerID)
 
 	baseURL, _ := s.cfg.GetBaseURL()
 	return created.ToRsUploadDocument(baseURL), nil
-}
-
-// UploadMultipleFiles uploads multiple files
-func (s *service) UploadMultipleFiles(ctx context.Context, files []*multipart.FileHeader, req *RqUploadFile, ownerID uuid.UUID, ownerRole string) ([]*RsUploadDocument, error) {
-	results := make([]*RsUploadDocument, 0, len(files))
-	errs := make([]error, 0)
-
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
-		if err != nil {
-			errs = append(errs, fmt.Errorf("open file %s: %w", fileHeader.Filename, err))
-			continue
-		}
-
-		result, err := s.UploadFile(ctx, file, fileHeader, req, ownerID, ownerRole)
-		file.Close() // explicit close — defer inside a loop doesn't fire until function returns
-		if err != nil {
-			errs = append(errs, fmt.Errorf("upload file %s: %w", fileHeader.Filename, err))
-			continue
-		}
-
-		results = append(results, result)
-	}
-
-	if len(errs) > 0 && len(results) == 0 {
-		return nil, fmt.Errorf("all uploads failed: %v", errs)
-	}
-
-	return results, nil
 }
 
 // GetDocument retrieves document metadata
@@ -270,9 +248,16 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 	if req.IsPublic != nil {
 		doc.IsPublic = *req.IsPublic
 	}
+	var updated *Document
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		updated, err = s.repo.Update(ctx, doc, tx)
+		if err != nil {
+			return err
+		}
 
-	// Save changes
-	updated, err := s.repo.Update(ctx, doc, nil)
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -286,18 +271,29 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 
 // DeleteDocument deletes a document
 func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	doc, err := s.repo.FindByID(ctx, id)
+
+	var doc *Document
+	var err error
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		doc, err = s.repo.FindByID(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		// Check access permission
+		if doc.OwnerID != userID {
+			return ErrUnauthorizedAccess
+		}
+
+		// Soft delete in database
+		if err = s.repo.Delete(ctx, id, tx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return err
-	}
-
-	// Check access permission
-	if doc.OwnerID != userID {
-		return ErrUnauthorizedAccess
-	}
-
-	// Soft delete in database
-	if err := s.repo.Delete(ctx, id, nil); err != nil {
 		return err
 	}
 
@@ -315,57 +311,14 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.
 	return nil
 }
 
-// GenerateShareLink generates a temporary share link
-func (s *service) GenerateShareLink(ctx context.Context, id uuid.UUID, userID uuid.UUID, expiresIn int) (*RsShareLink, error) {
-	doc, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check access permission
-	if !s.canAccessDocument(doc, userID) {
-		return nil, ErrUnauthorizedAccess
-	}
-
-	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
-
-	// Check if storage provider supports presigned URLs
-	if presignedProvider, ok := s.storage.(upload.PresignedURLProvider); ok {
-		// Generate presigned URL
-		url, err := presignedProvider.GeneratePresignedURL(doc.ObjectKey, time.Duration(expiresIn)*time.Second)
-		if err != nil {
-			return nil, fmt.Errorf("generate presigned URL: %w", err)
-		}
-
-		return &RsShareLink{
-			URL:       url,
-			Token:     "", // No token needed for presigned URLs
-			ExpiresAt: expiresAt,
-		}, nil
-	}
-
-	// Fallback to token-based sharing for local storage
-	token := uuid.New().String()
-	baseURL, _ := s.cfg.GetBaseURL()
-	url := fmt.Sprintf("%s/api/v1/files/%s/download?token=%s", baseURL, id.String(), token)
-
-	return &RsShareLink{
-		URL:       url,
-		Token:     token,
-		ExpiresAt: expiresAt,
-	}, nil
-}
-
 // GeneratePresignedUploadURL generates a presigned URL for direct upload to R2
-func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string) (*RsPresignedUploadURL, error) {
-	// Check if storage provider supports presigned URLs
+func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error) {
 	presignedProvider, ok := s.storage.(upload.PresignedURLProvider)
 	if !ok {
 		return nil, errors.New("presigned URLs not supported by current storage provider")
 	}
 
-	// Generate object key
-	objectKey := s.storage.GenerateObjectKey(ownerID, req.Filename)
+	objectKey := s.storage.GenerateObjectKey(ownerID, header.Filename)
 
 	// Default to 15 minutes if not specified; ExpiresIn is optional (*int)
 	expiresInSec := 900
@@ -373,24 +326,31 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		expiresInSec = *req.ExpiresIn
 	}
 	expiresIn := time.Duration(expiresInSec) * time.Second
-	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, req.ContentType, expiresIn)
+	mimeType := header.Header.Get("Content-Type")
+	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, mimeType, expiresIn)
 	if err != nil {
 		return nil, fmt.Errorf("generate presigned upload URL: %w", err)
 	}
 
+	_, checksum, err := s.storage.Upload(ctx, file, header, objectKey)
+	if err != nil {
+		return nil, fmt.Errorf("upload to storage: %w", err)
+	}
+
 	// Create pending document record
-	ext := upload.GetFileExtension(req.Filename)
+	ext := upload.GetFileExtension(header.Filename)
 	doc := &Document{
 		OwnerID:      ownerID,
 		OwnerRole:    ownerRole,
 		ObjectKey:    objectKey,
 		Bucket:       s.bucket,
-		OriginalName: upload.SanitizeFilename(req.Filename),
+		OriginalName: upload.SanitizeFilename(header.Filename),
 		Extension:    &ext,
-		MimeType:     req.ContentType,
-		SizeBytes:    0, // Will be updated after upload
+		MimeType:     mimeType,
+		SizeBytes:    header.Size,
 		Status:       StatusPending,
 		IsPublic:     false,
+		Checksum:     &checksum,
 	}
 
 	// Set entity information if provided
@@ -409,10 +369,19 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 	expiresAt := time.Now().Add(expiresIn)
 	doc.UploadExpiresAt = &expiresAt
 
-	// Save to database
-	created, err := s.repo.Create(ctx, doc, nil)
+	var created *Document
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Save to database
+		created, err = s.repo.Create(ctx, doc, tx)
+		if err != nil {
+			return fmt.Errorf("save document record: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("save document record: %w", err)
+		return nil, err
 	}
 
 	return &RsPresignedUploadURL{
@@ -456,8 +425,16 @@ func (s *service) ConfirmUpload(ctx context.Context, documentID uuid.UUID, userI
 		}
 	}
 
-	// Update status to uploaded
-	if err := s.repo.UpdateStatus(ctx, documentID, StatusUploaded, nil); err != nil {
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Update status to uploaded
+		if err := s.repo.UpdateStatus(ctx, documentID, StatusUploaded, doc, tx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
 		return err
 	}
 

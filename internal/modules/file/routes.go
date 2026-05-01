@@ -10,11 +10,11 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFu
 	files := rg.Group("/files", authMiddleware, middleware.AuditContext())
 	{
 		// Upload endpoints
-		files.POST("/upload", h.UploadFile)
-		files.POST("/upload/multiple", h.UploadMultipleFiles)
+		// files.POST("/upload", h.UploadFile)
+		// files.POST("/upload/multiple", h.UploadMultipleFiles)
 
 		// Presigned URL endpoints
-		files.POST("/presigned-upload", h.GeneratePresignedUploadURL)
+		files.POST("/upload", h.GeneratePresignedUploadURL)
 		files.POST("/:id/confirm", h.ConfirmUpload)
 
 		// Document management

@@ -17,14 +17,12 @@ import (
 
 type Handler interface {
 	UploadFile(c *gin.Context)
-	UploadMultipleFiles(c *gin.Context)
 	GetDocument(c *gin.Context)
 	DownloadFile(c *gin.Context)
 	ListDocuments(c *gin.Context)
 	ListDocumentsByEntity(c *gin.Context)
 	UpdateDocument(c *gin.Context)
 	DeleteDocument(c *gin.Context)
-	// GenerateShareLink(c *gin.Context)
 	GeneratePresignedUploadURL(c *gin.Context)
 	ConfirmUpload(c *gin.Context)
 }
@@ -113,73 +111,6 @@ func (h *handler) UploadFile(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusCreated, result, "File uploaded successfully")
-}
-
-// UploadMultipleFiles godoc
-// @Summary Upload multiple files
-// @Description Upload multiple files with optional entity association
-// @Tags files
-// @Accept multipart/form-data
-// @Produce json
-// @Security BearerToken
-// @Param files formData file true "Files to upload" multiple
-// @Param entity_type formData string false "Entity type"
-// @Param entity_id formData string false "Entity ID (UUID)"
-// @Param is_public formData boolean false "Make files publicly accessible"
-// @Success 201 {object} response.RsBase{data=[]RsUploadDocument}
-// @Failure 400 {object} response.RsError
-// @Failure 401 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /files/upload/multiple [post]
-func (h *handler) UploadMultipleFiles(c *gin.Context) {
-	// Get user info from context
-	userIDPtr := auditctx.GetUserID(c.Request.Context())
-	if userIDPtr == nil {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found"))
-		return
-	}
-
-	userID, err := uuid.Parse(*userIDPtr)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid user id"))
-		return
-	}
-
-	// Get user role
-	rolePtr := auditctx.GetUserType(c.Request.Context())
-	if rolePtr == nil {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: role not found"))
-		return
-	}
-
-	// Parse form data
-	var req RqUploadFile
-	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
-	// Get uploaded files
-	form, err := c.MultipartForm()
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("failed to parse multipart form"))
-		return
-	}
-
-	files := form.File["files"]
-	if len(files) == 0 {
-		response.Error(c, http.StatusBadRequest, errors.New("at least one file is required"))
-		return
-	}
-
-	// Upload files
-	results, err := h.svc.UploadMultipleFiles(c.Request.Context(), files, &req, userID, *rolePtr)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	response.JSON(c, http.StatusCreated, results, "Files uploaded successfully")
 }
 
 // GetDocument godoc
@@ -518,67 +449,6 @@ func (h *handler) DeleteDocument(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "Document deleted successfully")
 }
 
-// GenerateShareLink godoc
-// @Summary Generate temporary share link
-// @Description Generate a temporary link for sharing a document
-// @Tags files
-// @Accept json
-// @Produce json
-// @Security BearerToken
-// @Param id path string true "Document ID (UUID)"
-// @Param request body RqGenerateShareLink true "Share link parameters"
-// @Success 200 {object} response.RsBase{data=RsShareLink}
-// @Failure 400 {object} response.RsError
-// @Failure 401 {object} response.RsError
-// @Failure 403 {object} response.RsError
-// @Failure 404 {object} response.RsError
-// @Router /files/{id}/share [post]
-func (h *handler) GenerateShareLink(c *gin.Context) {
-	// Get user info
-	userIDPtr := auditctx.GetUserID(c.Request.Context())
-	if userIDPtr == nil {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found"))
-		return
-	}
-
-	userID, err := uuid.Parse(*userIDPtr)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid user id"))
-		return
-	}
-
-	// Get document ID
-	docID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid document id"))
-		return
-	}
-
-	// Parse request body
-	var req RqGenerateShareLink
-	if err := util.BindAndValidate(c, &req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
-	// Generate share link
-	link, err := h.svc.GenerateShareLink(c.Request.Context(), docID, userID, req.ExpiresIn)
-	if err != nil {
-		if errors.Is(err, ErrDocumentNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		if errors.Is(err, ErrUnauthorizedAccess) {
-			response.Error(c, http.StatusForbidden, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	response.JSON(c, http.StatusOK, link, "Share link generated successfully")
-}
-
 // GeneratePresignedUploadURL godoc
 // @Summary Generate presigned upload URL
 // @Description Generate a presigned URL for direct upload to R2 storage
@@ -613,56 +483,27 @@ func (h *handler) GeneratePresignedUploadURL(c *gin.Context) {
 		return
 	}
 
-	// Bind the request. c.ShouldBind fails when `filename` is sent as a File
-	// type in multipart/form-data (e.g. Postman "File" row) because Gin's form
-	// binder finds a multipart.FileHeader part but the struct has no matching
-	// *multipart.FileHeader field. We handle form-data manually so we can pull
-	// the filename out of the file header and still bind the text fields.
 	var req RqGeneratePresignedUploadURL
-	switch c.ContentType() {
-	case "multipart/form-data", "application/x-www-form-urlencoded":
-		req.ContentType = c.PostForm("content_type")
-		if et := c.PostForm("entity_type"); et != "" {
-			req.EntityType = &et
-		}
-		if eid := c.PostForm("entity_id"); eid != "" {
-			req.EntityID = &eid
-		}
-		if exp := c.PostForm("expires_in"); exp != "" {
-			v, err := strconv.Atoi(exp)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid expires_in: %w", err))
-				return
-			}
-			req.ExpiresIn = &v
-		}
-		// `filename` may arrive as a plain text field or as a File upload.
-		// Try the file path first; also infer content_type from the part header
-		// when the client hasn't set it explicitly as a separate field.
-		if fileHeader, err := c.FormFile("filename"); err == nil {
-			req.Filename = fileHeader.Filename
-			if req.ContentType == "" {
-				req.ContentType = fileHeader.Header.Get("Content-Type")
-			}
-		} else {
-			req.Filename = c.PostForm("filename")
-		}
-	default:
-		// JSON body
-		if err := c.ShouldBindJSON(&req); err != nil {
-			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
-			return
-		}
-	}
-
-	// Validate the request
-	if err := util.ValidateStruct(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, fmt.Errorf("validation failed: %w", err))
+	if err := c.ShouldBind(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("file is required"))
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errors.New("failed to open file"))
+		return
+	}
+	defer file.Close()
+
 	// Generate presigned URL
-	result, err := h.svc.GeneratePresignedUploadURL(c.Request.Context(), &req, userID, *rolePtr)
+	result, err := h.svc.GeneratePresignedUploadURL(c.Request.Context(), &req, userID, *rolePtr, file, fileHeader)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

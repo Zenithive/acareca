@@ -1,8 +1,6 @@
 package file
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,84 +91,13 @@ type RqGenerateShareLink struct {
 	ExpiresIn int `json:"expires_in" validate:"required,min=60,max=604800"` // 1 minute to 7 days
 }
 
-// RqGeneratePresignedUploadURL represents a request to generate a presigned upload URL.
-// This struct is JSON-only. The form: tags have been intentionally removed because
-// multipart/form-data binding errors when the form contains a file part but the
-// struct has no *multipart.FileHeader field to receive it.
 type RqGeneratePresignedUploadURL struct {
-	Filename    string  `json:"filename" validate:"required"`
-	ContentType string  `json:"content_type" validate:"required"`
-	ExpiresIn   *int    `json:"expires_in" validate:"omitempty,min=60,max=3600"`
-	EntityType  *string `json:"entity_type" validate:"omitempty,oneof=practitioner accountant admin clinic transaction invoice report user business form form_entry"`
-	EntityID    *string `json:"entity_id" validate:"omitempty,uuid"`
-}
-
-// UnmarshalJSON implements custom JSON unmarshaling to handle both snake_case and kebab-case
-func (r *RqGeneratePresignedUploadURL) UnmarshalJSON(data []byte) error {
-	// First, try to unmarshal into a map to handle alternative field names
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
-	}
-
-	// Map fields manually, handling both snake_case and kebab-case
-	if v, ok := raw["filename"]; ok {
-		if s, ok := v.(string); ok {
-			r.Filename = s
-		}
-	}
-
-	// Handle content_type (snake_case) or content-type (kebab-case)
-	if v, ok := raw["content_type"]; ok {
-		if s, ok := v.(string); ok {
-			r.ContentType = s
-		}
-	} else if v, ok := raw["content-type"]; ok {
-		if s, ok := v.(string); ok {
-			r.ContentType = s
-		}
-	}
-
-	// Handle expires_in (snake_case) or expires-in (kebab-case)
-	if v, ok := raw["expires_in"]; ok {
-		if f, ok := v.(float64); ok {
-			i := int(f)
-			r.ExpiresIn = &i
-		}
-	} else if v, ok := raw["expires-in"]; ok {
-		if f, ok := v.(float64); ok {
-			i := int(f)
-			r.ExpiresIn = &i
-		}
-	}
-
-	// Handle entity_type (snake_case) or entity-type (kebab-case)
-	if v, ok := raw["entity_type"]; ok {
-		if s, ok := v.(string); ok {
-			r.EntityType = &s
-		}
-	} else if v, ok := raw["entity-type"]; ok {
-		if s, ok := v.(string); ok {
-			r.EntityType = &s
-		}
-	}
-
-	// Handle entity_id (snake_case) or entity-id (kebab-case)
-	if v, ok := raw["entity_id"]; ok {
-		if s, ok := v.(string); ok {
-			r.EntityID = &s
-		}
-	} else if v, ok := raw["entity-id"]; ok {
-		if s, ok := v.(string); ok {
-			r.EntityID = &s
-		}
-	}
-
-	return nil
+	ExpiresIn  *int    `form:"expires_in" validate:"omitempty,min=60,max=3600"`
+	EntityType *string `form:"entity_type" validate:"omitempty,oneof=practitioner accountant admin clinic transaction invoice report user business form form_entry"`
+	EntityID   *string `form:"entity_id" validate:"omitempty,uuid"`
 }
 
 // Response models
-
 // RsDocument represents a document response
 type RsDocument struct {
 	ID           uuid.UUID  `json:"id"`

@@ -25,8 +25,7 @@ type Repository interface {
 	FindByEntity(ctx context.Context, entityType string, entityID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error)
 	Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
 	Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string, tx *sqlx.Tx) error
-	HardDelete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error
 }
 
 type repository struct {
@@ -57,8 +56,7 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 	var id uuid.UUID
 	var createdAt, updatedAt time.Time
 
-	executor := r.getExecutor(tx)
-	err := executor.QueryRowxContext(ctx, query,
+	err := tx.QueryRowxContext(ctx, query,
 		doc.OwnerID, doc.OwnerRole, doc.ObjectKey, doc.Bucket,
 		doc.OriginalName, doc.Extension, doc.MimeType, doc.SizeBytes,
 		doc.Checksum, doc.Status, doc.IsPublic,
@@ -300,9 +298,8 @@ func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 		WHERE id = $6 AND deleted_at IS NULL
 		RETURNING updated_at`
 
-	executor := r.getExecutor(tx)
 	var updatedAt time.Time
-	err := executor.QueryRowxContext(ctx, query,
+	err := tx.QueryRowxContext(ctx, query,
 		doc.OriginalName,
 		doc.Extension,
 		doc.EntityType,
@@ -323,24 +320,33 @@ func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 }
 
 // UpdateStatus updates document status
-func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, tx *sqlx.Tx) error {
-	query := `
-		UPDATE tbl_document
-		SET 
-			status = $1,
-			uploaded_at = CASE WHEN $1 = 'uploaded' THEN NOW() ELSE uploaded_at END,
-			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`
+func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error {
+	uploadedAt := doc.UploadedAt
+	if status == StatusUploaded {
+		now := time.Now()
+		uploadedAt = &now
+	}
 
-	executor := r.getExecutor(tx)
-	result, err := executor.ExecContext(ctx, query, status, id)
+	query := `
+	UPDATE tbl_document
+	SET 
+		status = $1,
+		uploaded_at = $2,
+		updated_at = NOW()
+	WHERE id = $3 AND deleted_at IS NULL`
+
+	var result sql.Result
+	var err error
+
+	result, err = r.db.ExecContext(ctx, query, status, uploadedAt, id)
+
 	if err != nil {
 		return fmt.Errorf("update document status: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return err
 	}
 
 	if rows == 0 {
@@ -360,8 +366,7 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) erro
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`
 
-	executor := r.getExecutor(tx)
-	result, err := executor.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete document: %w", err)
 	}
@@ -376,34 +381,4 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) erro
 	}
 
 	return nil
-}
-
-// HardDelete permanently deletes a document
-func (r *repository) HardDelete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error {
-	query := `DELETE FROM tbl_document WHERE id = $1`
-
-	executor := r.getExecutor(tx)
-	result, err := executor.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("hard delete document: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
-	}
-
-	if rows == 0 {
-		return ErrDocumentNotFound
-	}
-
-	return nil
-}
-
-// getExecutor returns the appropriate executor (transaction or database)
-func (r *repository) getExecutor(tx *sqlx.Tx) sqlx.ExtContext {
-	if tx != nil {
-		return tx
-	}
-	return r.db
 }
