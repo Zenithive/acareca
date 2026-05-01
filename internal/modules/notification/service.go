@@ -15,6 +15,8 @@ type Service interface {
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
+	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
 }
 
 type service struct {
@@ -27,21 +29,47 @@ func NewService(repo Repository, notifier *sharednotification.Hub) Service {
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
+	// Determine which preference bucket this belongs to
+	prefCategory := s.getPreferenceCategory(rq)
+	if prefCategory == "" {
+		return nil
+	}
+
+	// Fetch preferences for the recipient
+	prefs, err := s.repo.GetPreference(ctx, rq.RecipientID, rq.RecipientType, prefCategory)
+	if err != nil {
+		fmt.Printf("Err in fetching preferences: %s\n", err)
+	}
+
+	var allowedChannels []Channel
+	if err != nil {
+		// If no preference record exists, default to sending on all requested channels
+		allowedChannels = rq.Channels
+	} else {
+		for _, ch := range rq.Channels {
+			// If the user explicitly set channel to false, skip it
+			if enabled, exists := prefs.Channels[string(ch)]; exists && !enabled {
+				continue
+			}
+			allowedChannels = append(allowedChannels, ch)
+		}
+	}
+
+	if len(allowedChannels) == 0 {
+		return nil // User has muted all requested channels for this category
+	}
+
 	notificationID, err := s.repo.CreateNotification(ctx, rq.MapToDB())
 	if err != nil {
 		return err
 	}
 
-	channels := rq.Channels
-	if len(channels) == 0 {
-		channels = []Channel{ChannelInApp}
-	}
-	if err := s.repo.CreateDeliveries(ctx, notificationID, channels); err != nil {
+	if err := s.repo.CreateDeliveries(ctx, notificationID, allowedChannels); err != nil {
 		return err
 	}
 
 	// Attempt in_app delivery via WebSocket and update delivery status
-	for _, ch := range channels {
+	for _, ch := range allowedChannels {
 		if ch == ChannelInApp && s.notifier != nil {
 			push := map[string]any{
 				"id":           notificationID,
@@ -97,4 +125,43 @@ func (s *service) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error 
 
 func (s *service) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
 	return s.repo.MarkDismissed(ctx, id, recipientID)
+}
+
+func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error) {
+	prefs, err := s.repo.GetAllPreferences(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if prefs == nil {
+		return []NotificationPreference{}, nil
+	}
+	return prefs, nil
+}
+
+func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error {
+	pref := NotificationPreference{
+		UserID:     userID,
+		EntityID:   entityID,
+		EntityType: role,
+		EventType:  rq.EventType,
+		Channels:   rq.Channels,
+	}
+	return s.repo.UpsertPreference(ctx, pref)
+}
+
+func (s *service) getPreferenceCategory(rq RqNotification) NotificationEventType {
+	// Parse the payload title
+	var payload NotificationPayload
+	if err := json.Unmarshal(rq.Payload, &payload); err == nil {
+		if payload.Title == "Accountant Activity Alert" {
+			return EventAccountantActivityAlert
+		}
+		if payload.Title == "System Activity Alert" {
+			return EventSystemActivityAlert
+		}
+		if rq.EventType == EventType(EventTransactionCreated) {
+			return EventNewTransaction
+		}
+	}
+	return ""
 }

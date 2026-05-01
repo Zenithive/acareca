@@ -14,6 +14,8 @@ type IHandler interface {
 	MarkRead(c *gin.Context)
 	MarkAllRead(c *gin.Context)
 	MarkDismissed(c *gin.Context)
+	GetPreferences(c *gin.Context)
+	UpdatePreference(c *gin.Context)
 }
 
 type handler struct {
@@ -147,4 +149,59 @@ func (h *handler) handleTransitionError(c *gin.Context, err error) {
 	default:
 		response.Error(c, http.StatusInternalServerError, err)
 	}
+}
+
+// @Summary      Get notification preferences
+// @Description  Returns the current channel preferences for the authenticated user.
+// @Tags         notification
+// @Success      200  {object}  response.RsBase
+// @Failure      404  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/preferences [get]
+func (h *handler) GetPreferences(c *gin.Context) {
+	userID, ok := util.GetUserID(c) // Use UserID for the owner
+	if !ok {
+		return
+	}
+
+	prefs, err := h.svc.GetPreferences(c.Request.Context(), userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, prefs, "Notification preferences fetched successfully")
+}
+
+// @Summary      Update notification preference
+// @Description  Updates or creates a preference for a specific event type.
+// @Tags         notification
+// @Param        body  body  RqUpdatePreference  true  "Preference Update"
+// @Success      200  {object}  response.RsBase
+// @Failure      400  {object}  response.RsError
+// @Failure      404  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/preferences [put]
+func (h *handler) UpdatePreference(c *gin.Context) {
+	userID, okUser := util.GetUserID(c)
+	actorID, ok := util.GetEntityID(c)
+	role := c.GetString("role")
+	if !ok || !okUser {
+		return
+	}
+
+	var rq RqUpdatePreference
+	if err := c.ShouldBindJSON(&rq); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	err := h.svc.UpdatePreference(c.Request.Context(), userID, actorID, role, rq)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "Notification preferences updated successfully")
 }

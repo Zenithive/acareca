@@ -6395,6 +6395,89 @@ const docTemplate = `{
                 }
             }
         },
+        "/notification/preferences": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the current channel preferences for the authenticated user.",
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Get notification preferences",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Updates or creates a preference for a specific event type.",
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Update notification preference",
+                "parameters": [
+                    {
+                        "description": "Preference Update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/notification.RqUpdatePreference"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/notification/read-all": {
             "patch": {
                 "security": [
@@ -10760,6 +10843,40 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/notification.Status"
+                }
+            }
+        },
+        "notification.NotificationChannels": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "boolean"
+            }
+        },
+        "notification.NotificationEventType": {
+            "type": "string",
+            "enum": [
+                "NEW_TRANSACTION",
+                "ACCOUNTANT_ACTIVITY_ALERT",
+                "SYSTEM_ACTIVITY_ALERT"
+            ],
+            "x-enum-varnames": [
+                "EventNewTransaction",
+                "EventAccountantActivityAlert",
+                "EventSystemActivityAlert"
+            ]
+        },
+        "notification.RqUpdatePreference": {
+            "type": "object",
+            "required": [
+                "channels",
+                "event_type"
+            ],
+            "properties": {
+                "channels": {
+                    "$ref": "#/definitions/notification.NotificationChannels"
+                },
+                "event_type": {
+                    "$ref": "#/definitions/notification.NotificationEventType"
                 }
             }
         },
