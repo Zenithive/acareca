@@ -22,6 +22,9 @@ type BSFilter struct {
 	PractitionerID *string `form:"practitioner_id"`
 	ClinicID       *string `form:"clinic_id"`
 	AsOfDate       *string `form:"as_of_date"` // Show balances as of this date (YYYY-MM-DD)
+	FormID         *string `form:"form_id"`
+	CoaID          *string `form:"coa_id"`
+	TaxTypeID      *int16  `form:"tax_type_id"`
 }
 
 // RsBalanceSheet is the complete balance sheet response
