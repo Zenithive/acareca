@@ -58,6 +58,23 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UU
 		idx++
 	}
 
+	if f.FormID != nil && *f.FormID != "" {
+		inner += fmt.Sprintf(" AND form_id = $%d", idx)
+		args = append(args, *f.FormID)
+		idx++
+	}
+
+	if f.CoaID != nil && *f.CoaID != "" {
+		inner += fmt.Sprintf(" AND coa_id = $%d", idx)
+		args = append(args, *f.CoaID)
+		idx++
+	}
+
+	if f.TaxTypeID != nil && *f.TaxTypeID != 0 {
+		inner += fmt.Sprintf(" AND tax_id = $%d", idx)
+		args = append(args, *f.TaxTypeID)
+		idx++
+	}
 	// Step 2 — wrap once with the outer aggregation AFTER all filters are applied
 	query := fmt.Sprintf(`
 		SELECT
