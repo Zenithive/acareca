@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"log"
+	"strings"
 
 	"net/http"
 
@@ -25,11 +26,13 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
+	"github.com/iamarpitzala/acareca/internal/shared/upload"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/stripe/stripe-go/v82"
 	swaggerFiles "github.com/swaggo/files"
@@ -69,6 +72,33 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo, notificationSvc)
+
+	// ============ FILE UPLOAD MODULE ============
+	fileRepo := file.NewRepository(dbConn)
+
+	// Initialize storage provider (R2)
+	storage, err := upload.NewStorageProvider(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize storage provider: %v", err)
+	}
+
+	// Parse allowed MIME types from config
+	allowedTypes := strings.Split(cfg.FileUploadAllowedTypes, ",")
+	for i, t := range allowedTypes {
+		allowedTypes[i] = strings.TrimSpace(t)
+	}
+
+	// Initialize file validator
+	fileValidator := upload.NewFileValidator(cfg.FileUploadMaxSize, allowedTypes)
+
+	// Initialize file service
+	fileSvc := file.NewService(fileRepo, storage, fileValidator, cfg, dbConn, auditSvc)
+
+	// Initialize file handler
+	fileHandler := file.NewHandler(fileSvc)
+
+	// Register file routes
+	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
 
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)

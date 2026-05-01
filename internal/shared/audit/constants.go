@@ -11,6 +11,7 @@ const (
 	ModuleIdentity  = "identity"
 	ModuleEngine    = "engine"
 	ModuleBusiness  = "business"
+	ModuleFile      = "file"
 )
 
 // Action constants - Auth module
@@ -26,6 +27,10 @@ const (
 	ActionOAuthLinked     = "user.oauth_linked"
 	ActionSessionCreated  = "session.created"
 	ActionSessionRevoked  = "session.revoked"
+	ActionFileUploaded    = "file.upload"
+	ActionFileDownloaded  = "file.download"
+	ActionFileUpdated     = "file.update"
+	ActionFileDeleted     = "file.delete"
 )
 
 // Action constants - Admin module
@@ -88,6 +93,7 @@ const (
 	EntityInvitation             = "tbl_invitation"
 	EntityPermission             = "tbl_invite_permissions"
 	EntitySystem                 = "system"
+	EntityFile                   = "tbl_document"
 )
 
 // Action Constants -Accountant module
