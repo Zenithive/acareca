@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
@@ -27,7 +26,7 @@ type Handler interface {
 	DeleteDocument(c *gin.Context)
 	// GenerateShareLink(c *gin.Context)
 	GeneratePresignedUploadURL(c *gin.Context)
-	// ConfirmUpload(c *gin.Context)
+	ConfirmUpload(c *gin.Context)
 }
 
 type handler struct {
@@ -614,11 +613,46 @@ func (h *handler) GeneratePresignedUploadURL(c *gin.Context) {
 		return
 	}
 
-	// Parse request body
+	// Bind the request. c.ShouldBind fails when `filename` is sent as a File
+	// type in multipart/form-data (e.g. Postman "File" row) because Gin's form
+	// binder finds a multipart.FileHeader part but the struct has no matching
+	// *multipart.FileHeader field. We handle form-data manually so we can pull
+	// the filename out of the file header and still bind the text fields.
 	var req RqGeneratePresignedUploadURL
-	if err := c.ShouldBindWith(&req, binding.FormMultipart); err != nil {
-		response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
-		return
+	switch c.ContentType() {
+	case "multipart/form-data", "application/x-www-form-urlencoded":
+		req.ContentType = c.PostForm("content_type")
+		if et := c.PostForm("entity_type"); et != "" {
+			req.EntityType = &et
+		}
+		if eid := c.PostForm("entity_id"); eid != "" {
+			req.EntityID = &eid
+		}
+		if exp := c.PostForm("expires_in"); exp != "" {
+			v, err := strconv.Atoi(exp)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid expires_in: %w", err))
+				return
+			}
+			req.ExpiresIn = &v
+		}
+		// `filename` may arrive as a plain text field or as a File upload.
+		// Try the file path first; also infer content_type from the part header
+		// when the client hasn't set it explicitly as a separate field.
+		if fileHeader, err := c.FormFile("filename"); err == nil {
+			req.Filename = fileHeader.Filename
+			if req.ContentType == "" {
+				req.ContentType = fileHeader.Header.Get("Content-Type")
+			}
+		} else {
+			req.Filename = c.PostForm("filename")
+		}
+	default:
+		// JSON body
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+			return
+		}
 	}
 
 	// Validate the request

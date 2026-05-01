@@ -113,27 +113,27 @@ func (s *service) UploadFile(ctx context.Context, file multipart.File, header *m
 // UploadMultipleFiles uploads multiple files
 func (s *service) UploadMultipleFiles(ctx context.Context, files []*multipart.FileHeader, req *RqUploadFile, ownerID uuid.UUID, ownerRole string) ([]*RsUploadDocument, error) {
 	results := make([]*RsUploadDocument, 0, len(files))
-	errors := make([]error, 0)
+	errs := make([]error, 0)
 
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
-			errors = append(errors, fmt.Errorf("open file %s: %w", fileHeader.Filename, err))
+			errs = append(errs, fmt.Errorf("open file %s: %w", fileHeader.Filename, err))
 			continue
 		}
-		defer file.Close()
 
 		result, err := s.UploadFile(ctx, file, fileHeader, req, ownerID, ownerRole)
+		file.Close() // explicit close — defer inside a loop doesn't fire until function returns
 		if err != nil {
-			errors = append(errors, fmt.Errorf("upload file %s: %w", fileHeader.Filename, err))
+			errs = append(errs, fmt.Errorf("upload file %s: %w", fileHeader.Filename, err))
 			continue
 		}
 
 		results = append(results, result)
 	}
 
-	if len(errors) > 0 && len(results) == 0 {
-		return nil, fmt.Errorf("all uploads failed: %v", errors)
+	if len(errs) > 0 && len(results) == 0 {
+		return nil, fmt.Errorf("all uploads failed: %v", errs)
 	}
 
 	return results, nil
@@ -204,7 +204,7 @@ func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *
 
 // ListDocumentsByEntity lists documents for a specific entity
 func (s *service) ListDocumentsByEntity(ctx context.Context, entityType string, entityID uuid.UUID, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error) {
-	docs, total, err := s.repo.FindByEntity(ctx, entityType, entityID, filters)
+	docs, _, err := s.repo.FindByEntity(ctx, entityType, entityID, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +216,10 @@ func (s *service) ListDocumentsByEntity(ctx context.Context, entityType string, 
 			accessibleDocs = append(accessibleDocs, doc)
 		}
 	}
+
+	// Use the filtered count as total so pagination math is correct.
+	// Note: for large datasets consider pushing access filtering to the DB layer.
+	filteredTotal := int64(len(accessibleDocs))
 
 	baseURL, _ := s.cfg.GetBaseURL()
 	rsDocs := make([]RsDocument, len(accessibleDocs))
@@ -233,7 +237,7 @@ func (s *service) ListDocumentsByEntity(ctx context.Context, entityType string, 
 	}
 
 	result := &util.RsList{}
-	result.MapToList(rsDocs, int(total), page, limit)
+	result.MapToList(rsDocs, int(filteredTotal), page, limit)
 	return result, nil
 }
 
@@ -363,8 +367,12 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 	// Generate object key
 	objectKey := s.storage.GenerateObjectKey(ownerID, req.Filename)
 
-	// Generate presigned upload URL
-	expiresIn := time.Duration(*req.ExpiresIn) * time.Second
+	// Default to 15 minutes if not specified; ExpiresIn is optional (*int)
+	expiresInSec := 900
+	if req.ExpiresIn != nil {
+		expiresInSec = *req.ExpiresIn
+	}
+	expiresIn := time.Duration(expiresInSec) * time.Second
 	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, req.ContentType, expiresIn)
 	if err != nil {
 		return nil, fmt.Errorf("generate presigned upload URL: %w", err)
@@ -437,16 +445,14 @@ func (s *service) ConfirmUpload(ctx context.Context, documentID uuid.UUID, userI
 		return fmt.Errorf("upload has expired")
 	}
 
-	// Verify file exists in storage (for R2)
-	if r2Provider, ok := s.storage.(*upload.R2StorageProvider); ok {
-		headResult, err := r2Provider.HeadObject(ctx, doc.ObjectKey)
+	// Verify file exists in storage and get its size via the interface
+	if presignedProvider, ok := s.storage.(upload.PresignedURLProvider); ok {
+		size, err := presignedProvider.HeadObject(ctx, doc.ObjectKey)
 		if err != nil {
 			return fmt.Errorf("file not found in storage: %w", err)
 		}
-
-		// Update file size from R2
-		if headResult.ContentLength != nil {
-			doc.SizeBytes = *headResult.ContentLength
+		if size > 0 {
+			doc.SizeBytes = size
 		}
 	}
 

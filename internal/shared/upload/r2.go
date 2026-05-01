@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,7 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -62,7 +62,7 @@ func (p *R2StorageProvider) Upload(ctx context.Context, file multipart.File, hea
 	_, err = p.client.PutObjectWithContext(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(p.bucket),
 		Key:         aws.String(objectKey),
-		Body:        aws.ReadSeekCloser(strings.NewReader(string(content))),
+		Body:        aws.ReadSeekCloser(bytes.NewReader(content)),
 		ContentType: aws.String(header.Header.Get("Content-Type")),
 		Metadata: map[string]*string{
 			"original-filename": aws.String(header.Filename),
@@ -152,17 +152,20 @@ func (p *R2StorageProvider) GenerateObjectKey(ownerID uuid.UUID, filename string
 	return fmt.Sprintf("%s/%s/%s%s", ownerID.String(), timestamp, uniqueID, ext)
 }
 
-// HeadObject checks if an object exists in R2
-func (p *R2StorageProvider) HeadObject(ctx context.Context, objectKey string) (*s3.HeadObjectOutput, error) {
+// HeadObject checks if an object exists in R2 and returns its size in bytes
+func (p *R2StorageProvider) HeadObject(ctx context.Context, objectKey string) (int64, error) {
 	result, err := p.client.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(p.bucket),
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("head object: %w", err)
+		return 0, fmt.Errorf("head object: %w", err)
 	}
 
-	return result, nil
+	if result.ContentLength == nil {
+		return 0, nil
+	}
+	return *result.ContentLength, nil
 }
 
 // ListObjects lists objects in R2 with a prefix

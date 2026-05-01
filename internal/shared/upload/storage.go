@@ -34,6 +34,7 @@ type PresignedURLProvider interface {
 	StorageProvider
 	GeneratePresignedURL(objectKey string, expiresIn time.Duration) (string, error)
 	GeneratePresignedUploadURL(objectKey string, contentType string, expiresIn time.Duration) (string, error)
+	HeadObject(ctx context.Context, objectKey string) (int64, error)
 }
 
 func NewStorageProvider(cfg *config.Config) (StorageProvider, error) {

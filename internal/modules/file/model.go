@@ -93,13 +93,16 @@ type RqGenerateShareLink struct {
 	ExpiresIn int `json:"expires_in" validate:"required,min=60,max=604800"` // 1 minute to 7 days
 }
 
-// RqGeneratePresignedUploadURL represents a request to generate a presigned upload URL
+// RqGeneratePresignedUploadURL represents a request to generate a presigned upload URL.
+// This struct is JSON-only. The form: tags have been intentionally removed because
+// multipart/form-data binding errors when the form contains a file part but the
+// struct has no *multipart.FileHeader field to receive it.
 type RqGeneratePresignedUploadURL struct {
-	Filename    string  `form:"filename" validate:"required"`
-	ContentType string  `form:"content_type" validate:"required"`
-	ExpiresIn   *int    `form:"expires_in" validate:"omitempty,min=60,max=3600"`
-	EntityType  *string `form:"entity_type" validate:"omitempty,oneof=practitioner accountant admin clinic transaction invoice report user business form form_entry"`
-	EntityID    *string `form:"entity_id" validate:"omitempty,uuid"`
+	Filename    string  `json:"filename" validate:"required"`
+	ContentType string  `json:"content_type" validate:"required"`
+	ExpiresIn   *int    `json:"expires_in" validate:"omitempty,min=60,max=3600"`
+	EntityType  *string `json:"entity_type" validate:"omitempty,oneof=practitioner accountant admin clinic transaction invoice report user business form form_entry"`
+	EntityID    *string `json:"entity_id" validate:"omitempty,uuid"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling to handle both snake_case and kebab-case

@@ -15,7 +15,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFu
 
 		// Presigned URL endpoints
 		files.POST("/presigned-upload", h.GeneratePresignedUploadURL)
-		// files.POST("/:id/confirm", h.ConfirmUpload)
+		files.POST("/:id/confirm", h.ConfirmUpload)
 
 		// Document management
 		files.GET("", h.ListDocuments)

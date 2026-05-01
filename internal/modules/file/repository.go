@@ -179,9 +179,12 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 		return nil, 0, fmt.Errorf("count documents: %w", err)
 	}
 
-	// Apply sorting
+	// Apply sorting — whitelist at repo level; value is interpolated into SQL.
+	allowedSort := map[string]bool{
+		"created_at": true, "updated_at": true, "size_bytes": true, "original_name": true,
+	}
 	sortColumn := "created_at"
-	if filters.Sort != "" {
+	if filters.Sort != "" && allowedSort[filters.Sort] {
 		sortColumn = filters.Sort
 	}
 	sortOrder := "DESC"
@@ -246,9 +249,12 @@ func (r *repository) FindByEntity(ctx context.Context, entityType string, entity
 		return nil, 0, fmt.Errorf("count documents: %w", err)
 	}
 
-	// Apply sorting
+	// Apply sorting — whitelist at repo level; value is interpolated into SQL.
+	allowedSort := map[string]bool{
+		"created_at": true, "updated_at": true, "size_bytes": true, "original_name": true,
+	}
 	sortColumn := "created_at"
-	if filters.Sort != "" {
+	if filters.Sort != "" && allowedSort[filters.Sort] {
 		sortColumn = filters.Sort
 	}
 	sortOrder := "DESC"
