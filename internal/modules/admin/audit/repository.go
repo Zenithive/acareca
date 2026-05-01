@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -19,11 +20,12 @@ type Repository interface {
 	GetAdminIDs(ctx context.Context) ([]uuid.UUID, error)
 	GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error)
 	GetUserName(ctx context.Context, id string) (string, error)
-	GetEntityName(ctx context.Context, table string, id string) (string, error)
+	GetEntityName(ctx context.Context, table string, id string) (*string, error)
 	ResolveActorName(ctx context.Context, id string) string
 	ResolveEntityLabel(ctx context.Context, entityType, id string) string
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error)
 	GetInvitationEmail(ctx context.Context, invitationID string) (string, error)
+	GetAccountantNameForSharedEvents(ctx context.Context, id string) (string, error)
 }
 
 type repository struct {
@@ -161,7 +163,7 @@ func (r *repository) GetUserName(ctx context.Context, id string) (string, error)
 	return name, nil
 }
 
-func (r *repository) GetEntityName(ctx context.Context, table string, id string) (string, error) {
+func (r *repository) GetEntityName(ctx context.Context, table string, id string) (*string, error) {
 	var name, query string
 
 	// Select 'name' from the provided table name
@@ -169,9 +171,12 @@ func (r *repository) GetEntityName(ctx context.Context, table string, id string)
 
 	err := r.db.GetContext(ctx, &name, query, id)
 	if err != nil {
-		return "", err
+		if err == sql.ErrNoRows {
+			return nil, nil // Not found is not an error here, just return nil
+		}
+		return nil, err
 	}
-	return name, nil
+	return &name, nil
 }
 
 // HasActiveSystemNotification checks for an existing UNREAD system notification for entityID + eventType in tbl_notification.
@@ -234,6 +239,7 @@ var entityTypeToTable = map[string]string{
 	"tbl_subscription":      "tbl_subscription",
 	"tbl_invitation":        "tbl_invitation",
 	"tbl_financial_year":    "tbl_financial_year",
+	"shared_event":          "tbl_shared_events",
 }
 
 // ResolveEntityLabel returns a display name for an entity.
@@ -262,4 +268,18 @@ func (r *repository) GetInvitationEmail(ctx context.Context, invitationID string
 		return "", err
 	}
 	return email, nil
+}
+
+func (r *repository) GetAccountantNameForSharedEvents(ctx context.Context, id string) (string, error) {
+	var name string
+	query := `SELECT actor_name 
+		FROM tbl_shared_events 
+		WHERE actor_id = $1 AND actor_name IS NOT NULL AND actor_name != ''
+		ORDER BY created_at DESC 
+		LIMIT 1`
+	err := r.db.GetContext(ctx, &name, query, id)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
 }

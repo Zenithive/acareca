@@ -2,6 +2,7 @@ package practitioner
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -25,6 +26,9 @@ type Repository interface {
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
+	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
+
+	GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*FinancialSettings, error)
 }
 
 type repository struct {
@@ -138,7 +142,7 @@ func (r *repository) CountPractitioners(ctx context.Context, f common.Filter) (i
 // ListPractitionersForAccountant lists practitioners associated with an accountant via COMPLETED invitations
 func (r *repository) ListPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*PractitionerWithUser, error) {
 	base := `
-		SELECT DISTINCT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
@@ -147,9 +151,9 @@ func (r *repository) ListPractitionersForAccountant(ctx context.Context, account
 		  AND i.accountant_id = ?
 		  AND i.status = 'COMPLETED'
 	`
-	
+
 	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, false)
-	
+
 	// Prepend accountantID to filterArgs
 	args := append([]interface{}{accountantID}, filterArgs...)
 
@@ -170,9 +174,9 @@ func (r *repository) CountPractitionersForAccountant(ctx context.Context, accoun
           AND i.accountant_id = ?
           AND i.status = 'COMPLETED'
     `
-	
+
 	query, filterArgs := common.BuildQuery(base, f, practitionerColumns, practitionerSearchCols, true)
-	
+
 	// Prepend accountantID to filterArgs
 	args := append([]interface{}{accountantID}, filterArgs...)
 
@@ -234,4 +238,55 @@ func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 	}
 
 	return nil
+}
+
+func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
+
+	var exists bool
+	checkQuery := `
+		SELECT EXISTS(
+			SELECT 1 FROM tbl_financial_settings 
+			WHERE practitioner_id = $1 AND financial_year_id = $2
+		)`
+	err := r.db.QueryRowContext(ctx, checkQuery, practitionerID, fyID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		// 2. If it exists, UPDATE it
+		updateQuery := `
+			UPDATE tbl_financial_settings 
+			SET 
+				lock_date = CASE WHEN $1::text IS NULL THEN NULL ELSE TO_DATE($1, 'DD-MM-YYYY') END, 
+				updated_at = NOW() 
+			WHERE practitioner_id = $2 AND financial_year_id = $3`
+		_, err = r.db.ExecContext(ctx, updateQuery, lockDate, practitionerID, fyID)
+	} else {
+		// 3. If it doesn't exist, INSERT it
+		insertQuery := `
+			INSERT INTO tbl_financial_settings (practitioner_id, financial_year_id, lock_date, created_at, updated_at)
+			VALUES ($1, $2, CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'DD-MM-YYYY') END, NOW(), NOW())`
+		_, err = r.db.ExecContext(ctx, insertQuery, practitionerID, fyID, lockDate)
+	}
+
+	return err
+}
+
+func (r *repository) GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*FinancialSettings, error) {
+	query := `
+        SELECT id, practitioner_id, financial_year_id, 
+               TO_CHAR(lock_date, 'DD-MM-YYYY') as lock_date, 
+               created_at, updated_at
+        FROM tbl_financial_settings
+        WHERE practitioner_id = $1 AND financial_year_id = $2`
+
+	var fs FinancialSettings
+	if err := r.db.QueryRowxContext(ctx, query, practitionerID, fyID).StructScan(&fs); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get financial settings: %w", err)
+	}
+	return &fs, nil
 }

@@ -9,9 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/xuri/excelize/v2"
@@ -22,20 +25,22 @@ type Service interface {
 	GetByAccount(ctx context.Context, f *PLFilter) ([]RsPLAccount, error)
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
-	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter) (*RsReport, error)
-	ExportPLReport(data *RsReport, exportType string) (interface{}, error)
+	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error)
+	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error)
 }
 
 type service struct {
-	repo           Repository
-	clinicRepo     clinic.Repository
-	accountantRepo accountant.Repository
-
+	repo            Repository
+	clinicRepo      clinic.Repository
+	accountantRepo  accountant.Repository
 	practitionerSvc practitioner.IService
+	authRepo        auth.Repository
+	auditSvc        audit.Service
+	eventsSvc       events.Service
 }
 
-func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
-	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo, practitionerSvc: practitionerSvc}
+func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, authRepo auth.Repository, auditSvc audit.Service, eventsSvc events.Service) Service {
+	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo, practitionerSvc: practitionerSvc, authRepo: authRepo, auditSvc: auditSvc, eventsSvc: eventsSvc}
 }
 
 func (s *service) GetMonthlySummary(ctx context.Context, f *PLFilter) ([]RsPLSummary, error) {
@@ -146,14 +151,11 @@ func parseAndValidate(f *PLFilter) (uuid.UUID, error) {
 	return clinicID, nil
 }
 
-func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter) (*RsReport, error) {
+func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error) {
 
 	meta := auditctx.GetMetadata(ctx)
 
-	isAccountant := false
-	if meta.UserType != nil {
-		isAccountant = strings.EqualFold(*meta.UserType, util.RoleAccountant)
-	}
+	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
 	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
 	if err == nil && accProfile != nil {
@@ -167,6 +169,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 			return nil, fmt.Errorf("access denied: accountant profile not found")
 		}
 
+		// Scenario: Accountant filtering by specific Clinic
 		if f.ClinicID != nil && *f.ClinicID != "" {
 			clinicUUID, err := uuid.Parse(*f.ClinicID)
 			if err != nil {
@@ -177,12 +180,16 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 				return nil, fmt.Errorf("permission denied: you are not associated with this clinic")
 			}
 			finalOwnerID = permission.PractitionerID
+
+			// Override: Only notify the owner of the specific clinic being viewed
+			targetNotifIDs = []uuid.UUID{finalOwnerID}
 		} else {
-			// Case B: Practice-wide
+			// Scenario: Accountant filtering by Practitioner (or Practice-wide)
 			if f.PractitionerID == "" {
+				// No ID in filter? Get the default linked practitioner
 				targetPracID, err := s.clinicRepo.GetPractitionerForAccountant(ctx, accProfile.ID)
 				if err != nil {
-					return nil, fmt.Errorf("no linked practitioner found: please provide a practitioner_id")
+					return nil, fmt.Errorf("no linked practitioner found")
 				}
 				finalOwnerID = *targetPracID
 			} else {
@@ -190,6 +197,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 				if err != nil {
 					return nil, fmt.Errorf("invalid practitioner_id format")
 				}
+				// Security check: is the accountant actually invited by this practitioner?
 				isLinked, err := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, accProfile.ID, targetPracID)
 				if err != nil || !isLinked {
 					return nil, fmt.Errorf("permission denied: no association with this practitioner")
@@ -198,23 +206,20 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 			}
 		}
 	} else {
-
+		// Scenario: User is the Practitioner
 		pracProfile, err := s.practitionerSvc.GetPractitionerByUserID(ctx, actorID.String())
 		if err != nil {
 			return nil, fmt.Errorf("access denied: practitioner profile not found")
 		}
 		finalOwnerID = pracProfile.ID
 
-		// Verify clinic ownership if a specific one is requested
 		if f.ClinicID != nil && *f.ClinicID != "" {
 			clinicUUID, err := uuid.Parse(*f.ClinicID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid clinic_id format")
-			}
-
-			_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, finalOwnerID)
-			if err != nil {
-				return nil, fmt.Errorf("access denied: clinic not found or ownership mismatch")
+			if err == nil {
+				_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, finalOwnerID)
+				if err != nil {
+					return nil, fmt.Errorf("access denied: clinic mismatch")
+				}
 			}
 		}
 	}
@@ -222,12 +227,6 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	// 3. APPLY VERIFIED PRACTITIONER ID (OUTSIDE all if/else blocks)
 	f.PractitionerID = finalOwnerID.String()
 
-	/*
-		if f.ClinicID != nil {
-			if _, err := uuid.Parse(*f.ClinicID); err != nil {
-				return nil, fmt.Errorf("invalid clinic_id: must be a valid UUID")
-			}
-		}*/
 	var from, to time.Time
 	//var err error
 	if f.DateFrom != nil {
@@ -249,12 +248,63 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		return nil, err
 	}
 
-	return buildReport(f, rows), nil
+	// --- AUDIT LOG ---
+	var userIDStr string
+	userIDStr = actorID.String()
+	parsedActorID := actorID.String()
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionPLReportGenerated,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityPLReport),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Profit and Loss Report",
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	// Record the Shared Event
+	if isAccountant && len(targetNotifIDs) > 0 {
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, actorID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		for _, pID := range targetNotifIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   accProfile.ID,
+				ActorID:        actorID,
+				ActorName:      &fullName,
+				ActorType:      role,
+				EventType:      "pl_report.generated",
+				EntityType:     "REPORT",
+				Description:    fmt.Sprintf("Accountant %s generated Profit and Loss Report", fullName),
+				CreatedAt:      time.Now(),
+				Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report"},
+			})
+		}
+	}
+
+	// NEW: Fetch pre-calculated summary from the specialized view
+	summary, err := s.repo.GetPLSummary(ctx, f)
+	if err != nil {
+		// Log the error but perhaps allow a fallback or return error
+		return nil, err
+	}
+
+	return buildReport(f, rows, summary), nil
 }
 
 // buildReport assembles a flat P&L report aggregated across all clinics/forms,
 // grouped by COA account within each section.
-func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
+func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) *RsReport {
 	// coaKey → accumulated total per section
 	type coaKey struct {
 		sectionType string
@@ -288,27 +338,32 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow) *RsReport {
 		coaTotals[ck] += val
 	}
 
-	buildGroup := func(sectionType string) RsReportGroup {
+	buildGroup := func(sectionTypes ...string) RsReportGroup {
 		accounts := make([]RsReportAccount, 0)
 		var total float64
-		for _, cid := range coaOrder[sectionType] {
-			ck := coaKey{sectionType, cid}
-			total += coaTotals[ck]
-			accounts = append(accounts, RsReportAccount{
-				CoaID:      cid,
-				CoaName:    coaNames[ck],
-				TotalValue: round2(coaTotals[ck]),
-			})
+		for _, st := range sectionTypes {
+			for _, cid := range coaOrder[st] {
+				ck := coaKey{st, cid}
+				total += coaTotals[ck]
+				accounts = append(accounts, RsReportAccount{
+					CoaID:      cid,
+					CoaName:    coaNames[ck],
+					TotalValue: round2(coaTotals[ck]),
+				})
+			}
 		}
 		return RsReportGroup{GroupTotal: round2(total), Accounts: accounts}
 	}
 
 	income := buildGroup("COLLECTION")
 	cos := buildGroup("COST")
-	other := buildGroup("OTHER_COST")
+	other := buildGroup("OTHER_COST", "EXPENSE_ENTRY")
 
-	grossProfit := round2(income.GroupTotal - cos.GroupTotal)
-	netProfit := round2(grossProfit - other.GroupTotal)
+	grossProfit := round2(summary.GrossProfitNet)
+	netProfit := round2(summary.NetProfitNet)
+
+	// grossProfit := round2(income.GroupTotal - cos.GroupTotal)
+	// netProfit := round2(grossProfit - other.GroupTotal)
 
 	dateFrom := ""
 	dateUntil := ""
@@ -337,7 +392,7 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func (s *service) ExportPLReport(data *RsReport, exportType string) (interface{}, error) {
+func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Profit and Loss"
 	f.NewSheet(sheet)
@@ -506,6 +561,66 @@ func (s *service) ExportPLReport(data *RsReport, exportType string) (interface{}
 	f.SetColWidth(sheet, "B", "B", 20)
 	f.UpdateLinkedValue()
 
+	// --- NOTIFICATION LOGIC ---
+	// notifIDs is already scoped by the handler (Scenario A or B).
+	// If a specific clinic was filtered, further narrow to only that clinic's owner.
+	targetNotifIDs := notifIDs
+	if filterClinicID != "" && len(notifIDs) > 1 {
+		clinicUUID, err := uuid.Parse(filterClinicID)
+		if err == nil {
+			clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicUUID)
+			if err == nil {
+				targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
+			}
+		}
+	}
+
+	// --- AUDIT LOG ---
+	meta := auditctx.GetMetadata(ctx)
+	var userIDStr string
+	userIDStr = userID.String()
+	parsedActorID := actorID.String()
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: nil,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionPLReportExported,
+		Module:     auditctx.ModuleReport,
+		EntityType: strPtr(auditctx.EntityPLReport),
+		EntityID:   &parsedActorID,
+		AfterState: map[string]interface{}{
+			"report_type": "Profit and Loss Report",
+			"export_type": exportType,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	// Record the Shared Event — only for accountants, never for practitioners.
+	if role == util.RoleAccountant && len(targetNotifIDs) > 0 {
+		var fullName string
+		user, err := s.authRepo.FindByID(ctx, userID)
+		if err == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		for _, pID := range targetNotifIDs {
+			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+				ID:             uuid.New(),
+				PractitionerID: pID,
+				AccountantID:   actorID,
+				ActorID:        userID,
+				ActorName:      &fullName,
+				ActorType:      role,
+				EventType:      "pl_report.exported",
+				EntityType:     "REPORT",
+				Description:    fmt.Sprintf("Accountant %s exported Profit and Loss Report", fullName),
+				CreatedAt:      time.Now(),
+				Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report", "export_type": exportType},
+			})
+		}
+	}
+
 	if exportType == "pdf" {
 		// Return HTML string
 		return s.generateHTMLString(f, sheet, data)
@@ -513,6 +628,8 @@ func (s *service) ExportPLReport(data *RsReport, exportType string) (interface{}
 
 	return f, nil
 }
+
+func strPtr(s string) *string { return &s }
 
 func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsReport) (string, error) {
 	rows, err := f.GetRows(sheetName)

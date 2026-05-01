@@ -15,6 +15,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
@@ -22,9 +23,9 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
-	"github.com/iamarpitzala/acareca/internal/modules/seed"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -130,7 +131,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
 	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
 	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo)
+	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, invitationRepo)
 
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
 	authHandler := auth.NewHandler(authSvc)
@@ -143,16 +144,26 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	fyGroup := v1.Group("/", middleware.Auth(cfg))
 	fy.RegisterRoutes(fyGroup, fyHandler)
 
-	// ============ ENGINE MODULES (P&L, BAS) ============
+	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)
-	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc)
-	plHandler := pl.NewHandler(plSvc)
+	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, eventsSvc)
+	plHandler := pl.NewHandler(plSvc, invitationSvc)
 	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
 	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
 	bas.RegisterRoutes(v1, basHandler, cfg)
+
+	// Equity service for automatic owner fund calculations
+	equitySvc := equity.NewService(dbConn, fyRepo)
+	equityHandler := equity.NewHandler(equitySvc)
+	equity.RegisterRoutes(v1, equityHandler, cfg)
+
+	bsRepo := bs.NewRepository(dbConn)
+	bsSvc := bs.NewService(bsRepo, equitySvc, *dbConn, auditSvc, eventsSvc, authRepo, invitationSvc)
+	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
+	bs.RegisterRoutes(v1, bsHandler, cfg)
 
 	// ============ SETTING MODULE ============
 	settingGroup := v1.Group("/setting")
@@ -186,11 +197,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
-
-	// ============ SEED MODULE ============
-	seedSvc := seed.NewService(dbConn)
-	seedHandler := seed.NewHandler(seedSvc)
-	seed.RegisterRoutes(v1, seedHandler)
 
 	return auditSvc, notifier, notificationRepo
 

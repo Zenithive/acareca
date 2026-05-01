@@ -12,6 +12,7 @@ import (
 type IHandler interface {
 	ListNotifications(c *gin.Context)
 	MarkRead(c *gin.Context)
+	MarkAllRead(c *gin.Context)
 	MarkDismissed(c *gin.Context)
 }
 
@@ -80,6 +81,31 @@ func (h *handler) MarkRead(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, nil, "marked as read")
+}
+
+// MarkAllRead marks all notifications as READ for the authenticated entity.
+// @Summary      Mark all notifications as read
+// @Description  Marks all currently UNREAD notifications as READ for the authenticated entity.
+// @Tags         notification
+// @Produce      json
+// @Success      200  {object}  response.RsBase
+// @Failure      401  {object}  response.RsError
+// @Failure      409  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/read-all [patch]
+func (h *handler) MarkAllRead(c *gin.Context) {
+	entityID, ok := util.GetEntityID(c)
+	if !ok {
+		return
+	}
+
+	if err := h.svc.MarkAllRead(c.Request.Context(), entityID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "all notifications marked as read")
 }
 
 // @Summary      Dismiss a notification

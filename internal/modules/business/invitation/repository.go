@@ -33,7 +33,7 @@ type Repository interface {
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
 
-	ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissions, error)
+	ListPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*InvitationWithPermissions, error)
 
 	GetPermission(ctx context.Context, accountantID *uuid.UUID, entityID uuid.UUID, email *string) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
@@ -41,7 +41,7 @@ type Repository interface {
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error
 	DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
-	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
+	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
 	DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, entityID *uuid.UUID) error
 	CountPermission(ctx context.Context, f common.Filter) (int, error)
@@ -314,7 +314,7 @@ func (r *repository) CountByEmail(ctx context.Context, email string, f common.Fi
 // GetPermission checks if an accountant has access to a practitioner
 func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID, practitionerID uuid.UUID, email *string) (*Permissions, error) {
 	var invitationID uuid.UUID
-	
+
 	// First, get the invitation ID
 	if accountantID != nil && *accountantID != uuid.Nil {
 		query := `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
@@ -344,7 +344,7 @@ func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID,
 		CanRead        bool   `db:"can_read"`
 		CanWrite       bool   `db:"can_write"`
 	}
-	
+
 	var rows []PermRow
 	query := `
 		SELECT p.name, ip.can_read, ip.can_write
@@ -352,7 +352,7 @@ func (r *repository) GetPermission(ctx context.Context, accountantID *uuid.UUID,
 		JOIN tbl_permission p ON ip.permission_id = p.id
 		WHERE ip.invitation_id = $1
 	`
-	
+
 	if err := r.db.SelectContext(ctx, &rows, query, invitationID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -394,7 +394,7 @@ func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Conte
 		CanRead        bool   `db:"can_read"`
 		CanWrite       bool   `db:"can_write"`
 	}
-	
+
 	var rows []PermRow
 	permQuery := `
 		SELECT p.name, ip.can_read, ip.can_write
@@ -402,7 +402,7 @@ func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Conte
 		JOIN tbl_permission p ON ip.permission_id = p.id
 		WHERE ip.invitation_id = $1
 	`
-	
+
 	err = r.db.SelectContext(ctx, &rows, permQuery, invitationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -430,7 +430,7 @@ func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, p
 	// First, get or verify the invitation
 	var invitationID uuid.UUID
 	var query string
-	
+
 	if accID != nil && *accID != uuid.Nil {
 		query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 LIMIT 1`
 		err := tx.GetContext(ctx, &invitationID, query, pID, accID)
@@ -465,7 +465,7 @@ func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, p
 			ON CONFLICT (invitation_id, permission_id) 
 			DO UPDATE SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write, updated_at = NOW()
 		`
-		
+
 		_, err = tx.ExecContext(ctx, upsertQuery,
 			uuid.New(),
 			invitationID,
@@ -511,18 +511,20 @@ func (r *repository) IsAccountantLinkedToPractitioner(ctx context.Context, pract
 	return exists, nil
 }
 
-// This is maintained for backward compatibility with handlers that need to resolve a practitioner for an accountant.
-func (r *repository) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
-	var practitionerID uuid.UUID
-	query := `SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = $1 AND status IN ('SENT', 'ACCEPTED', 'COMPLETED') LIMIT 1`
-	err := r.db.GetContext(ctx, &practitionerID, query, accountantID)
+func (r *repository) GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error) {
+	query := `
+		SELECT DISTINCT practitioner_id 
+		FROM tbl_invitation 
+		WHERE accountant_id = $1 
+		  AND status = 'COMPLETED'`
+
+	var practitionerIDs []uuid.UUID
+	err := r.db.SelectContext(ctx, &practitionerIDs, query, accountantID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return uuid.Nil, fmt.Errorf("accountant %s is not linked to any practitioner", accountantID)
-		}
-		return uuid.Nil, err
+		return nil, fmt.Errorf("get linked practitioners: %w", err)
 	}
-	return practitionerID, nil
+
+	return practitionerIDs, nil
 }
 
 func (r *repository) DeleteAllPermissionsForAccountantTx(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error {
@@ -546,17 +548,8 @@ func (r *repository) UpdateStatusTx(ctx context.Context, tx *sqlx.Tx, id uuid.UU
 	return err
 }
 
-func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*InvitationWithPermissions, error) {
-	// Define columns with table aliases to avoid ambiguity
-	permissionColumns := map[string]string{
-		"email":           "i.email",
-		"status":          "i.status::text",
-		"created_at":      "i.created_at",
-		"practitioner_id": "i.practitioner_id",
-		"accountant_id":   "i.accountant_id",
-	}
-	
-	base := `SELECT 
+func (r *repository) ListPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*InvitationWithPermissions, error) {
+	query := `SELECT 
         i.id as invitation_id,
         i.practitioner_id,
         i.accountant_id,
@@ -567,49 +560,58 @@ func (r *repository) ListPermission(ctx context.Context, f common.Filter) (*Invi
         ip.can_write 
     FROM tbl_invite_permissions ip
 	JOIN tbl_permission p ON ip.permission_id = p.id
-	JOIN tbl_invitation i ON ip.invitation_id = i.id`
-
-	query, filterArgs := common.BuildQuery(base, f, permissionColumns, invitationSearchCols, false)
+	JOIN tbl_invitation i ON ip.invitation_id = i.id
+	WHERE i.accountant_id = $1 AND i.status IN ('ACCEPTED', 'COMPLETED')
+	ORDER BY i.created_at DESC`
 
 	type PermRow struct {
-		InvitationID          uuid.UUID `db:"invitation_id"`
-		PractitionerID        uuid.UUID `db:"practitioner_id"`
-		AccountantID          uuid.UUID `db:"accountant_id"`
-		InvitationCreatedAt   time.Time `db:"invitation_created_at"`
-		PermissionsUpdatedAt  time.Time `db:"permissions_updated_at"`
-		PermissionName        string    `db:"permission_name"`
-		CanRead               bool      `db:"can_read"`
-		CanWrite              bool      `db:"can_write"`
+		InvitationID         uuid.UUID `db:"invitation_id"`
+		PractitionerID       uuid.UUID `db:"practitioner_id"`
+		AccountantID         uuid.UUID `db:"accountant_id"`
+		InvitationCreatedAt  time.Time `db:"invitation_created_at"`
+		PermissionsUpdatedAt time.Time `db:"permissions_updated_at"`
+		PermissionName       string    `db:"permission_name"`
+		CanRead              bool      `db:"can_read"`
+		CanWrite             bool      `db:"can_write"`
 	}
-	
+
 	var rows []PermRow
-	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), filterArgs...); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, query, accountantID); err != nil {
 		return nil, fmt.Errorf("list accountant permissions repo: %w", err)
 	}
 
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("no permissions found")
+		return []*InvitationWithPermissions{}, nil
 	}
 
-	// Use the first row for invitation details (all rows have same invitation data)
-	firstRow := rows[0]
-	
-	perms := make(Permissions)
+	// Group permissions by invitation ID
+	invitationMap := make(map[uuid.UUID]*InvitationWithPermissions)
+
 	for _, row := range rows {
-		perms[PermissionName(row.PermissionName)] = AccessLevel{
+		if _, exists := invitationMap[row.InvitationID]; !exists {
+			invitationMap[row.InvitationID] = &InvitationWithPermissions{
+				ID:             row.InvitationID,
+				PractitionerID: row.PractitionerID,
+				AccountantID:   row.AccountantID,
+				CreatedAt:      row.InvitationCreatedAt,
+				UpdatedAt:      row.PermissionsUpdatedAt,
+				Permissions:    make(Permissions),
+			}
+		}
+
+		invitationMap[row.InvitationID].Permissions[PermissionName(row.PermissionName)] = AccessLevel{
 			Read:  row.CanRead,
 			Write: row.CanWrite,
 		}
 	}
 
-	return &InvitationWithPermissions{
-		ID:             firstRow.InvitationID,
-		PractitionerID: firstRow.PractitionerID,
-		AccountantID:   firstRow.AccountantID,
-		CreatedAt:      firstRow.InvitationCreatedAt,
-		UpdatedAt:      firstRow.PermissionsUpdatedAt,
-		Permissions:    perms,
-	}, nil
+	// Convert map to slice
+	result := make([]*InvitationWithPermissions, 0, len(invitationMap))
+	for _, inv := range invitationMap {
+		result = append(result, inv)
+	}
+
+	return result, nil
 }
 
 func (r *repository) CountPermission(ctx context.Context, f common.Filter) (int, error) {

@@ -66,27 +66,29 @@ func (a *AccountType) ToRs() AccountType {
 }
 
 type ChartOfAccount struct {
-	ID             uuid.UUID  `db:"id"`
-	PractitionerID uuid.UUID  `db:"practitioner_id"`
-	AccountTypeID  int16      `db:"account_type_id"`
-	AccountTaxID   int16      `db:"account_tax_id"`
-	Code           int16      `db:"code"`
-	Name           string     `db:"name"`
-	Key            string     `db:"key"`
-	IsSystem       bool       `db:"is_system"`
-	IsTaxable      bool       `db:"is_taxable"`
-	CreatedAt      time.Time  `db:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
+	ID              uuid.UUID  `db:"id"`
+	PractitionerID  uuid.UUID  `db:"practitioner_id"`
+	AccountTypeID   int16      `db:"account_type_id"`
+	AccountTypeName string     `db:"account_type_name"`
+	AccountTaxID    int16      `db:"account_tax_id"`
+	Code            int16      `db:"code"`
+	Name            string     `db:"name"`
+	Key             string     `db:"key"`
+	IsSystem        bool       `db:"is_system"`
+	IsTaxable       bool       `db:"is_taxable"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at"`
+	DeletedAt       *time.Time `db:"deleted_at"`
 }
 
 type RsChartOfAccount struct {
-	ID             uuid.UUID `json:"id"`
-	PractitionerID uuid.UUID `json:"practitioner_id"`
-	AccountTypeID  int16     `json:"account_type_id"`
-	AccountTaxID   int16     `json:"account_tax_id"`
-	Code           int16     `json:"code"`
-	Name           string    `json:"name"`
+	ID              uuid.UUID `json:"id"`
+	PractitionerID  uuid.UUID `json:"practitioner_id"`
+	AccountTypeID   int16     `json:"account_type_id"`
+	AccountTypeName string    `json:"account_type_name"`
+	AccountTaxID    int16     `json:"account_tax_id"`
+	Code            int16     `json:"code"`
+	Name            string    `json:"name"`
 
 	IsSystem  bool      `json:"is_system"`
 	IsTaxable bool      `json:"is_taxable"`
@@ -96,16 +98,17 @@ type RsChartOfAccount struct {
 
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 	return RsChartOfAccount{
-		ID:             c.ID,
-		PractitionerID: c.PractitionerID,
-		AccountTypeID:  c.AccountTypeID,
-		AccountTaxID:   c.AccountTaxID,
-		Code:           c.Code,
-		Name:           c.Name,
-		IsSystem:       c.IsSystem,
-		IsTaxable:      c.IsTaxable,
-		CreatedAt:      c.CreatedAt,
-		UpdatedAt:      c.UpdatedAt,
+		ID:              c.ID,
+		PractitionerID:  c.PractitionerID,
+		AccountTypeID:   c.AccountTypeID,
+		AccountTypeName: c.AccountTypeName,
+		AccountTaxID:    c.AccountTaxID,
+		Code:            c.Code,
+		Name:            c.Name,
+		IsSystem:        c.IsSystem,
+		IsTaxable:       c.IsTaxable,
+		CreatedAt:       c.CreatedAt,
+		UpdatedAt:       c.UpdatedAt,
 	}
 }
 
@@ -151,6 +154,7 @@ type Filter struct {
 	Code           *int       `form:"code"`
 	AccountType    *string    `form:"account_type"`
 	AccountTypeID  *int16     `form:"-"`
+	AccountTaxID   *int16     `form:"account_tax_id"`
 	common.Filter
 }
 
@@ -164,14 +168,18 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["id"] = uuid.UUID(id)
 	}
 	if filter.Name != nil {
-		filters["name"] = *filter.Name
+		filters["name"] = filter.Name
 	}
 	if filter.Code != nil {
-		filters["code"] = *filter.Code
+		filters["code"] = filter.Code
 	}
 
 	if filter.AccountTypeID != nil {
-		filters["account_type_id"] = *filter.AccountTypeID
+		filters["account_type_id"] = filter.AccountTypeID
+	}
+
+	if filter.AccountTaxID != nil {
+		filters["account_tax_id"] = filter.AccountTaxID
 	}
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)

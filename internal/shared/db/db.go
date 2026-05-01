@@ -28,9 +28,10 @@ func DBConn(cfg *config.Config) (*sqlx.DB, error) {
 			return
 		}
 
-		instance.SetMaxOpenConns(25)
-		instance.SetMaxIdleConns(5)
-		instance.SetConnMaxIdleTime(5 * time.Minute)
+		instance.SetMaxOpenConns(100)
+		instance.SetMaxIdleConns(30)
+		instance.SetConnMaxIdleTime(2 * time.Minute)
+		instance.SetConnMaxLifetime(30 * time.Minute)
 	})
 
 	if instance == nil {

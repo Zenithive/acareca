@@ -792,6 +792,44 @@ definitions:
       total_sales_net:
         type: number
     type: object
+  bs.RsAccount:
+    properties:
+      balance:
+        type: number
+      coa_id:
+        type: string
+      code:
+        type: integer
+      name:
+        type: string
+    type: object
+  bs.RsBalanceSheet:
+    properties:
+      as_of_date:
+        type: string
+      assets:
+        items:
+          $ref: '#/definitions/bs.RsAccount'
+        type: array
+      current_year_profit:
+        type: number
+      equity:
+        items:
+          $ref: '#/definitions/bs.RsAccount'
+        type: array
+      liabilities:
+        items:
+          $ref: '#/definitions/bs.RsAccount'
+        type: array
+      total_assets:
+        type: number
+      total_equity:
+        type: number
+      total_liabilities:
+        type: number
+      total_liabilities_and_equity:
+        type: number
+    type: object
   calculation.PreviewSummary:
     properties:
       base_remuneration:
@@ -1116,10 +1154,8 @@ definitions:
     properties:
       abn:
         type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RqClinicAddress'
-        type: array
+      address:
+        $ref: '#/definitions/clinic.RqClinicAddress'
       contacts:
         items:
           $ref: '#/definitions/clinic.RqClinicContact'
@@ -1156,10 +1192,8 @@ definitions:
     properties:
       abn:
         type: string
-      addresses:
-        items:
-          $ref: '#/definitions/clinic.RqUpdateAddress'
-        type: array
+      address:
+        $ref: '#/definitions/clinic.RqUpdateAddress'
       contacts:
         items:
           $ref: '#/definitions/clinic.RqUpdateContact'
@@ -1265,6 +1299,11 @@ definitions:
       amount:
         minimum: 0
         type: number
+      coa_id:
+        type: string
+      description:
+        description: For direct COA entries
+        type: string
       form_field_id:
         type: string
       gross_amount:
@@ -1273,8 +1312,6 @@ definitions:
         type: number
       net_amount:
         type: number
-    required:
-    - form_field_id
     type: object
   entry.RqFormEntry:
     properties:
@@ -1313,9 +1350,16 @@ definitions:
       amount:
         description: Amount is used when there is no GST (net == gross).
         type: number
+      coa_id:
+        description: For direct COA entries
+        type: string
+      description:
+        description: For direct COA entries
+        type: string
       field_key:
         type: string
       form_field_id:
+        description: Nullable for direct COA entries
         type: string
       gross_amount:
         type: number
@@ -1328,6 +1372,48 @@ definitions:
       net_amount:
         description: NetAmount, GstAmount, GrossAmount are used when a GST breakdown
           exists.
+        type: number
+    type: object
+  equity.EquityMovements:
+    properties:
+      closing_balance:
+        type: number
+      current_year_profit:
+        type: number
+      drawings:
+        type: number
+      funds_introduced:
+        type: number
+      net_equity_movement:
+        type: number
+      opening_balance:
+        type: number
+    type: object
+  equity.OwnerEquityCalculation:
+    properties:
+      as_of_date:
+        type: string
+      current_year_profit:
+        description: This year's profit
+        type: number
+      drawings:
+        description: Current year withdrawals
+        type: number
+      equity_movements:
+        allOf:
+        - $ref: '#/definitions/equity.EquityMovements'
+        description: Detailed breakdown
+      funds_introduced:
+        description: Current year contributions
+        type: number
+      retained_earnings:
+        description: Prior years' profits
+        type: number
+      share_capital:
+        description: Opening capital
+        type: number
+      total_equity:
+        description: Sum of all
         type: number
     type: object
   field.RqCreateField:
@@ -1356,6 +1442,8 @@ definitions:
         - COLLECTION
         - COST
         - OTHER_COST
+        - EQUITY_WITHDRAWAL
+        - EQUITY_CONTRIBUTION
         type: string
       slug:
         maxLength: 100
@@ -1371,6 +1459,10 @@ definitions:
     type: object
   field.RqUpdateFormField:
     properties:
+      amount:
+        type: number
+      business_use:
+        type: number
       coa_id:
         type: string
       id:
@@ -1390,10 +1482,55 @@ definitions:
         - COLLECTION
         - COST
         - OTHER_COST
+        - EQUITY_WITHDRAWAL
+        - EQUITY_CONTRIBUTION
         type: string
       sort_order:
         minimum: 0
         type: integer
+      tax_type:
+        type: string
+    required:
+    - id
+    type: object
+  form.ExpenseItem:
+    properties:
+      amount:
+        type: number
+      business_use:
+        maximum: 100
+        minimum: 0
+        type: number
+      coa_id:
+        type: string
+      description:
+        type: string
+      name:
+        type: string
+      tax_type:
+        type: string
+    required:
+    - amount
+    - business_use
+    - coa_id
+    - name
+    type: object
+  form.ExpenseItemUpdate:
+    properties:
+      amount:
+        type: number
+      business_use:
+        maximum: 100
+        minimum: 0
+        type: number
+      coa_id:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
       tax_type:
         type: string
     required:
@@ -1421,6 +1558,7 @@ definitions:
         enum:
         - INDEPENDENT_CONTRACTOR
         - SERVICE_FEE
+        - EXPENSE_ENTRY
         type: string
       name:
         type: string
@@ -1445,6 +1583,22 @@ definitions:
     - name
     - owner_share
     type: object
+  form.RqExpense:
+    properties:
+      date:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/form.ExpenseItem'
+        minItems: 1
+        type: array
+      name:
+        type: string
+    required:
+    - date
+    - items
+    - name
+    type: object
   form.RqFieldsSync:
     properties:
       create:
@@ -1459,6 +1613,28 @@ definitions:
         items:
           $ref: '#/definitions/field.RqUpdateFormField'
         type: array
+    type: object
+  form.RqUpdateExpense:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/form.ExpenseItem'
+        type: array
+      date:
+        type: string
+      delete:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      update:
+        items:
+          $ref: '#/definitions/form.ExpenseItemUpdate'
+        type: array
+    required:
+    - date
+    - name
     type: object
   form.RqUpdateFormStatus:
     properties:
@@ -1503,6 +1679,7 @@ definitions:
         enum:
         - INDEPENDENT_CONTRACTOR
         - SERVICE_FEE
+        - EXPENSE_ENTRY
         type: string
       name:
         type: string
@@ -1711,10 +1888,14 @@ definitions:
     type: object
   notification.RsListNotification:
     properties:
+      limit:
+        type: integer
       notifications:
         items:
           $ref: '#/definitions/notification.Notification'
         type: array
+      page:
+        type: integer
       total:
         type: integer
       unread_count:
@@ -1844,6 +2025,16 @@ definitions:
       period_month:
         type: string
     type: object
+  practitioner.UpdateLockDateRequest:
+    properties:
+      financial_year_id:
+        description: Use *time.Time to allow null values for removing the lock date
+        type: string
+      lock_date:
+        type: string
+    required:
+    - financial_year_id
+    type: object
   response.RsBase:
     properties:
       data: {}
@@ -1861,95 +2052,6 @@ definitions:
       detail:
         type: string
       message:
-        type: string
-    type: object
-  seed.ClinicDetail:
-    properties:
-      clinic_id:
-        type: string
-      clinic_name:
-        type: string
-      forms:
-        items:
-          $ref: '#/definitions/seed.FormDetail'
-        type: array
-    type: object
-  seed.FormDetail:
-    properties:
-      fields:
-        type: integer
-      form_id:
-        type: string
-      form_name:
-        type: string
-      formulas:
-        type: integer
-    type: object
-  seed.RqCleanupData:
-    properties:
-      practitioner_id:
-        type: string
-    required:
-    - practitioner_id
-    type: object
-  seed.RqSeedData:
-    properties:
-      num_clinics:
-        maximum: 100
-        minimum: 1
-        type: integer
-      num_fields:
-        maximum: 10
-        minimum: 1
-        type: integer
-      num_forms:
-        maximum: 50
-        minimum: 1
-        type: integer
-      practitioner_id:
-        type: string
-      verbose:
-        type: boolean
-    required:
-    - num_clinics
-    - num_forms
-    type: object
-  seed.RsCleanupData:
-    properties:
-      addresses_deleted:
-        type: integer
-      clinics_deleted:
-        type: integer
-      contacts_deleted:
-        type: integer
-      duration:
-        type: string
-      fields_deleted:
-        type: integer
-      form_versions_deleted:
-        type: integer
-      forms_deleted:
-        type: integer
-      practitioner_id:
-        type: string
-    type: object
-  seed.RsSeedData:
-    properties:
-      clinics_created:
-        type: integer
-      details:
-        items:
-          $ref: '#/definitions/seed.ClinicDetail'
-        type: array
-      duration:
-        type: string
-      fields_created:
-        type: integer
-      forms_created:
-        type: integer
-      formulas_created:
-        type: integer
-      practitioner_id:
         type: string
     type: object
   setting.RqCreatePractitioner:
@@ -3125,6 +3227,40 @@ paths:
       summary: List all practitioners with active subscriptions (Admin)
       tags:
       - admin-practitioner
+  /admin/practitioner/{id}:
+    get:
+      description: Fetch a single practitioner with their active subscription details
+        by ID. Admin only.
+      parameters:
+      - description: Practitioner ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get practitioner by ID with subscription (Admin)
+      tags:
+      - admin-practitioner
   /admin/subscription:
     get:
       consumes:
@@ -3423,6 +3559,119 @@ paths:
       summary: Update the label of a financial year
       tags:
       - fy
+  /api/v1/equity/calculation:
+    get:
+      consumes:
+      - application/json
+      description: Automatically calculates all owner fund balances (drawings, funds
+        introduced, retained earnings)
+      parameters:
+      - description: Filter by clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/equity.OwnerEquityCalculation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get Owner Equity Calculation
+      tags:
+      - Owner Equity
+  /api/v1/equity/movements:
+    get:
+      consumes:
+      - application/json
+      description: Calculates detailed equity movements for current year (funds introduced,
+        drawings, etc.)
+      parameters:
+      - description: Filter by clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/equity.EquityMovements'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get Equity Movements
+      tags:
+      - Owner Equity
+  /api/v1/equity/retained-earnings:
+    get:
+      consumes:
+      - application/json
+      description: Calculates retained earnings from all prior years' profits
+      parameters:
+      - description: Filter by clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              format: float64
+              type: number
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Get Retained Earnings
+      tags:
+      - Owner Equity
   /auth/forgot-password:
     post:
       description: Sends a reset link to the user's email if they exist.
@@ -3761,6 +4010,92 @@ paths:
       summary: Verify user email address
       tags:
       - auth
+  /balance-sheet:
+    get:
+      consumes:
+      - application/json
+      description: Get balance sheet showing assets, liabilities, and equity (including
+        owner fund accounts)
+      parameters:
+      - description: Filter by clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Balance as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bs.RsBalanceSheet'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Balance Sheet
+      tags:
+      - Balance Sheet
+  /balance-sheet/export:
+    get:
+      description: Generates and downloads a Balance Sheet report. Accountants can
+        export data for linked practitioners.
+      parameters:
+      - description: Practitioner UUID (Required for Accountants to filter)
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Clinic UUID
+        in: query
+        name: clinic_id
+        type: string
+      - description: Balance as of date (YYYY-MM-DD), defaults to today
+        in: query
+        name: as_of_date
+        type: string
+      - description: 'Export Type: pdf | excel'
+        in: query
+        name: export_type
+        required: true
+        type: string
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
+      responses:
+        "200":
+          description: Balance_Sheet_2026-04-30.xlsx
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Export Balance Sheet to Excel/PDF
+      tags:
+      - Balance Sheet
   /bas/activity-statement/report/export:
     get:
       description: Generates a formatted Excel BAS report.
@@ -3806,7 +4141,7 @@ paths:
       - BearerToken: []
       summary: Export Business Activity Statement to Excel
       tags:
-      - BAS
+      - engine/bas
   /bas/bas-preparation:
     get:
       description: Returns a side-by-side comparison of BAS figures across selected
@@ -5586,6 +5921,109 @@ paths:
       summary: Update form status
       tags:
       - form
+  /form/expenses:
+    post:
+      consumes:
+      - application/json
+      description: Create a new expense form with items
+      parameters:
+      - description: Expense creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqExpense'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create expense
+      tags:
+      - form/expense
+  /form/expenses/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get an expense form with all its items
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get expense by ID
+      tags:
+      - form/expense
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing expense form
+      parameters:
+      - description: Form ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Expense update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/form.RqUpdateExpense'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update expense
+      tags:
+      - form/expense
   /invite:
     get:
       description: Retrieve a paginated list of invitations. If logged in as a Practitioner,
@@ -5981,6 +6419,34 @@ paths:
       summary: Mark notification as read
       tags:
       - notification
+  /notification/read-all:
+    patch:
+      description: Marks all currently UNREAD notifications as READ for the authenticated
+        entity.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Mark all notifications as read
+      tags:
+      - notification
   /pl/by-account:
     get:
       description: Returns monthly totals broken down per Chart of Accounts entry,
@@ -6311,6 +6777,80 @@ paths:
       summary: Get practitioner by ID
       tags:
       - practitioner
+  /practitioner/lock-date:
+    get:
+      description: Retrieve the current financial lock date for the authenticated
+        practitioner or associated practitioners (for accountants).
+      parameters:
+      - description: Practitioner ID (required for accountants)
+        in: query
+        name: practitioner_id
+        type: string
+      - description: Financial Year ID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Practitioner Lock Date
+      tags:
+      - practitioner-lock-date
+    patch:
+      consumes:
+      - application/json
+      description: Set or remove (by sending null) the financial lock date for the
+        authenticated practitioner.
+      parameters:
+      - description: Lock Date Update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/practitioner.UpdateLockDateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update Practitioner Lock Date
+      tags:
+      - practitioner-lock-date
   /practitioner/subscription:
     get:
       consumes:
@@ -6548,66 +7088,6 @@ paths:
       summary: Get subscription history
       tags:
       - subscription
-  /seed:
-    post:
-      consumes:
-      - application/json
-      description: Create test clinics, forms, and formulas for a practitioner
-      parameters:
-      - description: Seed configuration
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/seed.RqSeedData'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Data seeded successfully
-          schema:
-            $ref: '#/definitions/seed.RsSeedData'
-        "400":
-          description: Invalid input
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Seed test data
-      tags:
-      - Seed
-  /seed/cleanup:
-    post:
-      consumes:
-      - application/json
-      description: Delete all clinics and forms for a practitioner (preserves COA)
-      parameters:
-      - description: Cleanup configuration
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/seed.RqCleanupData'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Data cleaned up successfully
-          schema:
-            $ref: '#/definitions/seed.RsCleanupData'
-        "400":
-          description: Invalid input
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      summary: Cleanup seeded data
-      tags:
-      - Seed
   /setting:
     delete:
       consumes:

@@ -38,8 +38,8 @@ type Service interface {
 	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
-	GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error)
-	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) (*RsPermission, error)
+	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
+	ListPermissions(ctx context.Context, accountantID uuid.UUID, f *Filter) ([]map[string]interface{}, error)
 }
 
 const (
@@ -165,9 +165,9 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		EntityType:  &permEntityType,
 		EntityID:    &entityID,
 		BeforeState: nil,
-		// AfterState:  processedPerms,
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
+		AfterState:  req.Permissions,
+		IPAddress:   meta.IPAddress,
+		UserAgent:   meta.UserAgent,
 	})
 
 	return &RsInvitation{
@@ -427,6 +427,9 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 		return fmt.Errorf("failed to link permissions: %w", err)
 	}
 
+	afterState := inv
+	afterState.Status = StatusCompleted
+
 	// Audit log: invitation completed
 	meta := auditctx.GetMetadata(ctx)
 	pIDStr := inv.PractitionerID.String()
@@ -441,7 +444,7 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 		EntityType:  &entityType,
 		EntityID:    &entityIDStr,
 		BeforeState: inv,
-		AfterState:  "COMPLETED",
+		AfterState:  afterState,
 		IPAddress:   meta.IPAddress,
 		UserAgent:   meta.UserAgent,
 	})
@@ -641,16 +644,6 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		useEmail = true
 	}
 
-	// If user provided accountant_id, verify it matches what we found
-	if req.AccountantID != nil && *req.AccountantID != uuid.Nil {
-		if accountantID != nil && *accountantID != *req.AccountantID {
-			// The provided ID doesn't match the actual accountant ID
-			// This might be an entity_id from invitation table, ignore it and use what we found
-			fmt.Printf("Warning: provided accountant_id %s doesn't match actual accountant_id %s for email %s\n",
-				req.AccountantID.String(), accountantID.String(), req.Email)
-		}
-	}
-
 	// Check if the accountant/email is linked to this practitioner via invitation
 	if accountantID != nil {
 		isLinked, err := s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, *accountantID)
@@ -676,7 +669,6 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		oldPerms, _ = s.repo.GetPermission(ctx, nil, practitionerID, &req.Email)
 	}
 
-	// Update permissions in a transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if useEmail {
 			// For pending invitations, pass nil accountant_id and the email
@@ -729,27 +721,30 @@ func (s *service) IsAccountantLinkedToPractitioner(ctx context.Context, practiti
 	return s.repo.IsAccountantLinkedToPractitioner(ctx, practitionerID, accountantID)
 }
 
-func (s *service) GetFirstPractitionerLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) (uuid.UUID, error) {
-	return s.repo.GetFirstPractitionerLinkedToAccountant(ctx, accountantID)
+func (s *service) GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error) {
+	return s.repo.GetPractitionersLinkedToAccountant(ctx, accountantID)
 }
 
-// Helper to centralize permission logic
-
-// ListAccountantPermission implements [Service].
-func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) (*RsPermission, error) {
+// ListPermissions retrieves all permissions for an accountant across all practitioners
+func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filter) ([]map[string]interface{}, error) {
 	filter := f.MapToFilterAccountant()
 
-	invWithPerms, err := s.repo.ListPermission(ctx, filter)
+	invWithPerms, err := s.repo.ListPermissions(ctx, accId, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	return &RsPermission{
-		ID:             invWithPerms.ID,
-		PractitionerID: invWithPerms.PractitionerID,
-		AccountantID:   invWithPerms.AccountantID,
-		Permissions:    invWithPerms.Permissions,
-		CreatedAt:      invWithPerms.CreatedAt,
-		UpdatedAt:      invWithPerms.UpdatedAt,
-	}, nil
+	results := make([]map[string]interface{}, 0, len(invWithPerms))
+	for _, inv := range invWithPerms {
+		results = append(results, map[string]interface{}{
+			"id":              inv.ID,
+			"practitioner_id": inv.PractitionerID,
+			"accountant_id":   inv.AccountantID,
+			"permissions":     inv.Permissions,
+			"created_at":      inv.CreatedAt,
+			"updated_at":      inv.UpdatedAt,
+		})
+	}
+
+	return results, nil
 }

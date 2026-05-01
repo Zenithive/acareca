@@ -1531,6 +1531,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/practitioner/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Fetch a single practitioner with their active subscription details by ID. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-practitioner"
+                ],
+                "summary": "Get practitioner by ID with subscription (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/subscription": {
             "get": {
                 "security": [
@@ -2032,6 +2084,175 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/equity/calculation": {
+            "get": {
+                "description": "Automatically calculates all owner fund balances (drawings, funds introduced, retained earnings)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Owner Equity"
+                ],
+                "summary": "Get Owner Equity Calculation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/equity.OwnerEquityCalculation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/equity/movements": {
+            "get": {
+                "description": "Calculates detailed equity movements for current year (funds introduced, drawings, etc.)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Owner Equity"
+                ],
+                "summary": "Get Equity Movements",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/equity.EquityMovements"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/equity/retained-earnings": {
+            "get": {
+                "description": "Calculates retained earnings from all prior years' profits",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Owner Equity"
+                ],
+                "summary": "Get Retained Earnings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "number",
+                                "format": "float64"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -2562,6 +2783,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/balance-sheet": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Balance Sheet"
+                ],
+                "summary": "Get Balance Sheet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bs.RsBalanceSheet"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/balance-sheet/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generates and downloads a Balance Sheet report. Accountants can export data for linked practitioners.",
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
+                ],
+                "tags": [
+                    "Balance Sheet"
+                ],
+                "summary": "Export Balance Sheet to Excel/PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID (Required for Accountants to filter)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Clinic UUID",
+                        "name": "clinic_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
+                        "name": "as_of_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Export Type: pdf | excel",
+                        "name": "export_type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Balance_Sheet_2026-04-30.xlsx",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/bas/activity-statement/report/export": {
             "get": {
                 "security": [
@@ -2575,7 +2927,7 @@ const docTemplate = `{
                     " text/html"
                 ],
                 "tags": [
-                    "BAS"
+                    "engine/bas"
                 ],
                 "summary": "Export Business Activity Statement to Excel",
                 "parameters": [
@@ -5179,6 +5531,168 @@ const docTemplate = `{
                 }
             }
         },
+        "/form/expenses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Create a new expense form with items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Create expense",
+                "parameters": [
+                    {
+                        "description": "Expense creation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqExpense"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/form/expenses/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get an expense form with all its items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Get expense by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Update an existing expense form",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "form/expense"
+                ],
+                "summary": "Update expense",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expense update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/form.RqUpdateExpense"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/form/{id}": {
             "get": {
                 "security": [
@@ -5881,6 +6395,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/notification/read-all": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks all currently UNREAD notifications as READ for the authenticated entity.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Mark all notifications as read",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/notification/{id}/dismissed": {
             "patch": {
                 "security": [
@@ -6461,6 +7018,119 @@ const docTemplate = `{
                 }
             }
         },
+        "/practitioner/lock-date": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "practitioner-lock-date"
+                ],
+                "summary": "Get Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner ID (required for accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Financial Year ID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Set or remove (by sending null) the financial lock date for the authenticated practitioner.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "practitioner-lock-date"
+                ],
+                "summary": "Update Practitioner Lock Date",
+                "parameters": [
+                    {
+                        "description": "Lock Date Update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/practitioner.UpdateLockDateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/practitioner/subscription": {
             "get": {
                 "security": [
@@ -6860,98 +7530,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
-                        }
-                    }
-                }
-            }
-        },
-        "/seed": {
-            "post": {
-                "description": "Create test clinics, forms, and formulas for a practitioner",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Seed"
-                ],
-                "summary": "Seed test data",
-                "parameters": [
-                    {
-                        "description": "Seed configuration",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/seed.RqSeedData"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Data seeded successfully",
-                        "schema": {
-                            "$ref": "#/definitions/seed.RsSeedData"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/seed/cleanup": {
-            "post": {
-                "description": "Delete all clinics and forms for a practitioner (preserves COA)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Seed"
-                ],
-                "summary": "Cleanup seeded data",
-                "parameters": [
-                    {
-                        "description": "Cleanup configuration",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/seed.RqCleanupData"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Data cleaned up successfully",
-                        "schema": {
-                            "$ref": "#/definitions/seed.RsCleanupData"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -8605,6 +9183,64 @@ const docTemplate = `{
                 }
             }
         },
+        "bs.RsAccount": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "number"
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "bs.RsBalanceSheet": {
+            "type": "object",
+            "properties": {
+                "as_of_date": {
+                    "type": "string"
+                },
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bs.RsAccount"
+                    }
+                },
+                "current_year_profit": {
+                    "type": "number"
+                },
+                "equity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bs.RsAccount"
+                    }
+                },
+                "liabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bs.RsAccount"
+                    }
+                },
+                "total_assets": {
+                    "type": "number"
+                },
+                "total_equity": {
+                    "type": "number"
+                },
+                "total_liabilities": {
+                    "type": "number"
+                },
+                "total_liabilities_and_equity": {
+                    "type": "number"
+                }
+            }
+        },
         "calculation.PreviewSummary": {
             "type": "object",
             "properties": {
@@ -9084,11 +9720,8 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqClinicAddress"
-                    }
+                "address": {
+                    "$ref": "#/definitions/clinic.RqClinicAddress"
                 },
                 "contacts": {
                     "type": "array",
@@ -9142,11 +9775,8 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
-                "addresses": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/clinic.RqUpdateAddress"
-                    }
+                "address": {
+                    "$ref": "#/definitions/clinic.RqUpdateAddress"
                 },
                 "contacts": {
                     "type": "array",
@@ -9294,13 +9924,17 @@ const docTemplate = `{
         },
         "entry.RqEntryValue": {
             "type": "object",
-            "required": [
-                "form_field_id"
-            ],
             "properties": {
                 "amount": {
                     "type": "number",
                     "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "description": "For direct COA entries",
+                    "type": "string"
                 },
                 "form_field_id": {
                     "type": "string"
@@ -9371,10 +10005,19 @@ const docTemplate = `{
                     "description": "Amount is used when there is no GST (net == gross).",
                     "type": "number"
                 },
+                "coa_id": {
+                    "description": "For direct COA entries",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "For direct COA entries",
+                    "type": "string"
+                },
                 "field_key": {
                     "type": "string"
                 },
                 "form_field_id": {
+                    "description": "Nullable for direct COA entries",
                     "type": "string"
                 },
                 "gross_amount": {
@@ -9391,6 +10034,69 @@ const docTemplate = `{
                 },
                 "net_amount": {
                     "description": "NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.",
+                    "type": "number"
+                }
+            }
+        },
+        "equity.EquityMovements": {
+            "type": "object",
+            "properties": {
+                "closing_balance": {
+                    "type": "number"
+                },
+                "current_year_profit": {
+                    "type": "number"
+                },
+                "drawings": {
+                    "type": "number"
+                },
+                "funds_introduced": {
+                    "type": "number"
+                },
+                "net_equity_movement": {
+                    "type": "number"
+                },
+                "opening_balance": {
+                    "type": "number"
+                }
+            }
+        },
+        "equity.OwnerEquityCalculation": {
+            "type": "object",
+            "properties": {
+                "as_of_date": {
+                    "type": "string"
+                },
+                "current_year_profit": {
+                    "description": "This year's profit",
+                    "type": "number"
+                },
+                "drawings": {
+                    "description": "Current year withdrawals",
+                    "type": "number"
+                },
+                "equity_movements": {
+                    "description": "Detailed breakdown",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/equity.EquityMovements"
+                        }
+                    ]
+                },
+                "funds_introduced": {
+                    "description": "Current year contributions",
+                    "type": "number"
+                },
+                "retained_earnings": {
+                    "description": "Prior years' profits",
+                    "type": "number"
+                },
+                "share_capital": {
+                    "description": "Opening capital",
+                    "type": "number"
+                },
+                "total_equity": {
+                    "description": "Sum of all",
                     "type": "number"
                 }
             }
@@ -9434,7 +10140,9 @@ const docTemplate = `{
                     "enum": [
                         "COLLECTION",
                         "COST",
-                        "OTHER_COST"
+                        "OTHER_COST",
+                        "EQUITY_WITHDRAWAL",
+                        "EQUITY_CONTRIBUTION"
                     ]
                 },
                 "slug": {
@@ -9456,6 +10164,12 @@ const docTemplate = `{
                 "id"
             ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number"
+                },
                 "coa_id": {
                     "type": "string"
                 },
@@ -9481,12 +10195,76 @@ const docTemplate = `{
                     "enum": [
                         "COLLECTION",
                         "COST",
-                        "OTHER_COST"
+                        "OTHER_COST",
+                        "EQUITY_WITHDRAWAL",
+                        "EQUITY_CONTRIBUTION"
                     ]
                 },
                 "sort_order": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "form.ExpenseItem": {
+            "type": "object",
+            "required": [
+                "amount",
+                "business_use",
+                "coa_id",
+                "name"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tax_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "form.ExpenseItemUpdate": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "business_use": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 },
                 "tax_type": {
                     "type": "string"
@@ -9530,7 +10308,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INDEPENDENT_CONTRACTOR",
-                        "SERVICE_FEE"
+                        "SERVICE_FEE",
+                        "EXPENSE_ENTRY"
                     ]
                 },
                 "name": {
@@ -9556,6 +10335,29 @@ const docTemplate = `{
                 }
             }
         },
+        "form.RqExpense": {
+            "type": "object",
+            "required": [
+                "date",
+                "items",
+                "name"
+            ],
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItem"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "form.RqFieldsSync": {
             "type": "object",
             "properties": {
@@ -9575,6 +10377,39 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/field.RqUpdateFormField"
+                    }
+                }
+            }
+        },
+        "form.RqUpdateExpense": {
+            "type": "object",
+            "required": [
+                "date",
+                "name"
+            ],
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItem"
+                    }
+                },
+                "date": {
+                    "type": "string"
+                },
+                "delete": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/form.ExpenseItemUpdate"
                     }
                 }
             }
@@ -9643,7 +10478,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INDEPENDENT_CONTRACTOR",
-                        "SERVICE_FEE"
+                        "SERVICE_FEE",
+                        "EXPENSE_ENTRY"
                     ]
                 },
                 "name": {
@@ -9930,11 +10766,17 @@ const docTemplate = `{
         "notification.RsListNotification": {
             "type": "object",
             "properties": {
+                "limit": {
+                    "type": "integer"
+                },
                 "notifications": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/notification.Notification"
                     }
+                },
+                "page": {
+                    "type": "integer"
                 },
                 "total": {
                     "type": "integer"
@@ -10130,6 +10972,21 @@ const docTemplate = `{
                 }
             }
         },
+        "practitioner.UpdateLockDateRequest": {
+            "type": "object",
+            "required": [
+                "financial_year_id"
+            ],
+            "properties": {
+                "financial_year_id": {
+                    "description": "Use *time.Time to allow null values for removing the lock date",
+                    "type": "string"
+                },
+                "lock_date": {
+                    "type": "string"
+                }
+            }
+        },
         "response.RsBase": {
             "type": "object",
             "properties": {
@@ -10155,139 +11012,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "seed.ClinicDetail": {
-            "type": "object",
-            "properties": {
-                "clinic_id": {
-                    "type": "string"
-                },
-                "clinic_name": {
-                    "type": "string"
-                },
-                "forms": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/seed.FormDetail"
-                    }
-                }
-            }
-        },
-        "seed.FormDetail": {
-            "type": "object",
-            "properties": {
-                "fields": {
-                    "type": "integer"
-                },
-                "form_id": {
-                    "type": "string"
-                },
-                "form_name": {
-                    "type": "string"
-                },
-                "formulas": {
-                    "type": "integer"
-                }
-            }
-        },
-        "seed.RqCleanupData": {
-            "type": "object",
-            "required": [
-                "practitioner_id"
-            ],
-            "properties": {
-                "practitioner_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "seed.RqSeedData": {
-            "type": "object",
-            "required": [
-                "num_clinics",
-                "num_forms"
-            ],
-            "properties": {
-                "num_clinics": {
-                    "type": "integer",
-                    "maximum": 100,
-                    "minimum": 1
-                },
-                "num_fields": {
-                    "type": "integer",
-                    "maximum": 10,
-                    "minimum": 1
-                },
-                "num_forms": {
-                    "type": "integer",
-                    "maximum": 50,
-                    "minimum": 1
-                },
-                "practitioner_id": {
-                    "type": "string"
-                },
-                "verbose": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "seed.RsCleanupData": {
-            "type": "object",
-            "properties": {
-                "addresses_deleted": {
-                    "type": "integer"
-                },
-                "clinics_deleted": {
-                    "type": "integer"
-                },
-                "contacts_deleted": {
-                    "type": "integer"
-                },
-                "duration": {
-                    "type": "string"
-                },
-                "fields_deleted": {
-                    "type": "integer"
-                },
-                "form_versions_deleted": {
-                    "type": "integer"
-                },
-                "forms_deleted": {
-                    "type": "integer"
-                },
-                "practitioner_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "seed.RsSeedData": {
-            "type": "object",
-            "properties": {
-                "clinics_created": {
-                    "type": "integer"
-                },
-                "details": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/seed.ClinicDetail"
-                    }
-                },
-                "duration": {
-                    "type": "string"
-                },
-                "fields_created": {
-                    "type": "integer"
-                },
-                "forms_created": {
-                    "type": "integer"
-                },
-                "formulas_created": {
-                    "type": "integer"
-                },
-                "practitioner_id": {
                     "type": "string"
                 }
             }

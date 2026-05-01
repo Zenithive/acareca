@@ -75,7 +75,12 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 	)
 
 	for _, v := range formValue {
-		f, ok := fieldMap[v.FormFieldID]
+		// Skip direct COA entries (they don't have form fields)
+		if v.FormFieldID == nil {
+			continue
+		}
+		
+		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
 		}
@@ -126,7 +131,10 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 
 	netAmount := netIncome - expenseSum
 
-	clinicShare := float64(formDetail.ClinicShare)
+	clinicShare := 0.0
+	if formDetail.ClinicShare != nil {
+		clinicShare = float64(*formDetail.ClinicShare)
+	}
 	serviceFee := netAmount * (clinicShare / 100)
 	gstServiceFee := serviceFee * 0.1
 	totalServiceFee := serviceFee + gstServiceFee
@@ -151,7 +159,12 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 	)
 
 	for _, v := range formValue {
-		f, ok := fieldMap[v.FormFieldID]
+		// Skip direct COA entries (they don't have form fields)
+		if v.FormFieldID == nil {
+			continue
+		}
+		
+		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
 		}
@@ -180,7 +193,10 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 
 	netAmount := incomeSum - expenseSum - otherCostSum
 
-	ownerShare := float64(formDetail.OwnerShare)
+	ownerShare := 0.0
+	if formDetail.OwnerShare != nil {
+		ownerShare = float64(*formDetail.OwnerShare)
+	}
 
 	superDecimal := 0.0
 	if filter != nil && filter.SuperComponent != nil {

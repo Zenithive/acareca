@@ -3,6 +3,7 @@ package bas
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,7 +18,7 @@ type Repository interface {
 	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
 
-	GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
+	GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
@@ -196,25 +197,26 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
-		SELECT
-			COALESCE(SUM(g1_total_sales_gross), 0)       AS g1_total_sales_gross,
-			COALESCE(SUM(label_1a_gst_on_sales), 0)      AS label_1a_gst_on_sales,
-			COALESCE(SUM(g11_total_purchases_gross), 0)  AS g11_total_purchases_gross,
-			COALESCE(SUM(label_1b_gst_on_purchases), 0)  AS label_1b_gst_on_purchases
-		FROM vw_bas_summary
-		WHERE practitioner_id = $1
-		  AND period_quarter >= DATE_TRUNC('quarter', $2::DATE)
-		  AND period_quarter <= DATE_TRUNC('quarter', $3::DATE)
-	`
+        SELECT
+            -- Sum everything from the line items directly
+            COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS g1_total_sales_gross,
+            COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION'), 0) AS label_1a_gst_on_sales,
+            
+            -- This will capture your $220 regardless of the tax mismatch
+            COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS g11_total_purchases_gross,
+            COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS label_1b_gst_on_purchases
+        FROM vw_bas_line_items
+        WHERE practitioner_id = $1
+          AND submitted_at::DATE >= $2::DATE
+          AND submitted_at::DATE <= $3::DATE
+    `
 	var row BASReportRow
-
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
-		return nil, fmt.Errorf("get bas report: %w", err)
+		return nil, err
 	}
 	return &row, nil
 }
-
-func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
+func (r *repository) GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	// 1. Use ? instead of $1
 	query := `
         SELECT 
@@ -227,16 +229,21 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
         FROM vw_bas_line_items
-        WHERE clinic_id = ?
+        WHERE practitioner_id = ?
     `
-	args := []interface{}{clinicID}
+	args := []interface{}{practitionerID}
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND clinic_id = ?"
+		args = append(args, *clinicID)
+	}
 
 	if len(f.ParsedQuarterIDs) > 0 {
-		// Use IN (?) - sqlx.In will expand this (?) based on the length of the slice
-		query += " AND period_quarter IN (SELECT start_date FROM tbl_financial_quarter WHERE id IN (?))"
 
-		// Append the actual slice of UUIDs. sqlx.In is designed to handle slices in the args list.
-		args = append(args, f.ParsedQuarterIDs)
+		query += ` AND period_quarter >= (SELECT MIN(start_date) FROM tbl_financial_quarter WHERE id IN (?))
+               AND period_quarter <= (SELECT MAX(end_date) FROM tbl_financial_quarter WHERE id IN (?))`
+
+		args = append(args, f.ParsedQuarterIDs, f.ParsedQuarterIDs)
 	}
 
 	// 3. Handle Financial Year (Fall-through logic)
@@ -246,16 +253,13 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
             ) AND (
                 SELECT end_date FROM tbl_financial_year WHERE id = ?
             )`
-		// We add the ID twice because there are two '?' placeholders
+
 		args = append(args, *f.FinancialYearID, *f.FinancialYearID)
 	}
 
 	query += ` GROUP BY period_quarter, section_type, bas_category, coa_id, account_name 
                ORDER BY period_quarter ASC`
 
-	// --- THE CRITICAL STEP ---
-	// sqlx.In returns a query with '?' placeholders.
-	// Rebind(?) converts all '?' to '$1', '$2', '$3' automatically.
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
 		return nil, err
@@ -264,8 +268,14 @@ func (r *repository) GetBASLineItems(ctx context.Context, clinicID uuid.UUID, f 
 	finalQuery := r.db.Rebind(fullQuery)
 
 	var rows []*BASLineItemRow
+
 	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
+	}
+
+	for _, r := range rows {
+		if r.SectionType != nil && strings.Contains(strings.ToUpper(*r.SectionType), "EXPENSE") {
+		}
 	}
 	return rows, nil
 }
@@ -311,7 +321,7 @@ func (r *repository) GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BAS
 
 func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID uuid.UUID) ([]BASQuarterInfo, error) {
 	var list []BASQuarterInfo
-	
+
 	query := `
         SELECT 
             id::text, 

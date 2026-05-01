@@ -15,6 +15,7 @@ type Repository interface {
 	GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error)
 	GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLFYSummaryRow, error)
 	GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error)
+	GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error)
 }
 
 type repository struct {
@@ -26,16 +27,20 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLSummaryRow, error) {
+	// Query vw_pl_line_items directly and aggregate by clinic_id
 	query := `
-		SELECT
-			practitioner_id, period_month,
-			income_net, income_gst, income_gross,
-			cogs_net, cogs_gst, cogs_gross,
-			gross_profit_net,
-			other_expenses_net, other_expenses_gst, other_expenses_gross,
-			net_profit_net, net_profit_gross
-		FROM vw_pl_summary_monthly
-		WHERE clinic_id = $1
+		WITH section_totals AS (
+			SELECT 
+				practitioner_id, 
+				period_month, 
+				section_type,
+				SUM(net_amount) AS total_net, 
+				SUM(gst_amount) AS total_gst, 
+				SUM(gross_amount) AS total_gross,
+				SUM(signed_net_amount) AS sg_net_amount,
+				SUM(signed_gross_amount) AS sg_gross_amount
+			FROM vw_pl_line_items
+			WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
@@ -51,7 +56,27 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 		idx++
 	}
 
-	query += " ORDER BY period_month ASC"
+	query += `
+			GROUP BY practitioner_id, period_month, section_type
+		)
+		SELECT
+			practitioner_id, period_month,
+			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
+			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'),        0) AS cogs_gross,
+			COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) AS gross_profit_net,
+			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gross,
+			COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
+			COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
+		FROM section_totals
+		GROUP BY practitioner_id, period_month
+		ORDER BY period_month ASC
+	`
 
 	var rows []*PLSummaryRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
@@ -165,8 +190,8 @@ func (r *repository) GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PL
 func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error) {
 	query := `
 		SELECT
-			li.clinic_id::TEXT,
-			c.name        AS clinic_name,
+			COALESCE(li.clinic_id::TEXT, '') AS clinic_id,
+			COALESCE(c.name, 'Manual Expense') AS clinic_name,
 			li.form_id::TEXT,
 			li.form_name,
 			li.form_field_id::TEXT,
@@ -179,16 +204,19 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			SUM(li.gst_amount)   AS gst_amount,
 			SUM(li.gross_amount) AS gross_amount
 		FROM vw_pl_line_items li
-		JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
-		WHERE 1=1
+		LEFT JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
+		WHERE li.practitioner_id = $1
 	`
-	args := []interface{}{}
-	idx := 1
+	args := []interface{}{f.PractitionerID}
+	idx := 2
 
-	if f.ClinicID != nil {
-		query += fmt.Sprintf(" AND li.clinic_id = $%d", idx)
-		args = append(args, *f.ClinicID)
-		idx++
+	if f.ClinicID != nil && *f.ClinicID != "" {
+		// We match the selected ClinicID OR the Zero UUID (Manual Expenses)
+		zeroUUID := "00000000-0000-0000-0000-000000000000"
+
+		query += fmt.Sprintf(" AND (li.clinic_id = $%d OR li.clinic_id = $%d OR li.clinic_id IS NULL)", idx, idx+1)
+		args = append(args, *f.ClinicID, zeroUUID)
+		idx += 2
 	} else {
 		// scope to practitioner via the view's practitioner_id column
 		query += fmt.Sprintf(" AND li.practitioner_id = $%d", idx)
@@ -235,4 +263,40 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 		return nil, fmt.Errorf("get report: %w", err)
 	}
 	return rows, nil
+}
+
+func (r *repository) GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error) {
+	query := `
+		SELECT 
+			COALESCE(SUM(net_profit_net), 0)   AS net_profit_net,
+			COALESCE(SUM(gross_profit_net), 0) AS gross_profit_net
+		FROM vw_pl_summary_monthly
+		WHERE practitioner_id = $1
+	`
+	args := []interface{}{f.PractitionerID}
+	idx := 2
+
+	if f.ClinicID != nil && *f.ClinicID != "" {
+		zeroUUID := "00000000-0000-0000-0000-000000000000"
+		query += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id = $%d OR clinic_id IS NULL)", idx, idx+1)
+		args = append(args, *f.ClinicID, zeroUUID)
+		idx += 2
+	}
+
+	if f.DateFrom != nil {
+		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		args = append(args, *f.DateFrom)
+		idx++
+	}
+	if f.DateUntil != nil {
+		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		args = append(args, *f.DateUntil)
+		idx++
+	}
+
+	var summary PLSummaryRow
+	if err := r.db.GetContext(ctx, &summary, query, args...); err != nil {
+		return nil, fmt.Errorf("get summary: %w", err)
+	}
+	return &summary, nil
 }

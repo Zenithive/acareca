@@ -12,6 +12,11 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
+var (
+	ErrAccessDenied       = errors.New("access denied")
+	ErrInvalidExpenseType = errors.New("form is not an expense entry")
+)
+
 type IHandler interface {
 	GetById(c *gin.Context)
 	CreateFormWithFields(c *gin.Context)
@@ -20,6 +25,10 @@ type IHandler interface {
 	List(c *gin.Context)
 	Delete(c *gin.Context)
 	UpdateFormStatus(c *gin.Context)
+
+	CreateExpense(c *gin.Context)
+	UpdateExpense(c *gin.Context)
+	GetExpense(c *gin.Context)
 }
 
 type handler struct {
@@ -368,4 +377,147 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Form status updated successfully")
+}
+
+// @Summary Create expense
+// @Description Create a new expense form with items
+// @Tags form/expense
+// @Accept json
+// @Produce json
+// @Param request body RqExpense true "Expense creation request"
+// @Success 201 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /form/expenses [post]
+func (h *handler) CreateExpense(c *gin.Context) {
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var rq RqExpense
+	if err := util.BindAndValidate(c, &rq); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	form, err := h.svc.CreateExpense(c.Request.Context(), rq, actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusCreated, gin.H{"form": form}, "Expense created successfully")
+}
+
+// @Summary Update expense
+// @Description Update an existing expense form
+// @Tags form/expense
+// @Accept json
+// @Produce json
+// @Param id path string true "Form ID"
+// @Param request body RqUpdateExpense true "Expense update request"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /form/expenses/{id} [patch]
+func (h *handler) UpdateExpense(c *gin.Context) {
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	if strings.EqualFold(role, util.RoleAccountant) {
+		actorID, ok = util.GetAccountantID(c)
+	} else {
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
+		return
+	}
+
+	var formID uuid.UUID
+	formID, ok = util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	var rq RqUpdateExpense
+	if err := util.BindAndValidate(c, &rq); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	form, err := h.svc.UpdateExpense(c.Request.Context(), formID, rq, actorID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, gin.H{"form": form}, "Expense updated successfully")
+}
+
+// @Summary Get expense by ID
+// @Description Get an expense form with all its items
+// @Tags form/expense
+// @Accept json
+// @Produce json
+// @Param id path string true "Form ID"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /form/expenses/{id} [get]
+func (h *handler) GetExpense(c *gin.Context) {
+	role := c.GetString("role")
+
+	var actorID uuid.UUID
+	var ok bool
+
+	switch {
+	case strings.EqualFold(role, util.RoleAccountant):
+		actorID, ok = util.GetAccountantID(c)
+	default:
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid actor"))
+		return
+	}
+
+	formID, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid form id"))
+		return
+	}
+
+	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID, role)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrAccessDenied):
+			response.Error(c, http.StatusForbidden, err)
+		case errors.Is(err, ErrInvalidExpenseType):
+			response.Error(c, http.StatusBadRequest, err)
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	response.JSON(c, http.StatusOK, expense, "Expense fetched successfully")
 }

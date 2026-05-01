@@ -20,8 +20,10 @@ const maxRetries = 5
 type Repository interface {
 	CreateNotification(ctx context.Context, notification Notification) (uuid.UUID, error)
 	CreateDeliveries(ctx context.Context, notificationID uuid.UUID, channels []Channel) error
-	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error)
+	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, int, int, error)
+	GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	// Delivery worker methods
 	ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error)
@@ -78,23 +80,23 @@ func (r *repository) CreateDeliveries(ctx context.Context, notificationID uuid.U
 	return nil
 }
 
-func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error) {
+func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, int, int, error) {
 	args := []any{recipientID}
 	where := "WHERE recipient_id = $1 AND status != 'DISMISSED'"
 
-	if filter.Status != nil {
+	if filter.Status != nil && *filter.Status != "" {
 		args = append(args, *filter.Status)
 		where += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM tbl_notification "+where, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count notifications: %w", err)
+		return nil, 0, 0, 0, fmt.Errorf("count notifications: %w", err)
 	}
 
 	limit := filter.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = 10
 	}
 	page := filter.Page
 	if page <= 0 {
@@ -102,7 +104,6 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	}
 	offset := (page - 1) * limit
 
-	args = append(args, limit, offset)
 	q := fmt.Sprintf(`
 		SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id,
 		       status, payload, created_at, read_at AS readed_at
@@ -110,13 +111,24 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		%s
 		ORDER BY created_at DESC
 		LIMIT $%d OFFSET $%d
-	`, where, len(args)-1, len(args))
+	`, where, len(args)+1, len(args)+2)
+
+	// Append limit and offset to args AFTER the where clause params
+	args = append(args, limit, offset)
 
 	var rows []Notification
 	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
-		return nil, 0, fmt.Errorf("list notifications: %w", err)
+		return nil, 0, 0, 0, fmt.Errorf("list notifications: %w", err)
 	}
-	return rows, total, nil
+
+	return rows, total, page, limit, nil
+}
+
+func (r *repository) GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM tbl_notification WHERE recipient_id = $1 AND status = 'UNREAD'`
+	err := r.db.GetContext(ctx, &count, query, recipientID)
+	return count, err
 }
 
 // MarkRead transitions UNREAD → READ.
@@ -133,17 +145,34 @@ func (r *repository) MarkRead(ctx context.Context, id uuid.UUID, recipientID uui
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
-// MarkDismissed transitions READ → DISMISSED.
-func (r *repository) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
-	err := r.MarkRead(ctx, id, recipientID)
-	if err != nil {
-		return err
-	}
+func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error {
+	query := `
+		UPDATE tbl_notification 
+		SET status = 'READ', read_at = NOW() 
+		WHERE recipient_id = $1 AND status = 'UNREAD'`
 
+	_, err := r.db.ExecContext(ctx, query, recipientID)
+	if err != nil {
+		return fmt.Errorf("mark all read: %w", err)
+	}
+	return nil
+}
+
+// MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.
+func (r *repository) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
+	// First, try to mark as READ if it's UNREAD (this may fail if already READ, which is fine)
+	_, _ = r.db.ExecContext(ctx,
+		`UPDATE tbl_notification
+		 SET status = 'READ', read_at = NOW()
+		 WHERE id = $1 AND recipient_id = $2 AND status = 'UNREAD'`,
+		id, recipientID,
+	)
+
+	// Now mark as DISMISSED (works for both UNREAD and READ status)
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification
 		 SET status = 'DISMISSED'
-		 WHERE id = $1 AND recipient_id = $2 AND status = 'READ'`,
+		 WHERE id = $1 AND recipient_id = $2 AND status IN ('UNREAD', 'READ')`,
 		id, recipientID,
 	)
 	if err != nil {

@@ -26,19 +26,30 @@ func NewRepository(db *sqlx.DB) Repository {
 func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant has access to all forms from practitioners they're invited to
-		permissionClause = ` AND c.practitioner_id IN (
-			SELECT practitioner_id FROM tbl_invitation 
-			WHERE accountant_id = ? AND status = 'COMPLETED'
+		// Accountant: show clinic entries they have access to + expense entries from those practitioners
+		permissionClause = ` AND (
+			c.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
+				WHERE accountant_id = ? AND status = 'COMPLETED'
+			))
 		)`
 	} else {
-		permissionClause = ` AND c.id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)`
+		// Practitioner: show own clinic entries + own expense entries
+		permissionClause = ` AND (
+			c.id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)
+			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+		)`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id": "e.clinic_id",
-		"form_id":   "fm.id",
-		"coa_id":    "coa.id",
+		"clinic_id":       "e.clinic_id",
+		"form_id":         "fm.id",
+		"coa_id":          "coa.id",
+		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
 	}
 
 	base := `
@@ -47,6 +58,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
             coa.name                          AS coa_name,
             ff.section_type                   AS section_type,
             COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
+			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
             COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
             COUNT(DISTINCT ev.id)             AS entry_count
         FROM tbl_chart_of_accounts coa
@@ -55,7 +67,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
         INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
         INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
         INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
-        INNER JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
+        LEFT  JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
         WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE AND ff.section_type IS NOT NULL` + permissionClause
 
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, []string{"coa.name"}, false)
@@ -72,13 +84,14 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	}
 
 	q = r.db.Rebind(finalQuery)
-	actualArgs := append([]any{actorID}, qArgs...)
+	actualArgs := append([]any{actorID, actorID}, qArgs...)
 
 	var rows []struct {
 		CoaID            uuid.UUID `db:"coa_id"`
 		CoaName          string    `db:"coa_name"`
 		SectionType      string    `db:"section_type"`
 		TotalNetAmount   float64   `db:"total_net_amount"`
+		TotalGSTAmount   float64   `db:"total_gst_amount"`
 		TotalGrossAmount float64   `db:"total_gross_amount"`
 		EntryCount       int       `db:"entry_count"`
 	}
@@ -94,6 +107,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			CoaName:          row.CoaName,
 			SectionType:      row.SectionType,
 			TotalNetAmount:   row.TotalNetAmount,
+			TotalGSTAmount:   row.TotalGSTAmount,
 			TotalGrossAmount: row.TotalGrossAmount,
 			EntryCount:       row.EntryCount,
 		})
