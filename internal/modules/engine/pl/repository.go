@@ -45,13 +45,14 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 	args := []interface{}{clinicID}
 	idx := 2
 
+	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
@@ -86,33 +87,39 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 }
 
 func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLAccountRow, error) {
+	// Query vw_pl_line_items directly to access transaction_date field
 	query := `
 		SELECT
 			practitioner_id, period_month,
 			pl_section, section_type,
 			account_code, account_name, account_type,
 			tax_name, tax_rate,
-			total_net, total_gst, total_gross,
-			signed_net, signed_gross,
-			entry_count
-		FROM vw_pl_by_account
+			SUM(net_amount) AS total_net,
+			SUM(gst_amount) AS total_gst,
+			SUM(gross_amount) AS total_gross,
+			SUM(signed_net_amount) AS signed_net,
+			SUM(signed_gross_amount) AS signed_gross,
+			COUNT(DISTINCT entry_id) AS entry_count
+		FROM vw_pl_line_items
 		WHERE clinic_id = $1
 	`
 	args := []any{clinicID}
 	idx := 2
 
+	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
 
-	query += " ORDER BY period_month ASC, pl_section ASC, account_code ASC"
+	query += ` GROUP BY practitioner_id, period_month, pl_section, section_type, account_code, account_name, account_type, tax_name, tax_rate
+		ORDER BY period_month ASC, pl_section ASC, account_code ASC`
 
 	var rows []*PLAccountRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
@@ -122,31 +129,36 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 }
 
 func (r *repository) GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error) {
+	// Query vw_pl_line_items directly to access transaction_date field
 	query := `
 		SELECT
 			practitioner_id, period_month,
 			payment_responsibility, section_type, pl_section,
 			account_code, account_name,
-			total_net, total_gst, total_gross,
-			entry_count
-		FROM vw_pl_by_responsibility
+			SUM(net_amount) AS total_net,
+			SUM(gst_amount) AS total_gst,
+			SUM(gross_amount) AS total_gross,
+			COUNT(DISTINCT entry_id) AS entry_count
+		FROM vw_pl_line_items
 		WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
 
+	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
 
-	query += " ORDER BY period_month ASC, payment_responsibility ASC, pl_section ASC, account_code ASC"
+	query += ` GROUP BY practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name
+		ORDER BY period_month ASC, payment_responsibility ASC, pl_section ASC, account_code ASC`
 
 	var rows []*PLResponsibilityRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {

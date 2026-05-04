@@ -90,6 +90,8 @@ func (r *Repository) Create(ctx context.Context, e *FormEntry, values []*FormEnt
 
 // GetByID implements [IRepository].
 func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
+	// consider date
+
 	query := `SELECT 
             e.id, e.form_version_id, e.clinic_id, e.submitted_by, e.submitted_at, 
             e.status, e.date, e.created_at, e.updated_at,
