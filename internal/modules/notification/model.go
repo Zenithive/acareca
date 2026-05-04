@@ -1,7 +1,9 @@
 package notification
 
 import (
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -173,11 +175,6 @@ type FilterNotification struct {
 	Page   int     `form:"page"`
 }
 
-type RqUpdatePreference struct {
-	EventType EventType `json:"event_type" binding:"required"`
-	Channels  []Channel `json:"channels"   binding:"required"`
-}
-
 type RsListNotification struct {
 	Notifications []Notification `json:"notifications"`
 	UnreadCount   int            `json:"unread_count"`
@@ -194,4 +191,56 @@ func BuildNotificationPayload(title string, body json.RawMessage, senderName *st
 		EntityName: entityName,
 		ExtraData:  extraData,
 	}
+}
+
+// --- NOTIFICATION PEREFERENCES ---
+
+type NotificationEventType string
+
+const (
+	EventNewTransaction          NotificationEventType = "NEW_TRANSACTION"
+	EventAccountantActivityAlert NotificationEventType = "ACCOUNTANT_ACTIVITY_ALERT"
+	EventSystemActivityAlert     NotificationEventType = "SYSTEM_ACTIVITY_ALERT"
+)
+
+type NotificationPreference struct {
+	ID         uuid.UUID             `db:"id" json:"id"`
+	UserID     uuid.UUID             `db:"user_id" json:"user_id"`
+	EntityID   uuid.UUID             `db:"entity_id" json:"entity_id"`
+	EntityType string                `db:"entity_type" json:"entity_type"`
+	EventType  NotificationEventType `db:"event_type" json:"event_type"`
+	Channels   NotificationChannels  `db:"channels" json:"channels"` // JSONB Map
+	CreatedAt  time.Time             `db:"created_at" json:"created_at"`
+	UpdatedAt  time.Time             `db:"updated_at" json:"updated_at"`
+	DeletedAt  *time.Time            `db:"deleted_at" json:"-"`
+}
+
+type RqUpdatePreference struct {
+	EventType NotificationEventType `json:"event_type" binding:"required"`
+	Channels  NotificationChannels  `json:"channels"   binding:"required"`
+}
+
+// Define a custom type for the channels map
+type NotificationChannels map[string]bool
+
+// Implement the Scan method so SQL knows how to handle JSONB
+func (nc *NotificationChannels) Scan(value interface{}) error {
+	// If the DB value is NULL, initialize an empty map
+	if value == nil {
+		*nc = make(NotificationChannels)
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(bytes, nc)
+}
+
+// Value implements the driver.Valuer interface (WRITING to DB)
+func (nc NotificationChannels) Value() (driver.Value, error) {
+	if nc == nil {
+		return json.Marshal(map[string]bool{})
+	}
+	return json.Marshal(nc)
 }

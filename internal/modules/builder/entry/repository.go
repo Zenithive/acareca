@@ -32,8 +32,8 @@ type IRepository interface {
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error)
 	CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
-	ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error)
-	CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error)
+	ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error)
+	CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) (int, error)
 
 	// Transaction-based variants
 	CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
@@ -41,6 +41,8 @@ type IRepository interface {
 	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 
 	GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
+
+	GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, error)
 }
 
 type Repository struct {
@@ -609,7 +611,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 
 	base := `
 		SELECT
-			coa.id          AS coa_id,
+			MAX(coa.id::text)::uuid     AS coa_id,
 			coa.name        AS coa_name,
 			COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
 			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
@@ -627,7 +629,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
-	groupByClause := ` GROUP BY coa.id, coa.name`
+	groupByClause := ` GROUP BY coa.name`
 	args := []any{actorID, actorID}
 
 	args = append(args, qArgs...)
@@ -721,7 +723,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
 	args := []any{actorID, actorID}
 	if strings.Contains(strings.ToUpper(q), "COUNT(*)") {
-		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT coa.id)")
+		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT coa.name)")
 	}
 
 	args = append(args, qArgs...)
@@ -735,7 +737,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 }
 
 // ListCoaEntryDetails returns detailed entry rows for a specific COA
-func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
+func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
@@ -800,11 +802,11 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
 		LEFT  JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE ev.updated_at IS NULL AND coa.id = ?` + permissionClause
+		WHERE ev.updated_at IS NULL AND coa.name = ?` + permissionClause
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "COALESCE(c.name, 'Expense')"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
-	args := []any{coaID, actorID, actorID}
+	args := []any{coaName, actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
@@ -875,7 +877,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f
 }
 
 // CountCoaEntryDetails returns the total number of entry details for a specific COA
-func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error) {
+func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) (int, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
@@ -920,11 +922,11 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, 
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
 		LEFT  JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE ev.updated_at IS NULL AND coa.id = ?` + permissionClause
+		WHERE ev.updated_at IS NULL AND coa.name = ?` + permissionClause
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "COALESCE(c.name, 'Expense')"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
-	args := []any{coaID, actorID, actorID}
+	args := []any{coaName, actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
@@ -933,4 +935,11 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaID uuid.UUID, 
 		return 0, fmt.Errorf("count coa entry details: %w", err)
 	}
 	return total, nil
+}
+
+func (r *Repository) GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, error) {
+	var name string
+	query := `SELECT name FROM tbl_chart_of_accounts WHERE id = $1`
+	err := r.db.GetContext(ctx, &name, query, id)
+	return name, err
 }

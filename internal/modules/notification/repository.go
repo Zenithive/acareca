@@ -32,6 +32,10 @@ type Repository interface {
 	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error
 	// Deduplication check for system error/warning notifications
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
+
+	GetPreference(ctx context.Context, entityID uuid.UUID, role ActorType, eventType NotificationEventType) (*NotificationPreference, error)
+	GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
+	UpsertPreference(ctx context.Context, pref NotificationPreference) error
 }
 
 type repository struct {
@@ -280,4 +284,54 @@ func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID u
 		return false, fmt.Errorf("check active system notification: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (r *repository) GetPreference(ctx context.Context, entityID uuid.UUID, role ActorType, eventType NotificationEventType) (*NotificationPreference, error) {
+	var pref NotificationPreference
+
+	query := `
+		SELECT id, user_id, entity_id, entity_type, event_type, channels, created_at, updated_at
+		FROM tbl_notification_preferences
+		WHERE entity_id = $1 AND entity_type = $2 AND event_type = $3
+		LIMIT 1`
+
+	err := r.db.GetContext(ctx, &pref, query, entityID, role, eventType)
+	if err != nil {
+		return nil, err
+	}
+	return &pref, nil
+}
+
+func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error) {
+	prefs := make([]NotificationPreference, 0)
+	const q = `
+		SELECT id, user_id, entity_id, entity_type, event_type, channels, created_at, updated_at
+		FROM tbl_notification_preferences
+		WHERE user_id = $1 AND deleted_at IS NULL`
+
+	rows, err := r.db.QueryxContext(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p NotificationPreference
+		if err := rows.StructScan(&p); err != nil {
+			return nil, err
+		}
+		prefs = append(prefs, p)
+	}
+	return prefs, nil
+}
+
+func (r *repository) UpsertPreference(ctx context.Context, p NotificationPreference) error {
+	const q = `
+		INSERT INTO tbl_notification_preferences (user_id, entity_id, entity_type, event_type, channels, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		ON CONFLICT (user_id, entity_id, event_type) 
+		DO UPDATE SET channels = $5, updated_at = NOW(), deleted_at = NULL
+	`
+	_, err := r.db.ExecContext(ctx, q, p.UserID, p.EntityID, p.EntityType, p.EventType, p.Channels)
+	return err
 }

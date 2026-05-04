@@ -49,6 +49,11 @@ func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc 
 	}
 }
 
+type AccKey struct {
+	Code int16
+	Name string
+}
+
 func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error) {
 	// Role-based Practitioner Resolution
 	var targetPracIDs []uuid.UUID
@@ -74,8 +79,11 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 				return nil, errors.New("no linked practitioners found")
 			}
 			// Default to the first linked practitioner for the actual data fetch
-			practitionerID = linked[0]
 			targetPracIDs = linked
+
+			if len(linked) > 0 {
+				practitionerID = linked[0]
+			}
 		}
 	}
 
@@ -96,97 +104,101 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	}
 
 	// Get balance sheet accounts (assets, liabilities, other equity accounts)
-	rows, err := s.repo.GetBalanceSheet(ctx, practitionerID, f)
+	rows, err := s.repo.GetBalanceSheet(ctx, targetPracIDs, f)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get automatically calculated owner equity
-	ownerEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, practitionerID, clinicID, asOfDate)
-	if err != nil {
-		return nil, fmt.Errorf("calculate owner equity: %w", err)
+	var totalOwnerEquity equity.OwnerEquityCalculation
+	for _, pID := range targetPracIDs {
+		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, clinicID, asOfDate)
+		if err != nil {
+			return nil, fmt.Errorf("calculate owner equity: %w", err)
+		}
+		// Aggregate totals
+		totalOwnerEquity.ShareCapital += pracEquity.ShareCapital
+		totalOwnerEquity.FundsIntroduced += pracEquity.FundsIntroduced
+		totalOwnerEquity.Drawings += pracEquity.Drawings
+		totalOwnerEquity.RetainedEarnings += pracEquity.RetainedEarnings
+		totalOwnerEquity.CurrentYearProfit += pracEquity.CurrentYearProfit
+		totalOwnerEquity.TotalEquity += pracEquity.TotalEquity
 	}
 
-	// Organize by account type
-	var assets, liabilities, equity []RsAccount
+	// 4. Group and Summarize Assets/Liabilities/Other Equity
+	assetMap := make(map[AccKey]RsAccount)
+	liabMap := make(map[AccKey]RsAccount)
+	otherEquityMap := make(map[AccKey]RsAccount)
+
 	var totalAssets, totalLiabilities, totalOtherEquity float64
 
 	for _, row := range rows {
-		account := row.ToRs()
+		key := AccKey{Code: row.AccountCode, Name: row.AccountName}
 
 		switch row.AccountType {
 		case "Asset":
-			assets = append(assets, account)
+			acc := assetMap[key]
+			acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+			acc.Balance += row.Balance
+			assetMap[key] = acc
 			totalAssets += row.Balance
+
 		case "Liability":
-			liabilities = append(liabilities, account)
+			acc := liabMap[key]
+			acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+			acc.Balance += row.Balance
+			liabMap[key] = acc
 			totalLiabilities += row.Balance
+
 		case "Equity":
-			// Skip owner fund accounts (880, 881, 960, 970) - they're calculated by equity service
+			// Skip owner fund accounts - they're handled separately
 			if row.AccountCode != 880 && row.AccountCode != 881 &&
 				row.AccountCode != 960 && row.AccountCode != 970 {
-				equity = append(equity, account)
+				acc := otherEquityMap[key]
+				acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+				acc.Balance += row.Balance
+				otherEquityMap[key] = acc
 				totalOtherEquity += row.Balance
 			}
 		}
 	}
 
-	// Build equity section from calculated values
-	if ownerEquity.ShareCapital != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 970)
-		if err != nil {
-			return nil, err
-		}
-
-		equity = append(equity, RsAccount{
-			CoaId:   *coaId,
-			Code:    970,
-			Name:    "Owner A Share Capital",
-			Balance: ownerEquity.ShareCapital,
-		})
+	// 5. Convert Maps back to Slices for the Response
+	assets := []RsAccount{}
+	for _, v := range assetMap {
+		assets = append(assets, v)
 	}
 
-	if ownerEquity.FundsIntroduced != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 881)
-		if err != nil {
-			return nil, err
-		}
-		equity = append(equity, RsAccount{
-			CoaId:   *coaId,
-			Code:    881,
-			Name:    "Owner A Funds Introduced",
-			Balance: ownerEquity.FundsIntroduced,
-		})
+	liabilities := []RsAccount{}
+	for _, v := range liabMap {
+		liabilities = append(liabilities, v)
 	}
 
-	if ownerEquity.Drawings != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 880)
-		if err != nil {
-			return nil, err
-		}
-		equity = append(equity, RsAccount{
-			CoaId:   *coaId,
-			Code:    880,
-			Name:    "Owner A Drawings",
-			Balance: -ownerEquity.Drawings,
-		})
+	equitySect := []RsAccount{}
+	for _, v := range otherEquityMap {
+		equitySect = append(equitySect, v)
 	}
 
-	if ownerEquity.RetainedEarnings != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 960)
-		if err != nil {
-			return nil, err
+	// 6. Append the Calculated Equity Items
+	addEquityItem := func(code int16, name string, balance float64) {
+		if balance == 0 {
+			return
 		}
-		equity = append(equity, RsAccount{
+		coaId, _ := s.getCoaIDByAccountCode(ctx, practitionerID, code)
+		equitySect = append(equitySect, RsAccount{
 			CoaId:   *coaId,
-			Code:    960,
-			Name:    "Retained Earnings",
-			Balance: ownerEquity.RetainedEarnings,
+			Code:    code,
+			Name:    name,
+			Balance: balance,
 		})
 	}
+	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
+	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
+	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings) // Negative for drawings
+	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
 	// Total equity = calculated owner equity + other equity accounts
-	totalEquity := ownerEquity.TotalEquity + totalOtherEquity
+	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
 
 	result := &RsBalanceSheet{
 		AsOfDate:                  asOfDate,
@@ -194,8 +206,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		TotalAssets:               totalAssets,
 		Liabilities:               liabilities,
 		TotalLiabilities:          totalLiabilities,
-		Equity:                    equity,
-		CurrentYearProfit:         ownerEquity.CurrentYearProfit,
+		Equity:                    equitySect,
+		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
 		TotalEquity:               totalEquity,
 		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
 	}

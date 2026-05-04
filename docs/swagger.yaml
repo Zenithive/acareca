@@ -1886,6 +1886,30 @@ definitions:
       status:
         $ref: '#/definitions/notification.Status'
     type: object
+  notification.NotificationChannels:
+    additionalProperties:
+      type: boolean
+    type: object
+  notification.NotificationEventType:
+    enum:
+    - NEW_TRANSACTION
+    - ACCOUNTANT_ACTIVITY_ALERT
+    - SYSTEM_ACTIVITY_ALERT
+    type: string
+    x-enum-varnames:
+    - EventNewTransaction
+    - EventAccountantActivityAlert
+    - EventSystemActivityAlert
+  notification.RqUpdatePreference:
+    properties:
+      channels:
+        $ref: '#/definitions/notification.NotificationChannels'
+      event_type:
+        $ref: '#/definitions/notification.NotificationEventType'
+    required:
+    - channels
+    - event_type
+    type: object
   notification.RsListNotification:
     properties:
       limit:
@@ -6417,6 +6441,58 @@ paths:
       security:
       - BearerToken: []
       summary: Mark notification as read
+      tags:
+      - notification
+  /notification/preferences:
+    get:
+      description: Returns the current channel preferences for the authenticated user.
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get notification preferences
+      tags:
+      - notification
+    put:
+      description: Updates or creates a preference for a specific event type.
+      parameters:
+      - description: Preference Update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/notification.RqUpdatePreference'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update notification preference
       tags:
       - notification
   /notification/read-all:

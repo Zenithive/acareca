@@ -14,8 +14,8 @@ type Repository interface {
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLAccountRow, error)
 	GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error)
 	GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLFYSummaryRow, error)
-	GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error)
-	GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error)
+	GetReport(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) ([]*PLReportRow, error)
+	GetPLSummary(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) (*PLSummaryRow, error)
 }
 
 type repository struct {
@@ -187,7 +187,7 @@ func (r *repository) GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PL
 	return rows, nil
 }
 
-func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error) {
+func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) ([]*PLReportRow, error) {
 	query := `
 		SELECT
 			COALESCE(li.clinic_id::TEXT, '') AS clinic_id,
@@ -205,49 +205,37 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			SUM(li.gross_amount) AS gross_amount
 		FROM vw_pl_line_items li
 		LEFT JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
-		WHERE li.practitioner_id = $1
+		WHERE li.practitioner_id IN (?)
 	`
-	args := []interface{}{f.PractitionerID}
-	idx := 2
+	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		// We match the selected ClinicID OR the Zero UUID (Manual Expenses)
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
 
-		query += fmt.Sprintf(" AND (li.clinic_id = $%d OR li.clinic_id = $%d OR li.clinic_id IS NULL)", idx, idx+1)
+		query += " AND (li.clinic_id = ? OR li.clinic_id = ? OR li.clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
-		idx += 2
-	} else {
-		// scope to practitioner via the view's practitioner_id column
-		query += fmt.Sprintf(" AND li.practitioner_id = $%d", idx)
-		args = append(args, f.PractitionerID)
-		idx++
 	}
 
 	if f.DateFrom != nil {
-		query += fmt.Sprintf(" AND li.submitted_at::DATE >= $%d::DATE", idx)
+		query += " AND li.submitted_at::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
-		idx++
 	}
 	if f.DateUntil != nil {
-		query += fmt.Sprintf(" AND li.submitted_at::DATE <= $%d::DATE", idx)
+		query += " AND li.submitted_at::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
-		idx++
 	}
 	if f.CoaID != nil {
-		query += fmt.Sprintf(" AND li.coa_id = $%d", idx)
+		query += " AND li.coa_id = ?"
 		args = append(args, *f.CoaID)
-		idx++
 	}
 	if f.TaxTypeID != nil {
-		query += fmt.Sprintf(" AND li.tax_name = $%d", idx)
+		query += " AND li.tax_name = ?"
 		args = append(args, *f.TaxTypeID)
-		idx++
 	}
 	if f.FormID != nil {
-		query += fmt.Sprintf(" AND li.form_id = $%d", idx)
+		query += " AND li.form_id = ?"
 		args = append(args, *f.FormID)
-		idx++
 	}
 
 	query += `
@@ -258,44 +246,54 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 		ORDER BY li.section_type, li.account_name
 	`
 
+	fullQuery, fullArgs, err := sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery := r.db.Rebind(fullQuery)
+
 	var rows []*PLReportRow
-	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, fmt.Errorf("get report: %w", err)
 	}
 	return rows, nil
 }
 
-func (r *repository) GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error) {
+func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) (*PLSummaryRow, error) {
 	query := `
 		SELECT 
 			COALESCE(SUM(net_profit_net), 0)   AS net_profit_net,
 			COALESCE(SUM(gross_profit_net), 0) AS gross_profit_net
 		FROM vw_pl_summary_monthly
-		WHERE practitioner_id = $1
+		WHERE practitioner_id IN (?)
 	`
-	args := []interface{}{f.PractitionerID}
-	idx := 2
+	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
-		query += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id = $%d OR clinic_id IS NULL)", idx, idx+1)
+		query += " AND (clinic_id = ? OR clinic_id = ? OR clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
-		idx += 2
 	}
 
 	if f.DateFrom != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += " AND period_month >= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateFrom)
-		idx++
 	}
 	if f.DateUntil != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += " AND period_month <= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateUntil)
-		idx++
 	}
 
+	fullQuery, fullArgs, err := sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery := r.db.Rebind(fullQuery)
+
 	var summary PLSummaryRow
-	if err := r.db.GetContext(ctx, &summary, query, args...); err != nil {
+	if err := r.db.GetContext(ctx, &summary, finalQuery, fullArgs...); err != nil {
 		return nil, fmt.Errorf("get summary: %w", err)
 	}
 	return &summary, nil
