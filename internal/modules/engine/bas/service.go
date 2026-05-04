@@ -292,8 +292,18 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	}
 	var rawRows []*BASLineItemRow
 
+	var targetPracIDs []uuid.UUID
+	for pID := range practitionerMap {
+		targetPracIDs = append(targetPracIDs, pID)
+	}
+
+	// If it's a practitioner (not accountant), they are the only one
+	if !isAccountant {
+		targetPracIDs = []uuid.UUID{actorID}
+	}
+
 	nilClinic := uuid.Nil
-	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch BAS items: %w", err)
 	}

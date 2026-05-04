@@ -152,83 +152,66 @@ func parseAndValidate(f *PLFilter) (uuid.UUID, error) {
 }
 
 func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error) {
-
 	meta := auditctx.GetMetadata(ctx)
-
 	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
-	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
-	if err == nil && accProfile != nil {
-		isAccountant = true
-	}
-
-	var finalOwnerID uuid.UUID
+	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		if accProfile == nil {
-			return nil, fmt.Errorf("access denied: accountant profile not found")
-		}
 
-		// Scenario: Accountant filtering by specific Clinic
+		// 1. Determine Scope: Specific Clinic, Specific Practitioner, or All Linked
 		if f.ClinicID != nil && *f.ClinicID != "" {
+			// Scenario: Specific Clinic
 			clinicUUID, err := uuid.Parse(*f.ClinicID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid clinic_id format")
 			}
-			permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, clinicUUID)
+			permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicUUID)
 			if err != nil {
-				return nil, fmt.Errorf("permission denied: you are not associated with this clinic")
+				return nil, fmt.Errorf("permission denied: not associated with this clinic")
 			}
-			finalOwnerID = permission.PractitionerID
-
-			// Override: Only notify the owner of the specific clinic being viewed
-			targetNotifIDs = []uuid.UUID{finalOwnerID}
+			targetPracIDs = []uuid.UUID{permission.PractitionerID}
+		} else if f.PractitionerID != "" {
+			// Scenario: Specific Practitioner (Accountant picked one from a dropdown)
+			pracUUID, err := uuid.Parse(f.PractitionerID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid practitioner_id format")
+			}
+			isLinked, err := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, actorID, pracUUID)
+			if err != nil || !isLinked {
+				return nil, fmt.Errorf("permission denied: no association with this practitioner")
+			}
+			targetPracIDs = []uuid.UUID{pracUUID}
 		} else {
-			// Scenario: Accountant filtering by Practitioner (or Practice-wide)
-			if f.PractitionerID == "" {
-				// No ID in filter? Get the default linked practitioner
-				targetPracID, err := s.clinicRepo.GetPractitionerForAccountant(ctx, accProfile.ID)
-				if err != nil {
-					return nil, fmt.Errorf("no linked practitioner found")
-				}
-				finalOwnerID = *targetPracID
-			} else {
-				targetPracID, err := uuid.Parse(f.PractitionerID)
-				if err != nil {
-					return nil, fmt.Errorf("invalid practitioner_id format")
-				}
-				// Security check: is the accountant actually invited by this practitioner?
-				isLinked, err := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, accProfile.ID, targetPracID)
-				if err != nil || !isLinked {
-					return nil, fmt.Errorf("permission denied: no association with this practitioner")
-				}
-				finalOwnerID = targetPracID
+			// Scenario: Aggregation (Accountant viewing ALL linked practitioners)
+			// targetNotifIDs was already populated in the handler via GetPractitionersLinkedToAccountant
+			if len(targetNotifIDs) == 0 {
+				return nil, fmt.Errorf("no linked practitioners found for aggregation")
 			}
+			targetPracIDs = targetNotifIDs
 		}
 	} else {
 		// Scenario: User is the Practitioner
-		pracProfile, err := s.practitionerSvc.GetPractitionerByUserID(ctx, actorID.String())
-		if err != nil {
-			return nil, fmt.Errorf("access denied: practitioner profile not found")
-		}
-		finalOwnerID = pracProfile.ID
-
+		// If practitioner selects a clinic, verify ownership
 		if f.ClinicID != nil && *f.ClinicID != "" {
 			clinicUUID, err := uuid.Parse(*f.ClinicID)
 			if err == nil {
-				_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, finalOwnerID)
+				_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, actorID)
 				if err != nil {
 					return nil, fmt.Errorf("access denied: clinic mismatch")
 				}
 			}
 		}
+		targetPracIDs = []uuid.UUID{actorID}
 	}
 
-	// 3. APPLY VERIFIED PRACTITIONER ID (OUTSIDE all if/else blocks)
-	f.PractitionerID = finalOwnerID.String()
+	// 2. Sync Filter state for Repo/Audit (use the first ID as a representative if aggregating)
+	if len(targetPracIDs) > 0 {
+		f.PractitionerID = targetPracIDs[0].String()
+	}
 
 	var from, to time.Time
-	//var err error
+	var err error
 	if f.DateFrom != nil {
 		if from, err = time.Parse(dateLayout, *f.DateFrom); err != nil {
 			return nil, fmt.Errorf("invalid date_from: use YYYY-MM-DD format")
@@ -243,7 +226,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		return nil, fmt.Errorf("date_from must not be after date_until")
 	}
 
-	rows, err := s.repo.GetReport(ctx, f)
+	rows, err := s.repo.GetReport(ctx, targetPracIDs, f)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +262,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
 				PractitionerID: pID,
-				AccountantID:   accProfile.ID,
+				AccountantID:   actorID,
 				ActorID:        actorID,
 				ActorName:      &fullName,
 				ActorType:      role,
@@ -293,7 +276,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	}
 
 	// NEW: Fetch pre-calculated summary from the specialized view
-	summary, err := s.repo.GetPLSummary(ctx, f)
+	summary, err := s.repo.GetPLSummary(ctx, targetPracIDs, f)
 	if err != nil {
 		// Log the error but perhaps allow a fallback or return error
 		return nil, err

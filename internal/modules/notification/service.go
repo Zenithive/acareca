@@ -2,7 +2,9 @@ package notification
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -38,7 +40,9 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 	// Fetch preferences for the recipient
 	prefs, err := s.repo.GetPreference(ctx, rq.RecipientID, rq.RecipientType, prefCategory)
 	if err != nil {
-		fmt.Printf("Err in fetching preferences: %s\n", err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			fmt.Printf("Err in fetching preferences: %s\n", err)
+		}
 	}
 
 	var allowedChannels []Channel

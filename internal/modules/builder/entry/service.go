@@ -940,6 +940,12 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	})
 }
 
+// Helper to handle [uuid] format from frontend
+func cleanUUIDString(s string) string {
+	s = strings.Trim(s, "[]\" ") // Removes [, ], ", and spaces
+	return s
+}
+
 // ListCoaEntries implements [IService] - returns grouped COA rows for parent grid
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
 	var targetPracIDs []uuid.UUID
@@ -952,9 +958,12 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		// Accountant logic:
 		if filter.PractitionerID != nil && *filter.PractitionerID != "" {
 			// Case A: Specific practitioner selected in query
-			pID, err := uuid.Parse(*filter.PractitionerID)
+			// CLEAN THE STRING BEFORE PARSING
+			cleanID := cleanUUIDString(*filter.PractitionerID)
+			pID, err := uuid.Parse(cleanID)
 			if err == nil {
 				targetPracIDs = []uuid.UUID{pID}
+				filter.PractitionerID = &cleanID
 			}
 		} else {
 			// Case B: No practitioner specified - fetch all linked practitioners
@@ -1035,13 +1044,19 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 		return nil, fmt.Errorf("invalid coa_id: %w", err)
 	}
 
+	// Get the name so we can aggregate sibling accounts
+	coaName, err := s.repo.GetCoaNameByID(ctx, coaUUID)
+	if err != nil {
+		return nil, fmt.Errorf("find coa name: %w", err)
+	}
+
 	f := filter.ToCommonFilter()
 
-	items, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f, actorID, role)
+	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountCoaEntryDetails(ctx, coaUUID, f, actorID, role)
+	total, err := s.repo.CountCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -1059,8 +1074,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	}
 
 	for _, g := range groups {
-		coaUUID, _ := uuid.Parse(g.CoaID)
-		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+		details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			continue
 		}
@@ -1240,8 +1254,7 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow), groupHeaderStyle)
 		currRow++
 
-		coaUUID, _ := uuid.Parse(g.CoaID)
-		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+		details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			continue
 		}

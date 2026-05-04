@@ -98,44 +98,24 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		return
 	}
 
-	var notifIDs []uuid.UUID
-	var practitionerID uuid.UUID
-
-	// Role-based logic for target practitioners
-	if strings.EqualFold(role, util.RoleAccountant) {
-		if f.PractitionerID != nil && *f.PractitionerID != "" {
-			pracUUID, err := uuid.Parse(*f.PractitionerID)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id"))
-				return
-			}
-			practitionerID = pracUUID
-			notifIDs = []uuid.UUID{pracUUID}
-		} else {
-			// Case: Accountant hasn't selected a specific practitioner
-			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
-			if err != nil {
-				response.Error(c, http.StatusInternalServerError, err)
-				return
-			}
-			if len(linked) == 0 {
-				response.Error(c, http.StatusForbidden, errors.New("no linked practitioners"))
-				return
-			}
-			// Default to first linked for the report data
-			practitionerID = linked[0]
-			notifIDs = linked
-		}
-	} else {
-		practitionerID = *actorID
-		notifIDs = nil // practitioners don't notify themselves
-	}
-
 	// 1. Fetch report data
-	reportData, err := h.svc.GetBalanceSheet(c.Request.Context(), &f, practitionerID, role, userID)
+	reportData, err := h.svc.GetBalanceSheet(c.Request.Context(), &f, *actorID, role, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
+	}
+
+	// Logic for notifications (notifIDs)
+	var notifIDs []uuid.UUID
+	if strings.EqualFold(role, util.RoleAccountant) {
+		if f.PractitionerID != nil && *f.PractitionerID != "" {
+			pID, _ := uuid.Parse(*f.PractitionerID)
+			notifIDs = []uuid.UUID{pID}
+		} else {
+			// Service already did this work, but for notifications we might need the list again
+			linked, _ := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			notifIDs = linked
+		}
 	}
 
 	// 2. Generate Export (Excel or PDF HTML)

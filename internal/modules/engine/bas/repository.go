@@ -18,7 +18,7 @@ type Repository interface {
 	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
 
-	GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
+	GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
@@ -216,22 +216,21 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 	}
 	return &row, nil
 }
-func (r *repository) GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
-	// 1. Use ? instead of $1
+
+func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	query := `
         SELECT 
             period_quarter,
             section_type,
             bas_category,
-			coa_id,
-			account_name,
+			account_name, -- Note: We group by Name for aggregation
             SUM(net_amount) AS net_amount,
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
         FROM vw_bas_line_items
-        WHERE practitioner_id = ?
+        WHERE practitioner_id IN (?)
     `
-	args := []interface{}{practitionerID}
+	args := []interface{}{practitionerIDs}
 
 	if clinicID != nil && *clinicID != uuid.Nil {
 		query += " AND clinic_id = ?"

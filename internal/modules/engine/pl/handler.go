@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -26,12 +27,13 @@ type IHandler interface {
 }
 
 type handler struct {
-	svc           Service
-	invitationSvc invitation.Service
+	svc            Service
+	invitationSvc  invitation.Service
+	accountantRepo accountant.Repository
 }
 
-func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
-	return &handler{svc: svc, invitationSvc: invitationSvc}
+func NewHandler(svc Service, invitationSvc invitation.Service, accountantRepo accountant.Repository) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc, accountantRepo: accountantRepo}
 }
 
 // GetMonthlySummary godoc
@@ -182,8 +184,7 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
-	role := c.GetString("role")
-	actorID, ok := util.GetUserID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -194,29 +195,40 @@ func (h *handler) GetReport(c *gin.Context) {
 		return
 	}
 
+	// MANDATORY: Clean the IDs before doing logic
+	if f.PractitionerID != "" {
+		f.PractitionerID = cleanUUIDString(f.PractitionerID)
+	}
+	if f.ClinicID != nil {
+		cleaned := cleanUUIDString(*f.ClinicID)
+		f.ClinicID = &cleaned
+	}
+
 	var targetNotifIDs []uuid.UUID
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Scenario A: practitioner_id in query
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			f.PractitionerID = pracIDStr
-			if pID, err := uuid.Parse(pracIDStr); err == nil {
+		if f.PractitionerID != "" {
+			// Case A: Accountant specifically picked one
+			if pID, err := uuid.Parse(f.PractitionerID); err == nil {
 				targetNotifIDs = []uuid.UUID{pID}
 			}
-		} else {
-			// Scenario B: No practitioner_id -> Fetch all linked practitioners
-			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), actorID)
-			if err == nil {
-				targetNotifIDs = linked
+		} else if f.ClinicID == nil || *f.ClinicID == "" {
+			// Case B: Aggregation mode - Fetch ALL linked practitioners
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			if err != nil || len(linked) == 0 {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("no linked practitioners found for aggregation"))
+				fmt.Printf("\nError fetching linked practitioners:%v:", err)
+				return
 			}
+			targetNotifIDs = linked
 		}
 	} else {
 		// Practitioner: Only notify self
-		targetNotifIDs = []uuid.UUID{actorID}
+		targetNotifIDs = []uuid.UUID{*actorID}
 		f.PractitionerID = actorID.String()
 	}
 
-	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f, role, targetNotifIDs)
+	result, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, targetNotifIDs)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -333,4 +345,20 @@ func (h *handler) ExportReport(c *gin.Context) {
 	default:
 		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
 	}
+}
+
+// cleanUUIDString handles the case where the frontend sends UUIDs
+// wrapped in JSON-style brackets and quotes like ["uuid"]
+func cleanUUIDString(s string) string {
+	if s == "" {
+		return ""
+	}
+	// Remove brackets, double quotes, and whitespace
+	res := strings.NewReplacer("[", "", "]", "", "\"", "", " ", "").Replace(s)
+
+	// If multiple IDs were sent in a comma-separated string, take the first one
+	if strings.Contains(res, ",") {
+		res = strings.Split(res, ",")[0]
+	}
+	return res
 }

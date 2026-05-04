@@ -10,7 +10,7 @@ import (
 
 // Repository defines all DB queries for the Balance Sheet module
 type Repository interface {
-	GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID, f *BSFilter) ([]*BSRow, error)
+	GetBalanceSheet(ctx context.Context, practitionerIDs []uuid.UUID, f *BSFilter) ([]*BSRow, error)
 }
 
 type repository struct {
@@ -22,14 +22,14 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 // repository.go — updated GetBalanceSheet
-func (r *repository) GetBalanceSheet(ctx context.Context, practitionerID uuid.UUID, f *BSFilter) ([]*BSRow, error) {
+func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid.UUID, f *BSFilter) ([]*BSRow, error) {
 	// Step 1 — build the inner filter query first, with all WHERE conditions
 	inner := `
 		SELECT *
 		FROM vw_balance_sheet_line_items
-		WHERE practitioner_id = $1
+		WHERE practitioner_id = ANY($1)
 	`
-	args := []interface{}{practitionerID}
+	args := []interface{}{practitionerIDs}
 	idx := 2
 
 	// if f.ClinicID != nil && *f.ClinicID != "" {
