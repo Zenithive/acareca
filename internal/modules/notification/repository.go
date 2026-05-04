@@ -93,6 +93,12 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		where += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 
+	// Search Filter
+	if filter.Search != nil && *filter.Search != "" {
+		args = append(args, "%"+*filter.Search+"%")
+		where += fmt.Sprintf(" AND (event_type ILIKE $%d OR payload::text ILIKE $%d)", len(args), len(args))
+	}
+
 	var total int
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM tbl_notification "+where, args...).Scan(&total); err != nil {
 		return nil, 0, 0, 0, fmt.Errorf("count notifications: %w", err)

@@ -171,6 +171,7 @@ type NotificationPayload struct {
 
 type FilterNotification struct {
 	Status *string `form:"status"`
+	Search *string `form:"search"`
 	Limit  int     `form:"limit"`
 	Page   int     `form:"page"`
 }
