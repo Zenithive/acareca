@@ -353,22 +353,11 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 					}
 				}
 
+				// Only add rows that have actual values (not zero)
 				if foundRow != nil {
 					normalizedRows = append(normalizedRows, foundRow)
-				} else {
-
-					parsedTime, _ := time.Parse("2006-01-02", qInfo.StartDate)
-					normalizedRows = append(normalizedRows, &BASLineItemRow{
-						AccountName:   master.AccountName,
-						SectionType:   master.SectionType,
-						BasCategory:   master.BasCategory,
-						CoaID:         master.CoaID,
-						GrossAmount:   0,
-						GstAmount:     0,
-						NetAmount:     0,
-						PeriodQuarter: parsedTime,
-					})
 				}
+				// REMOVED: Don't add zero-value placeholder rows for missing accounts
 			}
 
 			finalizedRowsForTotal = append(finalizedRowsForTotal, normalizedRows...)
@@ -517,7 +506,12 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
-		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
+		
+		// Only add income items with non-zero values
+		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
+			col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
+		}
+		
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
 		totalIncome.Net += fAmts.Net
@@ -528,9 +522,21 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	mgtFee = finalize(mgtFee)
 	labWork = finalize(labWork)
 
-	col.Sections.Expenses.Items = []BASLineItem{
-		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
-		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
+	// Only add Management Fee and Lab Work if they have non-zero values
+	col.Sections.Expenses.Items = []BASLineItem{}
+	
+	if mgtFee.Gross != 0 || mgtFee.GST != 0 || mgtFee.Net != 0 {
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    "Management Fee (Gross Up)",
+			Amounts: mgtFee,
+		})
+	}
+	
+	if labWork.Gross != 0 || labWork.GST != 0 || labWork.Net != 0 {
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    "Laboratory Work (GST Free)",
+			Amounts: labWork,
+		})
 	}
 
 	tGross := mgtFee.Gross + labWork.Gross
@@ -541,10 +547,13 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		acc := expenseAccounts[name]
 		fAmts := finalize(acc.Amounts)
 
-		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
-			Name:    acc.Name,
-			Amounts: fAmts,
-		})
+		// Only add expense items with non-zero values
+		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
+			col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+				Name:    acc.Name,
+				Amounts: fAmts,
+			})
+		}
 
 		tGross += fAmts.Gross
 		tGST += fAmts.GST

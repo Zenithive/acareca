@@ -261,20 +261,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	}
 	beforeState := *existing
 
-	// // PERMISSION CHECK (Accountant Only)
-	// if isAccountant {
-	// 	// Check if they have 'update' or 'all' permission for this FORM
-	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
-	// 	if err != nil {
-	// 		return nil, nil, fmt.Errorf("Authentication error: %w", err)
-	// 	}
-
-	// 	// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
-	// 	if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
-	// 		return nil, nil, errors.New("Access denied: you do not have permission to update this form")
-	// 	}
-	// }
-
 	// Skip clinic resolution for expense forms
 	var realOwnerID uuid.UUID
 	if existing.ClinicID != nil && *existing.ClinicID != uuid.Nil {
@@ -794,7 +780,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
 				rq.Items[0].CoaID, actorId, err)
 		}
-		// This is the Practitioner ID for accountant
 		OwnerID = firstCoa.PractitionerID
 	default:
 		OwnerID = actorId
@@ -805,27 +790,22 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		return nil, fmt.Errorf("invalid transaction date format: %w", err)
 	}
 
-	// 1. Get the Financial Year ID
 	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine financial year: %w", err)
 	}
 
-	// 2. Fetch the Lock Date for this practitioner
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify lock date: %w", err)
 	}
 
-	// 3. Compare dates if a lock date exists
 	if lockDateStr != nil && *lockDateStr != "" {
-		// Parse the lock date
 		lockDate, err := parseFlexibleDate(*lockDateStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid lock date format: %w", err)
 		}
 
-		// Check: If expense date is ON or BEFORE the lock date, block it
 		if !expenseDate.After(lockDate) {
 			return nil, fmt.Errorf("cannot create expense: the financial period for %s is locked", *lockDateStr)
 		}
@@ -833,8 +813,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	var createdForm *detail.RsFormDetail
 
-	// For expense forms, we don't use a clinic, so we pass nil for clinicID
-	// and the actorId as the practitionerID
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		rqDetail := detail.RqFormDetail{
 			Name:        rq.Name,
@@ -844,8 +822,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			Status:      "PUBLISHED",
 		}
 
-		// Pass nil for clinicID and OwnerID as practitionerID
-		// The detail service will use the practitionerID directly when clinicID is nil
 		form, err := s.detailSvc.CreateTx(ctx, tx, &rqDetail, nil, OwnerID)
 		if err != nil {
 			return fmt.Errorf("failed to create expense form: %w", err)
@@ -860,41 +836,35 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		var submittedAt *string
 		if status == EntryStatusSubmitted {
-			// Declare the string in a way that its life matches the pointer
 			nowStr := time.Now().UTC().Format(time.RFC3339)
 			submittedAt = &nowStr
 		}
-		// Create a single entry for this expense form
 		entryID := uuid.New()
 		formEntry := &entry.FormEntry{
 			ID:            entryID,
 			FormVersionID: *form.ActiveVersionID,
-			ClinicID:      uuid.Nil, // No clinic for expense entries
+			ClinicID:      uuid.Nil,
 			SubmittedBy:   &actorId,
 			Status:        status,
 			SubmittedAt:   submittedAt,
+			Date:          &rq.Date,
 		}
 
 		var entryValues []*entry.FormEntryValue
 
-		// Process each expense item
 		for idx, item := range rq.Items {
-			// Get COA details to fetch tax information
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, OwnerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
 			}
 
-			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
 			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
 			}
 
-			// Determine tax rate from COA
 			taxRate := 0.0
 
-			// Get tax rate if COA has tax
 			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
 				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
 				if err == nil && taxDetail != nil {
@@ -903,7 +873,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			}
 
 			localBusinessUse := item.BusinessUse
-			// Calculate amounts based on tax type
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				item.Amount,
 				localBusinessUse,
@@ -1006,21 +975,17 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		return nil, fmt.Errorf("invalid transaction date format: %w", err)
 	}
 
-	// 1. Get the Financial Year ID
 	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine financial year: %w", err)
 	}
 
-	// 2. Fetch the Lock Date for this practitioner
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify lock date: %w", err)
 	}
 
-	// 3. Compare dates if a lock date exists
 	if lockDateStr != nil && *lockDateStr != "" {
-		// Parse the lock date
 		lockDate, err := parseFlexibleDate(*lockDateStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid lock date format: %w", err)
@@ -1161,7 +1126,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				}
 			}
 
-			fmt.Printf("Calculating for Field %s: Amount=%f, TaxType=%s\n", item.ID, amount, taxType)
 			// Calculate new amounts
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				amount,
@@ -1210,6 +1174,13 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
+		}
+
+		// Update the date in tbl_form_entry
+		dateStr := expenseDate.Format("2006-01-02")
+		updateDateQuery := `UPDATE tbl_form_entry SET date = $1, updated_at = now() WHERE id = $2`
+		if _, err := tx.ExecContext(ctx, updateDateQuery, dateStr, existingEntry.ID); err != nil {
+			return fmt.Errorf("failed to update entry date: %w", err)
 		}
 
 		// Handle creates
@@ -1306,7 +1277,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 // GetExpense implements [IService].
 func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error) {
 	// Get form details
-	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
+	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expense form: %w", err)
 	}

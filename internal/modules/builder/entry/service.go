@@ -239,16 +239,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		return nil, err
 	}
 
-	// PERMISSION CHECK (Accountant Only)
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-
-	// 	// Must have 'update' OR 'all'
-	// 	if entryPerms == nil || (!entryPerms.HasAccess("update") && !entryPerms.HasAccess("all")) {
-	// 		return nil, errors.New("Access denied: you do not have permission to update this entry")
-	// 	}
-	// }
-
 	if req.Status != nil {
 		existing.Status = *req.Status
 		if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {

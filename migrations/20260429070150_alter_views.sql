@@ -15,7 +15,7 @@ DROP VIEW IF EXISTS vw_bas_line_items CASCADE;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE OR REPLACE VIEW vw_pl_line_items AS
+CREATE VIEW vw_pl_line_items AS
 SELECT
     fe.clinic_id,
     cfv.practitioner_id,
@@ -24,9 +24,10 @@ SELECT
     f.method                             AS calculation_method,
     fe.id                                AS entry_id,
     fe.submitted_at,
-    DATE_TRUNC('month',   COALESCE(fe.submitted_at, fe.created_at)) AS period_month,
-    DATE_TRUNC('quarter', COALESCE(fe.submitted_at, fe.created_at)) AS period_quarter,
-    DATE_TRUNC('year',    COALESCE(fe.submitted_at, fe.created_at)) AS period_year,
+    fe.date                              AS transaction_date,
+    DATE_TRUNC('month',   COALESCE(fe.date::timestamp, fe.submitted_at, fe.created_at)) AS period_month,
+    DATE_TRUNC('quarter', COALESCE(fe.date::timestamp, fe.submitted_at, fe.created_at)) AS period_quarter,
+    DATE_TRUNC('year',    COALESCE(fe.date::timestamp, fe.submitted_at, fe.created_at)) AS period_year,
     ff.id                                AS form_field_id,
     ff.label                             AS field_label,
     ff.section_type,
@@ -84,7 +85,7 @@ WHERE fe.status = 'SUBMITTED'
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_by_account AS
 SELECT
-    practitioner_id, period_month, pl_section,
+    clinic_id, practitioner_id, period_month, pl_section,
     account_code, account_name, account_type, tax_name, tax_rate,
     SUM(net_amount)          AS total_net,
     SUM(gst_amount)          AS total_gst,
@@ -93,24 +94,21 @@ SELECT
     SUM(signed_gross_amount) AS signed_gross,
     COUNT(DISTINCT entry_id) AS entry_count
 FROM vw_pl_line_items
-GROUP BY practitioner_id, period_month, pl_section, account_code, account_name, account_type, tax_name, tax_rate
+GROUP BY clinic_id, practitioner_id, period_month, pl_section, account_code, account_name, account_type, tax_name, tax_rate
 ORDER BY period_month, pl_section, account_code;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_summary_monthly AS
 WITH section_totals AS (
-    SELECT practitioner_id, period_month, section_type,
-           SUM(net_amount) AS total_net, 
-           SUM(gst_amount) AS total_gst, 
-           SUM(gross_amount) AS total_gross,
-           SUM(signed_net_amount) AS sg_net_amount,
-           SUM(signed_gross_amount) AS sg_gross_amount
+    SELECT clinic_id, practitioner_id, period_month, section_type,
+           SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross,
+           SUM(signed_net_amount) AS sg_net_amount, SUM(signed_gross_amount) AS sg_gross_amount
     FROM vw_pl_line_items
-    GROUP BY practitioner_id, period_month, section_type
+    GROUP BY clinic_id, practitioner_id, period_month, section_type
 )
 SELECT
-    practitioner_id, period_month,
+    clinic_id, practitioner_id, period_month,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
@@ -124,47 +122,50 @@ SELECT
     COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
     COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
 FROM section_totals
-GROUP BY practitioner_id, period_month
+GROUP BY clinic_id, practitioner_id, period_month
 ORDER BY period_month;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_by_responsibility AS
 SELECT
-    practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name,
+    clinic_id, practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name,
     SUM(net_amount) AS total_net, SUM(gst_amount) AS total_gst, SUM(gross_amount) AS total_gross,
+    SUM(signed_net_amount) AS signed_net, SUM(signed_gross_amount) AS signed_gross,
     COUNT(DISTINCT entry_id) AS entry_count
 FROM vw_pl_line_items
-GROUP BY practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name
-ORDER BY period_month, payment_responsibility, pl_section, account_code;
+GROUP BY clinic_id, practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name
+ORDER BY period_month, pl_section, account_code;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_by_financial_year AS
 SELECT
+    li.clinic_id,
     li.practitioner_id,
     fy.id AS financial_year_id, fy.label AS financial_year,
     fq.id AS financial_quarter_id, fq.label AS quarter,
     li.pl_section, li.section_type, li.account_code, li.account_name, li.account_type,
     SUM(li.net_amount) AS total_net, SUM(li.gst_amount) AS total_gst, SUM(li.gross_amount) AS total_gross,
-    COUNT(DISTINCT li.entry_id) AS entry_count
+    SUM(li.signed_net_amount) AS signed_net, SUM(li.signed_gross_amount) AS signed_gross
 FROM vw_pl_line_items li
-JOIN tbl_financial_year    fy ON li.submitted_at::DATE BETWEEN fy.start_date AND fy.end_date
-JOIN tbl_financial_quarter fq ON li.submitted_at::DATE BETWEEN fq.start_date AND fq.end_date AND fq.financial_year_id = fy.id
-GROUP BY li.practitioner_id, fy.id, fy.label, fq.id, fq.label, li.pl_section, li.section_type, li.account_code, li.account_name, li.account_type
-ORDER BY financial_year, quarter, li.pl_section, li.account_code;
+JOIN tbl_financial_year    fy ON li.period_month::DATE BETWEEN fy.start_date AND fy.end_date
+JOIN tbl_financial_quarter fq ON li.period_month::DATE BETWEEN fq.start_date AND fq.end_date AND fq.financial_year_id = fy.id
+GROUP BY li.clinic_id, li.practitioner_id, fy.id, fy.label, fq.id, fq.label, li.pl_section, li.section_type, li.account_code, li.account_name, li.account_type
+ORDER BY fy.start_date, fq.label, li.pl_section, li.account_code;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_pl_fy_summary AS
 WITH fy_totals AS (
-    SELECT practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter, section_type,
-           SUM(total_net) AS total_net, SUM(total_gst) AS total_gst, SUM(total_gross) AS total_gross
+    SELECT clinic_id, practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter, section_type,
+           SUM(total_net) AS total_net, SUM(total_gst) AS total_gst, SUM(total_gross) AS total_gross,
+           SUM(signed_net) AS sg_net_amount, SUM(signed_gross) AS sg_gross_amount
     FROM vw_pl_by_financial_year
-    GROUP BY practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter, section_type
+    GROUP BY clinic_id, practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter, section_type
 )
 SELECT
-    practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter,
+    clinic_id, practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
     COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
@@ -173,11 +174,13 @@ SELECT
     COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'),        0) AS cogs_gross,
     COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) AS gross_profit_net,
     COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_net,
-    COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS net_profit_net,
-    COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS net_profit_gross
+    COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gst,
+    COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gross,
+    COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
+    COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
 FROM fy_totals
-GROUP BY practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter
-ORDER BY financial_year, quarter;
+GROUP BY clinic_id, practitioner_id, financial_year_id, financial_year, financial_quarter_id, quarter
+ORDER BY financial_year_id, quarter;
 -- +goose StatementEnd
 
 
@@ -221,16 +224,27 @@ $$;
 
 CREATE OR REPLACE VIEW vw_bas_line_items AS
 SELECT
-    fe.clinic_id, cfv.practitioner_id,
-    f.id AS form_id, f.name AS form_name,
-    fe.id AS entry_id, fe.submitted_at,
-    DATE_TRUNC('month',   fe.submitted_at) AS period_month,
-    DATE_TRUNC('quarter', fe.submitted_at) AS period_quarter,
-    DATE_TRUNC('year',    fe.submitted_at) AS period_year,
-    ff.id AS form_field_id, ff.label AS field_label,
-    ff.section_type, ff.payment_responsibility, ff.tax_type,
-    coa.id AS coa_id, coa.code AS account_code, coa.name AS account_name,
-    atx.id AS account_tax_id, atx.name AS tax_name, atx.rate AS tax_rate, atx.is_taxable,
+    fe.clinic_id, 
+    cfv.practitioner_id,
+    f.id AS form_id, 
+    f.name AS form_name,
+    fe.id AS entry_id, 
+    fe.submitted_at,
+    DATE_TRUNC('month',   COALESCE(fe.date::timestamp, fe.submitted_at)) AS period_month,
+    DATE_TRUNC('quarter', COALESCE(fe.date::timestamp, fe.submitted_at)) AS period_quarter,
+    DATE_TRUNC('year',    COALESCE(fe.date::timestamp, fe.submitted_at)) AS period_year,
+    ff.id AS form_field_id, 
+    ff.label AS field_label,
+    ff.section_type, 
+    ff.payment_responsibility, 
+    ff.tax_type,
+    coa.id AS coa_id, 
+    coa.code AS account_code, 
+    coa.name AS account_name,
+    atx.id AS account_tax_id, 
+    atx.name AS tax_name, 
+    atx.rate AS tax_rate, 
+    atx.is_taxable,
     CASE
         WHEN atx.name = 'BAS Excluded' THEN 'BAS_EXCLUDED'
         WHEN atx.is_taxable = TRUE     THEN 'TAXABLE'
@@ -251,7 +265,8 @@ WHERE fe.status    = 'SUBMITTED'
   AND ff.deleted_at  IS NULL
   AND coa.deleted_at IS NULL
   AND ff.section_type IS NOT NULL
-  AND ff.coa_id IS NOT NULL;
+  AND ff.coa_id IS NOT NULL
+  AND fev.updated_at IS NULL; 
 -- +goose StatementEnd
   
 
