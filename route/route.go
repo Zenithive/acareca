@@ -128,21 +128,21 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	accountantRepo := accountant.NewRepository(dbConn)
 	accountantSvc := accountant.NewService(accountantRepo)
 
-	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
-	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
-	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, invitationRepo)
-
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
-	authHandler := auth.NewHandler(authSvc)
-	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
-
 	// ============ FY MODULE ============
 	fyRepo := fy.NewRepository(dbConn)
 	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
 	fyHandler := fy.NewHandler(fySvc)
 	fyGroup := v1.Group("/", middleware.Auth(cfg))
 	fy.RegisterRoutes(fyGroup, fyHandler)
+
+	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
+	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
+	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
+	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
+
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
+	authHandler := auth.NewHandler(authSvc)
+	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)

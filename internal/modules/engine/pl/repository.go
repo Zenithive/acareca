@@ -229,11 +229,11 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 		args = append(args, *f.ClinicID, zeroUUID)
 	}
 
-	if f.DateFrom != nil {
+	if f.DateFrom != nil && *f.DateFrom != "" {
 		query += " AND li.submitted_at::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
 	}
-	if f.DateUntil != nil {
+	if f.DateUntil != nil && *f.DateUntil != "" {
 		query += " AND li.submitted_at::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
 	}
@@ -288,11 +288,14 @@ func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UU
 		args = append(args, *f.ClinicID, zeroUUID)
 	}
 
-	if f.DateFrom != nil {
+	// Use DATE_TRUNC on the input to ensure we match the '2026-04-01' format in the view
+	if f.DateFrom != nil && *f.DateFrom != "" {
 		query += " AND period_month >= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateFrom)
 	}
-	if f.DateUntil != nil {
+
+	if f.DateUntil != nil && *f.DateUntil != "" {
+		// We use the last day of the month for the Until comparison to ensure the selected month is included
 		query += " AND period_month <= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateUntil)
 	}
