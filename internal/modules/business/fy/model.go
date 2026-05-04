@@ -35,8 +35,9 @@ type RqCreateFY struct {
 	IsActive bool   `json:"is_active"`
 }
 
-type RqUpdateFYLabel struct {
+type RqUpdateFY struct {
 	Label    *string `json:"label"`
+	FYYear   string  `json:"fy_year"`
 	IsActive *bool   `json:"is_active"`
 }
 

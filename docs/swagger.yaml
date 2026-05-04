@@ -1748,8 +1748,10 @@ definitions:
     - fy_year
     - label
     type: object
-  fy.RqUpdateFYLabel:
+  fy.RqUpdateFY:
     properties:
+      fy_year:
+        type: string
       is_active:
         type: boolean
       label:
@@ -3553,12 +3555,12 @@ paths:
         name: financial_year_id
         required: true
         type: string
-      - description: Updated Label Data
+      - description: Updated Financial Year Data
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/fy.RqUpdateFYLabel'
+          $ref: '#/definitions/fy.RqUpdateFY'
       produces:
       - application/json
       responses:
@@ -3580,7 +3582,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Update the label of a financial year
+      summary: Update a financial year
       tags:
       - fy
   /api/v1/equity/calculation:

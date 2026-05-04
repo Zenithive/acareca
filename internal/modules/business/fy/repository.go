@@ -23,8 +23,10 @@ type Repository interface {
 	GetFinancialYearByID(ctx context.Context, id uuid.UUID) (*FinancialYear, error)
 	GetFinancialQuarters(ctx context.Context, financialYearID uuid.UUID) ([]FinancialQuarter, error)
 	UpdateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error)
-	DeactivateAllFinancialYears(ctx context.Context, tx *sqlx.Tx) error
+	DeactivateAllFinancialYearsExcept(ctx context.Context, tx *sqlx.Tx, excludeID uuid.UUID) error
 	GetFinancialYearByDate(ctx context.Context, expenseDate time.Time) (*FinancialYear, error)
+	DeleteQuartersByFYID(ctx context.Context, fyID uuid.UUID, tx *sqlx.Tx) error
+	CountActiveFY(ctx context.Context, tx *sqlx.Tx) (int, error)
 }
 
 type repository struct {
@@ -113,12 +115,12 @@ func (r *repository) GetFinancialQuarters(ctx context.Context, financialYearID u
 func (r *repository) UpdateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error) {
 	query := `
 		UPDATE tbl_financial_year 
-		SET label = $1, is_active = $2, updated_at = now()
-		WHERE id = $3
+		SET label = $1, is_active = $2, start_date = $3, end_date = $4, updated_at = now()
+		WHERE id = $5
 		RETURNING id, label, is_active, start_date, end_date, created_at, updated_at
 	`
 	var f FinancialYear
-	err := tx.QueryRowxContext(ctx, query, fy.Label, fy.IsActive, fy.ID).StructScan(&f)
+	err := tx.QueryRowxContext(ctx, query, fy.Label, fy.IsActive, fy.StartDate, fy.EndDate, fy.ID).StructScan(&f)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -128,13 +130,10 @@ func (r *repository) UpdateFinancialYear(ctx context.Context, fy *FinancialYear,
 	return &f, nil
 }
 
-func (r *repository) DeactivateAllFinancialYears(ctx context.Context, tx *sqlx.Tx) error {
-	query := `UPDATE tbl_financial_year SET is_active = FALSE, updated_at = now() WHERE is_active = TRUE`
-	_, err := tx.ExecContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("deactivate all financial years: %w", err)
-	}
-	return nil
+func (r *repository) DeactivateAllFinancialYearsExcept(ctx context.Context, tx *sqlx.Tx, excludeID uuid.UUID) error {
+	query := `UPDATE tbl_financial_year SET is_active = FALSE, updated_at = now() WHERE id != $1 AND is_active = TRUE`
+	_, err := tx.ExecContext(ctx, query, excludeID)
+	return err
 }
 
 func (r *repository) GetFinancialYearByDate(ctx context.Context, expenseDate time.Time) (*FinancialYear, error) {
@@ -149,4 +148,15 @@ func (r *repository) GetFinancialYearByDate(ctx context.Context, expenseDate tim
 		return nil, err
 	}
 	return &fy, nil
+}
+
+func (r *repository) DeleteQuartersByFYID(ctx context.Context, fyID uuid.UUID, tx *sqlx.Tx) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM tbl_financial_quarter WHERE financial_year_id = $1`, fyID)
+	return err
+}
+
+func (r *repository) CountActiveFY(ctx context.Context, tx *sqlx.Tx) (int, error) {
+	var count int
+	err := tx.GetContext(ctx, &count, `SELECT COUNT(*) FROM tbl_financial_year WHERE is_active = TRUE`)
+	return count, err
 }
