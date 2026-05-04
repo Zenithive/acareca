@@ -17,7 +17,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 		//restricted.Use(middleware.RequireRole("ADMIN"))
 		{
 			restricted.POST("/create-fy", h.CreateFY)
-			restricted.PUT("/update-fy/:financial_year_id", h.UpdateFYLabel)
+			restricted.PUT("/update-fy/:financial_year_id", h.UpdateFY)
 			restricted.PATCH("/activate-fy/:financial_year_id", h.ActivateFY)
 		}
 	}

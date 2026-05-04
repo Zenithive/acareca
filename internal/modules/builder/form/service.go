@@ -1112,8 +1112,10 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			taxType := "EXCLUSIVE"
 
 			// Use tax type from request if provided, otherwise use EXCLUSIVE as default
-			if item.TaxType != nil {
+			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
+			} else if existingField.TaxType != nil && *existingField.TaxType != "" {
+				taxType = *existingField.TaxType
 			}
 
 			// Get tax rate if COA has tax

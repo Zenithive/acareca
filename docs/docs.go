@@ -2001,7 +2001,7 @@ const docTemplate = `{
                 "tags": [
                     "fy"
                 ],
-                "summary": "Update the label of a financial year",
+                "summary": "Update a financial year",
                 "parameters": [
                     {
                         "type": "string",
@@ -2011,12 +2011,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Updated Label Data",
+                        "description": "Updated Financial Year Data",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/fy.RqUpdateFYLabel"
+                            "$ref": "#/definitions/fy.RqUpdateFY"
                         }
                     }
                 ],
@@ -10658,9 +10658,12 @@ const docTemplate = `{
                 }
             }
         },
-        "fy.RqUpdateFYLabel": {
+        "fy.RqUpdateFY": {
             "type": "object",
             "properties": {
+                "fy_year": {
+                    "type": "string"
+                },
                 "is_active": {
                     "type": "boolean"
                 },
