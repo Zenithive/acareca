@@ -344,20 +344,27 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			currentQuarterRows := quarterGroups[qInfo.StartDate]
 
 			normalizedRows := make([]*BASLineItemRow, 0)
-			for _, master := range masterAccounts {
+			for key := range masterAccounts {
 				var foundRow *BASLineItemRow
 				for _, qr := range currentQuarterRows {
-					if qr.AccountName == master.AccountName {
+					// Build the same key format to match
+					sec := ""
+					if qr.SectionType != nil {
+						sec = *qr.SectionType
+					}
+					qrKey := fmt.Sprintf("%s-%s", qr.AccountName, sec)
+					
+					if qrKey == key {
 						foundRow = qr
 						break
 					}
 				}
 
 				// Only add rows that have actual values (not zero)
-				if foundRow != nil {
+				if foundRow != nil && (foundRow.GrossAmount != 0 || foundRow.GstAmount != 0 || foundRow.NetAmount != 0) {
 					normalizedRows = append(normalizedRows, foundRow)
 				}
-				// REMOVED: Don't add zero-value placeholder rows for missing accounts
+				// If no row found for this quarter, don't add a placeholder (this prevents zero-value entries)
 			}
 
 			finalizedRowsForTotal = append(finalizedRowsForTotal, normalizedRows...)
@@ -462,24 +469,37 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 				incomeOrder = append(incomeOrder, r.CoaID)
 				incomeAccounts[r.CoaID] = &accGroup{Name: r.AccountName}
 			}
+			
+			// For GST-free items, don't add GST amount
+			gstToAdd := r.GstAmount
+			if BASCategory(r.BasCategory) == BASCategoryGSTFree {
+				gstToAdd = 0
+			}
+			
 			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
-			incomeAccounts[r.CoaID].Amounts.GST += r.GstAmount
+			incomeAccounts[r.CoaID].Amounts.GST += gstToAdd
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
 			continue
 		}
 
 		// --- Process All Expenses ---
-		b1.Gross += r.GstAmount
+		// For GST-free items, don't add GST amount
+		gstToAdd := r.GstAmount
+		if BASCategory(r.BasCategory) == BASCategoryGSTFree {
+			gstToAdd = 0
+		}
+		
+		b1.Gross += gstToAdd
 		accNameLower := strings.ToLower(r.AccountName)
 
 		switch {
 		case strings.Contains(accNameLower, "management"):
 			mgtFee.Gross += r.GrossAmount
-			mgtFee.GST += r.GstAmount
+			mgtFee.GST += gstToAdd
 			mgtFee.Net += r.NetAmount
 		case strings.Contains(accNameLower, "lab"):
 			labWork.Gross += r.GrossAmount
-			labWork.GST += r.GstAmount
+			labWork.GST += gstToAdd
 			labWork.Net += r.NetAmount
 		default:
 			// Treat everything else as an individual line item
@@ -488,7 +508,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 				expenseAccounts[r.AccountName] = &accGroup{Name: r.AccountName}
 			}
 			expenseAccounts[r.AccountName].Amounts.Gross += r.GrossAmount
-			expenseAccounts[r.AccountName].Amounts.GST += r.GstAmount
+			expenseAccounts[r.AccountName].Amounts.GST += gstToAdd
 			expenseAccounts[r.AccountName].Amounts.Net += r.NetAmount
 		}
 	}
@@ -507,10 +527,8 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
 		
-		// Only add income items with non-zero values
-		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
-			col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
-		}
+		// Add all income items (filtering already done during normalization)
+		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
 		
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
