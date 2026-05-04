@@ -14,9 +14,4 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	bas.GET("/bas-preparation", h.GetBASPreparation)
 	bas.GET("/activity-statement/report/export", h.ExportBASReport)
 	bas.GET("/bas-preparation/export", h.ExportBASPreparation)
-
-	clinic := bas.Group("/clinic/:clinic_id")
-	clinic.GET("/summary", h.GetQuarterlySummary)
-	clinic.GET("/by-account", h.GetByAccount)
-	clinic.GET("/monthly", h.GetMonthly)
 }

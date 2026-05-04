@@ -202,7 +202,20 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, gin.H{"form": form, "fields_sync": syncResult}, "Form updated successfully")
+
+	// Fetch the updated form with fields and formulas to return complete data
+	formWithFields, err := h.svc.GetFormWithFields(c.Request.Context(), formID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, gin.H{
+		"form":        form,
+		"fields_sync": syncResult,
+		"fields":      formWithFields.Fields,
+		"formulas":    formWithFields.Formulas,
+	}, "Form updated successfully")
 }
 
 // @Summary Get form by ID

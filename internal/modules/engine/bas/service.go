@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -25,9 +26,6 @@ import (
 
 // Service defines the business-logic layer for the BAS module.
 type Service interface {
-	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error)
-	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
-	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter, PracIDs []uuid.UUID, userID uuid.UUID, actorID uuid.UUID, role string) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter, userID uuid.UUID) (*RsBASPreparation, error)
 	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error)
@@ -45,85 +43,11 @@ type service struct {
 	fyRepo         fy.Repository
 	eventsSvc      events.Service
 	authRepo       auth.Repository
+	invitationSvc  invitation.Service
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo}
-}
-
-func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
-	if err := validateDateFilter(f); err != nil {
-		return nil, err
-	}
-	if err := validateFYID(f); err != nil {
-		return nil, err
-	}
-
-	rows, err := s.repo.GetQuarterlySummary(ctx, clinicID, f)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]RsBASSummary, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, r.ToRs())
-	}
-	return out, nil
-}
-
-func (s *service) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error) {
-	if err := validateDateFilter(f); err != nil {
-		return nil, err
-	}
-	if err := validateFYID(f); err != nil {
-		return nil, err
-	}
-
-	rows, err := s.repo.GetByAccount(ctx, clinicID, f)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]RsBASByAccount, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, r.ToRs())
-	}
-	return out, nil
-}
-
-func (s *service) GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error) {
-	if err := validateDateFilter(f); err != nil {
-		return nil, err
-	}
-
-	rows, err := s.repo.GetMonthly(ctx, clinicID, f)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]RsBASMonthly, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, r.ToRs())
-	}
-	return out, nil
-}
-
-func validateFYID(f *BASFilter) error {
-	if f.FinancialYearID != nil {
-		if _, err := parseUUID(*f.FinancialYearID); err != nil {
-			return fmt.Errorf("invalid financial_year_id: must be a valid UUID")
-		}
-	}
-	return nil
-}
-
-func parseUUID(s string) ([16]byte, error) {
-	var id [16]byte
-	parsed, err := uuid.Parse(s)
-	if err != nil {
-		return id, err
-	}
-	return parsed, nil
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service) Service {
+	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo, invitationSvc: invitationSvc}
 }
 
 func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []uuid.UUID, userID uuid.UUID, actorID uuid.UUID, role string) (*RsBASReport, error) {
@@ -224,83 +148,32 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		isAccountant = true
 	}
 
-	var ownerID uuid.UUID
-	var clinicIDs []uuid.UUID
-
 	// Track unique practitioners to notify
 	practitionerMap := make(map[uuid.UUID]bool)
 
-	// Convert BASFilter to common.Filter for clinic listing
-	commonFilter := f.MapToFilter()
-
-	// Use clinic_id array from BASFilter
-	requestedClinicIDs := f.ParsedClinicIDs
+	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		// If clinic_ids are provided, verify permission for each clinic
-		if len(requestedClinicIDs) > 0 {
-			for _, clinicID := range requestedClinicIDs {
-				permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicID)
-				if err != nil {
-					return nil, fmt.Errorf("permission denied for clinic %s", clinicID)
-				}
-				practitionerMap[permission.PractitionerID] = true
-				ownerID = permission.PractitionerID
-				clinicIDs = append(clinicIDs, clinicID)
-			}
-		} else {
-			// If no clinic_ids provided, get all clinics the accountant has access to
-			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
-			}
-			if len(clinics) == 0 {
-				return nil, fmt.Errorf("no clinics found for this accountant")
-			}
-			// Use the first clinic's practitioner as owner (they should all belong to same practitioner)
-			ownerID = clinics[0].PractitionerID
-			for _, clinic := range clinics {
-				practitionerMap[clinic.PractitionerID] = true
-				clinicIDs = append(clinicIDs, clinic.ID)
-			}
+		// For accountants, get all linked practitioners
+		linkedIDs, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
+		}
+		if len(linkedIDs) == 0 {
+			return nil, fmt.Errorf("no practitioners linked to this accountant")
+		}
+		
+		for _, pID := range linkedIDs {
+			practitionerMap[pID] = true
+			targetPracIDs = append(targetPracIDs, pID)
 		}
 	} else {
-		ownerID = actorID
-
-		if len(requestedClinicIDs) > 0 {
-			// Verify the practitioner owns each requested clinic
-			for _, clinicID := range requestedClinicIDs {
-				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicID, ownerID)
-				if err != nil {
-					return nil, fmt.Errorf("clinic %s not found or access denied", clinicID.String())
-				}
-				clinicIDs = append(clinicIDs, clinicID)
-			}
-		} else {
-			// Get all clinics for this practitioner
-			clinics, err := s.clinicRepo.ListClinicByPractitioner(ctx, ownerID, commonFilter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
-			}
-			if len(clinics) == 0 {
-				return nil, fmt.Errorf("no clinics found for this practitioner")
-			}
-			for _, clinic := range clinics {
-				clinicIDs = append(clinicIDs, clinic.ID)
-			}
-		}
-	}
-	var rawRows []*BASLineItemRow
-
-	var targetPracIDs []uuid.UUID
-	for pID := range practitionerMap {
-		targetPracIDs = append(targetPracIDs, pID)
-	}
-
-	// If it's a practitioner (not accountant), they are the only one
-	if !isAccountant {
+		// For practitioners, use their own ID
 		targetPracIDs = []uuid.UUID{actorID}
+		practitionerMap[actorID] = true
 	}
+
+	var rawRows []*BASLineItemRow
 
 	nilClinic := uuid.Nil
 	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, f)
@@ -1390,22 +1263,8 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
 
-		// If clinics are filtered, narrow notifications to only those clinic owners.
-		targetPracIDs := PracIDs
-		if len(filter.ParsedClinicIDs) > 0 {
-			uniqueOwners := make(map[uuid.UUID]bool)
-			for _, cID := range filter.ParsedClinicIDs {
-				clinic, err := s.clinicRepo.GetClinicByID(ctx, cID)
-				if err == nil {
-					uniqueOwners[clinic.PractitionerID] = true
-				}
-			}
-			targetPracIDs = make([]uuid.UUID, 0, len(uniqueOwners))
-			for id := range uniqueOwners {
-				targetPracIDs = append(targetPracIDs, id)
-			}
-		}
-		for _, pID := range targetPracIDs {
+		// Notify all linked practitioners
+		for _, pID := range PracIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
 				PractitionerID: pID,

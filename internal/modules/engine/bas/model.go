@@ -22,7 +22,6 @@ const (
 
 // BASSummaryRow maps one row of vw_bas_summary (quarterly).
 type BASSummaryRow struct {
-	ClinicID       uuid.UUID `db:"clinic_id"`
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	PeriodQuarter  time.Time `db:"period_quarter"`
 	PeriodYear     time.Time `db:"period_year"`
@@ -47,7 +46,6 @@ type BASSummaryRow struct {
 
 // BASByAccountRow maps one row of vw_bas_by_account.
 type BASByAccountRow struct {
-	ClinicID       uuid.UUID `db:"clinic_id"`
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	PeriodQuarter  time.Time `db:"period_quarter"`
 	PeriodYear     time.Time `db:"period_year"`
@@ -65,7 +63,6 @@ type BASByAccountRow struct {
 
 // BASMonthlyRow maps one row of vw_bas_monthly.
 type BASMonthlyRow struct {
-	ClinicID       uuid.UUID `db:"clinic_id"`
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	PeriodMonth    time.Time `db:"period_month"`
 
@@ -81,14 +78,12 @@ type BASMonthlyRow struct {
 }
 
 type BASFilter struct {
-	ClinicIds       *string `form:"clinic_ids"`
 	FromDate        *string `form:"from_date"`         // YYYY-MM-DD
 	ToDate          *string `form:"to_date"`           // YYYY-MM-DD
 	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
 	QuarterIDs      *string `form:"quarter_ids"`       // UUIDs of tbl_financial_quarter
 
 	ParsedQuarterIDs []uuid.UUID
-	ParsedClinicIDs  []uuid.UUID
 }
 
 // MapToFilter returns the BASFilter as a common.Filter, omitting nil values.
@@ -108,19 +103,6 @@ func (f *BASFilter) MapToFilter() common.Filter {
 
 		if len(f.ParsedQuarterIDs) > 0 {
 			filters["quarter_ids"] = f.ParsedQuarterIDs
-		}
-	}
-
-	if f.ClinicIds != nil && *f.ClinicIds != "" {
-		f.ParsedClinicIDs = nil
-		cStrings := strings.Split(*f.ClinicIds, ",")
-		for _, s := range cStrings {
-			if parsedID, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
-				f.ParsedClinicIDs = append(f.ParsedClinicIDs, parsedID)
-			}
-		}
-		if len(f.ParsedClinicIDs) > 0 {
-			filters["clinic_ids"] = f.ParsedClinicIDs
 		}
 	}
 

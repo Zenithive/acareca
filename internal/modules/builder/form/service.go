@@ -404,10 +404,9 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		// Sync formulas (full replace)
 		// At this point, keyToFieldID contains all fields: existing (not deleted), updated, and newly created
 		// This ensures formulas can reference any field, including newly created calculated fields
-		if len(req.Formulas) > 0 {
-			if err := s.formulaSvc.SyncTx(ctx, tx, activeVersionID, req.Formulas, keyToFieldID); err != nil {
-				return err
-			}
+		// ALWAYS sync formulas, even if the array is empty (to delete all formulas)
+		if err := s.formulaSvc.SyncTx(ctx, tx, activeVersionID, req.Formulas, keyToFieldID); err != nil {
+			return fmt.Errorf("failed to sync formulas: %w", err)
 		}
 
 		return nil
