@@ -115,7 +115,7 @@ func (s *service) GetRetainedEarnings(ctx context.Context, practitionerID uuid.U
 		SELECT COALESCE(SUM(signed_net_amount), 0) AS retained_earnings
 		FROM vw_pl_line_items
 		WHERE practitioner_id = $1
-		  AND submitted_at::DATE < $2::DATE
+		  AND date::DATE < $2::DATE
 	`
 	args := []interface{}{practitionerID, fyStart.Format("2006-01-02")}
 	//dx := 3
@@ -162,7 +162,7 @@ func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID,
 		FROM vw_balance_sheet_line_items
 		WHERE practitioner_id = $1
 		  AND account_code    = 970
-		  AND submitted_at   <= $2::DATE     -- ← date boundary added
+		  AND date   <= $2::DATE     -- ← date boundary added
 	`
 	args := []interface{}{practitionerID, asOfDate}
 	//idx := 3
@@ -193,8 +193,8 @@ func (s *service) getEquityAccountBalance(ctx context.Context, practitionerID uu
 		FROM vw_balance_sheet_line_items
 		WHERE practitioner_id = $1
 		  AND account_code = $2
-		  AND submitted_at >= $3::DATE
-		  AND submitted_at <= $4::DATE
+		  AND date >= $3::DATE
+		  AND date <= $4::DATE
 	`
 	args := []interface{}{practitionerID, accountCode, fromDate, toDate}
 	// idx := 5
@@ -236,8 +236,8 @@ func (s *service) getCurrentYearProfit(
 		SELECT COALESCE(SUM(signed_net_amount), 0) AS current_year_profit
 		FROM vw_pl_line_items
 		WHERE practitioner_id = $1
-		  AND submitted_at::DATE >= $2::DATE
-		  AND submitted_at::DATE <= $3::DATE
+		  AND date::DATE >= $2::DATE
+		  AND date::DATE <= $3::DATE
 	`
 	args := []interface{}{practitionerID, fyStart.Format("2006-01-02"), asOfDate}
 	// idx := 4
@@ -335,11 +335,11 @@ func (s *service) getAllTimeEquityAccountBalance(ctx context.Context, practition
 				clinic_id,
 				account_code,
 				signed_amount,
-				submitted_at
+				date
 			FROM vw_balance_sheet_line_items
 			WHERE practitioner_id = $1
 			  AND account_code = $2
-			  AND submitted_at::DATE <= $3::DATE
+			  AND date::DATE <= $3::DATE
 	`
 	args := []interface{}{practitionerID, accountCode, asOfDate}
 	//idx := 4

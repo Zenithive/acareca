@@ -207,8 +207,8 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
             COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS label_1b_gst_on_purchases
         FROM vw_bas_line_items
         WHERE practitioner_id = $1
-          AND submitted_at::DATE >= $2::DATE
-          AND submitted_at::DATE <= $3::DATE
+          AND date::DATE >= $2::DATE
+          AND date::DATE <= $3::DATE
     `
 	var row BASReportRow
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {

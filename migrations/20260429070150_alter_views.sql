@@ -15,7 +15,7 @@ DROP VIEW IF EXISTS vw_bas_line_items CASCADE;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE VIEW vw_pl_line_items AS
+CREATE OR REPLACE VIEW vw_pl_line_items AS
 SELECT
     fe.clinic_id,
     cfv.practitioner_id,
@@ -23,11 +23,10 @@ SELECT
     f.name                               AS form_name,
     f.method                             AS calculation_method,
     fe.id                                AS entry_id,
-    fe.submitted_at,
-    fe.date                              AS transaction_date,
-    DATE_TRUNC('month',   COALESCE(fe.date::timestamp, fe.submitted_at, fe.created_at)) AS period_month,
-    DATE_TRUNC('quarter', COALESCE(fe.date::timestamp, fe.submitted_at, fe.created_at)) AS period_quarter,
-    DATE_TRUNC('year',    COALESCE(fe.date::timestamp, fe.submitted_at, fe.created_at)) AS period_year,
+    fe."date"::date,
+    DATE_TRUNC('month',   COALESCE(fe."date"::date, fe.created_at)) AS period_month,
+    DATE_TRUNC('quarter', COALESCE(fe."date"::date, fe.created_at)) AS period_quarter,
+    DATE_TRUNC('year',    COALESCE(fe."date"::date, fe.created_at)) AS period_year,
     ff.id                                AS form_field_id,
     ff.label                             AS field_label,
     ff.section_type,
@@ -65,7 +64,7 @@ JOIN (
     SELECT DISTINCT ON (entry_id, form_field_id)
         id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description
     FROM tbl_form_entry_value
-    WHERE updated_at IS NULL  
+    WHERE updated_at IS NULL
     ORDER BY entry_id, form_field_id, created_at DESC
 ) fev ON fev.entry_id = fe.id
 JOIN tbl_form_field ff ON ff.id = fev.form_field_id
@@ -192,7 +191,7 @@ LANGUAGE SQL STABLE AS $$
            li.tax_name, li.tax_rate,
            SUM(li.net_amount), SUM(li.gst_amount), SUM(li.gross_amount), COUNT(DISTINCT li.entry_id)
     FROM vw_pl_line_items li
-    WHERE li.clinic_id = p_clinic_id AND li.submitted_at::DATE BETWEEN p_from_date AND p_to_date
+    WHERE li.clinic_id = p_clinic_id AND li."date"::DATE BETWEEN p_from_date AND p_to_date
     GROUP BY li.pl_section, li.account_code, li.account_name, li.account_type, li.payment_responsibility, li.tax_name, li.tax_rate
     ORDER BY li.pl_section, li.account_code;
 $$;
@@ -214,7 +213,7 @@ LANGUAGE SQL STABLE AS $$
         COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(net_amount) FILTER (WHERE section_type = 'OTHER_COST'), 0),
         COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COST'), 0) - COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'OTHER_COST'), 0)
     FROM vw_pl_line_items
-    WHERE clinic_id = p_clinic_id AND submitted_at::DATE BETWEEN p_from_date AND p_to_date;
+    WHERE clinic_id = p_clinic_id AND "date"::DATE BETWEEN p_from_date AND p_to_date;
 $$;
 -- +goose StatementEnd
 
@@ -222,29 +221,85 @@ $$;
 
 -- +goose StatementBegin
 
+CREATE OR REPLACE VIEW vw_pl_line_items AS
+SELECT
+    fe.clinic_id,
+    cfv.practitioner_id,
+    f.id                                 AS form_id,
+    f.name                               AS form_name,
+    f.method                             AS calculation_method,
+    fe.id                                AS entry_id,
+    fe."date"::date AS date,
+    DATE_TRUNC('month',   COALESCE(fe."date"::date, fe.created_at)) AS period_month,
+    DATE_TRUNC('quarter', COALESCE(fe."date"::date, fe.created_at)) AS period_quarter,
+    DATE_TRUNC('year',    COALESCE(fe."date"::date, fe.created_at)) AS period_year,
+    ff.id                                AS form_field_id,
+    ff.label                             AS field_label,
+    ff.section_type,
+    ff.payment_responsibility,
+    ff.tax_type   AS tax_type,
+    ff.business_use AS business_use,
+    coa.id                               AS coa_id,
+    coa.code                             AS account_code,
+    coa.name                             AS account_name,
+    at.name                              AS account_type,
+    atx.name                             AS tax_name,
+    atx.rate                             AS tax_rate,
+    atx.is_taxable,
+    COALESCE(fev.net_amount,   0)        AS net_amount,
+    COALESCE(fev.gst_amount,   0)        AS gst_amount,
+    COALESCE(fev.gross_amount, 0)        AS gross_amount,
+    CASE
+        WHEN ff.section_type = 'COLLECTION' THEN  COALESCE(fev.net_amount,   0)
+        ELSE                                     -COALESCE(fev.net_amount,   0)
+    END AS signed_net_amount,
+    CASE
+        WHEN ff.section_type = 'COLLECTION' THEN  COALESCE(fev.gross_amount, 0)
+        ELSE                                     -COALESCE(fev.gross_amount, 0)
+    END AS signed_gross_amount,
+    CASE ff.section_type
+        WHEN 'COLLECTION' THEN '1. Income'
+        WHEN 'COST'       THEN '2. Cost of Sales'
+        WHEN 'OTHER_COST' THEN '3. Other Expenses'
+        WHEN 'EXPENSE_ENTRY' THEN '3. Expense Entries'
+        ELSE '' || ff.section_type
+    END AS pl_section
+FROM tbl_form_entry fe
+JOIN tbl_custom_form_version cfv ON cfv.id = fe.form_version_id
+JOIN tbl_form f ON f.id = cfv.form_id
+JOIN (
+    SELECT DISTINCT ON (entry_id, form_field_id)
+        id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description
+    FROM tbl_form_entry_value
+    ORDER BY entry_id, form_field_id,
+             COALESCE(updated_at, created_at) DESC
+) fev ON fev.entry_id = fe.id
+JOIN tbl_form_field ff ON ff.id = fev.form_field_id
+JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id
+JOIN tbl_account_type at ON at.id = coa.account_type_id
+LEFT JOIN tbl_account_tax atx ON atx.id = coa.account_tax_id
+WHERE fe.status = 'SUBMITTED'
+  AND fe.deleted_at IS NULL
+  AND ff.deleted_at IS NULL
+  AND coa.deleted_at IS NULL
+  AND at.name IN ('Revenue', 'Expense')
+  AND ff.coa_id IS NOT NULL;
+-- +goose StatementEnd
+  
+
+-- +goose StatementBegin
 CREATE OR REPLACE VIEW vw_bas_line_items AS
 SELECT
-    fe.clinic_id, 
-    cfv.practitioner_id,
-    f.id AS form_id, 
-    f.name AS form_name,
-    fe.id AS entry_id, 
-    fe.submitted_at,
-    DATE_TRUNC('month',   COALESCE(fe.date::timestamp, fe.submitted_at)) AS period_month,
-    DATE_TRUNC('quarter', COALESCE(fe.date::timestamp, fe.submitted_at)) AS period_quarter,
-    DATE_TRUNC('year',    COALESCE(fe.date::timestamp, fe.submitted_at)) AS period_year,
-    ff.id AS form_field_id, 
-    ff.label AS field_label,
-    ff.section_type, 
-    ff.payment_responsibility, 
-    ff.tax_type,
-    coa.id AS coa_id, 
-    coa.code AS account_code, 
-    coa.name AS account_name,
-    atx.id AS account_tax_id, 
-    atx.name AS tax_name, 
-    atx.rate AS tax_rate, 
-    atx.is_taxable,
+    fe.clinic_id, cfv.practitioner_id,
+    f.id AS form_id, f.name AS form_name,
+    fe.id AS entry_id, fe."date"::date AS date,
+    DATE_TRUNC('month',   fe."date"::date) AS period_month,
+    DATE_TRUNC('quarter', fe."date"::date) AS period_quarter,
+    DATE_TRUNC('year',    fe."date"::date) AS period_year,
+    ff.id AS form_field_id, ff.label AS field_label,
+    ff.section_type, ff.payment_responsibility, ff.tax_type,
+    coa.id AS coa_id, coa.code AS account_code, coa.name AS account_name,
+    atx.id AS account_tax_id, atx.name AS tax_name, atx.rate AS tax_rate, atx.is_taxable,
     CASE
         WHEN atx.name = 'BAS Excluded' THEN 'BAS_EXCLUDED'
         WHEN atx.is_taxable = TRUE     THEN 'TAXABLE'
@@ -253,24 +308,23 @@ SELECT
     COALESCE(fev.net_amount,   0) AS net_amount,
     COALESCE(fev.gst_amount,   0) AS gst_amount,
     COALESCE(fev.gross_amount, 0) AS gross_amount
-FROM tbl_form_entry_value    fev
+FROM (
+    SELECT DISTINCT ON (entry_id, form_field_id)
+        id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description
+    FROM tbl_form_entry_value
+    ORDER BY entry_id, form_field_id, COALESCE(updated_at, created_at) DESC
+) fev
 JOIN tbl_form_entry          fe  ON fe.id  = fev.entry_id
 JOIN tbl_form_field          ff  ON ff.id  = fev.form_field_id
 JOIN tbl_custom_form_version cfv ON cfv.id = ff.form_version_id
 JOIN tbl_form                f   ON f.id   = cfv.form_id
 JOIN tbl_chart_of_accounts   coa ON coa.id = ff.coa_id
 JOIN tbl_account_tax         atx ON atx.id = coa.account_tax_id
-WHERE fe.status    = 'SUBMITTED'
-  AND fe.deleted_at  IS NULL
-  AND ff.deleted_at  IS NULL
+WHERE fe.status = 'SUBMITTED'
+  AND fe.deleted_at IS NULL
+  AND ff.deleted_at IS NULL
   AND coa.deleted_at IS NULL
-  AND ff.section_type IS NOT NULL
-  AND ff.coa_id IS NOT NULL
-  AND fev.updated_at IS NULL; 
--- +goose StatementEnd
-  
-
--- +goose StatementBegin
+  AND ff.coa_id IS NOT NULL;
 CREATE OR REPLACE VIEW vw_bas_summary AS
 WITH base AS (
     SELECT clinic_id, practitioner_id, period_month, period_quarter, period_year,
