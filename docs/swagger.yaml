@@ -1757,6 +1757,17 @@ definitions:
       label:
         type: string
     type: object
+  fy.RsFinancialYear:
+    properties:
+      end_date:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      start_date:
+        type: string
+    type: object
   invitation.AccessLevel:
     properties:
       read:
@@ -3134,6 +3145,38 @@ paths:
       security:
       - BearerToken: []
       summary: Create a new financial year
+      tags:
+      - fy
+  /admin/get-fy/{financial_year_id}:
+    get:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get a specific financial year by ID
       tags:
       - fy
   /admin/get-fys:
