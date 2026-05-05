@@ -353,34 +353,16 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 		return
 	}
 
-	var input struct {
-		PractitionerID *string `form:"practitioner_id"`
-		ClinicID       *string `form:"clinic_id"`
-		FormID         *string `form:"form_id"`
-		CoaID          *string `form:"coa_id"`
-		TaxTypeID      *int16  `form:"tax_type_id"`
-		DateFrom       *string `form:"date_from"`
-		DateTo         *string `form:"date_to"`
-		StartDate      *string `form:"start_date"` // Alias for date_from (used by COA entries endpoints)
-		EndDate        *string `form:"end_date"`   // Alias for date_to (used by COA entries endpoints)
-		VersionID      *string `form:"version_id"`
-		Status         *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-		Role           string  `form:"-"`
-		Limit          *int    `form:"limit"`
-		Offset         *int    `form:"offset"`
-		Search         *string `form:"search"`
-	}
-
-	if err := util.BindAndValidate(c, &input); err != nil {
+	var filter TransactionFilter
+	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	var filter TransactionFilter
 	if role == util.RoleAccountant {
 		// If the frontend sent ["uuid"], strip the brackets and quotes
-		if input.PractitionerID != nil {
-			cleaned := cleanUUIDString(*input.PractitionerID)
+		if filter.PractitionerID != nil {
+			cleaned := cleanUUIDString(*filter.PractitionerID)
 			filter.PractitionerID = &cleaned
 		}
 		if filter.ClinicID != nil {
@@ -389,9 +371,6 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 		}
 	}
 
-	filter.Filter.Limit = input.Limit
-	filter.Filter.Offset = input.Offset
-	filter.Filter.Search = input.Search
 	filter.Role = role
 
 	result, err := h.svc.ListCoaEntries(c.Request.Context(), filter, *actorID, role, userID)

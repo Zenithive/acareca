@@ -318,8 +318,8 @@ var allowedTransactionColumns = map[string]string{
 	"status":          "e.status",
 	"created_at":      "ev.created_at",
 	"practitioner_id": "c.practitioner_id",
-	"date_from":       "COALESCE(e.date, ev.created_at)",
-	"date_to":         "COALESCE(e.date, ev.created_at)",
+	"start_date":      "COALESCE(e.date, ev.created_at)",
+	"end_date":        "COALESCE(e.date, ev.created_at)",
 	"date":            "e.date",
 }
 

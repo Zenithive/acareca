@@ -185,10 +185,10 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
 	actorID, role, ok := util.GetRoleBasedID(c)
-	if !ok {
+	userID, okUser := util.GetUserID(c)
+	if !ok || !okUser {
 		return
 	}
-
 	var f PLReportFilter
 	if err := c.ShouldBindQuery(&f); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -228,7 +228,7 @@ func (h *handler) GetReport(c *gin.Context) {
 		f.PractitionerID = actorID.String()
 	}
 
-	result, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, targetNotifIDs)
+	result, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, targetNotifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -315,7 +315,7 @@ func (h *handler) ExportReport(c *gin.Context) {
 	}
 
 	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
-	reportData, err := h.svc.GetReport(c.Request.Context(), userID, &f, role, notifIDs)
+	reportData, err := h.svc.GetReport(c.Request.Context(), userID, &f, role, notifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

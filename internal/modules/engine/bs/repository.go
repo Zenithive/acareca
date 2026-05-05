@@ -85,7 +85,7 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 			coa_id,
 			SUM(signed_amount)                           AS balance,
 			COUNT(DISTINCT entry_id)                     AS entry_count,
-			TO_CHAR(MAX(date), 'YYYY-MM-DD')     AS last_transaction_date
+			COALESCE(TO_CHAR(MAX(date), 'YYYY-MM-DD'), '') AS last_transaction_date
 		FROM (%s) filtered
 		GROUP BY practitioner_id, account_type, account_code, account_name, coa_id
 		ORDER BY account_type, account_code
