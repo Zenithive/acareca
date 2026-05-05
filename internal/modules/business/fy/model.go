@@ -60,7 +60,7 @@ type RsFY struct {
 	ID        uuid.UUID `json:"id"`
 	Label     string    `json:"label"`
 	FYYear    string    `json:"fy_year"`
-	Status    string    `json:"status"`
+	IsActive  *bool     `json:"is_active"`
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 }
