@@ -55,3 +55,12 @@ type RsFinancialQuarter struct {
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 }
+
+type RsFY struct {
+	ID        uuid.UUID `json:"id"`
+	Label     string    `json:"label"`
+	FYYear    string    `json:"fy_year"`
+	Status    string    `json:"status"`
+	StartDate time.Time `json:"start_date"`
+	EndDate   time.Time `json:"end_date"`
+}
