@@ -82,7 +82,7 @@ SELECT practitioner_id,
     coa_id,
     SUM(signed_amount) AS balance,
     COUNT(DISTINCT entry_id) AS entry_count,
-    MAX(submitted_at) AS last_transaction_date
+    MAX(date) AS last_transaction_date
 FROM vw_balance_sheet_line_items
 GROUP BY practitioner_id,
     clinic_id,
