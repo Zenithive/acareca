@@ -315,8 +315,8 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		if r.SectionType != nil {
 			sec = *r.SectionType
 		}
-		// Use a unique key for the map
-		key := fmt.Sprintf("%s-%s", r.AccountName, sec)
+		// Use a unique key for the map including coa_id to prevent duplicates
+		key := fmt.Sprintf("%s-%s-%s", r.CoaID, r.AccountName, sec)
 
 		if _, exists := masterAccounts[key]; !exists {
 			masterAccounts[key] = r
@@ -347,13 +347,13 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			for key := range masterAccounts {
 				var foundRow *BASLineItemRow
 				for _, qr := range currentQuarterRows {
-					// Build the same key format to match
+					// Build the same key format to match including coa_id
 					sec := ""
 					if qr.SectionType != nil {
 						sec = *qr.SectionType
 					}
-					qrKey := fmt.Sprintf("%s-%s", qr.AccountName, sec)
-					
+					qrKey := fmt.Sprintf("%s-%s-%s", qr.CoaID, qr.AccountName, sec)
+
 					if qrKey == key {
 						foundRow = qr
 						break
@@ -465,17 +465,18 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		}
 
 		if sectionType == "COLLECTION" {
+			// Use coa_id as the key to prevent duplicate accounts with same name
 			if _, seen := incomeAccounts[r.CoaID]; !seen {
 				incomeOrder = append(incomeOrder, r.CoaID)
 				incomeAccounts[r.CoaID] = &accGroup{Name: r.AccountName}
 			}
-			
+
 			// For GST-free items, don't add GST amount
 			gstToAdd := r.GstAmount
 			if BASCategory(r.BasCategory) == BASCategoryGSTFree {
 				gstToAdd = 0
 			}
-			
+
 			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
 			incomeAccounts[r.CoaID].Amounts.GST += gstToAdd
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
@@ -488,7 +489,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		if BASCategory(r.BasCategory) == BASCategoryGSTFree {
 			gstToAdd = 0
 		}
-		
+
 		b1.Gross += gstToAdd
 		accNameLower := strings.ToLower(r.AccountName)
 
@@ -503,13 +504,15 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			labWork.Net += r.NetAmount
 		default:
 			// Treat everything else as an individual line item
-			if _, seen := expenseAccounts[r.AccountName]; !seen {
-				expenseOrder = append(expenseOrder, r.AccountName)
-				expenseAccounts[r.AccountName] = &accGroup{Name: r.AccountName}
+			// Use a composite key with coa_id to prevent duplicate accounts with same name
+			compositeKey := fmt.Sprintf("%s-%s", r.CoaID, r.AccountName)
+			if _, seen := expenseAccounts[compositeKey]; !seen {
+				expenseOrder = append(expenseOrder, compositeKey)
+				expenseAccounts[compositeKey] = &accGroup{Name: r.AccountName}
 			}
-			expenseAccounts[r.AccountName].Amounts.Gross += r.GrossAmount
-			expenseAccounts[r.AccountName].Amounts.GST += gstToAdd
-			expenseAccounts[r.AccountName].Amounts.Net += r.NetAmount
+			expenseAccounts[compositeKey].Amounts.Gross += r.GrossAmount
+			expenseAccounts[compositeKey].Amounts.GST += gstToAdd
+			expenseAccounts[compositeKey].Amounts.Net += r.NetAmount
 		}
 	}
 
@@ -526,10 +529,10 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
-		
+
 		// Add all income items (filtering already done during normalization)
 		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
-		
+
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
 		totalIncome.Net += fAmts.Net
@@ -542,14 +545,14 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 
 	// Only add Management Fee and Lab Work if they have non-zero values
 	col.Sections.Expenses.Items = []BASLineItem{}
-	
+
 	if mgtFee.Gross != 0 || mgtFee.GST != 0 || mgtFee.Net != 0 {
 		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
 			Name:    "Management Fee (Gross Up)",
 			Amounts: mgtFee,
 		})
 	}
-	
+
 	if labWork.Gross != 0 || labWork.GST != 0 || labWork.Net != 0 {
 		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
 			Name:    "Laboratory Work (GST Free)",
