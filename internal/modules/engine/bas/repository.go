@@ -197,16 +197,28 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
-        SELECT
-            -- Sum everything from the line items directly
-            COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS g1_total_sales_gross,
-            COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION'), 0) AS label_1a_gst_on_sales,
-            
-            -- This will capture your $220 regardless of the tax mismatch
-            COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS g11_total_purchases_gross,
-            COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS label_1b_gst_on_purchases
-        FROM vw_bas_line_items
-        WHERE practitioner_id = $1
+			SELECT
+				COALESCE(SUM(gross_amount) FILTER (
+					WHERE section_type = 'COLLECTION'
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS g1_total_sales_gross,
+
+				COALESCE(SUM(gst_amount) FILTER (
+					WHERE section_type = 'COLLECTION'
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS label_1a_gst_on_sales,
+
+				COALESCE(SUM(gross_amount) FILTER (
+					WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS g11_total_purchases_gross,
+
+				COALESCE(SUM(gst_amount) FILTER (
+					WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS label_1b_gst_on_purchases
+			FROM vw_bas_line_items
+        	WHERE practitioner_id = $1
           AND date::DATE >= $2::DATE
           AND date::DATE <= $3::DATE
     `
