@@ -247,14 +247,13 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 
 func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, actorID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
-	// Permission checks are handled by middleware
-
 	req.Normalize()
 
 	if err := req.ValidateShares(); err != nil {
 		return nil, nil, err
 	}
 
+	// Get existing state for "BeforeState" and ownership resolution
 	existing, err := s.detailSvc.GetByID(ctx, *req.ID, uuid.Nil, "")
 	if err != nil {
 		return nil, nil, err
@@ -277,7 +276,9 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
 
+	// Execute Updates in Transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Update Metadata
 		updateReq := &detail.RqUpdateFormDetail{
 			ID:             *req.ID,
 			Name:           req.Name,
@@ -300,11 +301,8 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		}
 		syncResult = &RsFormWithFieldsSyncResult{ClinicID: clinicID}
 
-		existingClinicID := uuid.Nil
-		if existing.ClinicID != nil {
-			existingClinicID = *existing.ClinicID
-		}
-		versions, err := s.versionSvc.List(ctx, existing.ID, existingClinicID)
+		// Resolve Active Version
+		versions, err := s.versionSvc.List(ctx, existing.ID, clinicID)
 		if err != nil {
 			return err
 		}
@@ -319,37 +317,29 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return errors.New("cannot update fields: no active version found")
 		}
 
-		// Delete fields
+		// --- FIELD DELETION ---
 		forceDelete := req.ForceDelete != nil && *req.ForceDelete
-		for _, id := range req.Fields.Delete {
-			existingField, err := s.fieldSvc.GetByID(ctx, id)
-			if err != nil {
-				return fmt.Errorf("field %s not found for deletion: %w", id, err)
-			}
-
+		for _, id := range req.Delete {
 			if s.entryRepo != nil && !forceDelete {
 				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
 				if err != nil {
 					return err
 				}
 				if has {
-					return fmt.Errorf("cannot delete field %q (key: %s): field has submitted entries. Use force_delete=true to override (warning: this will orphan entry data)", existingField.Label, existingField.FieldKey)
+					return fmt.Errorf("field %s has submitted entries; use force_delete to override", id)
 				}
 			}
-
 			if err := s.fieldSvc.DeleteTx(ctx, tx, id); err != nil {
-				return fmt.Errorf("failed to delete field %s: %w", id, err)
+				return err
 			}
 			syncResult.DeletedCount++
 		}
 
-		// Build key→UUID map for formula resolution
+		// Build key mapping for Formulas
 		keyToFieldID := make(map[string]uuid.UUID)
-
-		// Create a set of deleted field IDs for quick lookup
-		deletedFieldIDs := make(map[uuid.UUID]bool, len(req.Fields.Delete))
-		for _, id := range req.Fields.Delete {
-			deletedFieldIDs[id] = true
+		deletedMap := make(map[uuid.UUID]bool)
+		for _, id := range req.Delete {
+			deletedMap[id] = true
 		}
 
 		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
@@ -359,39 +349,30 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return err
 		}
 		for _, f := range existingFields {
-			// Skip fields that are being deleted in this transaction
-			if !deletedFieldIDs[f.ID] {
+			if !deletedMap[f.ID] {
 				keyToFieldID[f.FieldKey] = f.ID
 			}
 		}
 
-		// Update fields
-		for _, item := range req.Fields.Update {
+		// --- FIELD UPDATES ---
+		for _, item := range req.Update {
 			item.Sanitize()
-
-			// Verify the field exists before updating
-			existingField, err := s.fieldSvc.GetByID(ctx, item.ID)
+			fUpd, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
 			if err != nil {
-				return fmt.Errorf("field %s not found for update: %w", item.ID, err)
-			}
-
-			updated, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
-			if err != nil {
-				return err
+				return fmt.Errorf("update failed for field %s: %w", item.ID, err)
 			}
 			// Use the existing field key (field_key is immutable)
 			// If duplicate keys exist, the last one wins
-			keyToFieldID[existingField.FieldKey] = updated.ID
+			keyToFieldID[fUpd.FieldKey] = fUpd.ID
 			syncResult.UpdatedCount++
 		}
 
-		// Create fields
-		for _, item := range req.Fields.Create {
+		// --- FIELD CREATION ---
+		for _, item := range req.Create {
 			item.Sanitize()
 			if err := item.Validate(); err != nil {
 				return fmt.Errorf("validation failed for field %s: %w", item.FieldKey, err)
 			}
-
 			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, actorID, item.ToRqFormField())
 			if err != nil {
 				return fmt.Errorf("failed to create field %s: %w", item.FieldKey, err)
@@ -401,7 +382,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			syncResult.CreatedCount++
 		}
 
-		// Sync formulas (full replace)
+		// --- FORMULA SYNC ---
 		// At this point, keyToFieldID contains all fields: existing (not deleted), updated, and newly created
 		// This ensures formulas can reference any field, including newly created calculated fields
 		if len(req.Formulas) > 0 {
@@ -412,13 +393,13 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 
 		return nil
 	})
+
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+	// Shared Event Recording (Triggered only for successful Accountant actions)
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-
 		actorUserID, err := uuid.Parse(*meta.UserID)
 		if err == nil {
 			var finalAccountantID uuid.UUID
@@ -428,7 +409,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			} else {
 				finalAccountantID = actorUserID
 			}
-
 			user, err := s.authRepo.FindByID(ctx, actorUserID)
 			if err == nil {
 				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
@@ -453,12 +433,11 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 					},
 					CreatedAt: time.Now(),
 				})
-
 			}
 		}
 	}
 
-	//meta := auditctx.GetMetadata(ctx)
+	// Audit Logging
 	idStr := updated.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
