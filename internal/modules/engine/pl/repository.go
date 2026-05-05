@@ -47,12 +47,12 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 
 	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) >= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) <= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
@@ -108,12 +108,12 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 
 	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) >= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) <= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
@@ -147,12 +147,12 @@ func (r *repository) GetByResponsibility(ctx context.Context, clinicID uuid.UUID
 
 	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) >= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, submitted_at::DATE) <= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
@@ -230,11 +230,11 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 	}
 
 	if f.DateFrom != nil && *f.DateFrom != "" {
-		query += " AND li.submitted_at::DATE >= ?::DATE"
+		query += " AND li.date::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
 	}
 	if f.DateUntil != nil && *f.DateUntil != "" {
-		query += " AND li.submitted_at::DATE <= ?::DATE"
+		query += " AND li.date::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
 	}
 	if f.CoaID != nil {
