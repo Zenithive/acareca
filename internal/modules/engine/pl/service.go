@@ -25,7 +25,7 @@ type Service interface {
 	GetByAccount(ctx context.Context, f *PLFilter) ([]RsPLAccount, error)
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
-	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error)
+	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error)
 	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error)
 }
 
@@ -151,7 +151,7 @@ func parseAndValidate(f *PLFilter) (uuid.UUID, error) {
 	return clinicID, nil
 }
 
-func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error) {
+func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error) {
 	meta := auditctx.GetMetadata(ctx)
 	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
@@ -233,7 +233,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 
 	// --- AUDIT LOG ---
 	var userIDStr string
-	userIDStr = actorID.String()
+	userIDStr = userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{

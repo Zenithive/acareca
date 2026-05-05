@@ -292,15 +292,11 @@ func (s *service) GetFinancialYears(ctx context.Context) ([]RsFY, error) {
 
 	result := make([]RsFY, 0, len(years))
 	for _, year := range years {
-		status := "Inactive"
-		if year.IsActive {
-			status = "Active"
-		}
 		result = append(result, RsFY{
 			ID:        year.ID,
 			Label:     year.Label,
 			FYYear:    fmt.Sprintf("%d-%d", year.StartDate.Year(), year.EndDate.Year()),
-			Status:    status,
+			IsActive:  &year.IsActive,
 			StartDate: year.StartDate,
 			EndDate:   year.EndDate,
 		})
@@ -394,19 +390,14 @@ func (s *service) GetFinancialYearByID(ctx context.Context, id uuid.UUID) (*RsFY
 	// Calculate fy_year string: e.g., "2025-2026"
 	fyYearStr := fmt.Sprintf("%d-%d", fy.StartDate.Year(), fy.EndDate.Year())
 
-	// Map boolean to status string
-	status := "Inactive"
-	if fy.IsActive {
-		status = "Active"
-	}
-
 	return &RsFY{
 		ID:        fy.ID,
 		Label:     fy.Label,
 		FYYear:    fyYearStr,
-		Status:    status,
+		IsActive:  &fy.IsActive,
 		StartDate: fy.StartDate,
 		EndDate:   fy.EndDate,
 	}, nil
 }
+
 func strPtr(s string) *string { return &s }
