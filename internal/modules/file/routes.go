@@ -9,12 +9,11 @@ import (
 func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFunc) {
 	files := rg.Group("/files", authMiddleware, middleware.AuditContext())
 	{
-		// Upload endpoints
-		// files.POST("/upload", h.UploadFile)
-		// files.POST("/upload/multiple", h.UploadMultipleFiles)
+		// Direct upload endpoint (for small files)
+		files.POST("/upload", h.UploadFile)
 
-		// Presigned URL endpoints
-		files.POST("/upload", h.GeneratePresignedUploadURL)
+		// Presigned URL endpoints (for large files or direct client-to-storage upload)
+		files.POST("/presigned-upload", h.GeneratePresignedUploadURL)
 		files.POST("/:id/confirm", h.ConfirmUpload)
 
 		// Document management
@@ -23,9 +22,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFu
 		files.GET("/:id/download", h.DownloadFile)
 		files.PUT("/:id", h.UpdateDocument)
 		files.DELETE("/:id", h.DeleteDocument)
-
-		// Share link
-		// files.POST("/:id/share", h.GenerateShareLink)
 
 		// Entity-specific listing
 		files.GET("/entity/:entity_type/:entity_id", h.ListDocumentsByEntity)
