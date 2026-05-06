@@ -92,12 +92,9 @@ type RqGenerateShareLink struct {
 }
 
 type RqGeneratePresignedUploadURL struct {
-	Filename    string  `json:"filename" validate:"required"`
-	ContentType string  `json:"content_type" validate:"required"`
-	SizeBytes   int64   `json:"size_bytes" validate:"required,min=1"`
-	ExpiresIn   *int    `json:"expires_in" validate:"omitempty,min=60,max=3600"`
-	EntityType  *string `json:"entity_type" validate:"omitempty,oneof=practitioner accountant admin clinic transaction invoice report user business form form_entry"`
-	EntityID    *string `json:"entity_id" validate:"omitempty,uuid"`
+	ExpiresIn  *int    `form:"expires_in" validate:"omitempty,min=60,max=3600"`
+	EntityType *string `form:"entity_type" validate:"omitempty,oneof=practitioner accountant admin clinic transaction invoice report user business form form_entry"`
+	EntityID   *string `form:"entity_id" validate:"omitempty,uuid"`
 }
 
 // Response models

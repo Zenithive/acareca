@@ -2,6 +2,7 @@ package file
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -483,26 +484,27 @@ func (h *handler) GeneratePresignedUploadURL(c *gin.Context) {
 	}
 
 	var req RqGeneratePresignedUploadURL
-	if err := util.BindAndValidate(c, &req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
+	if err := c.ShouldBind(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
 		return
 	}
 
-	// Generate presigned URL
-	result, err := h.svc.GeneratePresignedUploadURL(c.Request.Context(), &req, userID, *rolePtr)
+	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		if errors.Is(err, upload.ErrFileTooLarge) {
-			response.Error(c, http.StatusRequestEntityTooLarge, err)
-			return
-		}
-		if errors.Is(err, upload.ErrInvalidFileType) {
-			response.Error(c, http.StatusUnsupportedMediaType, err)
-			return
-		}
-		if errors.Is(err, ErrUnauthorizedAccess) {
-			response.Error(c, http.StatusForbidden, err)
-			return
-		}
+		response.Error(c, http.StatusBadRequest, errors.New("file is required"))
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, errors.New("failed to open file"))
+		return
+	}
+	defer file.Close()
+
+	// Generate presigned URL
+	result, err := h.svc.GeneratePresignedUploadURL(c.Request.Context(), &req, userID, *rolePtr, file, fileHeader)
+	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

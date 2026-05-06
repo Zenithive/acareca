@@ -322,7 +322,7 @@ func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 // UpdateStatus updates document status
 func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error {
 	uploadedAt := doc.UploadedAt
-	if status == StatusUploaded && uploadedAt == nil {
+	if status == StatusUploaded {
 		now := time.Now()
 		uploadedAt = &now
 	}
@@ -332,19 +332,13 @@ func (r *repository) UpdateStatus(ctx context.Context, id uuid.UUID, status stri
 	SET 
 		status = $1,
 		uploaded_at = $2,
-		size_bytes = $3,
 		updated_at = NOW()
-	WHERE id = $4 AND deleted_at IS NULL`
+	WHERE id = $3 AND deleted_at IS NULL`
 
 	var result sql.Result
 	var err error
 
-	// Use transaction if provided, otherwise use db connection
-	if tx != nil {
-		result, err = tx.ExecContext(ctx, query, status, uploadedAt, doc.SizeBytes, id)
-	} else {
-		result, err = r.db.ExecContext(ctx, query, status, uploadedAt, doc.SizeBytes, id)
-	}
+	result, err = r.db.ExecContext(ctx, query, status, uploadedAt, id)
 
 	if err != nil {
 		return fmt.Errorf("update document status: %w", err)

@@ -27,7 +27,7 @@ type Service interface {
 	UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*RsDocument, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 
-	GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string) (*RsPresignedUploadURL, error)
+	GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error)
 	ConfirmUpload(ctx context.Context, documentID uuid.UUID, userID uuid.UUID) error
 }
 
@@ -312,67 +312,45 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.
 }
 
 // GeneratePresignedUploadURL generates a presigned URL for direct upload to R2
-func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string) (*RsPresignedUploadURL, error) {
+func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error) {
 	presignedProvider, ok := s.storage.(upload.PresignedURLProvider)
 	if !ok {
 		return nil, errors.New("presigned URLs not supported by current storage provider")
 	}
 
-	// Validate file metadata (size and MIME type)
-	if req.SizeBytes > s.validator.GetMaxFileSize() {
-		return nil, fmt.Errorf("%w: file size %d exceeds maximum %d", upload.ErrFileTooLarge, req.SizeBytes, s.validator.GetMaxFileSize())
-	}
+	objectKey := s.storage.GenerateObjectKey(ownerID, header.Filename)
 
-	if !s.validator.IsAllowedMimeType(req.ContentType) {
-		return nil, fmt.Errorf("%w: %s not allowed", upload.ErrInvalidFileType, req.ContentType)
-	}
-
-	// Verify entity access if entity_id is provided
-	if req.EntityType != nil && req.EntityID != nil {
-		entityUUID, err := uuid.Parse(*req.EntityID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entity_id: %w", err)
-		}
-
-		// Verify user has access to the entity (e.g., clinic)
-		hasAccess, err := s.verifyEntityAccess(ctx, ownerID, ownerRole, *req.EntityType, entityUUID)
-		if err != nil {
-			return nil, fmt.Errorf("verify entity access: %w", err)
-		}
-		if !hasAccess {
-			return nil, ErrUnauthorizedAccess
-		}
-	}
-
-	// Generate object key
-	objectKey := s.storage.GenerateObjectKey(ownerID, req.Filename)
-
-	// Default to 15 minutes if not specified
+	// Default to 15 minutes if not specified; ExpiresIn is optional (*int)
 	expiresInSec := 900
 	if req.ExpiresIn != nil {
 		expiresInSec = *req.ExpiresIn
 	}
 	expiresIn := time.Duration(expiresInSec) * time.Second
-
-	// Generate presigned URL (NO FILE UPLOAD HERE!)
-	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, req.ContentType, expiresIn)
+	mimeType := header.Header.Get("Content-Type")
+	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, mimeType, expiresIn)
 	if err != nil {
 		return nil, fmt.Errorf("generate presigned upload URL: %w", err)
 	}
 
+	_, checksum, err := s.storage.Upload(ctx, file, header, objectKey)
+	if err != nil {
+		return nil, fmt.Errorf("upload to storage: %w", err)
+	}
+
 	// Create pending document record
-	ext := upload.GetFileExtension(req.Filename)
+	ext := upload.GetFileExtension(header.Filename)
 	doc := &Document{
 		OwnerID:      ownerID,
 		OwnerRole:    ownerRole,
 		ObjectKey:    objectKey,
 		Bucket:       s.bucket,
-		OriginalName: upload.SanitizeFilename(req.Filename),
+		OriginalName: upload.SanitizeFilename(header.Filename),
 		Extension:    &ext,
-		MimeType:     req.ContentType,
-		SizeBytes:    req.SizeBytes,
+		MimeType:     mimeType,
+		SizeBytes:    header.Size,
 		Status:       StatusPending,
 		IsPublic:     false,
+		Checksum:     &checksum,
 	}
 
 	// Set entity information if provided
@@ -436,39 +414,16 @@ func (s *service) ConfirmUpload(ctx context.Context, documentID uuid.UUID, userI
 		return fmt.Errorf("upload has expired")
 	}
 
-	// Verify entity access again (in case permissions changed)
-	if doc.EntityType != nil && doc.EntityID != nil {
-		hasAccess, err := s.verifyEntityAccess(ctx, userID, doc.OwnerRole, *doc.EntityType, *doc.EntityID)
+	// Verify file exists in storage and get its size via the interface
+	if presignedProvider, ok := s.storage.(upload.PresignedURLProvider); ok {
+		size, err := presignedProvider.HeadObject(ctx, doc.ObjectKey)
 		if err != nil {
-			return fmt.Errorf("verify entity access: %w", err)
+			return fmt.Errorf("file not found in storage: %w", err)
 		}
-		if !hasAccess {
-			return ErrUnauthorizedAccess
+		if size > 0 {
+			doc.SizeBytes = size
 		}
 	}
-
-	// Verify file exists in storage and get its actual size
-	presignedProvider, ok := s.storage.(upload.PresignedURLProvider)
-	if !ok {
-		return errors.New("presigned URLs not supported by current storage provider")
-	}
-
-	actualSize, err := presignedProvider.HeadObject(ctx, doc.ObjectKey)
-	if err != nil {
-		return fmt.Errorf("file not found in storage: %w", err)
-	}
-
-	// Verify file size matches expected size (within reasonable tolerance)
-	if actualSize == 0 {
-		return fmt.Errorf("file is empty in storage")
-	}
-
-	// Update document with actual size
-	doc.SizeBytes = actualSize
-
-	// Set uploaded timestamp
-	now := time.Now()
-	doc.UploadedAt = &now
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Update status to uploaded
@@ -507,74 +462,6 @@ func (s *service) canAccessDocument(doc *Document, userID uuid.UUID) bool {
 	// - Check shared access
 
 	return false
-}
-
-// verifyEntityAccess checks if user has access to the specified entity
-func (s *service) verifyEntityAccess(ctx context.Context, userID uuid.UUID, userRole string, entityType string, entityID uuid.UUID) (bool, error) {
-	// TODO: Implement proper entity access verification based on entity type
-	// For now, we'll implement basic checks for common entity types
-
-	switch entityType {
-	case EntityTypeClinic:
-		// Check if user owns or has access to the clinic
-		return s.verifyClinicAccess(ctx, userID, entityID)
-	case EntityTypeBusiness:
-		// Check if user owns or has access to the business
-		return s.verifyBusinessAccess(ctx, userID, entityID)
-	case EntityTypePractitioner, EntityTypeAccountant, EntityTypeAdmin:
-		// Check if the entity_id matches the user_id
-		return userID == entityID, nil
-	default:
-		// For other entity types, allow if user is owner
-		// TODO: Implement specific checks for each entity type
-		return true, nil
-	}
-}
-
-// verifyClinicAccess checks if user has access to a clinic
-func (s *service) verifyClinicAccess(ctx context.Context, userID uuid.UUID, clinicID uuid.UUID) (bool, error) {
-	// TODO: Query the clinic table to verify user has access
-	// This is a placeholder - implement based on your clinic access logic
-	query := `
-		SELECT EXISTS(
-			SELECT 1 FROM tbl_clinic 
-			WHERE id = $1 
-			AND (owner_id = $2 OR id IN (
-				SELECT clinic_id FROM tbl_clinic_member WHERE user_id = $2 AND deleted_at IS NULL
-			))
-			AND deleted_at IS NULL
-		)`
-
-	var hasAccess bool
-	err := s.db.GetContext(ctx, &hasAccess, query, clinicID, userID)
-	if err != nil {
-		return false, fmt.Errorf("check clinic access: %w", err)
-	}
-
-	return hasAccess, nil
-}
-
-// verifyBusinessAccess checks if user has access to a business
-func (s *service) verifyBusinessAccess(ctx context.Context, userID uuid.UUID, businessID uuid.UUID) (bool, error) {
-	// TODO: Query the business table to verify user has access
-	// This is a placeholder - implement based on your business access logic
-	query := `
-		SELECT EXISTS(
-			SELECT 1 FROM tbl_business 
-			WHERE id = $1 
-			AND (owner_id = $2 OR id IN (
-				SELECT business_id FROM tbl_business_member WHERE user_id = $2 AND deleted_at IS NULL
-			))
-			AND deleted_at IS NULL
-		)`
-
-	var hasAccess bool
-	err := s.db.GetContext(ctx, &hasAccess, query, businessID, userID)
-	if err != nil {
-		return false, fmt.Errorf("check business access: %w", err)
-	}
-
-	return hasAccess, nil
 }
 
 // Audit logging helpers

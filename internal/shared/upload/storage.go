@@ -76,17 +76,6 @@ func (v *FileValidator) Validate(header *multipart.FileHeader) error {
 	return nil
 }
 
-func (v *FileValidator) GetMaxFileSize() int64 {
-	return v.maxFileSize
-}
-
-func (v *FileValidator) IsAllowedMimeType(mimeType string) bool {
-	if len(v.allowedMimeTypes) == 0 {
-		return true
-	}
-	return v.allowedMimeTypes[mimeType]
-}
-
 func GetFileExtension(filename string) string {
 	ext := filepath.Ext(filename)
 	if ext != "" {
