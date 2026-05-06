@@ -85,12 +85,14 @@ func main() {
 	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
 	r.Use(middleware.RateLimitMiddleware(1000, 1000))
-	auditSvc, notifier, notificationRepo := route.RegisterRoutes(r, cfg)
+	auditSvc, notifier, notificationRepo, fileUploadWorker := route.RegisterRoutes(r, cfg)
 
 	// Start the in_app delivery retry worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
+
+	go fileUploadWorker.Start(workerCtx)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,

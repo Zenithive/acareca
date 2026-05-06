@@ -14,13 +14,13 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFu
 		// files.POST("/upload/multiple", h.UploadMultipleFiles)
 
 		// Presigned URL endpoints
-		files.POST("/upload", h.GeneratePresignedUploadURL)
-		files.POST("/:id/confirm", h.ConfirmUpload)
+		files.POST("/upload", h.Upload)
+		// files.POST("/:id/confirm", h.ConfirmUpload)
 
 		// Document management
 		files.GET("", h.ListDocuments)
 		files.GET("/:id", h.GetDocument)
-		files.GET("/:id/download", h.DownloadFile)
+		// files.GET("/:id/download", h.DownloadFile)
 		files.PUT("/:id", h.UpdateDocument)
 		files.DELETE("/:id", h.DeleteDocument)
 
@@ -28,6 +28,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFu
 		// files.POST("/:id/share", h.GenerateShareLink)
 
 		// Entity-specific listing
-		files.GET("/entity/:entity_type/:entity_id", h.ListDocumentsByEntity)
+		// files.GET("/entity/:entity_type/:entity_id", h.ListDocumentsByEntity)
 	}
 }

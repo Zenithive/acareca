@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"time"
 
@@ -19,16 +18,11 @@ import (
 )
 
 type Service interface {
-	UploadFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, req *RqUploadFile, ownerID uuid.UUID, ownerRole string) (*RsUploadDocument, error)
 	GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*RsDocument, error)
-	DownloadFile(ctx context.Context, id uuid.UUID, userID uuid.UUID) (io.ReadCloser, *Document, error)
 	ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error)
-	ListDocumentsByEntity(ctx context.Context, entityType string, entityID uuid.UUID, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error)
 	UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdateDocument, userID uuid.UUID) (*RsDocument, error)
 	DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
-
 	GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error)
-	ConfirmUpload(ctx context.Context, documentID uuid.UUID, userID uuid.UUID) error
 }
 
 type service struct {
@@ -53,70 +47,6 @@ func NewService(repo Repository, storage upload.StorageProvider, validator *uplo
 	}
 }
 
-// UploadFile uploads a single file
-func (s *service) UploadFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, req *RqUploadFile, ownerID uuid.UUID, ownerRole string) (*RsUploadDocument, error) {
-	if err := s.validator.Validate(header); err != nil {
-		return nil, err
-	}
-
-	objectKey := s.storage.GenerateObjectKey(ownerID, header.Filename)
-
-	storedKey, checksum, err := s.storage.Upload(ctx, file, header, objectKey)
-	if err != nil {
-		return nil, fmt.Errorf("upload to storage: %w", err)
-	}
-
-	ext := upload.GetFileExtension(header.Filename)
-	mimeType := header.Header.Get("Content-Type")
-
-	doc := &Document{
-		OwnerID:      ownerID,
-		OwnerRole:    ownerRole,
-		ObjectKey:    storedKey,
-		Bucket:       s.bucket,
-		OriginalName: upload.SanitizeFilename(header.Filename),
-		Extension:    &ext,
-		MimeType:     mimeType,
-		SizeBytes:    header.Size,
-		Checksum:     &checksum,
-		Status:       StatusUploaded,
-		IsPublic:     req.IsPublic != nil && *req.IsPublic,
-	}
-
-	if req.EntityType != nil {
-		doc.EntityType = req.EntityType
-	}
-	if req.EntityID != nil {
-		entityUUID, err := uuid.Parse(*req.EntityID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entity_id: %w", err)
-		}
-		doc.EntityID = &entityUUID
-	}
-
-	now := time.Now()
-	doc.UploadedAt = &now
-
-	var created *Document
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		created, err = s.repo.Create(ctx, doc, tx)
-		if err != nil {
-			s.storage.Delete(ctx, storedKey)
-			return fmt.Errorf("save document record: %w", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	s.logFileUpload(ctx, created, ownerID)
-
-	baseURL, _ := s.cfg.GetBaseURL()
-	return created.ToRsUploadDocument(baseURL), nil
-}
-
 // GetDocument retrieves document metadata
 func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*RsDocument, error) {
 	doc, err := s.repo.FindByID(ctx, id)
@@ -130,27 +60,6 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUI
 
 	baseURL, _ := s.cfg.GetBaseURL()
 	return doc.ToRsDocument(baseURL), nil
-}
-
-// DownloadFile downloads a file
-func (s *service) DownloadFile(ctx context.Context, id uuid.UUID, userID uuid.UUID) (io.ReadCloser, *Document, error) {
-	doc, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if !s.canAccessDocument(doc, userID) {
-		return nil, nil, ErrUnauthorizedAccess
-	}
-
-	file, err := s.storage.Download(ctx, doc.ObjectKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("download from storage: %w", err)
-	}
-
-	s.logFileDownload(ctx, doc, userID)
-
-	return file, doc, nil
 }
 
 // ListDocuments lists documents for a user
@@ -177,45 +86,6 @@ func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *
 
 	result := &util.RsList{}
 	result.MapToList(rsDocs, int(total), page, limit)
-	return result, nil
-}
-
-// ListDocumentsByEntity lists documents for a specific entity
-func (s *service) ListDocumentsByEntity(ctx context.Context, entityType string, entityID uuid.UUID, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error) {
-	docs, _, err := s.repo.FindByEntity(ctx, entityType, entityID, filters)
-	if err != nil {
-		return nil, err
-	}
-
-	// Filter documents user can access
-	accessibleDocs := make([]Document, 0)
-	for _, doc := range docs {
-		if s.canAccessDocument(&doc, userID) {
-			accessibleDocs = append(accessibleDocs, doc)
-		}
-	}
-
-	// Use the filtered count as total so pagination math is correct.
-	// Note: for large datasets consider pushing access filtering to the DB layer.
-	filteredTotal := int64(len(accessibleDocs))
-
-	baseURL, _ := s.cfg.GetBaseURL()
-	rsDocs := make([]RsDocument, len(accessibleDocs))
-	for i, doc := range accessibleDocs {
-		rsDocs[i] = *doc.ToRsDocument(baseURL)
-	}
-
-	page := 1
-	if filters.Page > 0 {
-		page = filters.Page
-	}
-	limit := 20
-	if filters.Limit > 0 {
-		limit = filters.Limit
-	}
-
-	result := &util.RsList{}
-	result.MapToList(rsDocs, int(filteredTotal), page, limit)
 	return result, nil
 }
 
@@ -390,58 +260,6 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		ExpiresAt:  expiresAt,
 		DocumentID: created.ID,
 	}, nil
-}
-
-// ConfirmUpload confirms that a file was uploaded via presigned URL
-func (s *service) ConfirmUpload(ctx context.Context, documentID uuid.UUID, userID uuid.UUID) error {
-	doc, err := s.repo.FindByID(ctx, documentID)
-	if err != nil {
-		return err
-	}
-
-	// Check ownership
-	if doc.OwnerID != userID {
-		return ErrUnauthorizedAccess
-	}
-
-	// Check if document is in pending state
-	if doc.Status != StatusPending {
-		return fmt.Errorf("document is not in pending state")
-	}
-
-	// Check if upload has expired
-	if doc.UploadExpiresAt != nil && time.Now().After(*doc.UploadExpiresAt) {
-		return fmt.Errorf("upload has expired")
-	}
-
-	// Verify file exists in storage and get its size via the interface
-	if presignedProvider, ok := s.storage.(upload.PresignedURLProvider); ok {
-		size, err := presignedProvider.HeadObject(ctx, doc.ObjectKey)
-		if err != nil {
-			return fmt.Errorf("file not found in storage: %w", err)
-		}
-		if size > 0 {
-			doc.SizeBytes = size
-		}
-	}
-
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Update status to uploaded
-		if err := s.repo.UpdateStatus(ctx, documentID, StatusUploaded, doc, tx); err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-
-	// Audit log
-	s.logFileUpload(ctx, doc, userID)
-
-	return nil
 }
 
 // canAccessDocument checks if user can access a document

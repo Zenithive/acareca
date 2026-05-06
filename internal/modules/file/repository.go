@@ -22,10 +22,11 @@ type Repository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*Document, error)
 	FindByObjectKey(ctx context.Context, objectKey string) (*Document, error)
 	FindByOwner(ctx context.Context, ownerID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error)
-	FindByEntity(ctx context.Context, entityType string, entityID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error)
 	Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
 	Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error
+	FindPendingUploads(ctx context.Context, limit int) ([]Document, error)
+	FindExpiredPendingUploads(ctx context.Context, limit int) ([]Document, error)
 }
 
 type repository struct {
@@ -214,76 +215,6 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 	return docs, total, nil
 }
 
-// FindByEntity finds documents by entity with pagination and filters
-func (r *repository) FindByEntity(ctx context.Context, entityType string, entityID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error) {
-	query := `
-		SELECT 
-			id, owner_id, owner_role, object_key, bucket,
-			original_name, extension, mime_type, size_bytes,
-			checksum, status, is_public,
-			entity_type, entity_id,
-			upload_expires_at, uploaded_at,
-			created_at, updated_at, deleted_at
-		FROM tbl_document
-		WHERE entity_type = $1 AND entity_id = $2 AND deleted_at IS NULL`
-
-	countQuery := `SELECT COUNT(*) FROM tbl_document WHERE entity_type = $1 AND entity_id = $2 AND deleted_at IS NULL`
-
-	args := []interface{}{entityType, entityID}
-	argCount := 2
-
-	// Apply status filter
-	if filters.Status != nil {
-		argCount++
-		query += fmt.Sprintf(" AND status = $%d", argCount)
-		countQuery += fmt.Sprintf(" AND status = $%d", argCount)
-		args = append(args, *filters.Status)
-	}
-
-	// Get total count
-	var total int64
-	err := r.db.GetContext(ctx, &total, countQuery, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count documents: %w", err)
-	}
-
-	// Apply sorting — whitelist at repo level; value is interpolated into SQL.
-	allowedSort := map[string]bool{
-		"created_at": true, "updated_at": true, "size_bytes": true, "original_name": true,
-	}
-	sortColumn := "created_at"
-	if filters.Sort != "" && allowedSort[filters.Sort] {
-		sortColumn = filters.Sort
-	}
-	sortOrder := "DESC"
-	if filters.Order == "asc" {
-		sortOrder = "ASC"
-	}
-	query += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
-
-	// Apply pagination
-	page := 1
-	if filters.Page > 0 {
-		page = filters.Page
-	}
-	limit := 20
-	if filters.Limit > 0 {
-		limit = filters.Limit
-	}
-	offset := (page - 1) * limit
-
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
-
-	// Execute query
-	var docs []Document
-	err = r.db.SelectContext(ctx, &docs, query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("find documents by entity: %w", err)
-	}
-
-	return docs, total, nil
-}
-
 // Update updates a document
 func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error) {
 	query := `
@@ -381,4 +312,57 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) erro
 	}
 
 	return nil
+}
+
+// FindPendingUploads finds documents with pending status
+func (r *repository) FindPendingUploads(ctx context.Context, limit int) ([]Document, error) {
+	query := `
+		SELECT 
+			id, owner_id, owner_role, object_key, bucket,
+			original_name, extension, mime_type, size_bytes,
+			checksum, status, is_public,
+			entity_type, entity_id,
+			upload_expires_at, uploaded_at,
+			created_at, updated_at, deleted_at
+		FROM tbl_document
+		WHERE status = $1 
+			AND deleted_at IS NULL
+			AND (upload_expires_at IS NULL OR upload_expires_at > NOW())
+		ORDER BY created_at ASC
+		LIMIT $2`
+
+	var docs []Document
+	err := r.db.SelectContext(ctx, &docs, query, StatusPending, limit)
+	if err != nil {
+		return nil, fmt.Errorf("find pending uploads: %w", err)
+	}
+
+	return docs, nil
+}
+
+// FindExpiredPendingUploads finds documents with expired pending status
+func (r *repository) FindExpiredPendingUploads(ctx context.Context, limit int) ([]Document, error) {
+	query := `
+		SELECT 
+			id, owner_id, owner_role, object_key, bucket,
+			original_name, extension, mime_type, size_bytes,
+			checksum, status, is_public,
+			entity_type, entity_id,
+			upload_expires_at, uploaded_at,
+			created_at, updated_at, deleted_at
+		FROM tbl_document
+		WHERE status = $1 
+			AND deleted_at IS NULL
+			AND upload_expires_at IS NOT NULL 
+			AND upload_expires_at <= NOW()
+		ORDER BY created_at ASC
+		LIMIT $2`
+
+	var docs []Document
+	err := r.db.SelectContext(ctx, &docs, query, StatusPending, limit)
+	if err != nil {
+		return nil, fmt.Errorf("find expired pending uploads: %w", err)
+	}
+
+	return docs, nil
 }
