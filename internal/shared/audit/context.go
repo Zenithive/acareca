@@ -13,6 +13,7 @@ const (
 	contextKeyIPAddress  contextKey = "audit_ip_address"
 	contextKeyUserAgent  contextKey = "audit_user_agent"
 	contextKeyUserType   contextKey = "audit_user_type"
+	contextKeyRole       contextKey = "role"
 )
 
 // WithUserID adds user ID to context
@@ -25,6 +26,15 @@ func GetUserID(ctx context.Context) *string {
 	if v := ctx.Value(contextKeyUserID); v != nil {
 		if userID, ok := v.(string); ok {
 			return &userID
+		}
+	}
+	return nil
+}
+
+func GetRole(ctx context.Context) *string {
+	if v := ctx.Value(contextKeyRole); v != nil {
+		if role, ok := v.(string); ok {
+			return &role
 		}
 	}
 	return nil
