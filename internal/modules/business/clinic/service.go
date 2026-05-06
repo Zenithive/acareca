@@ -80,6 +80,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			PractitionerID: practitionerID,
 			EntityID:       finalEntityID,
 			ProfilePicture: req.ProfilePicture,
+			ImageURL:       req.ImageURL,
 			Name:           req.Name,
 			ABN:            req.ABN,
 			Description:    req.Description,
@@ -176,6 +177,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			PractitionerID: practitionerID,
 			EntityID:       created.EntityID,
 			ProfilePicture: created.ProfilePicture,
+			ImageURL:       created.ImageURL,
 			Name:           created.Name,
 			ABN:            created.ABN,
 			Description:    created.Description,
@@ -330,6 +332,7 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			EntityID:          clinic.EntityID,
 			PractitionerID:    clinic.PractitionerID,
 			ProfilePicture:    clinic.ProfilePicture,
+			ImageURL:          clinic.ImageURL,
 			Name:              clinic.Name,
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
@@ -449,6 +452,7 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		//EntityID:          clinic.EntityID,
 		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
+		ImageURL:          clinic.ImageURL,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
@@ -586,6 +590,9 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		}
 		if req.ProfilePicture != nil {
 			clinic.ProfilePicture = req.ProfilePicture
+		}
+		if req.ImageURL != nil {
+			clinic.ImageURL = req.ImageURL
 		}
 		if req.ABN != nil {
 			clinic.ABN = req.ABN
@@ -842,6 +849,7 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		ID:                clinic.ID,
 		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
+		ImageURL:          clinic.ImageURL,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
@@ -959,6 +967,7 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		EntityID:          clinic.EntityID,
 		PractitionerID:    clinic.PractitionerID,
 		ProfilePicture:    clinic.ProfilePicture,
+		ImageURL:          clinic.ImageURL,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
@@ -989,6 +998,9 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 	}
 	if req.ProfilePicture != nil {
 		clinic.ProfilePicture = req.ProfilePicture
+	}
+	if req.ImageURL != nil {
+		clinic.ImageURL = req.ImageURL
 	}
 	if req.ABN != nil {
 		clinic.ABN = req.ABN
@@ -1270,6 +1282,7 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 			EntityID:          clinic.EntityID,
 			PractitionerID:    clinic.PractitionerID,
 			ProfilePicture:    clinic.ProfilePicture,
+			ImageURL:          clinic.ImageURL,
 			Name:              clinic.Name,
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
