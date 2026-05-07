@@ -451,24 +451,35 @@ func (r *repository) GetContactByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 }
 
 func (r *repository) UpdateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
+	var docID *uuid.UUID
+	if clinic.Document != nil {
+		docID = &clinic.Document.ID
+	}
+
 	query := `
 		UPDATE tbl_clinic 
 		SET practitioner_id = $1, profile_picture = $2, image_url = $3, name = $4, abn = $5, 
-		    description = $6, is_active = $7, updated_at = now()
-		WHERE id = $8 AND deleted_at IS NULL
-		RETURNING id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
+		    description = $6, is_active = $7, document_id = $8, updated_at = now()
+		WHERE id = $9 AND deleted_at IS NULL
+		RETURNING id, practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active, created_at, updated_at
 	`
 	var c Clinic
-	err := tx.QueryRowxContext(ctx, query,
+	var returnedDocID *uuid.UUID
+	row := tx.QueryRowxContext(ctx, query,
 		clinic.PractitionerID, clinic.ProfilePicture, clinic.ImageURL, clinic.Name,
-		clinic.ABN, clinic.Description, clinic.IsActive, clinic.ID,
-	).StructScan(&c)
+		clinic.ABN, clinic.Description, clinic.IsActive, docID, clinic.ID,
+	)
+	err := row.Scan(
+		&c.ID, &c.PractitionerID, &c.ProfilePicture, &c.ImageURL, &c.Name,
+		&c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("update clinic tx: %w", err)
 	}
+	c.Document = clinic.Document
 	return &c, nil
 }
 

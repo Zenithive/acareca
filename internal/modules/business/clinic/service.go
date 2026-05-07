@@ -593,6 +593,19 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 			clinic.EntityID = req.EntityID
 		}
 
+		// Resolve document if provided
+		if req.DocumentId != nil {
+			if *req.DocumentId == "" {
+				clinic.Document = nil
+			} else {
+				docID, parseErr := uuid.Parse(*req.DocumentId)
+				if parseErr == nil {
+					doc, _ := s.fileRepo.FindByID(ctx, docID)
+					clinic.Document = doc
+				}
+			}
+		}
+
 		_, err = s.repo.UpdateClinicTx(ctx, tx, clinic)
 		if err != nil {
 			return fmt.Errorf("update clinic: %w", err)
@@ -998,6 +1011,19 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 		clinic.IsActive = *req.IsActive
 	}
 
+	// Resolve document if provided
+	if req.DocumentId != nil {
+		if *req.DocumentId == "" {
+			clinic.Document = nil
+		} else {
+			docID, parseErr := uuid.Parse(*req.DocumentId)
+			if parseErr == nil {
+				doc, _ := s.fileRepo.FindByID(ctx, docID)
+				clinic.Document = doc
+			}
+		}
+	}
+
 	_, err = s.repo.UpdateClinicTx(ctx, tx, clinic)
 	if err != nil {
 		return nil, fmt.Errorf("update clinic: %w", err)
@@ -1239,6 +1265,12 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 				LockDate:        financialSettings.LockDate,
 			}
 		}
+
+		doc, docErr := s.repo.GetDocumentByClinicID(ctx, clinic.ID)
+		if docErr != nil {
+			return nil, docErr
+		}
+		clinic.Document = doc
 
 		result = append(result, RsClinic{
 			ID:                clinic.ID,
