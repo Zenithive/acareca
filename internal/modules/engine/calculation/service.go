@@ -79,7 +79,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 		if v.FormFieldID == nil {
 			continue
 		}
-		
+
 		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
@@ -163,7 +163,7 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 		if v.FormFieldID == nil {
 			continue
 		}
-		
+
 		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
@@ -547,6 +547,12 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 		return nil, fmt.Errorf("eval formulas: %w", err)
 	}
 
+	formulas, err := s.formulaSvc.ListByFormVersionID(ctx, formVersionID)
+	if err != nil {
+		// Log error but perhaps don't fail the whole calculation if formulas are just for preview
+		return nil, fmt.Errorf("fetch formulas for preview: %w", err)
+	}
+
 	results := make([]RsComputedFieldValue, 0, len(computed))
 	for fieldID, val := range computed {
 		f, ok := fieldMap[fieldID]
@@ -628,6 +634,7 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 	return &RsLiveCalculate{
 		FormVersionID:  formVersionID,
 		ComputedFields: results,
+		Formulas:       formulas,
 	}, nil
 }
 

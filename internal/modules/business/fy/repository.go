@@ -140,7 +140,7 @@ func (r *repository) GetFinancialYearByDate(ctx context.Context, expenseDate tim
 	query := `
         SELECT id, label, is_active, start_date, end_date, created_at, updated_at
         FROM tbl_financial_year
-        WHERE $1 BETWEEN start_date AND end_date
+        WHERE $1 BETWEEN start_date AND end_date AND is_active = TRUE
         LIMIT 1
     `
 	var fy FinancialYear
