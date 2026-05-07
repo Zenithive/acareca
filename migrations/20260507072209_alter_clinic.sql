@@ -17,3 +17,4 @@ ALTER TABLE tbl_document
 
 ALTER TABLE tbl_clinic DROP COLUMN IF EXISTS document_id;
 -- +goose StatementEnd
+

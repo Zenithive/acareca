@@ -43,6 +43,11 @@ type IRepository interface {
 	GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
 
 	GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, error)
+
+	// Document linking
+	LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
+	UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
+	GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUID) ([]*RsEntryDocument, error)
 }
 
 type Repository struct {
@@ -944,4 +949,75 @@ func (r *Repository) GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, 
 	query := `SELECT name FROM tbl_chart_of_accounts WHERE id = $1`
 	err := r.db.GetContext(ctx, &name, query, id)
 	return name, err
+}
+
+// LinkDocuments inserts rows into tbl_map_entry_document for the given document IDs.
+func (r *Repository) LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error {
+	if len(documentIDs) == 0 {
+		return nil
+	}
+	for _, docID := range documentIDs {
+		query := `
+			INSERT INTO tbl_map_entry_document (entry_id, document_id)
+			VALUES ($1, $2)
+			ON CONFLICT (entry_id, document_id) DO NOTHING`
+		if _, err := tx.ExecContext(ctx, query, entryID, docID); err != nil {
+			return fmt.Errorf("link document %s to entry %s: %w", docID, entryID, err)
+		}
+	}
+	return nil
+}
+
+// UnlinkDocuments removes rows from tbl_map_entry_document for the given document IDs.
+func (r *Repository) UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error {
+	if len(documentIDs) == 0 {
+		return nil
+	}
+	for _, docID := range documentIDs {
+		query := `DELETE FROM tbl_map_entry_document WHERE entry_id = $1 AND document_id = $2`
+		if _, err := tx.ExecContext(ctx, query, entryID, docID); err != nil {
+			return fmt.Errorf("unlink document %s from entry %s: %w", docID, entryID, err)
+		}
+	}
+	return nil
+}
+
+// GetDocumentsByEntryID returns all documents linked to an entry.
+func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUID) ([]*RsEntryDocument, error) {
+	query := `
+		SELECT
+			d.id,
+			d.original_name,
+			d.object_key  AS file_key,
+			d.uploaded_at,
+			fed.created_at
+		FROM tbl_map_entry_document fed
+		INNER JOIN tbl_document d ON d.id = fed.document_id AND d.deleted_at IS NULL
+		WHERE fed.entry_id = $1
+		ORDER BY fed.created_at ASC`
+
+	type row struct {
+		ID           uuid.UUID `db:"id"`
+		OriginalName string    `db:"original_name"`
+		FileKey      string    `db:"file_key"`
+		UploadedAt   *string   `db:"uploaded_at"`
+		CreatedAt    string    `db:"created_at"`
+	}
+
+	var rows []*row
+	if err := r.db.SelectContext(ctx, &rows, query, entryID); err != nil {
+		return nil, fmt.Errorf("get documents by entry id: %w", err)
+	}
+
+	result := make([]*RsEntryDocument, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, &RsEntryDocument{
+			ID:           r.ID,
+			OriginalName: r.OriginalName,
+			FileKey:      r.FileKey,
+			UploadedAt:   r.UploadedAt,
+			CreatedAt:    r.CreatedAt,
+		})
+	}
+	return result, nil
 }

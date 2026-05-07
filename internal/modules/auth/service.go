@@ -702,7 +702,6 @@ func (s *service) GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, er
 }
 
 func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error) {
-	// 1. Fetch existing user
 	user, err := s.repo.FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -710,7 +709,6 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 
 	beforeState := sanitizeUser(user)
 
-	// 2. Map new data ONLY if provided (Partial Update)
 	if req.Email != nil {
 		// check if email is different and if it's already taken
 		if *req.Email != user.Email {
@@ -764,7 +762,6 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		}
 	}
 
-	// 4. Audit log: Profile Update
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := updated.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{

@@ -153,27 +153,23 @@ func (h *handler) UpdateProfile(c *gin.Context) {
 
 	userIDPtr := auditctx.GetUserID(c.Request.Context())
 
-	// 2. Check if the pointer is nil (Unauthorized)
 	if userIDPtr == nil {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
 		return
 	}
 
-	// 3. Parse the string value into a uuid.UUID for the service layer
 	userID, err := uuid.Parse(*userIDPtr)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
 		return
 	}
 
-	// 4. Bind and validate the update request body
 	var req RqUpdateUser
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// 5. Call service layer with the parsed UUID
 	user, err := h.svc.UpdateProfile(c.Request.Context(), userID, &req)
 	if err != nil {
 		if errors.Is(err, ErrEmailTaken) {
@@ -274,16 +270,15 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 	var frontendURL string
 	if h.cfg.Env == "local" {
 		frontendURL = h.cfg.LocalUrl
-	}else{
+	} else {
 		frontendURL = h.cfg.FrontendURL
 	}
 
-	
-	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s", 
-		frontendURL, 
-		token.AccessToken, 
+	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s",
+		frontendURL,
+		token.AccessToken,
 		token.RefreshToken)
-	
+
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
