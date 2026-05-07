@@ -39,7 +39,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -100,6 +100,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Register file routes
 	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
 
+	// Initialize file upload worker
+	fileUploadWorker := file.NewUploadWorker(fileRepo, storage)
+
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
@@ -137,7 +140,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// ============ CLINIC SERVICE (cross-module dependency) ============
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, auditSvc, eventsSvc)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
 
@@ -228,6 +231,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
-	return auditSvc, notifier, notificationRepo
+	return auditSvc, notifier, notificationRepo, fileUploadWorker
 
 }
