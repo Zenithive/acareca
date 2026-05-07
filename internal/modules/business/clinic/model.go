@@ -211,3 +211,17 @@ type AccountantPermission struct {
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	ClinicID       uuid.UUID `db:"clinic_id"`
 }
+
+// toRsDocument safely converts a *file.Document to *file.RsDocument, returning nil if doc is nil.
+func ToRsDocument(doc *file.Document) *file.RsDocument {
+	if doc == nil {
+		return nil
+	}
+	return &file.RsDocument{
+		ID:           doc.ID,
+		OriginalName: doc.OriginalName,
+		FileKey:      doc.ObjectKey,
+		UploadedAt:   doc.UploadedAt,
+		CreatedAt:    doc.CreatedAt,
+	}
+}

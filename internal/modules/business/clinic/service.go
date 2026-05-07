@@ -39,13 +39,14 @@ type service struct {
 	repo           Repository
 	accountantRepo accountant.Repository
 	authRepo       auth.Repository
+	fileRepo       file.Repository
 	auditSvc       audit.Service
 	limitsSvc      limits.Service
 	eventsSvc      events.Service
 }
 
-func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, auditSvc audit.Service, eventsSvc events.Service) Service {
-	return &service{db: db, repo: repo, accountantRepo: accRepo, authRepo: authRepo, auditSvc: auditSvc, limitsSvc: limits.NewService(db), eventsSvc: eventsSvc}
+func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, eventsSvc events.Service) Service {
+	return &service{db: db, repo: repo, accountantRepo: accRepo, authRepo: authRepo, fileRepo: fileRepo, auditSvc: auditSvc, limitsSvc: limits.NewService(db), eventsSvc: eventsSvc}
 }
 
 func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, req *RqCreateClinic) (*RsClinic, error) {
@@ -70,6 +71,15 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			finalEntityID = req.EntityID
 		}
 
+		// Resolve document if provided
+		var doc *file.Document
+		if req.DocumentId != nil && *req.DocumentId != "" {
+			docID, parseErr := uuid.Parse(*req.DocumentId)
+			if parseErr == nil {
+				doc, _ = s.fileRepo.FindByID(ctx, docID)
+			}
+		}
+
 		clinic := &Clinic{
 			PractitionerID: practitionerID,
 			EntityID:       finalEntityID,
@@ -79,6 +89,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			ABN:            req.ABN,
 			Description:    req.Description,
 			IsActive:       true,
+			Document:       doc,
 		}
 		if req.IsActive != nil {
 			clinic.IsActive = *req.IsActive
@@ -178,13 +189,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			IsActive:       created.IsActive,
 			Address:        rsAddress,
 			Contacts:       contacts,
-			Document: &file.RsDocument{
-				ID:           created.Document.ID,
-				OriginalName: created.Document.OriginalName,
-				FileKey:      created.Document.ObjectKey,
-				UploadedAt:   created.Document.UploadedAt,
-				CreatedAt:    created.Document.CreatedAt,
-			},
+			Document:       ToRsDocument(created.Document),
 			FinancialSettings: &RsFinancialSettings{
 				ID:              createdFS.ID,
 				FinancialYearID: createdFS.FinancialYearID,
@@ -319,6 +324,12 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			}
 		}
 
+		doc, docErr := s.repo.GetDocumentByClinicID(ctx, clinic.ID)
+		if docErr != nil {
+			return nil, docErr
+		}
+		clinic.Document = doc
+
 		result = append(result, RsClinic{
 			ID:                clinic.ID,
 			EntityID:          clinic.EntityID,
@@ -332,15 +343,9 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			Address:           rsAddress,
 			Contacts:          rsContacts,
 			FinancialSettings: rsFinancialSettings,
-			Document: &file.RsDocument{
-				ID:           clinic.Document.ID,
-				OriginalName: clinic.Document.OriginalName,
-				FileKey:      clinic.Document.ObjectKey,
-				UploadedAt:   clinic.Document.UploadedAt,
-				CreatedAt:    clinic.Document.CreatedAt,
-			},
-			CreatedAt: clinic.CreatedAt,
-			UpdatedAt: clinic.UpdatedAt,
+			Document:          ToRsDocument(clinic.Document),
+			CreatedAt:         clinic.CreatedAt,
+			UpdatedAt:         clinic.UpdatedAt,
 		})
 	}
 
@@ -395,6 +400,12 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		return nil, err
 	}
 
+	doc, err := s.repo.GetDocumentByClinicID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	clinic.Document = doc
+
 	var rsAddress *RsClinicAddress
 	if len(addresses) > 0 {
 		addr := addresses[0]
@@ -446,15 +457,9 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
-		Document: &file.RsDocument{
-			ID:           clinic.Document.ID,
-			OriginalName: clinic.Document.OriginalName,
-			FileKey:      clinic.Document.ObjectKey,
-			UploadedAt:   clinic.Document.UploadedAt,
-			CreatedAt:    clinic.Document.CreatedAt,
-		},
-		CreatedAt: clinic.CreatedAt,
-		UpdatedAt: clinic.UpdatedAt,
+		Document:          ToRsDocument(clinic.Document),
+		CreatedAt:         clinic.CreatedAt,
+		UpdatedAt:         clinic.UpdatedAt,
 	}, nil
 }
 
@@ -773,6 +778,12 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		return nil, err
 	}
 
+	doc, err := s.repo.GetDocumentByClinicID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	clinic.Document = doc
+
 	var rsAddress *RsClinicAddress
 	if len(addresses) > 0 {
 		addr := addresses[0]
@@ -824,15 +835,9 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
-		Document: &file.RsDocument{
-			ID:           clinic.Document.ID,
-			OriginalName: clinic.Document.OriginalName,
-			FileKey:      clinic.Document.ObjectKey,
-			UploadedAt:   clinic.Document.UploadedAt,
-			CreatedAt:    clinic.Document.CreatedAt,
-		},
-		CreatedAt: clinic.CreatedAt,
-		UpdatedAt: clinic.UpdatedAt,
+		Document:          ToRsDocument(clinic.Document),
+		CreatedAt:         clinic.CreatedAt,
+		UpdatedAt:         clinic.UpdatedAt,
 	}, nil
 }
 
@@ -896,6 +901,12 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		return nil, err
 	}
 
+	doc, err := s.repo.GetDocumentByClinicIDTx(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	clinic.Document = doc
+
 	var rsAddress *RsClinicAddress
 	if len(addresses) > 0 {
 		// Default to first, but try to find the marked primary
@@ -949,15 +960,9 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 		Address:           rsAddress,
 		Contacts:          rsContacts,
 		FinancialSettings: rsFinancialSettings,
-		Document: &file.RsDocument{
-			ID:           clinic.Document.ID,
-			OriginalName: clinic.Document.OriginalName,
-			FileKey:      clinic.Document.ObjectKey,
-			UploadedAt:   clinic.Document.UploadedAt,
-			CreatedAt:    clinic.Document.CreatedAt,
-		},
-		CreatedAt: clinic.CreatedAt,
-		UpdatedAt: clinic.UpdatedAt,
+		Document:          ToRsDocument(clinic.Document),
+		CreatedAt:         clinic.CreatedAt,
+		UpdatedAt:         clinic.UpdatedAt,
 	}, nil
 }
 
@@ -1248,19 +1253,12 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 			Address:           rsAddress,
 			Contacts:          rsContacts,
 			FinancialSettings: rsFinancialSettings,
-			Document: &file.RsDocument{
-				ID:           clinic.Document.ID,
-				OriginalName: clinic.Document.OriginalName,
-				FileKey:      clinic.Document.ObjectKey,
-				UploadedAt:   clinic.Document.UploadedAt,
-				CreatedAt:    clinic.Document.CreatedAt,
-			},
-			CreatedAt: clinic.CreatedAt,
-			UpdatedAt: clinic.UpdatedAt,
+			Document:          ToRsDocument(clinic.Document),
+			CreatedAt:         clinic.CreatedAt,
+			UpdatedAt:         clinic.UpdatedAt,
 		})
 	}
 
-	// 2. Count using the accountant-specific count method
 	total, err := s.repo.CountClinicByAccountant(ctx, accountantID, f)
 	if err != nil {
 		return nil, err
