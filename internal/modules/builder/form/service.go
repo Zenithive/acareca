@@ -771,7 +771,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine financial year: %w", err)
+		return nil, fmt.Errorf("the date %s does not fall within an active financial year", expenseDate.Format("02-01-2006"))
 	}
 
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
@@ -956,7 +956,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine financial year: %w", err)
+		return nil, fmt.Errorf("the date %s does not fall within an active financial year", expenseDate.Format("02-01-2006"))
 	}
 
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
