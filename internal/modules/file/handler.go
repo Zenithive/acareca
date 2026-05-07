@@ -14,7 +14,7 @@ import (
 
 type Handler interface {
 	GetDocument(c *gin.Context)
-	ListDocuments(c *gin.Context)
+	ListDocument(c *gin.Context)
 	UpdateDocument(c *gin.Context)
 	DeleteDocument(c *gin.Context)
 	Upload(c *gin.Context)
@@ -79,7 +79,7 @@ func (h *handler) GetDocument(c *gin.Context) {
 	response.JSON(c, http.StatusOK, doc, "Document retrieved successfully")
 }
 
-// ListDocuments godoc
+// ListDocument godoc
 // @Summary List documents
 // @Description List documents owned by the authenticated user
 // @Tags files
@@ -96,7 +96,7 @@ func (h *handler) GetDocument(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Router /files [get]
-func (h *handler) ListDocuments(c *gin.Context) {
+func (h *handler) ListDocument(c *gin.Context) {
 	// Get user info
 	userIDPtr := auditctx.GetUserID(c.Request.Context())
 	if userIDPtr == nil {

@@ -58,34 +58,33 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUI
 		return nil, ErrUnauthorizedAccess
 	}
 
-	baseURL, _ := s.cfg.GetBaseURL()
+	baseURL, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return nil, fmt.Errorf("get base URL: %w", err)
+	}
 	return doc.ToRsDocument(baseURL), nil
 }
 
 // ListDocuments lists documents for a user
 func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *RqListDocuments) (*util.RsList, error) {
+
 	docs, total, err := s.repo.FindByOwner(ctx, userID, filters)
 	if err != nil {
 		return nil, err
 	}
 
-	baseURL, _ := s.cfg.GetBaseURL()
+	baseURL, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return nil, fmt.Errorf("get base URL: %w", err)
+	}
+
 	rsDocs := make([]RsDocument, len(docs))
 	for i, doc := range docs {
 		rsDocs[i] = *doc.ToRsDocument(baseURL)
 	}
 
-	page := 1
-	if filters.Page > 0 {
-		page = filters.Page
-	}
-	limit := 20
-	if filters.Limit > 0 {
-		limit = filters.Limit
-	}
-
 	result := &util.RsList{}
-	result.MapToList(rsDocs, int(total), page, limit)
+	result.MapToList(rsDocs, int(total), *filters.filter.Offset, *filters.filter.Limit)
 	return result, nil
 }
 
@@ -96,92 +95,76 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 		return nil, err
 	}
 
-	// Check access permission
 	if doc.OwnerID != userID {
 		return nil, ErrUnauthorizedAccess
 	}
 
-	// Update fields
+	// Snapshot the state before mutation for the audit log.
+	beforeName := doc.OriginalName
+	beforeIsPublic := doc.IsPublic
+
 	if req.OriginalName != nil {
 		doc.OriginalName = upload.SanitizeFilename(*req.OriginalName)
 	}
-	if req.EntityType != nil {
-		doc.EntityType = req.EntityType
-	}
-	if req.EntityID != nil {
-		entityUUID, err := uuid.Parse(*req.EntityID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entity_id: %w", err)
-		}
-		doc.EntityID = &entityUUID
-	}
+
 	if req.IsPublic != nil {
 		doc.IsPublic = *req.IsPublic
 	}
+
 	var updated *Document
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		updated, err = s.repo.Update(ctx, doc, tx)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		var txErr error
+		updated, txErr = s.repo.Update(ctx, doc, tx)
+		return txErr
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
-	// Audit log
-	s.logFileUpdate(ctx, updated, userID)
+	s.logFileUpdate(ctx, updated, userID, map[string]interface{}{
+		"filename":  beforeName,
+		"is_public": beforeIsPublic,
+	})
 
-	baseURL, _ := s.cfg.GetBaseURL()
+	baseURL, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return nil, fmt.Errorf("get base URL: %w", err)
+	}
 	return updated.ToRsDocument(baseURL), nil
 }
 
 // DeleteDocument deletes a document
 func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-
 	var doc *Document
-	var err error
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		doc, err = s.repo.FindByID(ctx, id)
-		if err != nil {
-			return err
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var txErr error
+		doc, txErr = s.repo.FindByID(ctx, id)
+		if txErr != nil {
+			return txErr
 		}
 
-		// Check access permission
 		if doc.OwnerID != userID {
 			return ErrUnauthorizedAccess
 		}
 
-		// Soft delete in database
-		if err = s.repo.Delete(ctx, id, tx); err != nil {
-			return err
-		}
-
-		return nil
+		return s.repo.Delete(ctx, id, tx)
 	})
-
 	if err != nil {
 		return err
 	}
 
-	// Delete from storage (async to not block response)
 	go func() {
 		if err := s.storage.Delete(context.Background(), doc.ObjectKey); err != nil {
-			// Log error but don't fail the request
-			fmt.Printf("Failed to delete file from storage: %v\n", err)
+			fmt.Printf("[file service] failed to delete object %q from storage (document %s): %v — manual cleanup may be required\n",
+				doc.ObjectKey, doc.ID, err)
 		}
 	}()
 
-	// Audit log
 	s.logFileDelete(ctx, doc, userID)
-
 	return nil
 }
 
-// GeneratePresignedUploadURL generates a presigned URL for direct upload to R2
+// GeneratePresignedUploadURL generates a presigned URL for direct client upload to R2.
 func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGeneratePresignedUploadURL, ownerID uuid.UUID, ownerRole string, file multipart.File, header *multipart.FileHeader) (*RsPresignedUploadURL, error) {
 	presignedProvider, ok := s.storage.(upload.PresignedURLProvider)
 	if !ok {
@@ -190,24 +173,18 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 
 	objectKey := s.storage.GenerateObjectKey(ownerID, header.Filename)
 
-	// Default to 15 minutes if not specified; ExpiresIn is optional (*int)
 	expiresInSec := 900
 	if req.ExpiresIn != nil {
 		expiresInSec = *req.ExpiresIn
 	}
 	expiresIn := time.Duration(expiresInSec) * time.Second
 	mimeType := header.Header.Get("Content-Type")
+
 	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, mimeType, expiresIn)
 	if err != nil {
 		return nil, fmt.Errorf("generate presigned upload URL: %w", err)
 	}
 
-	_, checksum, err := s.storage.Upload(ctx, file, header, objectKey)
-	if err != nil {
-		return nil, fmt.Errorf("upload to storage: %w", err)
-	}
-
-	// Create pending document record
 	ext := upload.GetFileExtension(header.Filename)
 	doc := &Document{
 		OwnerID:      ownerID,
@@ -220,38 +197,29 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		SizeBytes:    header.Size,
 		Status:       StatusPending,
 		IsPublic:     false,
-		Checksum:     &checksum,
 	}
 
-	// Set entity information if provided
-	if req.EntityType != nil {
-		doc.EntityType = req.EntityType
-	}
-	if req.EntityID != nil {
-		entityUUID, err := uuid.Parse(*req.EntityID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid entity_id: %w", err)
-		}
-		doc.EntityID = &entityUUID
-	}
-
-	// Set upload expiration
 	expiresAt := time.Now().Add(expiresIn)
 	doc.UploadExpiresAt = &expiresAt
 
 	var created *Document
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Save to database
-		created, err = s.repo.Create(ctx, doc, tx)
-		if err != nil {
-			return fmt.Errorf("save document record: %w", err)
+		var txErr error
+		created, txErr = s.repo.Create(ctx, doc, tx)
+		if txErr != nil {
+			return fmt.Errorf("save document record: %w", txErr)
 		}
-
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
+	}
+
+	s.logFileUpload(ctx, created, ownerID)
+
+	_, err = s.cfg.GetBaseURL()
+	if err != nil {
+		return nil, fmt.Errorf("get base URL: %w", err)
 	}
 
 	return &RsPresignedUploadURL{
@@ -264,21 +232,12 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 
 // canAccessDocument checks if user can access a document
 func (s *service) canAccessDocument(doc *Document, userID uuid.UUID) bool {
-	// Owner can always access
 	if doc.OwnerID == userID {
 		return true
 	}
-
-	// Public documents can be accessed by anyone
 	if doc.IsPublic {
 		return true
 	}
-
-	// TODO: Add more complex permission logic
-	// - Check if user is part of the same entity
-	// - Check role-based permissions
-	// - Check shared access
-
 	return false
 }
 
@@ -324,19 +283,24 @@ func (s *service) logFileDownload(ctx context.Context, doc *Document, userID uui
 	})
 }
 
-func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.UUID) {
+func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.UUID, beforeState map[string]interface{}) {
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{
-		UserID:     &userIDStr,
-		Action:     auditctx.ActionFileUpdated,
-		Module:     auditctx.ModuleFile,
-		EntityType: lo.ToPtr(auditctx.EntityFile),
-		EntityID:   &docIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
+		UserID:      &userIDStr,
+		Action:      auditctx.ActionFileUpdated,
+		Module:      auditctx.ModuleFile,
+		EntityType:  lo.ToPtr(auditctx.EntityFile),
+		EntityID:    &docIDStr,
+		BeforeState: beforeState,
+		AfterState: map[string]interface{}{
+			"filename":  doc.OriginalName,
+			"is_public": doc.IsPublic,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
 	})
 }
 
@@ -352,7 +316,8 @@ func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.
 		EntityType: lo.ToPtr(auditctx.EntityFile),
 		EntityID:   &docIDStr,
 		BeforeState: map[string]interface{}{
-			"filename": doc.OriginalName,
+			"filename":   doc.OriginalName,
+			"object_key": doc.ObjectKey,
 		},
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,

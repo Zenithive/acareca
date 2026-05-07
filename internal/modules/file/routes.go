@@ -18,7 +18,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h Handler, authMiddleware gin.HandlerFu
 		// files.POST("/:id/confirm", h.ConfirmUpload)
 
 		// Document management
-		files.GET("", h.ListDocuments)
+		files.GET("", h.ListDocument)
 		files.GET("/:id", h.GetDocument)
 		// files.GET("/:id/download", h.DownloadFile)
 		files.PUT("/:id", h.UpdateDocument)

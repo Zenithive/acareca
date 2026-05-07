@@ -44,13 +44,11 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 			owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			entity_type, entity_id,
 			upload_expires_at, uploaded_at
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8,
 			$9, $10, $11,
-			$12, $13,
 			$14, $15
 		) RETURNING id, created_at, updated_at`
 
@@ -61,7 +59,6 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 		doc.OwnerID, doc.OwnerRole, doc.ObjectKey, doc.Bucket,
 		doc.OriginalName, doc.Extension, doc.MimeType, doc.SizeBytes,
 		doc.Checksum, doc.Status, doc.IsPublic,
-		doc.EntityType, doc.EntityID,
 		doc.UploadExpiresAt, doc.UploadedAt,
 	).Scan(&id, &createdAt, &updatedAt)
 
@@ -83,7 +80,6 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Document, err
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			entity_type, entity_id,
 			upload_expires_at, uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
@@ -108,7 +104,6 @@ func (r *repository) FindByObjectKey(ctx context.Context, objectKey string) (*Do
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			entity_type, entity_id,
 			upload_expires_at, uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
@@ -134,7 +129,6 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			entity_type, entity_id,
 			upload_expires_at, uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
@@ -146,24 +140,6 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 	argCount := 1
 
 	// Apply filters
-	if filters.EntityType != nil {
-		argCount++
-		query += fmt.Sprintf(" AND entity_type = $%d", argCount)
-		countQuery += fmt.Sprintf(" AND entity_type = $%d", argCount)
-		args = append(args, *filters.EntityType)
-	}
-
-	if filters.EntityID != nil {
-		entityUUID, err := uuid.Parse(*filters.EntityID)
-		if err != nil {
-			return nil, 0, fmt.Errorf("invalid entity_id: %w", err)
-		}
-		argCount++
-		query += fmt.Sprintf(" AND entity_id = $%d", argCount)
-		countQuery += fmt.Sprintf(" AND entity_id = $%d", argCount)
-		args = append(args, entityUUID)
-	}
-
 	if filters.Status != nil {
 		argCount++
 		query += fmt.Sprintf(" AND status = $%d", argCount)
@@ -177,33 +153,6 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 	if err != nil {
 		return nil, 0, fmt.Errorf("count documents: %w", err)
 	}
-
-	// Apply sorting — whitelist at repo level; value is interpolated into SQL.
-	allowedSort := map[string]bool{
-		"created_at": true, "updated_at": true, "size_bytes": true, "original_name": true,
-	}
-	sortColumn := "created_at"
-	if filters.Sort != "" && allowedSort[filters.Sort] {
-		sortColumn = filters.Sort
-	}
-	sortOrder := "DESC"
-	if filters.Order == "asc" {
-		sortOrder = "ASC"
-	}
-	query += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
-
-	// Apply pagination
-	page := 1
-	if filters.Page > 0 {
-		page = filters.Page
-	}
-	limit := 20
-	if filters.Limit > 0 {
-		limit = filters.Limit
-	}
-	offset := (page - 1) * limit
-
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 
 	// Execute query
 	var docs []Document
@@ -222,19 +171,15 @@ func (r *repository) Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 		SET 
 			original_name = $1,
 			extension = $2,
-			entity_type = $3,
-			entity_id = $4,
-			is_public = $5,
+			is_public = $3,
 			updated_at = NOW()
-		WHERE id = $6 AND deleted_at IS NULL
+		WHERE id = $4 AND deleted_at IS NULL
 		RETURNING updated_at`
 
 	var updatedAt time.Time
 	err := tx.QueryRowxContext(ctx, query,
 		doc.OriginalName,
 		doc.Extension,
-		doc.EntityType,
-		doc.EntityID,
 		doc.IsPublic,
 		doc.ID,
 	).Scan(&updatedAt)
@@ -321,7 +266,6 @@ func (r *repository) FindPendingUploads(ctx context.Context, limit int) ([]Docum
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			entity_type, entity_id,
 			upload_expires_at, uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
@@ -347,7 +291,6 @@ func (r *repository) FindExpiredPendingUploads(ctx context.Context, limit int) (
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			entity_type, entity_id,
 			upload_expires_at, uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
