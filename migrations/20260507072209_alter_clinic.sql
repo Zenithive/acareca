@@ -5,7 +5,7 @@ ALTER TABLE tbl_document
     DROP COLUMN IF EXISTS profile_picture,
     DROP COLUMN IF EXISTS entity_id;
 
-ALTER TABLE tbl_clinic ADD COLUMN document_id TEXT NULL;
+ALTER TABLE tbl_clinic ADD COLUMN IF NOT EXISTS document_id UUID NULL;
 -- +goose StatementEnd
 
 -- +goose Down
@@ -14,6 +14,6 @@ ALTER TABLE tbl_document
     ADD COLUMN IF NOT EXISTS entity_type VARCHAR(50),
     ADD COLUMN IF NOT EXISTS profile_picture TEXT,
     ADD COLUMN IF NOT EXISTS entity_id UUID;
-    
+
 ALTER TABLE tbl_clinic DROP COLUMN IF EXISTS document_id;
 -- +goose StatementEnd
