@@ -4,7 +4,7 @@ CREATE TABLE tbl_map_entry_document (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     form_entry_id UUID NOT NULL
-        REFERENCES tbl_form_entry(id)
+        REFERENCES tbl_form_entry(id),
     document_id UUID NOT NULL
         REFERENCES tbl_document(id),
 
