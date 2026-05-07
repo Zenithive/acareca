@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -140,7 +141,7 @@ func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID
 
 func (r *Repository) CountForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string) (int, error) {
 	var permissionClause string
-	
+
 	if role == "ACCOUNTANT" {
 		permissionClause = `AND (
 			f.clinic_id IN (
@@ -254,17 +255,58 @@ func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (
 	return &out, nil
 }
 
-// DeleteTx deletes a form detail within a transaction.
+// DeleteTx deletes a form and all its associated fields, entries, and values within a transaction.
 func (r *Repository) DeleteTx(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error {
-	query := `UPDATE tbl_form SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
-	res, err := tx.ExecContext(ctx, query, formID)
-	if err != nil {
-		return fmt.Errorf("delete form in transaction: %w", err)
+	now := time.Now()
+
+	// Delete Form Entry Values
+	valQuery := `
+		UPDATE tbl_form_entry_value 
+		SET deleted_at = $1 
+		WHERE entry_id IN (
+			SELECT id FROM tbl_form_entry 
+			WHERE form_version_id IN (SELECT id FROM tbl_custom_form_version WHERE form_id = $2)
+		)`
+	if _, err := tx.ExecContext(ctx, valQuery, now, formID); err != nil {
+		return fmt.Errorf("delete associated entry values: %w", err)
 	}
+
+	// Delete Form Entries
+	entryQuery := `
+		UPDATE tbl_form_entry 
+		SET deleted_at = $1 
+		WHERE form_version_id IN (SELECT id FROM tbl_custom_form_version WHERE form_id = $2)`
+	if _, err := tx.ExecContext(ctx, entryQuery, now, formID); err != nil {
+		return fmt.Errorf("delete associated entries: %w", err)
+	}
+
+	// Delete Form Fields
+	fieldQuery := `
+		UPDATE tbl_form_field 
+		SET deleted_at = $1 
+		WHERE form_version_id IN (SELECT id FROM tbl_custom_form_version WHERE form_id = $2)`
+	if _, err := tx.ExecContext(ctx, fieldQuery, now, formID); err != nil {
+		return fmt.Errorf("delete associated fields: %w", err)
+	}
+
+	// Delete Form Versions
+	versionQuery := `UPDATE tbl_custom_form_version SET deleted_at = $1 WHERE form_id = $2`
+	if _, err := tx.ExecContext(ctx, versionQuery, now, formID); err != nil {
+		return fmt.Errorf("delete associated versions: %w", err)
+	}
+
+	// Delete the Form
+	formQuery := `UPDATE tbl_form SET deleted_at = $1, updated_at = $1 WHERE id = $2 AND deleted_at IS NULL`
+	res, err := tx.ExecContext(ctx, formQuery, now, formID)
+	if err != nil {
+		return fmt.Errorf("delete form: %w", err)
+	}
+
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
+
 	return nil
 }
 

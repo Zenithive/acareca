@@ -24,7 +24,7 @@ import (
 
 type Service interface {
 	GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error)
-	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error)
+	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID) (interface{}, error)
 }
 
 type service struct {
@@ -87,21 +87,19 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		}
 	}
 
-	// Default to today if no date specified
-	asOfDate := time.Now().Format("2006-01-02")
-	if f.AsOfDate != nil && *f.AsOfDate != "" {
-		asOfDate = *f.AsOfDate
+	// Determine reporting range
+	startDate := ""
+	if f.StartDate != nil {
+		startDate = *f.StartDate
 	}
 
-	// Parse clinic ID if provided
-	var clinicID *uuid.UUID
-	if f.ClinicID != nil && *f.ClinicID != "" {
-		id, err := uuid.Parse(*f.ClinicID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid clinic_id: %w", err)
-		}
-		clinicID = &id
+	endDate := time.Now().Format("2006-01-02")
+	if f.EndDate != nil && *f.EndDate != "" {
+		endDate = *f.EndDate
 	}
+
+	f.StartDate = &startDate
+	f.EndDate = &endDate
 
 	// Get balance sheet accounts (assets, liabilities, other equity accounts)
 	rows, err := s.repo.GetBalanceSheet(ctx, targetPracIDs, f)
@@ -112,7 +110,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	// Get automatically calculated owner equity
 	var totalOwnerEquity equity.OwnerEquityCalculation
 	for _, pID := range targetPracIDs {
-		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, clinicID, asOfDate)
+		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, nil, startDate, endDate)
 		if err != nil {
 			return nil, fmt.Errorf("calculate owner equity: %w", err)
 		}
@@ -200,8 +198,13 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	// Total equity = calculated owner equity + other equity accounts
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
 
+	// Format dates for the response
+	displayStart := formatDateForDisplay(startDate)
+	displayEnd := formatDateForDisplay(endDate)
+
 	result := &RsBalanceSheet{
-		AsOfDate:                  asOfDate,
+		StartDate:                 displayStart,
+		EndDate:                   displayEnd,
 		Assets:                    assets,
 		TotalAssets:               totalAssets,
 		Liabilities:               liabilities,
@@ -228,7 +231,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		EntityID:   &actorIDStr,
 		AfterState: map[string]interface{}{
 			"report_type": "Balance Sheet",
-			"as_of_date":  asOfDate,
+			"start_date":  startDate,
+			"end_date":    endDate,
 		},
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
@@ -251,8 +255,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 					ActorType:      role,
 					EventType:      "balance_sheet.generated",
 					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s generated Balance Sheet as of %s", fullName, asOfDate),
-					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "as_of_date": asOfDate},
+					Description:    fmt.Sprintf("Accountant %s generated Balance Sheet for period of %s to %s", fullName, startDate, endDate),
+					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "start_date": startDate, "end_date": endDate},
 					CreatedAt:      time.Now(),
 				})
 			}
@@ -262,7 +266,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	return result, nil
 }
 
-func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error) {
+func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Balance Sheet"
 	f.NewSheet(sheet)
@@ -326,11 +330,23 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		},
 	})
 
+	var dateText string
+	start := data.StartDate
+	end := data.EndDate
+
+	if start != "" && end != "" {
+		dateText = fmt.Sprintf("For the period of: %s to %s", start, end)
+	} else if end != "" {
+		dateText = fmt.Sprintf("As of: %s", end)
+	} else if start != "" {
+		dateText = fmt.Sprintf("From: %s onwards", start)
+	}
+
 	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Balance Sheet")
 	f.MergeCell(sheet, "A1", "B1")
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
-	f.SetCellValue(sheet, "A2", fmt.Sprintf("As of Date: %s", data.AsOfDate))
+	f.SetCellValue(sheet, "A2", dateText)
 	f.SetCellStyle(sheet, "A2", "A2", styleItalic)
 
 	currentRow := 4
@@ -413,7 +429,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		EntityType: strPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
-		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "as_of_date": data.AsOfDate},
+		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
@@ -431,8 +447,8 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 				ActorType:      role,
 				EventType:      "balance_sheet.exported",
 				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s exported Balance Sheet (%s)", fullName, exportType),
-				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "as_of_date": data.AsOfDate},
+				Description:    fmt.Sprintf("Accountant %s exported Balance Sheet (%s) for period of %s to %s", fullName, exportType, data.StartDate, data.EndDate),
+				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
 				CreatedAt:      time.Now(),
 			})
 		}
@@ -494,12 +510,17 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 
 		classA, classB := "data-left", "data-grid"
 
+		// Check for any of the possible date header prefixes
+		isDateHeader := strings.HasPrefix(valA, "For the period") ||
+			strings.HasPrefix(valA, "As of") ||
+			strings.HasPrefix(valA, "From")
+
 		switch {
 		case rIdx == 0:
 			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='header-blue'>%s</td></tr>", valA))
 			continue
 
-		case strings.HasPrefix(valA, "As of Date"):
+		case isDateHeader:
 			b.WriteString(fmt.Sprintf("<tr><td colspan='2' style='border:none;font-style:italic;'>%s</td></tr>", valA))
 			continue
 
@@ -561,3 +582,16 @@ func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid
 
 // Helper function for audit logging
 func strPtr(s string) *string { return &s }
+
+func formatDateForDisplay(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+	// Parse the database format
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr // Return original if parsing fails to avoid losing data
+	}
+	// Return the display format
+	return t.Format("02-01-2006")
+}
