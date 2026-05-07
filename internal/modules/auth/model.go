@@ -4,16 +4,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 )
 
 type User struct {
-	ID        uuid.UUID  `db:"id"`
-	Email     string     `db:"email"`
-	Password  *string    `db:"password"`
-	FirstName string     `db:"first_name"`
-	LastName  string     `db:"last_name"`
-	Phone     *string    `db:"phone"`
-	Role      string     `db:"role"`
+	ID        uuid.UUID `db:"id"`
+	Email     string    `db:"email"`
+	Password  *string   `db:"password"`
+	FirstName string    `db:"first_name"`
+	LastName  string    `db:"last_name"`
+	Phone     *string   `db:"phone"`
+	Role      string    `db:"role"`
+
+	Document  *file.Document
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
@@ -44,19 +47,21 @@ type Session struct {
 }
 
 type RqUser struct {
-	Email     string  `json:"email"      validate:"required,email"`
-	Password  string  `json:"password"   validate:"required,min=8"`
-	FirstName string  `json:"first_name" validate:"required"`
-	LastName  string  `json:"last_name"  validate:"required"`
-	Phone     *string `json:"phone"      validate:"omitempty,e164"`
+	Email      string  `json:"email"      validate:"required,email"`
+	Password   string  `json:"password"   validate:"required,min=8"`
+	FirstName  string  `json:"first_name" validate:"required"`
+	LastName   string  `json:"last_name"  validate:"required"`
+	Phone      *string `json:"phone"      validate:"omitempty,e164"`
+	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
 type RqUpdateUser struct {
-	Email     *string `json:"email"      validate:"omitempty,email"`
-	FirstName *string `json:"first_name" validate:"omitempty"`
-	LastName  *string `json:"last_name"  validate:"omitempty"`
-	Phone     *string `json:"phone"      validate:"omitempty,e164"`
-	ABN       *string `json:"abn"        validate:"omitempty"`
+	Email      *string `json:"email"      validate:"omitempty,email"`
+	FirstName  *string `json:"first_name" validate:"omitempty"`
+	LastName   *string `json:"last_name"  validate:"omitempty"`
+	Phone      *string `json:"phone"      validate:"omitempty,e164"`
+	ABN        *string `json:"abn"        validate:"omitempty"`
+	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
 func (r *RqUser) ToDBModel() *User {
@@ -65,6 +70,7 @@ func (r *RqUser) ToDBModel() *User {
 		FirstName: r.FirstName,
 		LastName:  r.LastName,
 		Phone:     r.Phone,
+		Document:  r.ToDBModel().Document,
 	}
 }
 
@@ -99,12 +105,24 @@ type RsUser struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
+	Document *file.RsDocument `json:"document"`
+
 	// Role-specific fields (populated based on role)
 	ABN       *string `json:"abn,omitempty"`
 	LicenseNo *string `json:"license_no,omitempty"`
 }
 
 func (u *User) ToRsUser() *RsUser {
+	var doc *file.RsDocument
+	if u.Document != nil {
+		doc = &file.RsDocument{
+			ID:           u.Document.ID,
+			OriginalName: u.Document.OriginalName,
+			FileKey:      u.Document.ObjectKey,
+			UploadedAt:   u.Document.UploadedAt,
+			CreatedAt:    u.Document.CreatedAt,
+		}
+	}
 	return &RsUser{
 		ID:        u.ID,
 		Email:     u.Email,
@@ -112,6 +130,7 @@ func (u *User) ToRsUser() *RsUser {
 		LastName:  u.LastName,
 		Phone:     u.Phone,
 		Role:      u.Role,
+		Document:  doc,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
 	}

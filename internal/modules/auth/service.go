@@ -19,6 +19,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -68,9 +69,10 @@ type service struct {
 	accountantSvc    accountant.IService
 	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
+	fileRepo         filemod.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -92,7 +94,9 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		practitionerRepo: practitionerRepo,
 		accountantSvc:    accountantSvc,
 		adminSvc:         adminSvc,
-		inviteRepo:       inviteRepo}
+		inviteRepo:       inviteRepo,
+		fileRepo:         fileRepo,
+	}
 }
 
 func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
@@ -673,6 +677,12 @@ func (s *service) GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, er
 		return nil, err
 	}
 
+	doc, err := s.repo.GetDocumentByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	user.Document = doc
+
 	rs := user.ToRsUser()
 
 	switch user.Role {
@@ -717,7 +727,20 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		user.LastName = *req.LastName
 	}
 	if req.Phone != nil {
-		user.Phone = req.Phone // Phone is *string in User model, so no dereference needed
+		user.Phone = req.Phone
+	}
+
+	// Resolve document if provided
+	if req.DocumentId != nil {
+		if *req.DocumentId == "" {
+			user.Document = nil
+		} else {
+			docID, parseErr := uuid.Parse(*req.DocumentId)
+			if parseErr == nil {
+				doc, _ := s.fileRepo.FindByID(ctx, docID)
+				user.Document = doc
+			}
+		}
 	}
 
 	updated, err := s.repo.UpdateUser(ctx, user, nil)
