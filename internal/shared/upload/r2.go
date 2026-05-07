@@ -24,6 +24,8 @@ type R2StorageProvider struct {
 	bucket    string
 	publicURL string
 	config    config.Config
+	creds     *credentials.Credentials
+	endpoint  string
 }
 
 func NewR2StorageProvider(cfg *config.Config) (*R2StorageProvider, error) {
@@ -31,11 +33,13 @@ func NewR2StorageProvider(cfg *config.Config) (*R2StorageProvider, error) {
 	// R2 endpoint format: https://<account_id>.r2.cloudflarestorage.com
 	endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.R2AccountID)
 
+	creds := credentials.NewStaticCredentials(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, "")
+
 	// Create AWS session for R2
 	sess, err := session.NewSession(&aws.Config{
 		Region:           aws.String("auto"),
 		Endpoint:         aws.String(endpoint),
-		Credentials:      credentials.NewStaticCredentials(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, ""),
+		Credentials:      creds,
 		S3ForcePathStyle: aws.Bool(true),
 	})
 	if err != nil {
@@ -46,6 +50,8 @@ func NewR2StorageProvider(cfg *config.Config) (*R2StorageProvider, error) {
 		client:    s3.New(sess),
 		bucket:    cfg.R2BucketName,
 		publicURL: cfg.R2PublicURL,
+		creds:     creds,
+		endpoint:  endpoint,
 	}, nil
 }
 
@@ -126,13 +132,26 @@ func (p *R2StorageProvider) GeneratePresignedURL(objectKey string, expiresIn tim
 	return url, nil
 }
 
-// GeneratePresignedUploadURL generates a presigned URL for direct upload
+// GeneratePresignedUploadURL generates a presigned URL for direct client upload to R2.
+//
+// R2 requires x-amz-content-sha256=UNSIGNED-PAYLOAD to be present as a signed
+// query parameter. The AWS SDK does not add it automatically for presigned PUT
+// requests, so we inject it into the request's query string *before* calling
+// req.Presign() so it is included in the string-to-sign and therefore part of
+// the final signature. Setting it as a header after presigning does not work
+// because headers are not transmitted by the client in a direct presigned upload.
 func (p *R2StorageProvider) GeneratePresignedUploadURL(objectKey string, contentType string, expiresIn time.Duration) (string, error) {
 	req, _ := p.client.PutObjectRequest(&s3.PutObjectInput{
 		Bucket:      aws.String(p.bucket),
 		Key:         aws.String(objectKey),
 		ContentType: aws.String(contentType),
 	})
+
+	// Inject x-amz-content-sha256 into the query string before signing so
+	// R2 receives it as a signed parameter in the presigned URL.
+	q := req.HTTPRequest.URL.Query()
+	q.Set("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+	req.HTTPRequest.URL.RawQuery = q.Encode()
 
 	url, err := req.Presign(expiresIn)
 	if err != nil {

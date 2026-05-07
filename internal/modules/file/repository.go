@@ -49,7 +49,7 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 			$1, $2, $3, $4,
 			$5, $6, $7, $8,
 			$9, $10, $11,
-			$14, $15
+			$12, $13
 		) RETURNING id, created_at, updated_at`
 
 	var id uuid.UUID

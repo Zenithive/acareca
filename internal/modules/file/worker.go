@@ -143,6 +143,11 @@ func (w *UploadWorker) verifyAndUpdate(ctx context.Context, doc Document, presig
 		}
 		log.Printf("[file worker] document %s marked as uploaded (key: %s)", docCopy.ID, docCopy.ObjectKey)
 	} else {
+		// Only fail if the presigned URL has expired — still within window means client hasn't uploaded yet
+		if docCopy.UploadExpiresAt != nil && time.Now().Before(*docCopy.UploadExpiresAt) {
+			log.Printf("[file worker] document %s not yet uploaded, presign expires at %v — skipping", docCopy.ID, docCopy.UploadExpiresAt)
+			return nil
+		}
 		if err := w.repo.UpdateStatus(ctx, docCopy.ID, StatusFailed, &docCopy, nil); err != nil {
 			return fmt.Errorf("mark document %s as failed: %w", docCopy.ID, err)
 		}
