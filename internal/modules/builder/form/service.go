@@ -604,13 +604,13 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Delete the Form
-		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
+		// Delete associated permissions for this Form
+		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
 			return err
 		}
 
-		// Delete associated permissions for this Form
-		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
+		// Delete the Form
+		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
 			return err
 		}
 
