@@ -96,6 +96,7 @@ type RqLiveCalculate struct {
 type RsLiveCalculate struct {
 	FormVersionID  uuid.UUID              `json:"form_version_id"`
 	ComputedFields []RsComputedFieldValue `json:"computed_fields"`
+	Formulas       []formula.RsFormula    `json:"formulas"`
 }
 
 type RsCoaEntry struct {
