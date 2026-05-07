@@ -36,8 +36,8 @@ func NewHandler(svc Service, invitationSvc invitation.Service) Handler {
 // @Tags Balance Sheet
 // @Accept json
 // @Produce json
-// @Param clinic_id query string false "Filter by clinic UUID"
-// @Param as_of_date query string false "Balance as of date (YYYY-MM-DD), defaults to today"
+// @Param start_date query string false "Start Date (YYYY-MM-DD)"
+// @Param end_date query string false "End Date (YYYY-MM-DD)"
 // @Success 200 {object} RsBalanceSheet
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -71,10 +71,10 @@ func (h *handler) GetBalanceSheet(c *gin.Context) {
 // @Description  Generates and downloads a Balance Sheet report. Accountants can export data for linked practitioners.
 // @Tags         Balance Sheet
 // @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
-// @Param        practitioner_id  query    string  false  "Practitioner UUID (Required for Accountants to filter)"
-// @Param        clinic_id        query    string  false  "Clinic UUID"
-// @Param        as_of_date       query    string  false  "Balance as of date (YYYY-MM-DD), defaults to today"
-// @Param        export_type 	  query    string  true   "Export Type: pdf | excel"
+// @Param        practitioner_id  query  string   false  "Practitioner UUID (Required for Accountants to filter)"
+// @Param        start_date       query  string   false  "Start Date (YYYY-MM-DD)"
+// @Param        end_date         query  string   false  "End Date (YYYY-MM-DD)"
+// @Param        export_type 	  query  string   true   "Export Type: pdf | excel"
 // @Success      200              {file}   binary  "Balance_Sheet_2026-04-30.xlsx"
 // @Failure      400              {object} response.RsError
 // @Failure      401              {object} response.RsError
@@ -118,13 +118,7 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		}
 	}
 
-	// 2. Generate Export (Excel or PDF HTML)
-	clinicIDParam := ""
-	if f.ClinicID != nil {
-		clinicIDParam = *f.ClinicID
-	}
-
-	exportedFile, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, clinicIDParam)
+	exportedFile, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

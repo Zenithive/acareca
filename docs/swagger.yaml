@@ -441,6 +441,8 @@ definitions:
         type: number
       total_active_subscriptions:
         type: integer
+      total_inactive_subscriptions:
+        type: integer
     type: object
   analytics.RsUserGrowth:
     properties:
@@ -805,14 +807,14 @@ definitions:
     type: object
   bs.RsBalanceSheet:
     properties:
-      as_of_date:
-        type: string
       assets:
         items:
           $ref: '#/definitions/bs.RsAccount'
         type: array
       current_year_profit:
         type: number
+      end_date:
+        type: string
       equity:
         items:
           $ref: '#/definitions/bs.RsAccount'
@@ -821,6 +823,8 @@ definitions:
         items:
           $ref: '#/definitions/bs.RsAccount'
         type: array
+      start_date:
+        type: string
       total_assets:
         type: number
       total_equity:
@@ -1162,6 +1166,8 @@ definitions:
         type: array
       description:
         type: string
+      image_url:
+        type: string
       is_active:
         type: boolean
       name:
@@ -1203,6 +1209,8 @@ definitions:
       financial_year_id:
         type: string
       id:
+        type: string
+      image_url:
         type: string
       is_active:
         type: boolean
@@ -1391,29 +1399,23 @@ definitions:
     type: object
   equity.OwnerEquityCalculation:
     properties:
-      as_of_date:
-        type: string
       current_year_profit:
-        description: This year's profit
         type: number
       drawings:
-        description: Current year withdrawals
         type: number
+      end_date:
+        type: string
       equity_movements:
-        allOf:
-        - $ref: '#/definitions/equity.EquityMovements'
-        description: Detailed breakdown
+        $ref: '#/definitions/equity.EquityMovements'
       funds_introduced:
-        description: Current year contributions
         type: number
       retained_earnings:
-        description: Prior years' profits
         type: number
       share_capital:
-        description: Opening capital
         type: number
+      start_date:
+        type: string
       total_equity:
-        description: Sum of all
         type: number
     type: object
   field.RqCreateField:
@@ -1492,6 +1494,127 @@ definitions:
         type: string
     required:
     - id
+    type: object
+  file.RqGeneratePresignedUploadURL:
+    properties:
+      entity_id:
+        type: string
+      entity_type:
+        enum:
+        - practitioner
+        - accountant
+        - admin
+        - clinic
+        - transaction
+        - invoice
+        - report
+        - user
+        - business
+        - form
+        - form_entry
+        type: string
+      expires_in:
+        maximum: 3600
+        minimum: 60
+        type: integer
+    type: object
+  file.RqUpdateDocument:
+    properties:
+      entity_id:
+        type: string
+      entity_type:
+        enum:
+        - practitioner
+        - accountant
+        - admin
+        - clinic
+        - transaction
+        - invoice
+        - report
+        - user
+        - business
+        - form
+        - form_entry
+        type: string
+      is_public:
+        type: boolean
+      original_name:
+        type: string
+    type: object
+  file.RsDocument:
+    properties:
+      created_at:
+        type: string
+      download_url:
+        type: string
+      entity_id:
+        type: string
+      entity_type:
+        type: string
+      extension:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      mime_type:
+        type: string
+      original_name:
+        type: string
+      size_bytes:
+        type: integer
+      status:
+        type: string
+      uploaded_at:
+        type: string
+    type: object
+  file.RsListDocuments:
+    properties:
+      documents:
+        items:
+          $ref: '#/definitions/file.RsDocument'
+        type: array
+      pagination:
+        $ref: '#/definitions/file.RsPaginationMeta'
+    type: object
+  file.RsPaginationMeta:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  file.RsPresignedUploadURL:
+    properties:
+      document_id:
+        type: string
+      expires_at:
+        type: string
+      object_key:
+        type: string
+      upload_url:
+        type: string
+    type: object
+  file.RsUploadDocument:
+    properties:
+      created_at:
+        type: string
+      download_url:
+        type: string
+      id:
+        type: string
+      mime_type:
+        type: string
+      original_name:
+        type: string
+      size_bytes:
+        type: integer
+      status:
+        type: string
     type: object
   form.ExpenseItem:
     properties:
@@ -3639,9 +3762,13 @@ paths:
         in: query
         name: clinic_id
         type: string
-      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+      - description: Start date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
         type: string
       produces:
       - application/json
@@ -3676,9 +3803,13 @@ paths:
         in: query
         name: clinic_id
         type: string
-      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+      - description: Start date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
         type: string
       produces:
       - application/json
@@ -3712,9 +3843,13 @@ paths:
         in: query
         name: clinic_id
         type: string
-      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+      - description: Start date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
         type: string
       produces:
       - application/json
@@ -4086,13 +4221,13 @@ paths:
       description: Get balance sheet showing assets, liabilities, and equity (including
         owner fund accounts)
       parameters:
-      - description: Filter by clinic UUID
+      - description: Start Date (YYYY-MM-DD)
         in: query
-        name: clinic_id
+        name: start_date
         type: string
-      - description: Balance as of date (YYYY-MM-DD), defaults to today
+      - description: End Date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: end_date
         type: string
       produces:
       - application/json
@@ -4127,13 +4262,13 @@ paths:
         in: query
         name: practitioner_id
         type: string
-      - description: Clinic UUID
+      - description: Start Date (YYYY-MM-DD)
         in: query
-        name: clinic_id
+        name: start_date
         type: string
-      - description: Balance as of date (YYYY-MM-DD), defaults to today
+      - description: End Date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: end_date
         type: string
       - description: 'Export Type: pdf | excel'
         in: query
@@ -5754,6 +5889,422 @@ paths:
       summary: Create a new form entry
       tags:
       - entry
+  /files:
+    get:
+      description: List documents owned by the authenticated user
+      parameters:
+      - description: Filter by entity type
+        in: query
+        name: entity_type
+        type: string
+      - description: Filter by entity ID
+        in: query
+        name: entity_id
+        type: string
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - default: created_at
+        description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: desc
+        description: Sort order (asc/desc)
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsListDocuments'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List documents
+      tags:
+      - files
+  /files/{id}:
+    delete:
+      description: Soft delete a document
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a document
+      tags:
+      - files
+    get:
+      description: Get metadata for a specific document
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsDocument'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get document metadata
+      tags:
+      - files
+    put:
+      consumes:
+      - application/json
+      description: Update metadata for a specific document
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/file.RqUpdateDocument'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsDocument'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update document metadata
+      tags:
+      - files
+  /files/{id}/confirm:
+    post:
+      description: Confirm that a file was successfully uploaded via presigned URL
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Confirm file upload
+      tags:
+      - files
+  /files/{id}/download:
+    get:
+      description: Download a file by ID
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Temporary access token
+        in: query
+        name: token
+        type: string
+      - description: Display inline in browser
+        in: query
+        name: inline
+        type: boolean
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Download a file
+      tags:
+      - files
+  /files/entity/{entity_type}/{entity_id}:
+    get:
+      description: List documents associated with a specific entity
+      parameters:
+      - description: Entity type
+        in: path
+        name: entity_type
+        required: true
+        type: string
+      - description: Entity ID (UUID)
+        in: path
+        name: entity_id
+        required: true
+        type: string
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsListDocuments'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List documents by entity
+      tags:
+      - files
+  /files/presigned-upload:
+    post:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for direct upload to R2 storage
+      parameters:
+      - description: Presigned URL parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/file.RqGeneratePresignedUploadURL'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsPresignedUploadURL'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Generate presigned upload URL
+      tags:
+      - files
+  /files/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a single file with optional entity association
+      parameters:
+      - description: File to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Entity type (practitioner, clinic, transaction, etc.)
+        in: formData
+        name: entity_type
+        type: string
+      - description: Entity ID (UUID)
+        in: formData
+        name: entity_id
+        type: string
+      - description: Make file publicly accessible
+        in: formData
+        name: is_public
+        type: boolean
+      - description: File description
+        in: formData
+        name: description
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsUploadDocument'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Upload a file
+      tags:
+      - files
   /form:
     get:
       description: List all forms belonging to the practitioner's clinics. Optionally
