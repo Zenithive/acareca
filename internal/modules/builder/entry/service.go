@@ -93,24 +93,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		return nil, err
 	}
 
-	// // Resolve the FormID to check permissions
-	// version, err := s.versionSvc.GetByID(ctx, formVersionID)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("invalid version: %w", err)
-	// }
-
-	// // PERMISSION CHECK (Accountant Only)
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, version.FormId)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	// Must have 'create' or 'all'
-	// 	if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
-	// 		return nil, errors.New("Access denied: you do not have permission to create entries for this form")
-	// 	}
-	// }
-
 	status := EntryStatusDraft
 	if req.Status != "" {
 		status = req.Status
@@ -136,6 +118,25 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	if err := s.repo.Create(ctx, e, values); err != nil {
 		return nil, err
 	}
+
+	// Link documents if provided
+	if req.Documents != nil && len(req.Documents.Create) > 0 {
+		docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid document id: %w", parseErr)
+		}
+		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
+		}
+		if linkErr := s.repo.LinkDocuments(ctx, tx, e.ID, docIDs); linkErr != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("link documents: %w", linkErr)
+		}
+		if txErr = tx.Commit(); txErr != nil {
+			return nil, fmt.Errorf("commit document links: %w", txErr)
+		}
+	}
 	created, vals, err := s.repo.GetByID(ctx, e.ID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch entry after create: %w", err)
@@ -144,6 +145,15 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	result := created.ToRs(vals)
 	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
+
+	// Attach documents
+	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, e.ID)
+	if docErr == nil && docs != nil {
+		result.Documents = make([]RsEntryDocument, 0, len(docs))
+		for _, d := range docs {
+			result.Documents = append(result.Documents, *d)
+		}
+	}
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -182,41 +192,20 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	if err != nil {
 		return nil, err
 	}
-	// Resolve the Form ID via Version ID
-	// formVersion, err := s.versionSvc.GetByID(ctx, e.FormVersionID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	// First, check if there's a specific permission for this ENTRY ID
-	// 	entryPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("auth error: %w", err)
-	// 	}
-
-	// 	// Fallback: If no entry perms, check the PARENT FORM permissions
-	// 	if entryPerms == nil {
-	// 		formPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formVersion.FormId)
-	// 		if err != nil {
-	// 			return nil, fmt.Errorf("auth error: %w", err)
-	// 		}
-
-	// 		// If no form perms either, block access entirely
-	// 		if formPerms == nil || (!formPerms.HasAccess("read") && !formPerms.HasAccess("all")) {
-	// 			return nil, errors.New("Access denied: no permission found for this entry or its parent form")
-	// 		}
-	// 		// SUCCESS: No specific entry perms, but has form-level read access. Allow read-only access.
-	// 	} else {
-	// 		// SUCCESS: Found specific Entry perms. Check for read access.
-	// 		if !entryPerms.HasAccess("read") && !entryPerms.HasAccess("all") {
-	// 			return nil, errors.New("Access denied: you do not have permission to view this entry")
-	// 		}
-	// 	}
-	// }
 
 	rs := e.ToRs(values)
 	s.attachFieldMetadata(ctx, rs)
 	s.attachICCalculation(ctx, rs)
+
+	// Attach documents
+	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
+	if docErr == nil && docs != nil {
+		rs.Documents = make([]RsEntryDocument, 0, len(docs))
+		for _, d := range docs {
+			rs.Documents = append(rs.Documents, *d)
+		}
+	}
+
 	return rs, nil
 }
 
@@ -264,6 +253,37 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if err := s.repo.Update(ctx, existing, valuesToUpdate); err != nil {
 		return nil, err
 	}
+
+	// Handle document create/delete ops
+	if req.Documents != nil {
+		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		if len(req.Documents.Create) > 0 {
+			docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid document id in create: %w", parseErr)
+			}
+			if linkErr := s.repo.LinkDocuments(ctx, tx, id, docIDs); linkErr != nil {
+				return nil, fmt.Errorf("link documents: %w", linkErr)
+			}
+		}
+		if len(req.Documents.Delete) > 0 {
+			docIDs, parseErr := util.ParseUUIDs(req.Documents.Delete)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid document id in delete: %w", parseErr)
+			}
+			if unlinkErr := s.repo.UnlinkDocuments(ctx, tx, id, docIDs); unlinkErr != nil {
+				return nil, fmt.Errorf("unlink documents: %w", unlinkErr)
+			}
+		}
+		if txErr = tx.Commit(); txErr != nil {
+			return nil, fmt.Errorf("commit document ops: %w", txErr)
+		}
+	}
 	updated, vals, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("fetch entry after update: %w", err)
@@ -272,6 +292,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	result := updated.ToRs(vals)
 	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
+
+	// Attach documents
+	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
+	if docErr == nil && docs != nil {
+		result.Documents = make([]RsEntryDocument, 0, len(docs))
+		for _, d := range docs {
+			result.Documents = append(result.Documents, *d)
+		}
+	}
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -307,7 +336,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 
 // Delete implements [IService].
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	// Permission checks are handled by middleware
 
 	// Get entry details before deletion for audit log
 	existing, values, err := s.repo.GetByID(ctx, id)
@@ -320,16 +348,6 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
 		return err
 	}
-
-	// PERMISSION CHECK (Accountant Only)
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-
-	// 	// Must have 'delete' OR 'all'
-	// 	if entryPerms == nil || (!entryPerms.HasAccess("delete") && !entryPerms.HasAccess("all")) {
-	// 		return errors.New("Access denied: you do not have permission to delete this entry")
-	// 	}
-	// }
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -629,7 +647,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		// Merge section totals into keyValues
 		maps.Copy(keyValues, sectionTotals)
 
-		// CRITICAL FIX: Add computed fields with tax types to taxTypeByKey
 		// This ensures the formula feedback mechanism uses GROSS values for dependent formulas
 		for _, f := range allFields {
 			if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
@@ -679,7 +696,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				continue
 			}
 
-			// CRITICAL FIX: Formula already returns NET amount
 			// We should NOT re-extract net from it
 			netBase := val
 			grossTotal := val
