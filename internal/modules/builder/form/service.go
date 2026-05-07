@@ -604,13 +604,13 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Delete the Form
-		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
+		// Delete associated permissions for this Form
+		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
 			return err
 		}
 
-		// Delete associated permissions for this Form
-		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
+		// Delete the Form
+		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
 			return err
 		}
 
@@ -771,7 +771,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine financial year: %w", err)
+		return nil, fmt.Errorf("the date %s does not fall within an active financial year", expenseDate.Format("02-01-2006"))
 	}
 
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
@@ -956,7 +956,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine financial year: %w", err)
+		return nil, fmt.Errorf("the date %s does not fall within an active financial year", expenseDate.Format("02-01-2006"))
 	}
 
 	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)

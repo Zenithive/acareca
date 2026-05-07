@@ -123,7 +123,6 @@ func (r *repository) GetUserGrowth(ctx context.Context, startDate, endDate time.
 
 // GetSubscriptionMetrics retrieves subscription distribution and MRR
 func (r *repository) GetSubscriptionMetrics(ctx context.Context) (*RsSubscriptionMetrics, error) {
-	// Single query: active totals + MRR + churn in one shot
 	query := `
 		WITH active AS (
 			SELECT ps.id, s.price, s.duration_days
@@ -140,25 +139,30 @@ func (r *repository) GetSubscriptionMetrics(ctx context.Context) (*RsSubscriptio
 		)
 		SELECT
 			(SELECT COUNT(*) FROM active) AS total_active,
+			(SELECT COUNT(*) FROM tbl_practitioner_subscription WHERE status IN ('INACTIVE') AND deleted_at IS NULL) AS total_inactive,
 			(SELECT COALESCE(SUM(price / NULLIF(duration_days,0) * 30), 0) FROM active) AS mrr,
 			CASE WHEN c.active_30_ago > 0 THEN (c.churned_30::float / c.active_30_ago::float) * 100 ELSE 0 END AS churn_rate
 		FROM churn c
 	`
 	var row struct {
-		TotalActive int     `db:"total_active"`
-		MRR         float64 `db:"mrr"`
-		ChurnRate   float64 `db:"churn_rate"`
+		TotalActive   int     `db:"total_active"`
+		TotalInactive int     `db:"total_inactive"`
+		MRR           float64 `db:"mrr"`
+		ChurnRate     float64 `db:"churn_rate"`
 	}
+
 	if err := r.db.QueryRowxContext(ctx, query).StructScan(&row); err != nil {
 		return nil, fmt.Errorf("get subscription metrics: %w", err)
 	}
 
 	result := RsSubscriptionMetrics{
-		TotalActiveSubscriptions: row.TotalActive,
-		MRR:                      row.MRR,
-		ARR:                      row.MRR * 12,
-		ChurnRate:                row.ChurnRate,
+		TotalActiveSubscriptions:   row.TotalActive,
+		TotalInactiveSubscriptions: row.TotalInactive,
+		MRR:                        row.MRR,
+		ARR:                        row.MRR * 12,
+		ChurnRate:                  row.ChurnRate,
 	}
+
 	if row.TotalActive > 0 {
 		result.ARPU = row.MRR / float64(row.TotalActive)
 	}

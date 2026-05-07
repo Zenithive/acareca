@@ -612,8 +612,8 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		"coa_id":          "coa.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "ev.created_at",
-		"end_date":        "ev.created_at",
+		"start_date":      "e.date",
+		"end_date":        "e.date",
 	}
 
 	base := `
@@ -711,8 +711,8 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 		"coa_id":          "coa.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "ev.created_at",
-		"end_date":        "ev.created_at",
+		"start_date":      "e.date",
+		"end_date":        "e.date",
 	}
 
 	base := `
@@ -775,8 +775,8 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		"form_id":         "fm.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "ev.created_at",
-		"end_date":        "ev.created_at",
+		"start_date":      "e.date",
+		"end_date":        "e.date",
 		"created_at":      "ev.created_at",
 	}
 
@@ -915,8 +915,8 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 		"form_id":         "fm.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "ev.created_at",
-		"end_date":        "ev.created_at",
+		"start_date":      "e.date",
+		"end_date":        "e.date",
 		"created_at":      "ev.created_at",
 	}
 

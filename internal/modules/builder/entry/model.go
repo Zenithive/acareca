@@ -215,10 +215,8 @@ type TransactionFilter struct {
 	FormID         *string `form:"form_id"`
 	CoaID          *string `form:"coa_id"`
 	TaxTypeID      *int16  `form:"tax_type_id"`
-	DateFrom       *string `form:"date_from"`
-	DateTo         *string `form:"date_to"`
-	StartDate      *string `form:"start_date"` // Alias for date_from (used by COA entries endpoints)
-	EndDate        *string `form:"end_date"`   // Alias for date_to (used by COA entries endpoints)
+	StartDate      *string `form:"start_date"`
+	EndDate        *string `form:"end_date"`
 	VersionID      *string `form:"version_id"`
 	Status         *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
 	Role           string  `form:"-"`
@@ -261,22 +259,13 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 		filters["status"] = *f.Status
 	}
 
-	dateFrom := f.DateFrom
 	if f.StartDate != nil && *f.StartDate != "" {
-		dateFrom = f.StartDate
+		filters["start_date"] = *f.StartDate
+		operators["start_date"] = common.OpGte
 	}
-	if dateFrom != nil && *dateFrom != "" {
-		filters["start_date"] = *dateFrom
-		operators["start_date"] = common.OpGt
-	}
-
-	dateTo := f.DateTo
 	if f.EndDate != nil && *f.EndDate != "" {
-		dateTo = f.EndDate
-	}
-	if dateTo != nil && *dateTo != "" {
-		filters["end_date"] = *dateTo
-		operators["end_date"] = common.OpLt
+		filters["end_date"] = *f.EndDate
+		operators["end_date"] = common.OpLte
 	}
 
 	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset, f.SortBy, f.OrderBy)

@@ -25,8 +25,9 @@ func NewHandler(svc Service) Handler {
 }
 
 type EquityFilter struct {
-	ClinicID *string `form:"clinic_id"`
-	AsOfDate *string `form:"as_of_date"`
+	ClinicID  *string `form:"clinic_id"`
+	StartDate *string `form:"start_date"`
+	EndDate   *string `form:"end_date"`
 }
 
 // GetOwnerEquityCalculation godoc
@@ -36,7 +37,8 @@ type EquityFilter struct {
 // @Accept json
 // @Produce json
 // @Param clinic_id query string false "Filter by clinic UUID"
-// @Param as_of_date query string false "Calculate as of date (YYYY-MM-DD), defaults to today"
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
 // @Success 200 {object} OwnerEquityCalculation
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -55,10 +57,15 @@ func (h *handler) GetOwnerEquityCalculation(c *gin.Context) {
 		return
 	}
 
-	// Default to today if no date specified
-	asOfDate := time.Now().Format("2006-01-02")
-	if filter.AsOfDate != nil && *filter.AsOfDate != "" {
-		asOfDate = *filter.AsOfDate
+	// Range Logic
+	startDate := ""
+	if filter.StartDate != nil {
+		startDate = *filter.StartDate
+	}
+
+	endDate := time.Now().Format("2006-01-02")
+	if filter.EndDate != nil && *filter.EndDate != "" {
+		endDate = *filter.EndDate
 	}
 
 	// Parse clinic ID if provided
@@ -72,7 +79,7 @@ func (h *handler) GetOwnerEquityCalculation(c *gin.Context) {
 		clinicID = &id
 	}
 
-	result, err := h.svc.CalculateOwnerEquity(c.Request.Context(), practitionerID.(uuid.UUID), clinicID, asOfDate)
+	result, err := h.svc.CalculateOwnerEquity(c.Request.Context(), practitionerID.(uuid.UUID), clinicID, startDate, endDate)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -88,7 +95,8 @@ func (h *handler) GetOwnerEquityCalculation(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param clinic_id query string false "Filter by clinic UUID"
-// @Param as_of_date query string false "Calculate as of date (YYYY-MM-DD), defaults to today"
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
 // @Success 200 {object} map[string]float64
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -107,10 +115,9 @@ func (h *handler) GetRetainedEarnings(c *gin.Context) {
 		return
 	}
 
-	// Default to today if no date specified
-	asOfDate := time.Now().Format("2006-01-02")
-	if filter.AsOfDate != nil && *filter.AsOfDate != "" {
-		asOfDate = *filter.AsOfDate
+	startDate := ""
+	if filter.StartDate != nil {
+		startDate = *filter.StartDate
 	}
 
 	// Parse clinic ID if provided
@@ -124,14 +131,14 @@ func (h *handler) GetRetainedEarnings(c *gin.Context) {
 		clinicID = &id
 	}
 
-	retainedEarnings, err := h.svc.GetRetainedEarnings(c.Request.Context(), practitionerID.(uuid.UUID), clinicID, asOfDate)
+	retainedEarnings, err := h.svc.GetRetainedEarnings(c.Request.Context(), practitionerID.(uuid.UUID), clinicID, startDate)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	response.JSON(c, http.StatusOK, gin.H{
-		"as_of_date":        asOfDate,
+		"start_date":        startDate,
 		"retained_earnings": retainedEarnings,
 	}, "Retained earnings calculated successfully")
 }
@@ -143,7 +150,8 @@ func (h *handler) GetRetainedEarnings(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param clinic_id query string false "Filter by clinic UUID"
-// @Param as_of_date query string false "Calculate as of date (YYYY-MM-DD), defaults to today"
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
 // @Success 200 {object} EquityMovements
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -162,10 +170,14 @@ func (h *handler) GetEquityMovements(c *gin.Context) {
 		return
 	}
 
-	// Default to today if no date specified
-	asOfDate := time.Now().Format("2006-01-02")
-	if filter.AsOfDate != nil && *filter.AsOfDate != "" {
-		asOfDate = *filter.AsOfDate
+	startDate := ""
+	if filter.StartDate != nil {
+		startDate = *filter.StartDate
+	}
+
+	endDate := time.Now().Format("2006-01-02")
+	if filter.EndDate != nil && *filter.EndDate != "" {
+		endDate = *filter.EndDate
 	}
 
 	// Parse clinic ID if provided
@@ -179,7 +191,7 @@ func (h *handler) GetEquityMovements(c *gin.Context) {
 		clinicID = &id
 	}
 
-	movements, err := h.svc.CalculateCurrentYearEquityMovements(c.Request.Context(), practitionerID.(uuid.UUID), clinicID, asOfDate)
+	movements, err := h.svc.CalculateCurrentYearEquityMovements(c.Request.Context(), practitionerID.(uuid.UUID), clinicID, startDate, endDate)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
