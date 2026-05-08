@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/iamarpitzala/acareca/internal/shared/upload"
 )
 
 const (
-	uploadWorkerInterval = 30 * time.Second
-
+	uploadWorkerInterval  = 30 * time.Second
 	expiredWorkerInterval = 5 * time.Minute
-
 	uploadWorkerBatchSize = 50
+	workerConcurrency     = 10
 )
 
 type UploadWorker struct {
@@ -38,6 +38,7 @@ func (w *UploadWorker) Start(ctx context.Context) {
 	defer verifyTicker.Stop()
 	defer expiredTicker.Stop()
 
+	// Run immediately on startup
 	w.processPending(ctx)
 	w.processExpired(ctx)
 
@@ -60,7 +61,6 @@ func (w *UploadWorker) processPending(ctx context.Context) {
 		log.Printf("[file worker] error fetching pending uploads: %v", err)
 		return
 	}
-
 	if len(docs) == 0 {
 		return
 	}
@@ -68,21 +68,11 @@ func (w *UploadWorker) processPending(ctx context.Context) {
 	log.Printf("[file worker] verifying %d pending upload(s)", len(docs))
 
 	presignedProvider, hasPresigned := w.storage.(upload.PresignedURLProvider)
-
-	sem := make(chan struct{}, 10)
-	for _, doc := range docs {
-		doc := doc
-		sem <- struct{}{}
-		go func() {
-			defer func() { <-sem }()
-			if err := w.verifyAndUpdate(ctx, doc, presignedProvider, hasPresigned); err != nil {
-				log.Printf("[file worker] error processing document %s: %v", doc.ID, err)
-			}
-		}()
-	}
-	for i := 0; i < cap(sem); i++ {
-		sem <- struct{}{}
-	}
+	w.runConcurrent(ctx, docs, func(ctx context.Context, doc Document) {
+		if err := w.verifyAndUpdate(ctx, doc, presignedProvider, hasPresigned); err != nil {
+			log.Printf("[file worker] error processing document %s: %v", doc.ID, err)
+		}
+	})
 }
 
 func (w *UploadWorker) processExpired(ctx context.Context) {
@@ -91,7 +81,6 @@ func (w *UploadWorker) processExpired(ctx context.Context) {
 		log.Printf("[file worker] error fetching expired uploads: %v", err)
 		return
 	}
-
 	if len(docs) == 0 {
 		return
 	}
@@ -99,13 +88,11 @@ func (w *UploadWorker) processExpired(ctx context.Context) {
 	log.Printf("[file worker] processing %d expired upload(s)", len(docs))
 
 	presignedProvider, hasPresigned := w.storage.(upload.PresignedURLProvider)
-
-	for _, doc := range docs {
-		doc := doc
+	w.runConcurrent(ctx, docs, func(ctx context.Context, doc Document) {
 		exists, size, err := w.objectExists(ctx, doc.ObjectKey, presignedProvider, hasPresigned)
 		if err != nil {
 			log.Printf("[file worker] error checking expired document %s: %v", doc.ID, err)
-			continue
+			return
 		}
 
 		if exists {
@@ -114,17 +101,36 @@ func (w *UploadWorker) processExpired(ctx context.Context) {
 			}
 			if err := w.repo.UpdateStatus(ctx, doc.ID, StatusUploaded, &doc, nil); err != nil {
 				log.Printf("[file worker] failed to mark expired document %s as uploaded: %v", doc.ID, err)
-				continue
+				return
 			}
 			log.Printf("[file worker] expired document %s was actually uploaded; marked as uploaded", doc.ID)
 		} else {
 			if err := w.repo.UpdateStatus(ctx, doc.ID, StatusFailed, &doc, nil); err != nil {
 				log.Printf("[file worker] failed to mark document %s as failed: %v", doc.ID, err)
-				continue
+				return
 			}
 			log.Printf("[file worker] document %s marked as failed (upload expired at %v)", doc.ID, doc.UploadExpiresAt)
 		}
+	})
+}
+
+// runConcurrent processes docs with bounded concurrency using WaitGroup + semaphore.
+func (w *UploadWorker) runConcurrent(ctx context.Context, docs []Document, fn func(context.Context, Document)) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, workerConcurrency)
+
+	for _, doc := range docs {
+		doc := doc
+		sem <- struct{}{} // acquire
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }() // release
+			fn(ctx, doc)
+		}()
 	}
+
+	wg.Wait() // wait for all goroutines to finish
 }
 
 func (w *UploadWorker) verifyAndUpdate(ctx context.Context, doc Document, presignedProvider upload.PresignedURLProvider, hasPresigned bool) error {
@@ -143,7 +149,7 @@ func (w *UploadWorker) verifyAndUpdate(ctx context.Context, doc Document, presig
 		}
 		log.Printf("[file worker] document %s marked as uploaded (key: %s)", docCopy.ID, docCopy.ObjectKey)
 	} else {
-		// Only fail if the presigned URL has expired — still within window means client hasn't uploaded yet
+		// Still within presign window — client hasn't uploaded yet, skip
 		if docCopy.UploadExpiresAt != nil && time.Now().Before(*docCopy.UploadExpiresAt) {
 			log.Printf("[file worker] document %s not yet uploaded, presign expires at %v — skipping", docCopy.ID, docCopy.UploadExpiresAt)
 			return nil
