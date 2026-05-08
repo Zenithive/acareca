@@ -50,6 +50,9 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		"form_id":         "fm.id",
 		"coa_id":          "coa.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
+		// For expense entries use item-level date; for all others use entry-level date
+		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
 	}
 
 	base := `

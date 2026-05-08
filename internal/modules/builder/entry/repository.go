@@ -80,11 +80,11 @@ func (r *Repository) Create(ctx context.Context, e *FormEntry, values []*FormEnt
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			RETURNING created_at, updated_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
 			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("create entry value: %w", err)
 		}
@@ -114,7 +114,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
@@ -164,11 +164,11 @@ func (r *Repository) Update(ctx context.Context, e *FormEntry, values []*FormEnt
 		for _, v := range values {
 			v.EntryID = e.ID
 			valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
 			RETURNING created_at
 		`
-			if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description).
+			if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
 				Scan(&v.CreatedAt); err != nil {
 				return fmt.Errorf("insert entry value: %w", err)
 			}
@@ -303,7 +303,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
@@ -323,9 +323,10 @@ var allowedTransactionColumns = map[string]string{
 	"status":          "e.status",
 	"created_at":      "ev.created_at",
 	"practitioner_id": "c.practitioner_id",
-	"start_date":      "COALESCE(e.date, ev.created_at)",
-	"end_date":        "COALESCE(e.date, ev.created_at)",
-	"date":            "e.date",
+	// For expense entries use item-level date; for all others use entry-level date
+	"start_date": "COALESCE(CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END, ev.created_at)",
+	"end_date":   "COALESCE(CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END, ev.created_at)",
+	"date":       "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
 }
 
 func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
@@ -364,7 +365,7 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 			ev.gross_amount,
 			ev.created_at,
 			ev.updated_at,
-			e.date,
+			CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END AS date,
 			(e.clinic_id = '00000000-0000-0000-0000-000000000000') AS is_expense
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
@@ -469,11 +470,11 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			RETURNING created_at, updated_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
 			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("create entry value tx: %w", err)
 		}
@@ -513,11 +514,11 @@ func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
             RETURNING created_at
         `
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
 			Scan(&v.CreatedAt); err != nil {
 			return fmt.Errorf("insert entry value tx: %w", err)
 		}
@@ -612,8 +613,9 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		"coa_id":          "coa.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "e.date",
-		"end_date":        "e.date",
+		// For expense entries use item-level date; for all others use entry-level date
+		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
 	}
 
 	base := `
@@ -711,8 +713,9 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 		"coa_id":          "coa.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "e.date",
-		"end_date":        "e.date",
+		// For expense entries use item-level date; for all others use entry-level date
+		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
 	}
 
 	base := `
@@ -775,9 +778,10 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		"form_id":         "fm.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "e.date",
-		"end_date":        "e.date",
-		"created_at":      "ev.created_at",
+		// For expense entries use item-level date; for all others use entry-level date
+		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"created_at": "ev.created_at",
 	}
 
 	base := `
@@ -799,7 +803,10 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			ev.net_amount,
 			ev.gst_amount,
 			ev.gross_amount,
-			COALESCE(e.date, ev.created_at) AS created_at,
+			COALESCE(
+				CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END,
+				ev.created_at
+			) AS created_at,
 			ev.updated_at
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
@@ -915,9 +922,10 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 		"form_id":         "fm.id",
 		"tax_type_id":     "at2.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		"start_date":      "e.date",
-		"end_date":        "e.date",
-		"created_at":      "ev.created_at",
+		// For expense entries use item-level date; for all others use entry-level date
+		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"created_at": "ev.created_at",
 	}
 
 	base := `
