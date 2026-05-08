@@ -263,7 +263,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 				ID:             uuid.New(),
 				PractitionerID: pID,
 				AccountantID:   actorID,
-				ActorID:        actorID,
+				ActorID:        userID,
 				ActorName:      &fullName,
 				ActorType:      role,
 				EventType:      "pl_report.generated",
@@ -376,6 +376,29 @@ func round2(v float64) float64 {
 }
 
 func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error) {
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	if role == util.RolePractitioner {
+		prac, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
+		if err == nil && prac.ABN != nil {
+			practitionerABN = *prac.ABN
+		}
+	} else {
+		// If an accountant is exporting, get the ABN from the practitioner filter
+		if len(notifIDs) > 0 {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, notifIDs[0])
+			if err == nil && prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	}
+
 	f := excelize.NewFile()
 	sheet := "Profit and Loss"
 	f.NewSheet(sheet)
@@ -451,16 +474,36 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		},
 	})
 
+	setMetaRow := func(cell string, label string, value string) {
+		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
+
 	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Profit and Loss Report")
 	f.MergeCell(sheet, "A1", "B1")
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
 
-	currentRow := 3 // Default start if no date
-	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
-		f.SetCellValue(sheet, "A2", fmt.Sprintf("Period: %s to %s", data.ReportMetadata.DateFrom, data.ReportMetadata.DateUntil))
-		currentRow = 4
+	currentRow := 2 // Default start if no date
+
+	setMetaRow(fmt.Sprintf("A%d", currentRow), "Exported by:", fullName)
+	currentRow++
+
+	// ABN Row (Only if exists)
+	if practitionerABN != "" {
+		setMetaRow(fmt.Sprintf("A%d", currentRow), "ABN:", practitionerABN)
+		currentRow++
 	}
+
+	// Period Row
+	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
+		setMetaRow(fmt.Sprintf("A%d", currentRow), "Period:", fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
+		currentRow++
+	}
+
+	currentRow++ // Spacer row
 
 	var totalIncomeCell, totalCOSCell, totalOtherCostsCell string
 
@@ -479,7 +522,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 			f.AddTable(sheet, &excelize.Table{
 				Range:         tableRange,
 				Name:          tableName,
-				StyleName:     "", // Keeps your custom colors
+				StyleName:     "",
 				ShowHeaderRow: &showHeaders,
 			})
 		}
@@ -581,12 +624,6 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	// Record the Shared Event — only for accountants, never for practitioners.
 	if role == util.RoleAccountant && len(targetNotifIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
 		for _, pID := range targetNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -606,7 +643,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	if exportType == "pdf" {
 		// Return HTML string
-		return s.generateHTMLString(f, sheet, data)
+		return s.generateHTMLString(data, fullName, practitionerABN)
 	}
 
 	return f, nil
@@ -614,12 +651,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 func strPtr(s string) *string { return &s }
 
-func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsReport) (string, error) {
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return "", err
-	}
-
+func (s *service) generateHTMLString(data *RsReport, fullName string, practitionerABN string) (string, error) {
 	var b bytes.Buffer
 	b.WriteString("<html><head><style>")
 	b.WriteString(`
@@ -628,7 +660,7 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 		table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 		td { padding: 6px 8px; font-size: 10pt; vertical-align: middle; }
 		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; font-size: 14pt; text-align: center; border: 1px solid #000; }
-		.period-text { font-size: 10pt; padding: 10px 0; font-style: italic; }
+		.meta-text { font-size: 10pt; color: #555; }
 		.section-title { font-weight: bold; font-size: 12pt; padding-top: 15px; }
 		.data-left { border: 0.5pt solid #000; text-align: left; }
 		.data-grid { border: 0.5pt solid #000; text-align: right; }
@@ -651,77 +683,56 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 		return fmt.Sprintf("$%.2f", v)
 	}
 
-	// Calculate totals from API data for PDF display
-	calcTotal := func(accounts []RsReportAccount) float64 {
-		var t float64
-		for _, a := range accounts {
-			t += a.TotalValue
+	// Helper to render a section
+	renderSection := func(title string, accounts []RsReportAccount, total float64) {
+		b.WriteString(fmt.Sprintf("<tr><td class='section-title'>%s</td><td></td></tr>", title))
+		for _, acc := range accounts {
+			b.WriteString(fmt.Sprintf("<tr><td class='data-left'>%s</td><td class='data-grid'>%s</td></tr>", acc.CoaName, formatCurr(acc.TotalValue)))
 		}
-		return t
+		b.WriteString(fmt.Sprintf("<tr><td class='group-total'>TOTAL %s</td><td class='group-total'>%s</td></tr>", title, formatCurr(total)))
+		b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
 	}
 
-	totalInc := calcTotal(data.Income.Accounts)
-	totalCOS := calcTotal(data.CostOfSales.Accounts)
-	totalOther := calcTotal(data.OtherCosts.Accounts)
-	grossProfit := totalInc - totalCOS
-	netProfit := grossProfit - totalOther
+	// Header
+	b.WriteString("<tr><td colspan='2' class='header-blue'>Profit and Loss Report</td></tr>")
 
-	for rIdx, row := range rows {
-		rowNum := rIdx + 1
-		if len(row) == 0 {
-			b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
-			continue
-		}
+	// Exported By
+	b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>Exported by:</b> %s</td></tr>", fullName))
 
-		valA := row[0]
-		var valB string
-		classA, classB := "", ""
-
-		// Identify the row type and override valB with API data
-		switch {
-		case rowNum == 1:
-			classA = "header-blue"
-			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='%s'>%s</td></tr>", classA, valA))
-			continue
-
-		case strings.HasPrefix(valA, "Period:"):
-			classA = "period-text"
-
-		case valA == "INCOME" || valA == "COST OF SALES" || valA == "OTHER COSTS":
-			classA = "section-title"
-
-		case valA == "TOTAL INCOME":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(totalInc)
-
-		case valA == "TOTAL COST OF SALES":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(totalCOS)
-
-		case valA == "TOTAL OTHER COSTS":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(totalOther)
-
-		case valA == "GROSS PROFIT":
-			classA, classB = "profit-label", "profit-value"
-			valB = formatCurr(grossProfit)
-
-		case valA == "NET PROFIT":
-			classA, classB = "profit-label", "profit-value"
-			valB = formatCurr(netProfit)
-
-		default:
-			classA, classB = "data-left", "data-grid"
-			if len(row) > 1 {
-				valB = row[1]
-			} // Account values are already static in Excel rows
-		}
-
-		b.WriteString(fmt.Sprintf("<tr><td class='%s'>%s</td>", classA, valA))
-		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td></tr>", classB, valB))
+	// ABN of Practitioner
+	if practitionerABN != "" {
+		b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>ABN:</b> %s</td></tr>", practitionerABN))
 	}
+
+	// Period
+	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
+		b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>Period:</b> %s to %s</td></tr>", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
+	}
+	b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
+
+	// Sections
+	renderSection("INCOME", data.Income.Accounts, data.Income.GroupTotal)
+	renderSection("COST OF SALES", data.CostOfSales.Accounts, data.CostOfSales.GroupTotal)
+
+	// Gross Profit
+	b.WriteString(fmt.Sprintf("<tr><td class='profit-label'>GROSS PROFIT</td><td class='profit-value'>%s</td></tr>", formatCurr(data.GrossProfit)))
+	b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
+
+	renderSection("OTHER COSTS", data.OtherCosts.Accounts, data.OtherCosts.GroupTotal)
+
+	// Net Profit
+	b.WriteString(fmt.Sprintf("<tr><td class='profit-label'>NET PROFIT</td><td class='profit-value'>%s</td></tr>", formatCurr(data.NetProfit)))
 
 	b.WriteString("</table></body></html>")
 
-	return b.String(), err
+	return b.String(), nil
+}
+
+// Helper to format date strings from YYYY-MM-DD to DD-MM-YYYY
+func formatDateStr(dateStr string) string {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr
+	}
+	return t.Format("02-01-2006")
 }

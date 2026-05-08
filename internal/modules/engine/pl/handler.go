@@ -315,7 +315,7 @@ func (h *handler) ExportReport(c *gin.Context) {
 	}
 
 	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
-	reportData, err := h.svc.GetReport(c.Request.Context(), userID, &f, role, notifIDs, userID)
+	reportData, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, notifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
