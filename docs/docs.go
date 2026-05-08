@@ -10832,6 +10832,10 @@ const docTemplate = `{
         "file.RsPresignedUploadURL": {
             "type": "object",
             "properties": {
+                "content_type": {
+                    "description": "verified MIME type — client must send this as Content-Type on the PUT",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
@@ -10852,6 +10856,7 @@ const docTemplate = `{
                 "amount",
                 "business_use",
                 "coa_id",
+                "date",
                 "name"
             ],
             "properties": {
@@ -10864,6 +10869,9 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "coa_id": {
+                    "type": "string"
+                },
+                "date": {
                     "type": "string"
                 },
                 "description": {
@@ -10892,6 +10900,9 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "coa_id": {
+                    "type": "string"
+                },
+                "date": {
                     "type": "string"
                 },
                 "description": {
@@ -10975,14 +10986,10 @@ const docTemplate = `{
         "form.RqExpense": {
             "type": "object",
             "required": [
-                "date",
                 "items",
                 "name"
             ],
             "properties": {
-                "date": {
-                    "type": "string"
-                },
                 "items": {
                     "type": "array",
                     "minItems": 1,
@@ -11021,7 +11028,6 @@ const docTemplate = `{
         "form.RqUpdateExpense": {
             "type": "object",
             "required": [
-                "date",
                 "name"
             ],
             "properties": {
@@ -11030,9 +11036,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/form.ExpenseItem"
                     }
-                },
-                "date": {
-                    "type": "string"
                 },
                 "delete": {
                     "type": "array",

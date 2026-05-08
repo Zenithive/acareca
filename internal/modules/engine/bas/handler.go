@@ -376,8 +376,13 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		tempID := qInfo.ID
 		origFilter := BASReportFilter{
 			PractitionerID: f.PractitionerID,
-			QuarterID:      &tempID,
-			Month:          f.Month,
+		}
+
+		if f.Month != nil && *f.Month != "" {
+			origFilter.Month = f.Month
+			origFilter.QuarterID = nil // Force the service to use Month dates
+		} else {
+			origFilter.QuarterID = &tempID
 		}
 
 		report, _ := h.svc.GetReport(ctx, &origFilter, nil, userID, *actorID, role)
@@ -443,19 +448,17 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	// Resolve PracIDs (data scope) and notifIDs (Shared Events).
-	// var PracIDs []uuid.UUID
 	var notifIDs []uuid.UUID
+	pracIDStr := c.Query("practitioner_id")
 
 	if role == util.RoleAccountant {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+		if pracIDStr != "" {
 			// Scenario A
 			pracUUID, err := uuid.Parse(pracIDStr)
 			if err != nil {
 				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
 				return
 			}
-			// PracIDs = []uuid.UUID{pracUUID}
 			notifIDs = []uuid.UUID{pracUUID}
 		} else {
 			// Scenario B
@@ -468,11 +471,9 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
 				return
 			}
-			// PracIDs = linkedIDs
 			notifIDs = linkedIDs
 		}
 	} else {
-		// PracIDs = []uuid.UUID{*actorID}
 		notifIDs = nil // practitioners never receive their own shared events
 	}
 
@@ -492,7 +493,7 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, *actorID, role, UserID, &f, exportType, notifIDs)
+	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, *actorID, role, UserID, &f, exportType, notifIDs, pracIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

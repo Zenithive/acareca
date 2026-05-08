@@ -36,7 +36,7 @@ type Service interface {
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, fullName string, practitionerABN string) (*bytes.Buffer, error)
 	generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error)
-	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error)
+	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 }
 
 type service struct {
@@ -1129,13 +1129,36 @@ func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID)
 	return quarters, nil
 }
 
-func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error) {
+func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Quarterly BAS REPORT"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
 
 	parsedActorID := actorID.String()
+
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	targetID := filterPractitionerID
+	if targetID == "" && role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		pracUUID, err := uuid.Parse(targetID)
+		if err == nil {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+			if err == nil && prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	}
 
 	// --- STYLES ---
 
@@ -1235,9 +1258,33 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		return nil, err
 	}
 
+	setRichMeta := func(cell string, label string, value string) {
+		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
+
 	// --- RENDER HEADERS ---
+	lastColIdx := (len(allCols) * 4)
+	lastColName, _ := excelize.ColumnNumberToName(lastColIdx)
+
+	// 1. Financial Year Header (Row 2)
+	f.MergeCell(sheet, "A2", fmt.Sprintf("%s2", lastColName))
 	f.SetCellValue(sheet, "A2", FY.Label)
-	f.SetCellStyle(sheet, "A2", "A2", styleHeaderBlue)
+	f.SetCellStyle(sheet, "A2", fmt.Sprintf("%s2", lastColName), styleHeaderBlue)
+
+	// 2. Metadata Rows (Rows 3-4)
+	// We merge these so the background/borders look consistent if you add them later
+	f.MergeCell(sheet, "A3", fmt.Sprintf("%s3", lastColName))
+	setRichMeta("A3", "Exported by:", fullName)
+
+	f.MergeCell(sheet, "A4", fmt.Sprintf("%s4", lastColName))
+	if practitionerABN != "" {
+		setRichMeta("A4", "ABN:", practitionerABN)
+	}
+
+	f.MergeCell(sheet, "A5", fmt.Sprintf("%s5", lastColName)) // Spacer Row
 
 	for i := range allCols {
 		cIdx := 1 + (i * 4)
@@ -1266,15 +1313,15 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		}
 
 		// Top Quarter Header
-		f.MergeCell(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol))
-		f.SetCellValue(sheet, fmt.Sprintf("%s5", startCol), headerValue)
-		f.SetCellStyle(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol), styleHeaderBlue)
+		f.MergeCell(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol))
+		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), headerValue)
+		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
 
 		// Sub Headers
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), "Gross")
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", midCol), "GST")
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", endCol), "Net")
-		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", startCol), "Gross")
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", midCol), "GST")
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", endCol), "Net")
+		f.SetCellStyle(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol), styleHeaderBlue)
 	}
 
 	// Helper to track range for dynamic calculations
@@ -1285,7 +1332,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	var incomeMeta, expenseMeta SectionMeta
 
 	// --- INCOME SECTION ---
-	currentRow := 7
+	currentRow := 8
 	incomeHeaderRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
@@ -1312,7 +1359,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 
 	// Create Income Table for Filtering
 	if len(incomeRows) > 0 {
-		// CHANGE: Range is now only Column A (A7 to A9)
 		tblRange := fmt.Sprintf("A%d:A%d", incomeHeaderRow, incomeMeta.EndRow)
 		showH := true
 
@@ -1443,12 +1489,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 
 	// Record the Shared Event — only for accountants, never for practitioners.
 	if role == util.RoleAccountant && len(PracIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
 		// If clinics are filtered, narrow notifications to only those clinic owners.
 		targetPracIDs := PracIDs
 		if len(filter.ParsedClinicIDs) > 0 {
@@ -1483,7 +1523,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	}
 
 	if exportType == "pdf" {
-		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label)
+		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label, fullName, practitionerABN)
 		if err != nil {
 			return nil, err
 		}
@@ -1535,7 +1575,7 @@ func strPtr(s string) *string {
 }
 
 // Helper to convert the Excel file to PDF using HTML
-func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) (string, error) {
+func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string, fullName string, practitionerABN string) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return "", err
@@ -1557,6 +1597,8 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
 		.income-blue td {background-color: #DAEEF3 !important; }
 		.expense-blue td {background-color: #DAEEF3 !important; }
+        .meta-item { font-size: 10pt; margin-bottom: 4px; }
+        .meta-label { font-weight: bold; }
 	`)
 	b.WriteString("</style></head><body>")
 
@@ -1564,6 +1606,11 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
 	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
 	<style>@media print{.no-print{display:none}}</style></div>`)
+
+	b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Exported by:</span> %s</div>", fullName))
+	if practitionerABN != "" {
+		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>ABN:</span> %s</div>", practitionerABN))
+	}
 
 	b.WriteString("<table>")
 
@@ -1600,8 +1647,8 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 			continue
 		}
 
-		// --- ROW 5: QUARTERS ---
-		if rowNum == 5 {
+		// --- ROW 6: QUARTERS ---
+		if rowNum == 6 {
 			b.WriteString("<tr>")
 
 			// Column A spacer (Particulars column)
@@ -1638,8 +1685,8 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 			continue
 		}
 
-		// --- ROW 6: SUBHEADERS ---
-		if rowNum == 6 {
+		// --- ROW 7: SUBHEADERS ---
+		if rowNum == 7 {
 			b.WriteString("<tr>")
 			b.WriteString("<td class='header-blue'>Particulars</td>")
 			totalBlocks := len(data.Columns) + 1 // +1 for Total
