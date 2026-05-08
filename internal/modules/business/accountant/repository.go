@@ -246,7 +246,7 @@ func (r *repository) GetRecentTransactions(ctx context.Context, accountantID str
 			c.name as clinic_name,
 			COALESCE(fev.gross_amount, 0) as amount,
 			CASE WHEN fev.gross_amount > 0 THEN 'credit' ELSE 'debit' END as type,
-			fev.created_at as date,
+			COALESCE(fev.date, fe.date, fev.created_at::date) as date,
 			CASE WHEN fe.status = 'SUBMITTED' THEN 'completed' ELSE 'draft' END as status
 		FROM tbl_form_entry_value fev
 		INNER JOIN tbl_form_entry fe ON fev.entry_id = fe.id
@@ -259,8 +259,8 @@ func (r *repository) GetRecentTransactions(ctx context.Context, accountantID str
 		  AND fe.deleted_at IS NULL
 		  AND c.deleted_at IS NULL
 		  AND f.deleted_at IS NULL
-		GROUP BY fev.id, fe.clinic_id, c.name, fev.gross_amount, fev.created_at, fe.status
-		ORDER BY fev.created_at DESC
+		GROUP BY fev.id, fe.clinic_id, c.name, fev.gross_amount, fev.date, fe.date, fev.created_at, fe.status
+		ORDER BY COALESCE(fev.date, fe.date, fev.created_at::date) DESC
 	`
 
 	// Apply limit if provided

@@ -14,6 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -24,29 +25,36 @@ import (
 
 type Service interface {
 	GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error)
-	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error)
+	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 }
 
 type service struct {
-	repo          Repository
-	equitySvc     equity.Service
-	db            sqlx.DB
-	auditSvc      audit.Service
-	eventsSvc     events.Service
-	authRepo      auth.Repository
-	invitationSvc invitation.Service
+	repo            Repository
+	equitySvc       equity.Service
+	db              sqlx.DB
+	auditSvc        audit.Service
+	eventsSvc       events.Service
+	authRepo        auth.Repository
+	invitationSvc   invitation.Service
+	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service) Service {
+func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, practitionerSvc practitioner.IService) Service {
 	return &service{
-		repo:          repo,
-		equitySvc:     equitySvc,
-		db:            db,
-		auditSvc:      auditSvc,
-		eventsSvc:     eventsSvc,
-		authRepo:      authRepo,
-		invitationSvc: invitationSvc,
+		repo:            repo,
+		equitySvc:       equitySvc,
+		db:              db,
+		auditSvc:        auditSvc,
+		eventsSvc:       eventsSvc,
+		authRepo:        authRepo,
+		invitationSvc:   invitationSvc,
+		practitionerSvc: practitionerSvc,
 	}
+}
+
+type AccKey struct {
+	Code int16
+	Name string
 }
 
 func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error) {
@@ -74,128 +82,138 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 				return nil, errors.New("no linked practitioners found")
 			}
 			// Default to the first linked practitioner for the actual data fetch
-			practitionerID = linked[0]
 			targetPracIDs = linked
+
+			if len(linked) > 0 {
+				practitionerID = linked[0]
+			}
 		}
 	}
 
-	// Default to today if no date specified
-	asOfDate := time.Now().Format("2006-01-02")
-	if f.AsOfDate != nil && *f.AsOfDate != "" {
-		asOfDate = *f.AsOfDate
+	// Determine reporting range
+	startDate := ""
+	if f.StartDate != nil {
+		startDate = *f.StartDate
 	}
 
-	// Parse clinic ID if provided
-	var clinicID *uuid.UUID
-	if f.ClinicID != nil && *f.ClinicID != "" {
-		id, err := uuid.Parse(*f.ClinicID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid clinic_id: %w", err)
-		}
-		clinicID = &id
+	endDate := time.Now().Format("2006-01-02")
+	if f.EndDate != nil && *f.EndDate != "" {
+		endDate = *f.EndDate
 	}
+
+	f.StartDate = &startDate
+	f.EndDate = &endDate
 
 	// Get balance sheet accounts (assets, liabilities, other equity accounts)
-	rows, err := s.repo.GetBalanceSheet(ctx, practitionerID, f)
+	rows, err := s.repo.GetBalanceSheet(ctx, targetPracIDs, f)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get automatically calculated owner equity
-	ownerEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, practitionerID, clinicID, asOfDate)
-	if err != nil {
-		return nil, fmt.Errorf("calculate owner equity: %w", err)
+	var totalOwnerEquity equity.OwnerEquityCalculation
+	for _, pID := range targetPracIDs {
+		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, nil, startDate, endDate)
+		if err != nil {
+			return nil, fmt.Errorf("calculate owner equity: %w", err)
+		}
+		// Aggregate totals
+		totalOwnerEquity.ShareCapital += pracEquity.ShareCapital
+		totalOwnerEquity.FundsIntroduced += pracEquity.FundsIntroduced
+		totalOwnerEquity.Drawings += pracEquity.Drawings
+		totalOwnerEquity.RetainedEarnings += pracEquity.RetainedEarnings
+		totalOwnerEquity.CurrentYearProfit += pracEquity.CurrentYearProfit
+		totalOwnerEquity.TotalEquity += pracEquity.TotalEquity
 	}
 
-	// Organize by account type
-	var assets, liabilities, equity []RsAccount
+	// 4. Group and Summarize Assets/Liabilities/Other Equity
+	assetMap := make(map[AccKey]RsAccount)
+	liabMap := make(map[AccKey]RsAccount)
+	otherEquityMap := make(map[AccKey]RsAccount)
+
 	var totalAssets, totalLiabilities, totalOtherEquity float64
 
 	for _, row := range rows {
-		account := row.ToRs()
+		key := AccKey{Code: row.AccountCode, Name: row.AccountName}
 
 		switch row.AccountType {
 		case "Asset":
-			assets = append(assets, account)
+			acc := assetMap[key]
+			acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+			acc.Balance += row.Balance
+			assetMap[key] = acc
 			totalAssets += row.Balance
+
 		case "Liability":
-			liabilities = append(liabilities, account)
+			acc := liabMap[key]
+			acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+			acc.Balance += row.Balance
+			liabMap[key] = acc
 			totalLiabilities += row.Balance
+
 		case "Equity":
-			// Skip owner fund accounts (880, 881, 960, 970) - they're calculated by equity service
+			// Skip owner fund accounts - they're handled separately
 			if row.AccountCode != 880 && row.AccountCode != 881 &&
 				row.AccountCode != 960 && row.AccountCode != 970 {
-				equity = append(equity, account)
+				acc := otherEquityMap[key]
+				acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+				acc.Balance += row.Balance
+				otherEquityMap[key] = acc
 				totalOtherEquity += row.Balance
 			}
 		}
 	}
 
-	// Build equity section from calculated values
-	if ownerEquity.ShareCapital != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 970)
-		if err != nil {
-			return nil, err
-		}
-
-		equity = append(equity, RsAccount{
-			CoaId:   *coaId,
-			Code:    970,
-			Name:    "Owner A Share Capital",
-			Balance: ownerEquity.ShareCapital,
-		})
+	// 5. Convert Maps back to Slices for the Response
+	assets := []RsAccount{}
+	for _, v := range assetMap {
+		assets = append(assets, v)
 	}
 
-	if ownerEquity.FundsIntroduced != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 881)
-		if err != nil {
-			return nil, err
-		}
-		equity = append(equity, RsAccount{
-			CoaId:   *coaId,
-			Code:    881,
-			Name:    "Owner A Funds Introduced",
-			Balance: ownerEquity.FundsIntroduced,
-		})
+	liabilities := []RsAccount{}
+	for _, v := range liabMap {
+		liabilities = append(liabilities, v)
 	}
 
-	if ownerEquity.Drawings != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 880)
-		if err != nil {
-			return nil, err
-		}
-		equity = append(equity, RsAccount{
-			CoaId:   *coaId,
-			Code:    880,
-			Name:    "Owner A Drawings",
-			Balance: -ownerEquity.Drawings,
-		})
+	equitySect := []RsAccount{}
+	for _, v := range otherEquityMap {
+		equitySect = append(equitySect, v)
 	}
 
-	if ownerEquity.RetainedEarnings != 0 {
-		coaId, err := s.getCoaIDByAccountCode(ctx, practitionerID, 960)
-		if err != nil {
-			return nil, err
+	// 6. Append the Calculated Equity Items
+	addEquityItem := func(code int16, name string, balance float64) {
+		if balance == 0 {
+			return
 		}
-		equity = append(equity, RsAccount{
+		coaId, _ := s.getCoaIDByAccountCode(ctx, practitionerID, code)
+		equitySect = append(equitySect, RsAccount{
 			CoaId:   *coaId,
-			Code:    960,
-			Name:    "Retained Earnings",
-			Balance: ownerEquity.RetainedEarnings,
+			Code:    code,
+			Name:    name,
+			Balance: balance,
 		})
 	}
+	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
+	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
+	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings) // Negative for drawings
+	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
 	// Total equity = calculated owner equity + other equity accounts
-	totalEquity := ownerEquity.TotalEquity + totalOtherEquity
+	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
+
+	// Format dates for the response
+	displayStart := formatDateForDisplay(startDate)
+	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
-		AsOfDate:                  asOfDate,
+		StartDate:                 displayStart,
+		EndDate:                   displayEnd,
 		Assets:                    assets,
 		TotalAssets:               totalAssets,
 		Liabilities:               liabilities,
 		TotalLiabilities:          totalLiabilities,
-		Equity:                    equity,
-		CurrentYearProfit:         ownerEquity.CurrentYearProfit,
+		Equity:                    equitySect,
+		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
 		TotalEquity:               totalEquity,
 		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
 	}
@@ -216,7 +234,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		EntityID:   &actorIDStr,
 		AfterState: map[string]interface{}{
 			"report_type": "Balance Sheet",
-			"as_of_date":  asOfDate,
+			"start_date":  startDate,
+			"end_date":    endDate,
 		},
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
@@ -239,8 +258,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 					ActorType:      role,
 					EventType:      "balance_sheet.generated",
 					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s generated Balance Sheet as of %s", fullName, asOfDate),
-					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "as_of_date": asOfDate},
+					Description:    fmt.Sprintf("Accountant %s generated Balance Sheet for period of %s to %s", fullName, startDate, endDate),
+					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "start_date": startDate, "end_date": endDate},
 					CreatedAt:      time.Now(),
 				})
 			}
@@ -250,27 +269,40 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	return result, nil
 }
 
-func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error) {
+func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Balance Sheet"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
+
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	targetID := filterPractitionerID
+	if targetID == "" && role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		pracUUID, err := uuid.Parse(targetID)
+		if err == nil {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+			if err == nil && prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	}
 
 	// --- STYLES ---
 	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
 		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-	})
-	styleItalic, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{
-			Italic: true,
-			Family: "Calibri",
-			Size:   10,
-		},
-		Alignment: &excelize.Alignment{
-			Horizontal: "left",
-		},
 	})
 	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
@@ -313,15 +345,39 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
 		},
 	})
+	setRichMeta := func(cell string, label string, value string) {
+		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
 
 	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Balance Sheet")
 	f.MergeCell(sheet, "A1", "B1")
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
-	f.SetCellValue(sheet, "A2", fmt.Sprintf("As of Date: %s", data.AsOfDate))
-	f.SetCellStyle(sheet, "A2", "A2", styleItalic)
 
-	currentRow := 4
+	f.MergeCell(sheet, "A2", "B2")
+	setRichMeta("A2", "Exported by:", fullName)
+
+	f.MergeCell(sheet, "A3", "B3")
+	if practitionerABN != "" {
+		setRichMeta("A3", "ABN:", practitionerABN)
+	}
+
+	var dateText string
+	if data.StartDate != "" && data.EndDate != "" {
+		dateText = fmt.Sprintf("%s to %s", data.StartDate, data.EndDate)
+	} else if data.EndDate != "" {
+		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	}
+	f.MergeCell(sheet, "A4", "B4")
+	setRichMeta("A4", "Period:", dateText)
+
+	// --- BLANK ROW AFTER METADATA ---
+	f.MergeCell(sheet, "A5", "B5")
+
+	currentRow := 6
 
 	// Helper to render sections with Excel Filters
 	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
@@ -401,14 +457,12 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		EntityType: strPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
-		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "as_of_date": data.AsOfDate},
+		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
 
 	if role == util.RoleAccountant && len(notifIDs) > 0 {
-		user, _ := s.authRepo.FindByID(ctx, userID)
-		fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		for _, pID := range notifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -419,8 +473,8 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 				ActorType:      role,
 				EventType:      "balance_sheet.exported",
 				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s exported Balance Sheet (%s)", fullName, exportType),
-				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "as_of_date": data.AsOfDate},
+				Description:    fmt.Sprintf("Accountant %s exported Balance Sheet (%s) for period of %s to %s", fullName, exportType, data.StartDate, data.EndDate),
+				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
 				CreatedAt:      time.Now(),
 			})
 		}
@@ -428,12 +482,12 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	f.UpdateLinkedValue()
 
 	if exportType == "pdf" {
-		return s.generateBSHTMLString(f, sheet, data)
+		return s.generateBSHTMLString(f, sheet, data, fullName, practitionerABN)
 	}
 	return f, nil
 }
 
-func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data *RsBalanceSheet) (string, error) {
+func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data *RsBalanceSheet, fullName string, practitionerABN string) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return "", err
@@ -454,6 +508,8 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 		.final-total-value { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; border: 1.5pt solid #000; }
 		.data-grid { text-align: right; }
 		.spacer { height: 10px; border: none; }
+		.meta-item { font-size: 10pt; margin-bottom: 6px; text-align: left; }
+		.meta-label { font-weight: bold; }
 	`)
 	b.WriteString("</style></head><body>")
 
@@ -462,9 +518,33 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
 	<style>@media print{.no-print{display:none}}</style></div>`)
 
+	b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Exported by:</span> %s</div>", fullName))
+	if practitionerABN != "" {
+		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>ABN:</span> %s</div>", practitionerABN))
+	}
+
+	var dateText string
+	if data.StartDate != "" && data.EndDate != "" {
+		dateText = fmt.Sprintf("%s to %s", data.StartDate, data.EndDate)
+	} else if data.EndDate != "" {
+		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	} else if data.StartDate != "" {
+		dateText = fmt.Sprintf("From %s onwards", data.StartDate)
+	}
+
+	if dateText != "" {
+		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Period:</span> %s</div>", dateText))
+	}
+
+	b.WriteString("<div style='margin-bottom: 20px;'></div>") // Spacer after metadata
+
 	b.WriteString("<table><colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
 
 	for rIdx, row := range rows {
+		if rIdx >= 1 && rIdx <= 4 {
+			continue
+		}
+
 		if len(row) == 0 {
 			b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
 			continue
@@ -485,10 +565,6 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 		switch {
 		case rIdx == 0:
 			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='header-blue'>%s</td></tr>", valA))
-			continue
-
-		case strings.HasPrefix(valA, "As of Date"):
-			b.WriteString(fmt.Sprintf("<tr><td colspan='2' style='border:none;font-style:italic;'>%s</td></tr>", valA))
 			continue
 
 		case valA == "ASSETS" || valA == "LIABILITIES" || valA == "EQUITY":
@@ -549,3 +625,16 @@ func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid
 
 // Helper function for audit logging
 func strPtr(s string) *string { return &s }
+
+func formatDateForDisplay(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+	// Parse the database format
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr // Return original if parsing fails to avoid losing data
+	}
+	// Return the display format
+	return t.Format("02-01-2006")
+}

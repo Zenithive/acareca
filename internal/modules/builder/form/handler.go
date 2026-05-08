@@ -39,35 +39,6 @@ func NewHandler(svc IService) IHandler {
 	return &handler{svc: svc}
 }
 
-// // @Summary Bulk sync fields
-// // @Description Synchronize multiple fields for a practitioner
-// // @Tags form
-// // @Accept json
-// // @Produce json
-// // @Param request body RqBulkSyncFields true "Sync request"
-// // @Success 200 {object} RsBulkSyncFields
-// // @Failure 400 {object} response.RsError
-// // @Failure 500 {object} response.RsError
-// // @Router /form/sync [post]
-// func (h *handler) Sync(c *gin.Context) {
-// 	practitionerID, ok := util.GetPractitionerID(c)
-// 	if !ok {
-// 		return
-// 	}
-
-// 	var req RqBulkSyncFields
-// 	if err := util.BindAndValidate(c, &req); err != nil {
-// 		response.Error(c, http.StatusBadRequest, err)
-// 		return
-// 	}
-// 	result, err := h.svc.BulkSyncFields(c.Request.Context(), practitionerID, &req)
-// 	if err != nil {
-// 		response.Error(c, http.StatusInternalServerError, err)
-// 		return
-// 	}
-// 	response.JSON(c, http.StatusOK, result, "Fields synchronized successfully")
-// }
-
 // @Summary Get form by ID (basic)
 // @Description fetch form detail
 // @Tags form

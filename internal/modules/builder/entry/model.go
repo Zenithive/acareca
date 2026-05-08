@@ -38,16 +38,24 @@ func (r *RqEntryValue) Validate() error {
 }
 
 type RqFormEntry struct {
-	ClinicID uuid.UUID      `json:"clinic_id" validate:"required,uuid"`
-	Status   string         `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Date     *string        `json:"date" validate:"omitempty"`
-	Values   []RqEntryValue `json:"values,omitempty"`
+	ClinicID  uuid.UUID      `json:"clinic_id" validate:"required,uuid"`
+	Status    string         `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Date      *string        `json:"date" validate:"omitempty"`
+	Values    []RqEntryValue `json:"values,omitempty"`
+	Documents *RqDocument    `json:"documents,omitempty"`
 }
 
 type RqUpdateFormEntry struct {
-	Status *string        `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Date   *string        `json:"date" validate:"omitempty"`
-	Values []RqEntryValue `json:"values,omitempty"`
+	Status    *string        `json:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Date      *string        `json:"date" validate:"omitempty"`
+	Values    []RqEntryValue `json:"values,omitempty"`
+	Documents *RqDocument    `json:"documents,omitempty"`
+}
+
+// RqDocument holds create/update/delete document IDs for an entry
+type RqDocument struct {
+	Create []string `json:"create"` // document IDs to link
+	Delete []string `json:"delete"` // document IDs to unlink
 }
 
 type FormEntry struct {
@@ -72,6 +80,7 @@ type FormEntryValue struct {
 	GstAmount   *float64   `db:"gst_amount"`
 	GrossAmount *float64   `db:"gross_amount"`
 	Description *string    `db:"description"`
+	Date        *string    `db:"date"`
 	CreatedAt   string     `db:"created_at"`
 	UpdatedAt   *string    `db:"updated_at"`
 }
@@ -110,21 +119,31 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 }
 
 type RsFormEntry struct {
-	ID            uuid.UUID      `json:"id"`
-	FormVersionID uuid.UUID      `json:"form_version_id"`
-	ClinicID      uuid.UUID      `json:"clinic_id"`
-	SubmittedBy   *uuid.UUID     `json:"submitted_by,omitempty"`
-	SubmittedAt   string         `json:"submitted_at,omitempty"`
-	Date          *string        `json:"date,omitempty"`
-	Status        string         `json:"status"`
-	Values        []RsEntryValue `json:"values,omitempty"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     *string        `json:"updated_at"`
+	ID            uuid.UUID         `json:"id"`
+	FormVersionID uuid.UUID         `json:"form_version_id"`
+	ClinicID      uuid.UUID         `json:"clinic_id"`
+	SubmittedBy   *uuid.UUID        `json:"submitted_by,omitempty"`
+	SubmittedAt   string            `json:"submitted_at,omitempty"`
+	Date          *string           `json:"date,omitempty"`
+	Status        string            `json:"status"`
+	Values        []RsEntryValue    `json:"values,omitempty"`
+	Documents     []RsEntryDocument `json:"documents"`
+	CreatedAt     string            `json:"created_at"`
+	UpdatedAt     *string           `json:"updated_at"`
 
 	// Populated for INDEPENDENT_CONTRACTOR forms only.
 	Commission      *float64 `json:"commission,omitempty"`
 	GstOnCommission *float64 `json:"gst_on_commission,omitempty"`
 	PaymentReceived *float64 `json:"payment_received,omitempty"`
+}
+
+// RsEntryDocument is the document info returned inside an entry response
+type RsEntryDocument struct {
+	ID           uuid.UUID `json:"id"`
+	OriginalName string    `json:"original_name"`
+	FileKey      string    `json:"file_key"`
+	UploadedAt   *string   `json:"uploaded_at,omitempty"`
+	CreatedAt    string    `json:"created_at"`
 }
 
 type RsEntryValue struct {
@@ -192,18 +211,13 @@ type RsTransaction struct {
 }
 
 type TransactionFilter struct {
-	// PractitionerID is set programmatically from JWT/invitation — never bound from query params.
-	// The *string field here shadows common.Filter's *uuid.UUID field to prevent gin from
-	// attempting to bind array-style query values (e.g. practitioner_id[]) into a uuid.UUID.
 	PractitionerID *string `form:"practitioner_id"`
 	ClinicID       *string `form:"clinic_id"`
 	FormID         *string `form:"form_id"`
 	CoaID          *string `form:"coa_id"`
 	TaxTypeID      *int16  `form:"tax_type_id"`
-	DateFrom       *string `form:"date_from"`
-	DateTo         *string `form:"date_to"`
-	StartDate      *string `form:"start_date"` // Alias for date_from (used by COA entries endpoints)
-	EndDate        *string `form:"end_date"`   // Alias for date_to (used by COA entries endpoints)
+	StartDate      *string `form:"start_date"`
+	EndDate        *string `form:"end_date"`
 	VersionID      *string `form:"version_id"`
 	Status         *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
 	Role           string  `form:"-"`
@@ -246,24 +260,13 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 		filters["status"] = *f.Status
 	}
 
-	// Support both date_from/date_to and start_date/end_date
-	// Priority: start_date/end_date (for COA endpoints) > date_from/date_to (for transactions endpoint)
-	dateFrom := f.DateFrom
 	if f.StartDate != nil && *f.StartDate != "" {
-		dateFrom = f.StartDate
+		filters["start_date"] = *f.StartDate
+		operators["start_date"] = common.OpGte
 	}
-	if dateFrom != nil && *dateFrom != "" {
-		filters["start_date"] = *dateFrom
-		operators["start_date"] = common.OpGt
-	}
-
-	dateTo := f.DateTo
 	if f.EndDate != nil && *f.EndDate != "" {
-		dateTo = f.EndDate
-	}
-	if dateTo != nil && *dateTo != "" {
-		filters["end_date"] = *dateTo
-		operators["end_date"] = common.OpLt
+		filters["end_date"] = *f.EndDate
+		operators["end_date"] = common.OpLte
 	}
 
 	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset, f.SortBy, f.OrderBy)

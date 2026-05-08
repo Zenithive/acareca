@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"log"
+	"strings"
 
 	"net/http"
 
@@ -25,18 +26,20 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
+	"github.com/iamarpitzala/acareca/internal/shared/upload"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/stripe/stripe-go/v82"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -69,6 +72,36 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo, notificationSvc)
+
+	// ============ FILE UPLOAD MODULE ============
+	fileRepo := file.NewRepository(dbConn)
+
+	// Initialize storage provider (R2)
+	storage, err := upload.NewStorageProvider(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize storage provider: %v", err)
+	}
+
+	// Parse allowed MIME types from config
+	allowedTypes := strings.Split(cfg.FileUploadAllowedTypes, ",")
+	for i, t := range allowedTypes {
+		allowedTypes[i] = strings.TrimSpace(t)
+	}
+
+	// Initialize file validator
+	fileValidator := upload.NewFileValidator(cfg.FileUploadMaxSize, allowedTypes)
+
+	// Initialize file service
+	fileSvc := file.NewService(fileRepo, storage, fileValidator, cfg, dbConn, auditSvc)
+
+	// Initialize file handler
+	fileHandler := file.NewHandler(fileSvc)
+
+	// Register file routes
+	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
+
+	// Initialize file upload worker
+	fileUploadWorker := file.NewUploadWorker(fileRepo, storage)
 
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
@@ -107,7 +140,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 
 	// ============ CLINIC SERVICE (cross-module dependency) ============
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, auditSvc, eventsSvc)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
 
@@ -128,15 +161,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	accountantRepo := accountant.NewRepository(dbConn)
 	accountantSvc := accountant.NewService(accountantRepo)
 
-	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
-	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
-	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, invitationRepo)
-
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
-	authHandler := auth.NewHandler(authSvc)
-	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
-
 	// ============ FY MODULE ============
 	fyRepo := fy.NewRepository(dbConn)
 	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
@@ -144,14 +168,23 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	fyGroup := v1.Group("/", middleware.Auth(cfg))
 	fy.RegisterRoutes(fyGroup, fyHandler)
 
+	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
+	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
+	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
+	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
+
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo)
+	authHandler := auth.NewHandler(authSvc)
+	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
+
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, eventsSvc)
-	plHandler := pl.NewHandler(plSvc, invitationSvc)
+	plHandler := pl.NewHandler(plSvc, invitationSvc, accountantRepo)
 	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
-	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo)
+	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo, practitionerSvc)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
 	bas.RegisterRoutes(v1, basHandler, cfg)
 
@@ -161,7 +194,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, *dbConn, auditSvc, eventsSvc, authRepo, invitationSvc)
+	bsSvc := bs.NewService(bsRepo, equitySvc, *dbConn, auditSvc, eventsSvc, authRepo, invitationSvc, practitionerSvc)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 
@@ -198,6 +231,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
-	return auditSvc, notifier, notificationRepo
+	return auditSvc, notifier, notificationRepo, fileUploadWorker
 
 }

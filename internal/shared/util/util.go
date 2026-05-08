@@ -304,3 +304,16 @@ func InviteDefaultConfig() InvitationConfig {
 		EmailTimeout:     10 * time.Second,
 	}
 }
+
+// parseUUIDs converts a slice of string IDs to uuid.UUIDs, returning an error on the first invalid value.
+func ParseUUIDs(ids []string) ([]uuid.UUID, error) {
+	result := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		parsed, err := uuid.Parse(id)
+		if err != nil {
+			return nil, fmt.Errorf("invalid uuid %q: %w", id, err)
+		}
+		result = append(result, parsed)
+	}
+	return result, nil
+}

@@ -25,8 +25,8 @@ type Service interface {
 	GetByAccount(ctx context.Context, f *PLFilter) ([]RsPLAccount, error)
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
-	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error)
-	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error)
+	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error)
+	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 }
 
 type service struct {
@@ -151,84 +151,67 @@ func parseAndValidate(f *PLFilter) (uuid.UUID, error) {
 	return clinicID, nil
 }
 
-func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID) (*RsReport, error) {
-
+func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error) {
 	meta := auditctx.GetMetadata(ctx)
-
 	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
-	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorID.String())
-	if err == nil && accProfile != nil {
-		isAccountant = true
-	}
-
-	var finalOwnerID uuid.UUID
+	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		if accProfile == nil {
-			return nil, fmt.Errorf("access denied: accountant profile not found")
-		}
 
-		// Scenario: Accountant filtering by specific Clinic
+		// 1. Determine Scope: Specific Clinic, Specific Practitioner, or All Linked
 		if f.ClinicID != nil && *f.ClinicID != "" {
+			// Scenario: Specific Clinic
 			clinicUUID, err := uuid.Parse(*f.ClinicID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid clinic_id format")
 			}
-			permission, err := s.clinicRepo.GetAccountantPermission(ctx, accProfile.ID, clinicUUID)
+			permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicUUID)
 			if err != nil {
-				return nil, fmt.Errorf("permission denied: you are not associated with this clinic")
+				return nil, fmt.Errorf("permission denied: not associated with this clinic")
 			}
-			finalOwnerID = permission.PractitionerID
-
-			// Override: Only notify the owner of the specific clinic being viewed
-			targetNotifIDs = []uuid.UUID{finalOwnerID}
+			targetPracIDs = []uuid.UUID{permission.PractitionerID}
+		} else if f.PractitionerID != "" {
+			// Scenario: Specific Practitioner (Accountant picked one from a dropdown)
+			pracUUID, err := uuid.Parse(f.PractitionerID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid practitioner_id format")
+			}
+			isLinked, err := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, actorID, pracUUID)
+			if err != nil || !isLinked {
+				return nil, fmt.Errorf("permission denied: no association with this practitioner")
+			}
+			targetPracIDs = []uuid.UUID{pracUUID}
 		} else {
-			// Scenario: Accountant filtering by Practitioner (or Practice-wide)
-			if f.PractitionerID == "" {
-				// No ID in filter? Get the default linked practitioner
-				targetPracID, err := s.clinicRepo.GetPractitionerForAccountant(ctx, accProfile.ID)
-				if err != nil {
-					return nil, fmt.Errorf("no linked practitioner found")
-				}
-				finalOwnerID = *targetPracID
-			} else {
-				targetPracID, err := uuid.Parse(f.PractitionerID)
-				if err != nil {
-					return nil, fmt.Errorf("invalid practitioner_id format")
-				}
-				// Security check: is the accountant actually invited by this practitioner?
-				isLinked, err := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, accProfile.ID, targetPracID)
-				if err != nil || !isLinked {
-					return nil, fmt.Errorf("permission denied: no association with this practitioner")
-				}
-				finalOwnerID = targetPracID
+			// Scenario: Aggregation (Accountant viewing ALL linked practitioners)
+			// targetNotifIDs was already populated in the handler via GetPractitionersLinkedToAccountant
+			if len(targetNotifIDs) == 0 {
+				return nil, fmt.Errorf("no linked practitioners found for aggregation")
 			}
+			targetPracIDs = targetNotifIDs
 		}
 	} else {
 		// Scenario: User is the Practitioner
-		pracProfile, err := s.practitionerSvc.GetPractitionerByUserID(ctx, actorID.String())
-		if err != nil {
-			return nil, fmt.Errorf("access denied: practitioner profile not found")
-		}
-		finalOwnerID = pracProfile.ID
-
+		// If practitioner selects a clinic, verify ownership
 		if f.ClinicID != nil && *f.ClinicID != "" {
 			clinicUUID, err := uuid.Parse(*f.ClinicID)
 			if err == nil {
-				_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, finalOwnerID)
+				_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, actorID)
 				if err != nil {
 					return nil, fmt.Errorf("access denied: clinic mismatch")
 				}
 			}
 		}
+		targetPracIDs = []uuid.UUID{actorID}
 	}
 
-	// 3. APPLY VERIFIED PRACTITIONER ID (OUTSIDE all if/else blocks)
-	f.PractitionerID = finalOwnerID.String()
+	// 2. Sync Filter state for Repo/Audit (use the first ID as a representative if aggregating)
+	if len(targetPracIDs) > 0 {
+		f.PractitionerID = targetPracIDs[0].String()
+	}
 
 	var from, to time.Time
-	//var err error
+	var err error
 	if f.DateFrom != nil {
 		if from, err = time.Parse(dateLayout, *f.DateFrom); err != nil {
 			return nil, fmt.Errorf("invalid date_from: use YYYY-MM-DD format")
@@ -243,14 +226,14 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		return nil, fmt.Errorf("date_from must not be after date_until")
 	}
 
-	rows, err := s.repo.GetReport(ctx, f)
+	rows, err := s.repo.GetReport(ctx, targetPracIDs, f)
 	if err != nil {
 		return nil, err
 	}
 
 	// --- AUDIT LOG ---
 	var userIDStr string
-	userIDStr = actorID.String()
+	userIDStr = userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -270,17 +253,19 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	// Record the Shared Event
 	if isAccountant && len(targetNotifIDs) > 0 {
 		var fullName string
-		user, err := s.authRepo.FindByID(ctx, actorID)
+		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
+
+		fmt.Printf("\nName: %s\n", fullName)
 
 		for _, pID := range targetNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
 				PractitionerID: pID,
-				AccountantID:   accProfile.ID,
-				ActorID:        actorID,
+				AccountantID:   actorID,
+				ActorID:        userID,
 				ActorName:      &fullName,
 				ActorType:      role,
 				EventType:      "pl_report.generated",
@@ -293,7 +278,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	}
 
 	// NEW: Fetch pre-calculated summary from the specialized view
-	summary, err := s.repo.GetPLSummary(ctx, f)
+	summary, err := s.repo.GetPLSummary(ctx, targetPracIDs, f)
 	if err != nil {
 		// Log the error but perhaps allow a fallback or return error
 		return nil, err
@@ -392,7 +377,37 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error) {
+func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	// If a practitioner is filtered, resolve that specific profile for the ABN.
+	// Otherwise, fallback to the actor context.
+	targetID := ""
+	if filterPractitionerID != "" {
+		targetID = filterPractitionerID
+	} else if role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+		if err == nil && prac.ABN != nil {
+			practitionerABN = *prac.ABN
+		}
+	} else if len(notifIDs) > 0 {
+		// Fallback for accountants with no specific filter
+		prac, err := s.practitionerSvc.GetPractitioner(ctx, notifIDs[0])
+		if err == nil && prac.ABN != nil {
+			practitionerABN = *prac.ABN
+		}
+	}
+
 	f := excelize.NewFile()
 	sheet := "Profit and Loss"
 	f.NewSheet(sheet)
@@ -468,16 +483,36 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		},
 	})
 
+	setMetaRow := func(cell string, label string, value string) {
+		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
+
 	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Profit and Loss Report")
 	f.MergeCell(sheet, "A1", "B1")
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
 
-	currentRow := 3 // Default start if no date
-	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
-		f.SetCellValue(sheet, "A2", fmt.Sprintf("Period: %s to %s", data.ReportMetadata.DateFrom, data.ReportMetadata.DateUntil))
-		currentRow = 4
+	currentRow := 2 // Default start if no date
+
+	setMetaRow(fmt.Sprintf("A%d", currentRow), "Exported by:", fullName)
+	currentRow++
+
+	// ABN Row (Only if exists)
+	if practitionerABN != "" {
+		setMetaRow(fmt.Sprintf("A%d", currentRow), "ABN:", practitionerABN)
+		currentRow++
 	}
+
+	// Period Row
+	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
+		setMetaRow(fmt.Sprintf("A%d", currentRow), "Period:", fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
+		currentRow++
+	}
+
+	currentRow++ // Spacer row
 
 	var totalIncomeCell, totalCOSCell, totalOtherCostsCell string
 
@@ -496,7 +531,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 			f.AddTable(sheet, &excelize.Table{
 				Range:         tableRange,
 				Name:          tableName,
-				StyleName:     "", // Keeps your custom colors
+				StyleName:     "",
 				ShowHeaderRow: &showHeaders,
 			})
 		}
@@ -562,17 +597,9 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	f.UpdateLinkedValue()
 
 	// --- NOTIFICATION LOGIC ---
-	// notifIDs is already scoped by the handler (Scenario A or B).
-	// If a specific clinic was filtered, further narrow to only that clinic's owner.
-	targetNotifIDs := notifIDs
-	if filterClinicID != "" && len(notifIDs) > 1 {
-		clinicUUID, err := uuid.Parse(filterClinicID)
-		if err == nil {
-			clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicUUID)
-			if err == nil {
-				targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
-			}
-		}
+	finalNotifIDs := notifIDs
+	if filterPractitionerID != "" {
+		finalNotifIDs = []uuid.UUID{uuid.MustParse(filterPractitionerID)}
 	}
 
 	// --- AUDIT LOG ---
@@ -597,14 +624,8 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	})
 
 	// Record the Shared Event — only for accountants, never for practitioners.
-	if role == util.RoleAccountant && len(targetNotifIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		for _, pID := range targetNotifIDs {
+	if role == util.RoleAccountant && len(finalNotifIDs) > 0 {
+		for _, pID := range finalNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
 				PractitionerID: pID,
@@ -623,7 +644,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	if exportType == "pdf" {
 		// Return HTML string
-		return s.generateHTMLString(f, sheet, data)
+		return s.generateHTMLString(data, fullName, practitionerABN)
 	}
 
 	return f, nil
@@ -631,12 +652,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 func strPtr(s string) *string { return &s }
 
-func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsReport) (string, error) {
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return "", err
-	}
-
+func (s *service) generateHTMLString(data *RsReport, fullName string, practitionerABN string) (string, error) {
 	var b bytes.Buffer
 	b.WriteString("<html><head><style>")
 	b.WriteString(`
@@ -645,7 +661,7 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 		table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 		td { padding: 6px 8px; font-size: 10pt; vertical-align: middle; }
 		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; font-size: 14pt; text-align: center; border: 1px solid #000; }
-		.period-text { font-size: 10pt; padding: 10px 0; font-style: italic; }
+		.meta-text { font-size: 10pt; color: #555; }
 		.section-title { font-weight: bold; font-size: 12pt; padding-top: 15px; }
 		.data-left { border: 0.5pt solid #000; text-align: left; }
 		.data-grid { border: 0.5pt solid #000; text-align: right; }
@@ -668,77 +684,56 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 		return fmt.Sprintf("$%.2f", v)
 	}
 
-	// Calculate totals from API data for PDF display
-	calcTotal := func(accounts []RsReportAccount) float64 {
-		var t float64
-		for _, a := range accounts {
-			t += a.TotalValue
+	// Helper to render a section
+	renderSection := func(title string, accounts []RsReportAccount, total float64) {
+		b.WriteString(fmt.Sprintf("<tr><td class='section-title'>%s</td><td></td></tr>", title))
+		for _, acc := range accounts {
+			b.WriteString(fmt.Sprintf("<tr><td class='data-left'>%s</td><td class='data-grid'>%s</td></tr>", acc.CoaName, formatCurr(acc.TotalValue)))
 		}
-		return t
+		b.WriteString(fmt.Sprintf("<tr><td class='group-total'>TOTAL %s</td><td class='group-total'>%s</td></tr>", title, formatCurr(total)))
+		b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
 	}
 
-	totalInc := calcTotal(data.Income.Accounts)
-	totalCOS := calcTotal(data.CostOfSales.Accounts)
-	totalOther := calcTotal(data.OtherCosts.Accounts)
-	grossProfit := totalInc - totalCOS
-	netProfit := grossProfit - totalOther
+	// Header
+	b.WriteString("<tr><td colspan='2' class='header-blue'>Profit and Loss Report</td></tr>")
 
-	for rIdx, row := range rows {
-		rowNum := rIdx + 1
-		if len(row) == 0 {
-			b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
-			continue
-		}
+	// Exported By
+	b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>Exported by:</b> %s</td></tr>", fullName))
 
-		valA := row[0]
-		var valB string
-		classA, classB := "", ""
-
-		// Identify the row type and override valB with API data
-		switch {
-		case rowNum == 1:
-			classA = "header-blue"
-			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='%s'>%s</td></tr>", classA, valA))
-			continue
-
-		case strings.HasPrefix(valA, "Period:"):
-			classA = "period-text"
-
-		case valA == "INCOME" || valA == "COST OF SALES" || valA == "OTHER COSTS":
-			classA = "section-title"
-
-		case valA == "TOTAL INCOME":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(totalInc)
-
-		case valA == "TOTAL COST OF SALES":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(totalCOS)
-
-		case valA == "TOTAL OTHER COSTS":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(totalOther)
-
-		case valA == "GROSS PROFIT":
-			classA, classB = "profit-label", "profit-value"
-			valB = formatCurr(grossProfit)
-
-		case valA == "NET PROFIT":
-			classA, classB = "profit-label", "profit-value"
-			valB = formatCurr(netProfit)
-
-		default:
-			classA, classB = "data-left", "data-grid"
-			if len(row) > 1 {
-				valB = row[1]
-			} // Account values are already static in Excel rows
-		}
-
-		b.WriteString(fmt.Sprintf("<tr><td class='%s'>%s</td>", classA, valA))
-		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td></tr>", classB, valB))
+	// ABN of Practitioner
+	if practitionerABN != "" {
+		b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>ABN:</b> %s</td></tr>", practitionerABN))
 	}
+
+	// Period
+	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
+		b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>Period:</b> %s to %s</td></tr>", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
+	}
+	b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
+
+	// Sections
+	renderSection("INCOME", data.Income.Accounts, data.Income.GroupTotal)
+	renderSection("COST OF SALES", data.CostOfSales.Accounts, data.CostOfSales.GroupTotal)
+
+	// Gross Profit
+	b.WriteString(fmt.Sprintf("<tr><td class='profit-label'>GROSS PROFIT</td><td class='profit-value'>%s</td></tr>", formatCurr(data.GrossProfit)))
+	b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
+
+	renderSection("OTHER COSTS", data.OtherCosts.Accounts, data.OtherCosts.GroupTotal)
+
+	// Net Profit
+	b.WriteString(fmt.Sprintf("<tr><td class='profit-label'>NET PROFIT</td><td class='profit-value'>%s</td></tr>", formatCurr(data.NetProfit)))
 
 	b.WriteString("</table></body></html>")
 
-	return b.String(), err
+	return b.String(), nil
+}
+
+// Helper to format date strings from YYYY-MM-DD to DD-MM-YYYY
+func formatDateStr(dateStr string) string {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr
+	}
+	return t.Format("02-01-2006")
 }

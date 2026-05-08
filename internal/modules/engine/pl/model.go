@@ -16,7 +16,7 @@ type PLReportFilter struct {
 	CoaID          *string `form:"coa_id"`
 	TaxTypeID      *string `form:"tax_type_id"` // matches tbl_account_tax.name
 	FormID         *string `form:"form_id"`
-	PractitionerID string  `form:"-"` // set from JWT, not query param
+	PractitionerID string  `form:"practitioner_id"`
 }
 
 type PLReportRow struct {

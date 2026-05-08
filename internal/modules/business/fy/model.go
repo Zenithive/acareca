@@ -35,8 +35,9 @@ type RqCreateFY struct {
 	IsActive bool   `json:"is_active"`
 }
 
-type RqUpdateFYLabel struct {
+type RqUpdateFY struct {
 	Label    *string `json:"label"`
+	FYYear   string  `json:"fy_year"`
 	IsActive *bool   `json:"is_active"`
 }
 
@@ -51,6 +52,15 @@ type RsFinancialYear struct {
 type RsFinancialQuarter struct {
 	ID        uuid.UUID `json:"id"`
 	Label     string    `json:"label"`
+	StartDate time.Time `json:"start_date"`
+	EndDate   time.Time `json:"end_date"`
+}
+
+type RsFY struct {
+	ID        uuid.UUID `json:"id"`
+	Label     string    `json:"label"`
+	FYYear    string    `json:"fy_year"`
+	IsActive  *bool     `json:"is_active"`
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 }

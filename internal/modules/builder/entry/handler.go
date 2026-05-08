@@ -362,8 +362,8 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 	if role == util.RoleAccountant {
 		// If the frontend sent ["uuid"], strip the brackets and quotes
 		if filter.PractitionerID != nil {
-			cleanID := strings.Trim(*filter.PractitionerID, "[]\" ")
-			filter.PractitionerID = &cleanID
+			cleaned := cleanUUIDString(*filter.PractitionerID)
+			filter.PractitionerID = &cleaned
 		}
 		if filter.ClinicID != nil {
 			cleanID := strings.Trim(*filter.ClinicID, "[]\" ")

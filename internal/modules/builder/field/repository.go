@@ -214,7 +214,7 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, f *FormField) er
 func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, f *FormField) (*FormField, error) {
 	query := `
 		UPDATE tbl_form_field
-		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type = $4::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, is_highlighted = $8, business_use = $9, amount = $10, updated_at = now()
+		SET label = $1, section_type = $2::section_type, payment_responsibility = $3::payment_responsibility, tax_type =NULLIF($4, '')::tax_type, coa_id = $5, sort_order = $6, is_formula = $7, is_highlighted = $8, business_use = $9, amount = $10, updated_at = now()
 		WHERE id = $11 AND deleted_at IS NULL
 		RETURNING id, form_version_id, field_key, slug, label, is_computed, section_type, payment_responsibility, tax_type, coa_id, sort_order, created_at, updated_at, is_formula, is_highlighted, business_use, amount
 	`

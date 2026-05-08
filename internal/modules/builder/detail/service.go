@@ -280,20 +280,6 @@ func (s *Service) GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UU
 		return nil, err
 	}
 
-	// PERMISSION CHECK (Accountant Only)
-	if strings.EqualFold(role, util.RoleAccountant) {
-		// We call the invitation service to check for a DIRECT mapping to this FORM ID
-		// perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formID)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("Authentication failed: %w", err)
-		// }
-
-		// Deny if no record exists OR if the JSON permissions don't allow 'read' or 'all'
-		// if perms == nil || (!perms.HasAccess("read") && !perms.HasAccess("all")) {
-		// 	return nil, errors.New("Access denied: you do not have permission to view this form")
-		// }
-	}
-
 	return formDetail.ToRs(), nil
 }
 

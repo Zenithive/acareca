@@ -12,6 +12,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -38,10 +39,11 @@ type service struct {
 	coaRepo          coa.Repository
 	invitationRepo   interface{}
 	auditSvc         audit.Service
+	fyrepo           fy.Repository
 }
 
-func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, invitationRepo ...interface{}) IService {
-	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc}
+func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo ...interface{}) IService {
+	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc, fyrepo: fyrepo}
 	if len(invitationRepo) > 0 {
 		svc.invitationRepo = invitationRepo[0]
 	}
@@ -156,9 +158,30 @@ func (s *service) GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyI
 
 // UpdateLockDate updates or clears the lock date
 func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
-	// Business Logic: You might want to prevent setting a lock date too far in the future
+	// Fetch Financial Year details to get the StartDate
+	fy, err := s.fyrepo.GetFinancialYearByID(ctx, fyID)
+	if err != nil {
+		return fmt.Errorf("invalid financial year: %w", err)
+	}
+
+	// Validate the Lock Date if provided
 	if lockDate != nil && *lockDate != "" {
-		// Example: return fmt.Errorf("lock date cannot be more than 1 year in the future")
+		// Parse the incoming lockDate
+		parsedLockDate, err := time.Parse("2006-01-02", *lockDate)
+		if err != nil {
+			return fmt.Errorf("invalid lock date format: %w", err)
+		}
+
+		// Rule 1: Cannot be before Financial Year start date
+		if parsedLockDate.Before(fy.StartDate) {
+			return fmt.Errorf("lock date cannot be before the financial year start date: %s", fy.StartDate.Format("2006-01-02"))
+		}
+
+		// Rule 2: Cannot exceed today's date
+		today := time.Now().Truncate(24 * time.Hour)
+		if parsedLockDate.After(today) {
+			return fmt.Errorf("lock date cannot be in the future")
+		}
 	}
 
 	// Get Metadata for the audit log

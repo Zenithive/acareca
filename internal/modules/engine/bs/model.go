@@ -20,16 +20,14 @@ type BSRow struct {
 // BSFilter defines query parameters for balance sheet
 type BSFilter struct {
 	PractitionerID *string `form:"practitioner_id"`
-	ClinicID       *string `form:"clinic_id"`
-	AsOfDate       *string `form:"as_of_date"` // Show balances as of this date (YYYY-MM-DD)
-	FormID         *string `form:"form_id"`
-	CoaID          *string `form:"coa_id"`
-	TaxTypeID      *int16  `form:"tax_type_id"`
+	StartDate      *string `form:"start_date"`
+	EndDate        *string `form:"end_date"`
 }
 
 // RsBalanceSheet is the complete balance sheet response
 type RsBalanceSheet struct {
-	AsOfDate                  string      `json:"as_of_date"`
+	StartDate                 string      `json:"start_date,omitempty"`
+	EndDate                   string      `json:"end_date,omitempty"`
 	Assets                    []RsAccount `json:"assets"`
 	TotalAssets               float64     `json:"total_assets"`
 	Liabilities               []RsAccount `json:"liabilities"`

@@ -18,7 +18,7 @@ type Repository interface {
 	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
 
-	GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
+	GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
@@ -197,18 +197,30 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
-        SELECT
-            -- Sum everything from the line items directly
-            COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION'), 0) AS g1_total_sales_gross,
-            COALESCE(SUM(gst_amount)   FILTER (WHERE section_type = 'COLLECTION'), 0) AS label_1a_gst_on_sales,
-            
-            -- This will capture your $220 regardless of the tax mismatch
-            COALESCE(SUM(gross_amount) FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS g11_total_purchases_gross,
-            COALESCE(SUM(gst_amount)   FILTER (WHERE section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY')), 0) AS label_1b_gst_on_purchases
-        FROM vw_bas_line_items
-        WHERE practitioner_id = $1
-          AND submitted_at::DATE >= $2::DATE
-          AND submitted_at::DATE <= $3::DATE
+			SELECT
+				COALESCE(SUM(gross_amount) FILTER (
+					WHERE section_type = 'COLLECTION'
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS g1_total_sales_gross,
+
+				COALESCE(SUM(gst_amount) FILTER (
+					WHERE section_type = 'COLLECTION'
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS label_1a_gst_on_sales,
+
+				COALESCE(SUM(gross_amount) FILTER (
+					WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS g11_total_purchases_gross,
+
+				COALESCE(SUM(gst_amount) FILTER (
+					WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
+					AND bas_category != 'BAS_EXCLUDED'
+				), 0) AS label_1b_gst_on_purchases
+			FROM vw_bas_line_items
+        	WHERE practitioner_id = $1
+          AND date::DATE >= $2::DATE
+          AND date::DATE <= $3::DATE
     `
 	var row BASReportRow
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
@@ -216,22 +228,21 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 	}
 	return &row, nil
 }
-func (r *repository) GetBASLineItems(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
-	// 1. Use ? instead of $1
+
+func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	query := `
         SELECT 
             period_quarter,
             section_type,
             bas_category,
-			coa_id,
-			account_name,
+			account_name, -- Note: We group by Name for aggregation
             SUM(net_amount) AS net_amount,
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
         FROM vw_bas_line_items
-        WHERE practitioner_id = ?
+        WHERE practitioner_id IN (?)
     `
-	args := []interface{}{practitionerID}
+	args := []interface{}{practitionerIDs}
 
 	if clinicID != nil && *clinicID != uuid.Nil {
 		query += " AND clinic_id = ?"

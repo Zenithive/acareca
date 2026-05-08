@@ -441,6 +441,8 @@ definitions:
         type: number
       total_active_subscriptions:
         type: integer
+      total_inactive_subscriptions:
+        type: integer
     type: object
   analytics.RsUserGrowth:
     properties:
@@ -579,6 +581,8 @@ definitions:
     properties:
       abn:
         type: string
+      document_id:
+        type: string
       email:
         type: string
       first_name:
@@ -590,6 +594,8 @@ definitions:
     type: object
   auth.RqUser:
     properties:
+      document_id:
+        type: string
       email:
         type: string
       first_name:
@@ -619,6 +625,8 @@ definitions:
         type: string
       created_at:
         type: string
+      document:
+        $ref: '#/definitions/file.RsDocument'
       email:
         type: string
       first_name:
@@ -805,14 +813,14 @@ definitions:
     type: object
   bs.RsBalanceSheet:
     properties:
-      as_of_date:
-        type: string
       assets:
         items:
           $ref: '#/definitions/bs.RsAccount'
         type: array
       current_year_profit:
         type: number
+      end_date:
+        type: string
       equity:
         items:
           $ref: '#/definitions/bs.RsAccount'
@@ -821,6 +829,8 @@ definitions:
         items:
           $ref: '#/definitions/bs.RsAccount'
         type: array
+      start_date:
+        type: string
       total_assets:
         type: number
       total_equity:
@@ -1073,6 +1083,10 @@ definitions:
         type: array
       form_version_id:
         type: string
+      formulas:
+        items:
+          $ref: '#/definitions/formula.RsFormula'
+        type: array
     type: object
   calculation.RsPreviewFieldValue:
     properties:
@@ -1162,6 +1176,10 @@ definitions:
         type: array
       description:
         type: string
+      document_id:
+        type: string
+      image_url:
+        type: string
       is_active:
         type: boolean
       name:
@@ -1200,9 +1218,13 @@ definitions:
         type: array
       description:
         type: string
+      document_id:
+        type: string
       financial_year_id:
         type: string
       id:
+        type: string
+      image_url:
         type: string
       is_active:
         type: boolean
@@ -1294,6 +1316,19 @@ definitions:
       is_unique:
         type: boolean
     type: object
+  entry.RqDocument:
+    properties:
+      create:
+        description: document IDs to link
+        items:
+          type: string
+        type: array
+      delete:
+        description: document IDs to unlink
+        items:
+          type: string
+        type: array
+    type: object
   entry.RqEntryValue:
     properties:
       amount:
@@ -1319,6 +1354,8 @@ definitions:
         type: string
       date:
         type: string
+      documents:
+        $ref: '#/definitions/entry.RqDocument'
       status:
         enum:
         - DRAFT
@@ -1335,6 +1372,8 @@ definitions:
     properties:
       date:
         type: string
+      documents:
+        $ref: '#/definitions/entry.RqDocument'
       status:
         enum:
         - DRAFT
@@ -1391,29 +1430,23 @@ definitions:
     type: object
   equity.OwnerEquityCalculation:
     properties:
-      as_of_date:
-        type: string
       current_year_profit:
-        description: This year's profit
         type: number
       drawings:
-        description: Current year withdrawals
         type: number
+      end_date:
+        type: string
       equity_movements:
-        allOf:
-        - $ref: '#/definitions/equity.EquityMovements'
-        description: Detailed breakdown
+        $ref: '#/definitions/equity.EquityMovements'
       funds_introduced:
-        description: Current year contributions
         type: number
       retained_earnings:
-        description: Prior years' profits
         type: number
       share_capital:
-        description: Opening capital
         type: number
+      start_date:
+        type: string
       total_equity:
-        description: Sum of all
         type: number
     type: object
   field.RqCreateField:
@@ -1493,6 +1526,55 @@ definitions:
     required:
     - id
     type: object
+  file.RqGeneratePresignedUploadURL:
+    properties:
+      expires_in:
+        maximum: 3600
+        minimum: 60
+        type: integer
+    type: object
+  file.RqUpdateDocument:
+    properties:
+      is_public:
+        type: boolean
+      original_name:
+        type: string
+    type: object
+  file.RsDocument:
+    properties:
+      created_at:
+        type: string
+      file_key:
+        type: string
+      id:
+        type: string
+      original_name:
+        type: string
+      uploaded_at:
+        type: string
+    type: object
+  file.RsListDocuments:
+    properties:
+      documents:
+        items:
+          $ref: '#/definitions/file.RsDocument'
+        type: array
+    type: object
+  file.RsPresignedUploadURL:
+    properties:
+      content_type:
+        description: verified MIME type — client must send this as Content-Type on
+          the PUT
+        type: string
+      document_id:
+        type: string
+      expires_at:
+        type: string
+      object_key:
+        type: string
+      upload_url:
+        type: string
+    type: object
   form.ExpenseItem:
     properties:
       amount:
@@ -1502,6 +1584,8 @@ definitions:
         minimum: 0
         type: number
       coa_id:
+        type: string
+      date:
         type: string
       description:
         type: string
@@ -1513,6 +1597,7 @@ definitions:
     - amount
     - business_use
     - coa_id
+    - date
     - name
     type: object
   form.ExpenseItemUpdate:
@@ -1524,6 +1609,8 @@ definitions:
         minimum: 0
         type: number
       coa_id:
+        type: string
+      date:
         type: string
       description:
         type: string
@@ -1585,8 +1672,6 @@ definitions:
     type: object
   form.RqExpense:
     properties:
-      date:
-        type: string
       items:
         items:
           $ref: '#/definitions/form.ExpenseItem'
@@ -1595,7 +1680,6 @@ definitions:
       name:
         type: string
     required:
-    - date
     - items
     - name
     type: object
@@ -1620,8 +1704,6 @@ definitions:
         items:
           $ref: '#/definitions/form.ExpenseItem'
         type: array
-      date:
-        type: string
       delete:
         items:
           type: string
@@ -1633,7 +1715,6 @@ definitions:
           $ref: '#/definitions/form.ExpenseItemUpdate'
         type: array
     required:
-    - date
     - name
     type: object
   form.RqUpdateFormStatus:
@@ -1736,6 +1817,23 @@ definitions:
     - field_key
     - name
     type: object
+  formula.RsFormula:
+    properties:
+      created_at:
+        type: string
+      expression:
+        $ref: '#/definitions/formula.ExprNode'
+      field_id:
+        type: string
+      field_key:
+        type: string
+      form_version_id:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   fy.RqCreateFY:
     properties:
       fy_year:
@@ -1748,11 +1846,24 @@ definitions:
     - fy_year
     - label
     type: object
-  fy.RqUpdateFYLabel:
+  fy.RqUpdateFY:
     properties:
+      fy_year:
+        type: string
       is_active:
         type: boolean
       label:
+        type: string
+    type: object
+  fy.RsFinancialYear:
+    properties:
+      end_date:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      start_date:
         type: string
     type: object
   invitation.AccessLevel:
@@ -1885,6 +1996,30 @@ definitions:
         $ref: '#/definitions/notification.ActorType'
       status:
         $ref: '#/definitions/notification.Status'
+    type: object
+  notification.NotificationChannels:
+    additionalProperties:
+      type: boolean
+    type: object
+  notification.NotificationEventType:
+    enum:
+    - NEW_TRANSACTION
+    - ACCOUNTANT_ACTIVITY_ALERT
+    - SYSTEM_ACTIVITY_ALERT
+    type: string
+    x-enum-varnames:
+    - EventNewTransaction
+    - EventAccountantActivityAlert
+    - EventSystemActivityAlert
+  notification.RqUpdatePreference:
+    properties:
+      channels:
+        $ref: '#/definitions/notification.NotificationChannels'
+      event_type:
+        $ref: '#/definitions/notification.NotificationEventType'
+    required:
+    - channels
+    - event_type
     type: object
   notification.RsListNotification:
     properties:
@@ -3110,6 +3245,38 @@ paths:
       summary: Create a new financial year
       tags:
       - fy
+  /admin/get-fy/{financial_year_id}:
+    get:
+      parameters:
+      - description: Financial Year UUID
+        in: path
+        name: financial_year_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fy.RsFinancialYear'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get a specific financial year by ID
+      tags:
+      - fy
   /admin/get-fys:
     get:
       produces:
@@ -3529,12 +3696,12 @@ paths:
         name: financial_year_id
         required: true
         type: string
-      - description: Updated Label Data
+      - description: Updated Financial Year Data
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/fy.RqUpdateFYLabel'
+          $ref: '#/definitions/fy.RqUpdateFY'
       produces:
       - application/json
       responses:
@@ -3556,7 +3723,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Update the label of a financial year
+      summary: Update a financial year
       tags:
       - fy
   /api/v1/equity/calculation:
@@ -3570,9 +3737,13 @@ paths:
         in: query
         name: clinic_id
         type: string
-      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+      - description: Start date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
         type: string
       produces:
       - application/json
@@ -3607,9 +3778,13 @@ paths:
         in: query
         name: clinic_id
         type: string
-      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+      - description: Start date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
         type: string
       produces:
       - application/json
@@ -3643,9 +3818,13 @@ paths:
         in: query
         name: clinic_id
         type: string
-      - description: Calculate as of date (YYYY-MM-DD), defaults to today
+      - description: Start date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: start_date
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
         type: string
       produces:
       - application/json
@@ -4017,13 +4196,13 @@ paths:
       description: Get balance sheet showing assets, liabilities, and equity (including
         owner fund accounts)
       parameters:
-      - description: Filter by clinic UUID
+      - description: Start Date (YYYY-MM-DD)
         in: query
-        name: clinic_id
+        name: start_date
         type: string
-      - description: Balance as of date (YYYY-MM-DD), defaults to today
+      - description: End Date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: end_date
         type: string
       produces:
       - application/json
@@ -4058,13 +4237,13 @@ paths:
         in: query
         name: practitioner_id
         type: string
-      - description: Clinic UUID
+      - description: Start Date (YYYY-MM-DD)
         in: query
-        name: clinic_id
+        name: start_date
         type: string
-      - description: Balance as of date (YYYY-MM-DD), defaults to today
+      - description: End Date (YYYY-MM-DD)
         in: query
-        name: as_of_date
+        name: end_date
         type: string
       - description: 'Export Type: pdf | excel'
         in: query
@@ -5685,6 +5864,231 @@ paths:
       summary: Create a new form entry
       tags:
       - entry
+  /files:
+    get:
+      description: List documents owned by the authenticated user
+      parameters:
+      - description: Filter by entity type
+        in: query
+        name: entity_type
+        type: string
+      - description: Filter by entity ID
+        in: query
+        name: entity_id
+        type: string
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - default: created_at
+        description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: desc
+        description: Sort order (asc/desc)
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsListDocuments'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List documents
+      tags:
+      - files
+  /files/{id}:
+    delete:
+      description: Soft delete a document
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a document
+      tags:
+      - files
+    get:
+      description: Get metadata for a specific document
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsDocument'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get document metadata
+      tags:
+      - files
+    put:
+      consumes:
+      - application/json
+      description: Update metadata for a specific document
+      parameters:
+      - description: Document ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/file.RqUpdateDocument'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsDocument'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update document metadata
+      tags:
+      - files
+  /files/presigned-upload:
+    post:
+      consumes:
+      - application/json
+      description: Generate a presigned URL for direct upload to R2 storage
+      parameters:
+      - description: Presigned URL parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/file.RqGeneratePresignedUploadURL'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/file.RsPresignedUploadURL'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Generate presigned upload URL
+      tags:
+      - files
   /form:
     get:
       description: List all forms belonging to the practitioner's clinics. Optionally
@@ -6417,6 +6821,58 @@ paths:
       security:
       - BearerToken: []
       summary: Mark notification as read
+      tags:
+      - notification
+  /notification/preferences:
+    get:
+      description: Returns the current channel preferences for the authenticated user.
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get notification preferences
+      tags:
+      - notification
+    put:
+      description: Updates or creates a preference for a specific event type.
+      parameters:
+      - description: Preference Update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/notification.RqUpdatePreference'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update notification preference
       tags:
       - notification
   /notification/read-all:

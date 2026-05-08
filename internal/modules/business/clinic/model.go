@@ -5,18 +5,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 // Database models
 type Clinic struct {
-	ID             uuid.UUID  `db:"id"`
-	PractitionerID uuid.UUID  `db:"practitioner_id"`
-	EntityID       uuid.UUID  `db:"entity_id"`
-	ProfilePicture *string    `db:"profile_picture"`
-	Name           string     `db:"name"`
-	ABN            *string    `db:"abn"`
-	Description    *string    `db:"description"`
+	ID             uuid.UUID `db:"id"`
+	PractitionerID uuid.UUID `db:"practitioner_id"`
+	EntityID       uuid.UUID `db:"entity_id"`
+	ProfilePicture *string   `db:"profile_picture"`
+	ImageURL       *string   `db:"image_url"`
+	Name           string    `db:"name"`
+	ABN            *string   `db:"abn"`
+	Description    *string   `db:"description"`
+	Document       *file.Document
 	IsActive       bool       `db:"is_active"`
 	CreatedAt      time.Time  `db:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at"`
@@ -61,10 +64,12 @@ type RqCreateClinic struct {
 	PractitionerID uuid.UUID         `json:"practitioner_id"`
 	EntityID       uuid.UUID         `json:"-"`
 	ProfilePicture *string           `json:"profile_picture"`
+	ImageURL       *string           `json:"image_url"`
 	Name           string            `json:"name" validate:"required"`
 	ABN            *string           `json:"abn" validate:"omitempty,len=11"`
 	Description    *string           `json:"description"`
 	IsActive       *bool             `json:"is_active"`
+	DocumentId     *string           `json:"document_id"`
 	Address        *RqClinicAddress  `json:"address"`
 	Contacts       []RqClinicContact `json:"contacts"`
 }
@@ -95,6 +100,7 @@ type RqUpdateClinic struct {
 	EntityID        uuid.UUID         `json:"-"`
 	Name            *string           `json:"name"`
 	ProfilePicture  *string           `json:"profile_picture"`
+	ImageURL        *string           `json:"image_url"`
 	ABN             *string           `json:"abn" validate:"omitempty,len=11"`
 	Description     *string           `json:"description"`
 	IsActive        *bool             `json:"is_active"`
@@ -102,6 +108,7 @@ type RqUpdateClinic struct {
 	Contacts        []RqUpdateContact `json:"contacts"`
 	FinancialYearID *uuid.UUID        `json:"financial_year_id"`
 	LockDate        *time.Time        `json:"lock_date"`
+	DocumentId      *string           `json:"document_id"`
 }
 
 type RqUpdateAddress struct {
@@ -135,6 +142,7 @@ type RsClinic struct {
 	PractitionerID    uuid.UUID            `json:"practitioner_id"`
 	EntityID          uuid.UUID            `json:"-"`
 	ProfilePicture    *string              `json:"profile_picture,omitempty"`
+	ImageURL          *string              `json:"image_url,omitempty"`
 	Name              string               `json:"name"`
 	ABN               *string              `json:"abn,omitempty"`
 	Description       *string              `json:"description,omitempty"`
@@ -142,6 +150,7 @@ type RsClinic struct {
 	Address           *RsClinicAddress     `json:"address,omitempty"`
 	Contacts          []RsClinicContact    `json:"contacts,omitempty"`
 	FinancialSettings *RsFinancialSettings `json:"financial_settings,omitempty"`
+	Document          *file.RsDocument     `json:"document"`
 	CreatedAt         time.Time            `json:"created_at"`
 	UpdatedAt         time.Time            `json:"updated_at"`
 }
@@ -201,4 +210,18 @@ func (filter *Filter) MapToFilter() common.Filter {
 type AccountantPermission struct {
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	ClinicID       uuid.UUID `db:"clinic_id"`
+}
+
+// toRsDocument safely converts a *file.Document to *file.RsDocument, returning nil if doc is nil.
+func ToRsDocument(doc *file.Document) *file.RsDocument {
+	if doc == nil {
+		return nil
+	}
+	return &file.RsDocument{
+		ID:           doc.ID,
+		OriginalName: doc.OriginalName,
+		FileKey:      doc.ObjectKey,
+		UploadedAt:   doc.UploadedAt,
+		CreatedAt:    doc.CreatedAt,
+	}
 }

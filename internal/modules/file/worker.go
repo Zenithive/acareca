@@ -1,0 +1,224 @@
+package file
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/iamarpitzala/acareca/internal/shared/upload"
+)
+
+const (
+	uploadWorkerInterval  = 30 * time.Second
+	expiredWorkerInterval = 5 * time.Minute
+	uploadWorkerBatchSize = 50
+	workerConcurrency     = 10
+)
+
+type UploadWorker struct {
+	repo    Repository
+	storage upload.StorageProvider
+
+	pendingMu sync.Mutex // prevents overlapping processPending runs
+	expiredMu sync.Mutex // prevents overlapping processExpired runs
+}
+
+func NewUploadWorker(repo Repository, storage upload.StorageProvider) *UploadWorker {
+	return &UploadWorker{
+		repo:    repo,
+		storage: storage,
+	}
+}
+
+func (w *UploadWorker) Start(ctx context.Context) {
+	log.Println("[file worker] started")
+
+	verifyTicker := time.NewTicker(uploadWorkerInterval)
+	expiredTicker := time.NewTicker(expiredWorkerInterval)
+	defer verifyTicker.Stop()
+	defer expiredTicker.Stop()
+
+	// Run immediately on startup
+	w.processPending(ctx)
+	w.processExpired(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[file worker] stopped")
+			return
+		case <-verifyTicker.C:
+			w.processPending(ctx)
+		case <-expiredTicker.C:
+			w.processExpired(ctx)
+		}
+	}
+}
+
+func (w *UploadWorker) processPending(ctx context.Context) {
+	// Skip if previous run is still in progress
+	if !w.pendingMu.TryLock() {
+		log.Println("[file worker] processPending already running, skipping")
+		return
+	}
+	defer w.pendingMu.Unlock()
+
+	docs, err := w.repo.FindPendingUploads(ctx, uploadWorkerBatchSize)
+	if err != nil {
+		log.Printf("[file worker] error fetching pending uploads: %v", err)
+		return
+	}
+	if len(docs) == 0 {
+		return
+	}
+
+	log.Printf("[file worker] verifying %d pending upload(s)", len(docs))
+
+	presignedProvider, hasPresigned := w.storage.(upload.PresignedURLProvider)
+	w.runConcurrent(ctx, docs, func(ctx context.Context, doc Document) {
+		if err := w.verifyAndUpdate(ctx, doc, presignedProvider, hasPresigned); err != nil {
+			log.Printf("[file worker] error processing document %s: %v", doc.ID, err)
+		}
+	})
+}
+
+func (w *UploadWorker) processExpired(ctx context.Context) {
+	// Skip if previous run is still in progress
+	if !w.expiredMu.TryLock() {
+		log.Println("[file worker] processExpired already running, skipping")
+		return
+	}
+	defer w.expiredMu.Unlock()
+
+	docs, err := w.repo.FindExpiredPendingUploads(ctx, uploadWorkerBatchSize)
+	if err != nil {
+		log.Printf("[file worker] error fetching expired uploads: %v", err)
+		return
+	}
+	if len(docs) == 0 {
+		return
+	}
+
+	log.Printf("[file worker] processing %d expired upload(s)", len(docs))
+
+	presignedProvider, hasPresigned := w.storage.(upload.PresignedURLProvider)
+	w.runConcurrent(ctx, docs, func(ctx context.Context, doc Document) {
+		exists, size, err := w.objectExists(ctx, doc.ObjectKey, presignedProvider, hasPresigned)
+		if err != nil {
+			log.Printf("[file worker] error checking expired document %s: %v", doc.ID, err)
+			return
+		}
+
+		if exists {
+			if size > 0 && size != doc.SizeBytes {
+				doc.SizeBytes = size
+			}
+			if err := w.repo.UpdateStatus(ctx, doc.ID, StatusUploaded, &doc, nil); err != nil {
+				log.Printf("[file worker] failed to mark expired document %s as uploaded: %v", doc.ID, err)
+				return
+			}
+			log.Printf("[file worker] expired document %s marked as uploaded", doc.ID)
+		} else {
+			if err := w.repo.UpdateStatus(ctx, doc.ID, StatusFailed, &doc, nil); err != nil {
+				log.Printf("[file worker] failed to mark document %s as failed: %v", doc.ID, err)
+				return
+			}
+			log.Printf("[file worker] document %s marked as failed (upload expired at %v)", doc.ID, doc.UploadExpiresAt)
+		}
+	})
+}
+
+// runConcurrent processes docs with bounded concurrency.
+// Respects context cancellation while waiting for a semaphore slot.
+func (w *UploadWorker) runConcurrent(ctx context.Context, docs []Document, fn func(context.Context, Document)) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, workerConcurrency)
+
+	for _, doc := range docs {
+		doc := doc
+
+		// Respect context cancellation while acquiring semaphore slot
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			log.Println("[file worker] context cancelled, stopping batch")
+			break
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fn(ctx, doc)
+		}()
+	}
+
+	wg.Wait()
+}
+
+func (w *UploadWorker) verifyAndUpdate(ctx context.Context, doc Document, presignedProvider upload.PresignedURLProvider, hasPresigned bool) error {
+	exists, size, err := w.objectExists(ctx, doc.ObjectKey, presignedProvider, hasPresigned)
+	if err != nil {
+		return fmt.Errorf("check object existence for %s: %w", doc.ObjectKey, err)
+	}
+
+	docCopy := doc
+	if exists {
+		if size > 0 && size != docCopy.SizeBytes {
+			docCopy.SizeBytes = size
+		}
+		if err := w.repo.UpdateStatus(ctx, docCopy.ID, StatusUploaded, &docCopy, nil); err != nil {
+			return fmt.Errorf("mark document %s as uploaded: %w", docCopy.ID, err)
+		}
+		log.Printf("[file worker] document %s marked as uploaded (key: %s)", docCopy.ID, docCopy.ObjectKey)
+	} else {
+		// Still within presign window — client hasn't uploaded yet
+		if docCopy.UploadExpiresAt != nil && time.Now().Before(*docCopy.UploadExpiresAt) {
+			log.Printf("[file worker] document %s not yet uploaded, presign expires at %v — skipping", docCopy.ID, docCopy.UploadExpiresAt)
+			return nil
+		}
+		if err := w.repo.UpdateStatus(ctx, docCopy.ID, StatusFailed, &docCopy, nil); err != nil {
+			return fmt.Errorf("mark document %s as failed: %w", docCopy.ID, err)
+		}
+		log.Printf("[file worker] document %s marked as failed (object not found)", docCopy.ID)
+	}
+
+	return nil
+}
+
+func (w *UploadWorker) objectExists(ctx context.Context, objectKey string, presignedProvider upload.PresignedURLProvider, hasPresigned bool) (exists bool, size int64, err error) {
+	if hasPresigned {
+		size, err = presignedProvider.HeadObject(ctx, objectKey)
+		if err != nil {
+			if isNotFoundError(err) {
+				return false, 0, nil
+			}
+			return false, 0, err
+		}
+		return true, size, nil
+	}
+
+	rc, err := w.storage.Download(ctx, objectKey)
+	if err != nil {
+		if isNotFoundError(err) {
+			return false, 0, nil
+		}
+		return false, 0, err
+	}
+	rc.Close()
+	return true, 0, nil
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "NoSuchKey") ||
+		strings.Contains(msg, "404 Not Found") ||
+		strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "NotFound")
+}

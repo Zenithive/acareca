@@ -30,12 +30,13 @@ type UserGrowthPoint struct {
 // Subscription Distribution & MRR Models
 
 type RsSubscriptionMetrics struct {
-	TotalActiveSubscriptions int                        `json:"total_active_subscriptions"`
-	MRR                      float64                    `json:"mrr"`
-	ARR                      float64                    `json:"arr"`
-	ARPU                     float64                    `json:"arpu"`
-	ChurnRate                float64                    `json:"churn_rate_percentage"`
-	Distribution             []SubscriptionDistribution `json:"distribution"`
+	TotalActiveSubscriptions   int                        `json:"total_active_subscriptions"`
+	TotalInactiveSubscriptions int                        `json:"total_inactive_subscriptions"`
+	MRR                        float64                    `json:"mrr"`
+	ARR                        float64                    `json:"arr"`
+	ARPU                       float64                    `json:"arpu"`
+	ChurnRate                  float64                    `json:"churn_rate_percentage"`
+	Distribution               []SubscriptionDistribution `json:"distribution"`
 }
 
 type SubscriptionDistribution struct {

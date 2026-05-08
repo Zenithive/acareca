@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -30,25 +31,27 @@ type Service interface {
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter, PracIDs []uuid.UUID, userID uuid.UUID, actorID uuid.UUID, role string) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter, userID uuid.UUID) (*RsBASPreparation, error)
-	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
-	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error)
+	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, fullName string, practitionerABN string) (*bytes.Buffer, error)
+	generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error)
+	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 }
 
 type service struct {
-	repo           Repository
-	accountantRepo accountant.Repository
-	auditSvc       audit.Service
-	clinicRepo     clinic.Repository
-	fyRepo         fy.Repository
-	eventsSvc      events.Service
-	authRepo       auth.Repository
+	repo            Repository
+	accountantRepo  accountant.Repository
+	auditSvc        audit.Service
+	clinicRepo      clinic.Repository
+	fyRepo          fy.Repository
+	eventsSvc       events.Service
+	authRepo        auth.Repository
+	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo}
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository, practitionerSvc practitioner.IService) Service {
+	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo, practitionerSvc: practitionerSvc}
 }
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
@@ -292,8 +295,18 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	}
 	var rawRows []*BASLineItemRow
 
+	var targetPracIDs []uuid.UUID
+	for pID := range practitionerMap {
+		targetPracIDs = append(targetPracIDs, pID)
+	}
+
+	// If it's a practitioner (not accountant), they are the only one
+	if !isAccountant {
+		targetPracIDs = []uuid.UUID{actorID}
+	}
+
 	nilClinic := uuid.Nil
-	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch BAS items: %w", err)
 	}
@@ -305,8 +318,8 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		if r.SectionType != nil {
 			sec = *r.SectionType
 		}
-		// Use a unique key for the map
-		key := fmt.Sprintf("%s-%s", r.AccountName, sec)
+		// Use a unique key for the map including coa_id to prevent duplicates
+		key := fmt.Sprintf("%s-%s-%s", r.CoaID, r.AccountName, sec)
 
 		if _, exists := masterAccounts[key]; !exists {
 			masterAccounts[key] = r
@@ -334,31 +347,27 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			currentQuarterRows := quarterGroups[qInfo.StartDate]
 
 			normalizedRows := make([]*BASLineItemRow, 0)
-			for _, master := range masterAccounts {
+			for key := range masterAccounts {
 				var foundRow *BASLineItemRow
 				for _, qr := range currentQuarterRows {
-					if qr.AccountName == master.AccountName {
+					// Build the same key format to match including coa_id
+					sec := ""
+					if qr.SectionType != nil {
+						sec = *qr.SectionType
+					}
+					qrKey := fmt.Sprintf("%s-%s-%s", qr.CoaID, qr.AccountName, sec)
+
+					if qrKey == key {
 						foundRow = qr
 						break
 					}
 				}
 
-				if foundRow != nil {
+				// Only add rows that have actual values (not zero)
+				if foundRow != nil && (foundRow.GrossAmount != 0 || foundRow.GstAmount != 0 || foundRow.NetAmount != 0) {
 					normalizedRows = append(normalizedRows, foundRow)
-				} else {
-
-					parsedTime, _ := time.Parse("2006-01-02", qInfo.StartDate)
-					normalizedRows = append(normalizedRows, &BASLineItemRow{
-						AccountName:   master.AccountName,
-						SectionType:   master.SectionType,
-						BasCategory:   master.BasCategory,
-						CoaID:         master.CoaID,
-						GrossAmount:   0,
-						GstAmount:     0,
-						NetAmount:     0,
-						PeriodQuarter: parsedTime,
-					})
 				}
+				// If no row found for this quarter, don't add a placeholder (this prevents zero-value entries)
 			}
 
 			finalizedRowsForTotal = append(finalizedRowsForTotal, normalizedRows...)
@@ -459,38 +468,54 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		}
 
 		if sectionType == "COLLECTION" {
+			// Use coa_id as the key to prevent duplicate accounts with same name
 			if _, seen := incomeAccounts[r.CoaID]; !seen {
 				incomeOrder = append(incomeOrder, r.CoaID)
 				incomeAccounts[r.CoaID] = &accGroup{Name: r.AccountName}
 			}
+
+			// For GST-free items, don't add GST amount
+			gstToAdd := r.GstAmount
+			if BASCategory(r.BasCategory) == BASCategoryGSTFree {
+				gstToAdd = 0
+			}
+
 			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
-			incomeAccounts[r.CoaID].Amounts.GST += r.GstAmount
+			incomeAccounts[r.CoaID].Amounts.GST += gstToAdd
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
 			continue
 		}
 
 		// --- Process All Expenses ---
-		b1.Gross += r.GstAmount
+		// For GST-free items, don't add GST amount
+		gstToAdd := r.GstAmount
+		if BASCategory(r.BasCategory) == BASCategoryGSTFree {
+			gstToAdd = 0
+		}
+
+		b1.Gross += gstToAdd
 		accNameLower := strings.ToLower(r.AccountName)
 
 		switch {
 		case strings.Contains(accNameLower, "management"):
 			mgtFee.Gross += r.GrossAmount
-			mgtFee.GST += r.GstAmount
+			mgtFee.GST += gstToAdd
 			mgtFee.Net += r.NetAmount
 		case strings.Contains(accNameLower, "lab"):
 			labWork.Gross += r.GrossAmount
-			labWork.GST += r.GstAmount
+			labWork.GST += gstToAdd
 			labWork.Net += r.NetAmount
 		default:
 			// Treat everything else as an individual line item
-			if _, seen := expenseAccounts[r.AccountName]; !seen {
-				expenseOrder = append(expenseOrder, r.AccountName)
-				expenseAccounts[r.AccountName] = &accGroup{Name: r.AccountName}
+			// Use a composite key with coa_id to prevent duplicate accounts with same name
+			compositeKey := fmt.Sprintf("%s-%s", r.CoaID, r.AccountName)
+			if _, seen := expenseAccounts[compositeKey]; !seen {
+				expenseOrder = append(expenseOrder, compositeKey)
+				expenseAccounts[compositeKey] = &accGroup{Name: r.AccountName}
 			}
-			expenseAccounts[r.AccountName].Amounts.Gross += r.GrossAmount
-			expenseAccounts[r.AccountName].Amounts.GST += r.GstAmount
-			expenseAccounts[r.AccountName].Amounts.Net += r.NetAmount
+			expenseAccounts[compositeKey].Amounts.Gross += r.GrossAmount
+			expenseAccounts[compositeKey].Amounts.GST += gstToAdd
+			expenseAccounts[compositeKey].Amounts.Net += r.NetAmount
 		}
 	}
 
@@ -507,7 +532,10 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
+
+		// Add all income items (filtering already done during normalization)
 		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
+
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
 		totalIncome.Net += fAmts.Net
@@ -518,9 +546,21 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	mgtFee = finalize(mgtFee)
 	labWork = finalize(labWork)
 
-	col.Sections.Expenses.Items = []BASLineItem{
-		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
-		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
+	// Only add Management Fee and Lab Work if they have non-zero values
+	col.Sections.Expenses.Items = []BASLineItem{}
+
+	if mgtFee.Gross != 0 || mgtFee.GST != 0 || mgtFee.Net != 0 {
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    "Management Fee (Gross Up)",
+			Amounts: mgtFee,
+		})
+	}
+
+	if labWork.Gross != 0 || labWork.GST != 0 || labWork.Net != 0 {
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    "Laboratory Work (GST Free)",
+			Amounts: labWork,
+		})
 	}
 
 	tGross := mgtFee.Gross + labWork.Gross
@@ -531,10 +571,13 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		acc := expenseAccounts[name]
 		fAmts := finalize(acc.Amounts)
 
-		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
-			Name:    acc.Name,
-			Amounts: fAmts,
-		})
+		// Only add expense items with non-zero values
+		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
+			col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+				Name:    acc.Name,
+				Amounts: fAmts,
+			})
+		}
 
 		tGross += fAmts.Gross
 		tGST += fAmts.GST
@@ -570,32 +613,52 @@ type QuarterData struct {
 	Report *RsBASReport
 }
 
-func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error) {
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error) {
 	parsedActorID := actorID.String()
 
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	targetID := ""
+	// Use the practitioner ID in filter
+	if filterPractitionerID != "" {
+		targetID = filterPractitionerID
+	} else if role == util.RolePractitioner {
+		// If role is practitioner, use actorID
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		pracUUID, err := uuid.Parse(targetID)
+		if err == nil {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+			if err == nil && prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	}
 	var result interface{}
 	var contentType string
-	var err error
 
 	// 1. Branching Logic
 	if strings.ToLower(exportType) == "pdf" {
-		// Wrap data for template
-		data := struct {
-			Quarters []QuarterData
-			Prev     PeriodInfo
-		}{
+		data := activityHTMLData{
 			Quarters: quarters,
 			Prev:     prevDates,
 		}
-
-		result, err = s.generateActivityHTML(data)
+		result, err = s.generateActivityHTML(data, fullName, practitionerABN)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity html: %w", err)
 		}
 		contentType = "text/html"
 	} else {
 		// 2. Default to Excel logic
-		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates)
+		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates, fullName, practitionerABN)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
 		}
@@ -623,12 +686,6 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 
 	// Record the Shared Event — only for accountants, never for practitioners.
 	if role == util.RoleAccountant && len(practitionerIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
 		for _, pID := range practitionerIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -650,7 +707,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	return result, contentType, nil
 }
 
-func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
+func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, fullName string, practitionerABN string) (*bytes.Buffer, error) {
 
 	xl := excelize.NewFile()
 	defer xl.Close()
@@ -702,34 +759,80 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 		Alignment: &excelize.Alignment{Horizontal: "center"},
 	})
 
-	// --- 3. Main Header & Quarter Dropdown (Simplified to single column) ---
+	// --- 3. Main Header ---
 	xl.SetCellValue(sheet, "A1", "Activity Statement Information")
-	xl.SetCellValue(sheet, "B1", "BAS") // Renamed from "Current BAS"
+	xl.SetCellValue(sheet, "B1", "BAS")
 	xl.SetCellStyle(sheet, "A1", "B1", headerStyle)
 
-	// Create Dropdown in Cell B4
+	// Helper to format dates to DD-MM-YYYY
+	formatDate := func(d string) string {
+		t, err := time.Parse("2006-01-02", d)
+		if err != nil {
+			return d
+		}
+		return t.Format("02-01-2006")
+	}
+
+	setRichMeta := func(cell string, label string, value string) {
+		xl.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
+
+	// --- Metadata Rows ---
+	rowOffset := 2
+	setRichMeta(fmt.Sprintf("A%d", rowOffset), "Exported by:", fullName)
+	rowOffset++
+
+	if practitionerABN != "" {
+		setRichMeta(fmt.Sprintf("A%d", rowOffset), "ABN:", practitionerABN)
+		rowOffset++
+	}
+
+	if len(quarters) > 0 {
+		periodRange := fmt.Sprintf("%s (%s to %s)",
+			quarters[0].Period.Label,
+			formatDate(quarters[0].Period.From),
+			formatDate(quarters[len(quarters)-1].Period.To),
+		)
+		setRichMeta(fmt.Sprintf("A%d", rowOffset), "Period:", periodRange)
+		rowOffset++
+	}
+
+	rowOffset++ // Spacer
+
+	// Quarter dropdown row
+	qtrRow := rowOffset
 	var qLabels []string
 	for _, q := range quarters {
 		qLabels = append(qLabels, q.Period.Label)
 	}
 	dv := excelize.NewDataValidation(true)
-	dv.Sqref = "B4"
+	dv.Sqref = fmt.Sprintf("B%d", qtrRow)
 	dv.SetDropList(qLabels)
 	xl.AddDataValidation(sheet, dv)
-
+	xl.SetCellValue(sheet, fmt.Sprintf("A%d", qtrRow), "Qtr")
+	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", qtrRow), fmt.Sprintf("A%d", qtrRow), labelStyle)
 	if len(qLabels) > 0 {
-		xl.SetCellValue(sheet, "B4", qLabels[0])
+		xl.SetCellValue(sheet, fmt.Sprintf("B%d", qtrRow), qLabels[0])
 	}
+	rowOffset++
 
-	// --- 4. Information Section ---
-	xl.SetCellValue(sheet, "A2", "Period start")
-	xl.SetCellFormula(sheet, "B2", fmt.Sprintf("=VLOOKUP(B4, %s!A:G, 6, FALSE)", dataSheet))
+	// Period start / end (VLOOKUP from hidden data sheet)
+	xl.SetCellValue(sheet, fmt.Sprintf("A%d", rowOffset), "Period start")
+	xl.SetCellFormula(sheet, fmt.Sprintf("B%d", rowOffset), fmt.Sprintf("=VLOOKUP(B%d, %s!A:G, 6, FALSE)", qtrRow, dataSheet))
+	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", rowOffset), fmt.Sprintf("A%d", rowOffset), labelStyle)
+	periodStartCell := fmt.Sprintf("B%d", rowOffset)
+	rowOffset++
 
-	xl.SetCellValue(sheet, "A3", "Period end")
-	xl.SetCellFormula(sheet, "B3", fmt.Sprintf("=VLOOKUP(B4, %s!A:G, 7, FALSE)", dataSheet))
+	xl.SetCellValue(sheet, fmt.Sprintf("A%d", rowOffset), "Period end")
+	xl.SetCellFormula(sheet, fmt.Sprintf("B%d", rowOffset), fmt.Sprintf("=VLOOKUP(B%d, %s!A:G, 7, FALSE)", qtrRow, dataSheet))
+	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", rowOffset), fmt.Sprintf("A%d", rowOffset), labelStyle)
+	periodEndCell := fmt.Sprintf("B%d", rowOffset)
+	rowOffset++
 
-	xl.SetCellValue(sheet, "A4", "Qtr")
-	xl.SetCellStyle(sheet, "A2", "A4", labelStyle)
+	rowOffset++ // spacer before GST section
 
 	// --- 5. GST Section ---
 	gstFields := []struct {
@@ -742,19 +845,25 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 		{"1B (GST on Purchases)", 5},
 	}
 
-	rowIdx := 6
+	gstStartRow := rowOffset
+	rowIdx := rowOffset
 	for _, f := range gstFields {
 		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), f.Label)
-		xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), fmt.Sprintf("=VLOOKUP(B4, %s!A:G, %d, FALSE)", dataSheet, f.Col))
+		xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), fmt.Sprintf("=VLOOKUP(B%d, %s!A:G, %d, FALSE)", qtrRow, dataSheet, f.Col))
 		xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
 		rowIdx++
 	}
+	rowOffset = rowIdx
+
+	// Cells for GST Payable formula (1A is row gstStartRow+1, 1B is row gstStartRow+3)
+	cell1A := fmt.Sprintf("B%d", gstStartRow+1)
+	cell1B := fmt.Sprintf("B%d", gstStartRow+3)
 
 	// --- 6. PAYG Tax Withheld Section ---
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "PAYG tax withheld")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), subHeaderStyle)
-	rowIdx++
+	rowOffset++ // spacer
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "PAYG tax withheld")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "B"+strconv.Itoa(rowOffset), subHeaderStyle)
+	rowOffset++
 
 	paygWithheld := []string{
 		"Period start",
@@ -767,37 +876,33 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 	}
 
 	for _, label := range paygWithheld {
-		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), label)
+		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), label)
 		if label == "Period start" {
-			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "B2")
+			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), periodStartCell)
 		} else if label == "Period end" {
-			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "B3")
+			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), periodEndCell)
 		}
-		rowIdx++
+		rowOffset++
 	}
 
 	// --- 7. PAYG Instalment Section ---
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "PAYG instalment")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), subHeaderStyle)
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "Option 1")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), labelStyle)
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "Option 2")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), labelStyle)
-	rowIdx++
+	rowOffset++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "PAYG instalment")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "B"+strconv.Itoa(rowOffset), subHeaderStyle)
+	rowOffset++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "Option 1")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "A"+strconv.Itoa(rowOffset), labelStyle)
+	rowOffset++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "Option 2")
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "A"+strconv.Itoa(rowOffset), labelStyle)
+	rowOffset++
 
 	// --- 8. GST Refund/Payable ---
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "GST Payable or (Refund)")
-	// Formula: 1A - 1B (Adjusted cells for single column layout)
-	// B7 is 1A, B9 is 1B based on rowIdx incrementing above
-	xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "=B7-B9")
-
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), totalRowStyle)
-	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
-	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), labelStyle)
+	rowOffset++
+	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "GST Payable or (Refund)")
+	xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), fmt.Sprintf("=%s-%s", cell1A, cell1B))
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "A"+strconv.Itoa(rowOffset), totalRowStyle)
+	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowOffset), "B"+strconv.Itoa(rowOffset), currencyStyle)
 
 	xl.SetColWidth(sheet, "A", "A", 55)
 	xl.SetColWidth(sheet, "B", "B", 25)
@@ -812,24 +917,31 @@ const activityTemplate = `
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #000; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
     th, td { border: 1px solid #bfbfbf; padding: 8px; word-wrap: break-word; }
-    
     .header { background-color: #4EA7B3; color: white; font-weight: bold; text-align: center; }
     .sub-header { background-color: #E1F0F2; font-weight: bold; color: #2A5D63; }
     .label { font-weight: bold; width: 70%; }
     .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; font-weight: bold;}
     .total-row { background-color: #4EA7B3; color: white; font-weight: bold; }
-    
+    .meta td { border: none; padding: 3px 0; font-size: 10pt; }
     .indent { padding-left: 25px; font-weight: normal; }
 </style>
 </head>
 <body>
     {{$q := index .Quarters 0}}
-    
+
     <table>
         <tr>
             <td class="header">Activity Statement Information</td>
             <td class="header">BAS</td>
         </tr>
+    </table>
+    <table class="meta">
+        <tr><td><b>Exported by:</b> {{.FullName}}</td></tr>
+        {{if .PractitionerABN}}<tr><td><b>ABN:</b> {{.PractitionerABN}}</td></tr>{{end}}
+        <tr><td><b>Period:</b> {{$q.Period.Label}} ({{$q.Period.From}} to {{$q.Period.To}})</td></tr>
+    </table>
+
+    <table>
         <tr>
             <td class="label">Period start</td>
             <td>{{$q.Period.From}}</td>
@@ -866,53 +978,19 @@ const activityTemplate = `
 
     <table>
         <tr class="sub-header"><td colspan="2">PAYG tax withheld</td></tr>
-        <tr>
-            <td class="label">Period start</td>
-            <td>{{$q.Period.From}}</td>
-        </tr>
-        <tr>
-            <td class="label">Period end</td>
-            <td>{{$q.Period.To}}</td>
-        </tr>
-        <tr>
-            <td class="label">W1 (Total Wages, salary and other payments)</td>
-			<td>-</td>
-           
-        </tr>
-        <tr>
-            <td class="label">W2 (Amount withheld from payments shown at W1)</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">W3 (Other amounts withheld)</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">W4 (Amount withheld where no ABN is quoted)</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">W5 (Total amounts withheld)</td>
-			<td>-</td>
-           
-        </tr>
+        <tr><td class="label">Period start</td><td>{{$q.Period.From}}</td></tr>
+        <tr><td class="label">Period end</td><td>{{$q.Period.To}}</td></tr>
+        <tr><td class="label">W1 (Total Wages, salary and other payments)</td><td>-</td></tr>
+        <tr><td class="label">W2 (Amount withheld from payments shown at W1)</td><td>-</td></tr>
+        <tr><td class="label">W3 (Other amounts withheld)</td><td>-</td></tr>
+        <tr><td class="label">W4 (Amount withheld where no ABN is quoted)</td><td>-</td></tr>
+        <tr><td class="label">W5 (Total amounts withheld)</td><td>-</td></tr>
     </table>
 
     <table>
         <tr class="sub-header"><td colspan="2">PAYG instalment</td></tr>
-        <tr>
-            <td class="label">Option 1</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">Option 2</td>
-			<td>-</td>
-            
-        </tr>
+        <tr><td class="label">Option 1</td><td>-</td></tr>
+        <tr><td class="label">Option 2</td><td>-</td></tr>
     </table>
 
     <table>
@@ -925,7 +1003,22 @@ const activityTemplate = `
 </html>
 `
 
-func (s *service) generateActivityHTML(data interface{}) (string, error) {
+func (s *service) generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error) {
+	// Wrap the incoming data with metadata fields the template needs
+	type templateData struct {
+		Quarters        []QuarterData
+		Prev            PeriodInfo
+		FullName        string
+		PractitionerABN string
+	}
+
+	td := templateData{
+		Quarters:        data.Quarters,
+		Prev:            data.Prev,
+		FullName:        fullName,
+		PractitionerABN: practitionerABN,
+	}
+
 	tmpl, err := template.New("activity").Funcs(template.FuncMap{
 		"calcRefund": func(a1, b1 float64) string {
 			return fmt.Sprintf("%.2f", a1-b1)
@@ -942,14 +1035,17 @@ func (s *service) generateActivityHTML(data interface{}) (string, error) {
 	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
 	<style>@media print{.no-print{display:none}}</style></div>`
 
-	if err := tmpl.Execute(&htmlBuf, data); err != nil {
+	if err := tmpl.Execute(&htmlBuf, td); err != nil {
 		return "", err
 	}
 
-	// Merge the button with the template content
-	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
-
+	finalHTML := strings.Replace(htmlBuf.String(), "<body>", "<body>"+b, 1)
 	return finalHTML, nil
+}
+
+type activityHTMLData struct {
+	Quarters []QuarterData
+	Prev     PeriodInfo
 }
 
 type PeriodInfo struct {
@@ -1033,13 +1129,36 @@ func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID)
 	return quarters, nil
 }
 
-func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error) {
+func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Quarterly BAS REPORT"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
 
 	parsedActorID := actorID.String()
+
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	targetID := filterPractitionerID
+	if targetID == "" && role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		pracUUID, err := uuid.Parse(targetID)
+		if err == nil {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+			if err == nil && prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	}
 
 	// --- STYLES ---
 
@@ -1139,9 +1258,33 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		return nil, err
 	}
 
+	setRichMeta := func(cell string, label string, value string) {
+		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
+
 	// --- RENDER HEADERS ---
+	lastColIdx := (len(allCols) * 4)
+	lastColName, _ := excelize.ColumnNumberToName(lastColIdx)
+
+	// 1. Financial Year Header (Row 2)
+	f.MergeCell(sheet, "A2", fmt.Sprintf("%s2", lastColName))
 	f.SetCellValue(sheet, "A2", FY.Label)
-	f.SetCellStyle(sheet, "A2", "A2", styleHeaderBlue)
+	f.SetCellStyle(sheet, "A2", fmt.Sprintf("%s2", lastColName), styleHeaderBlue)
+
+	// 2. Metadata Rows (Rows 3-4)
+	// We merge these so the background/borders look consistent if you add them later
+	f.MergeCell(sheet, "A3", fmt.Sprintf("%s3", lastColName))
+	setRichMeta("A3", "Exported by:", fullName)
+
+	f.MergeCell(sheet, "A4", fmt.Sprintf("%s4", lastColName))
+	if practitionerABN != "" {
+		setRichMeta("A4", "ABN:", practitionerABN)
+	}
+
+	f.MergeCell(sheet, "A5", fmt.Sprintf("%s5", lastColName)) // Spacer Row
 
 	for i := range allCols {
 		cIdx := 1 + (i * 4)
@@ -1170,15 +1313,15 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		}
 
 		// Top Quarter Header
-		f.MergeCell(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol))
-		f.SetCellValue(sheet, fmt.Sprintf("%s5", startCol), headerValue)
-		f.SetCellStyle(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol), styleHeaderBlue)
+		f.MergeCell(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol))
+		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), headerValue)
+		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
 
 		// Sub Headers
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), "Gross")
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", midCol), "GST")
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", endCol), "Net")
-		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", startCol), "Gross")
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", midCol), "GST")
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", endCol), "Net")
+		f.SetCellStyle(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol), styleHeaderBlue)
 	}
 
 	// Helper to track range for dynamic calculations
@@ -1189,7 +1332,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	var incomeMeta, expenseMeta SectionMeta
 
 	// --- INCOME SECTION ---
-	currentRow := 7
+	currentRow := 8
 	incomeHeaderRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
@@ -1216,7 +1359,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 
 	// Create Income Table for Filtering
 	if len(incomeRows) > 0 {
-		// CHANGE: Range is now only Column A (A7 to A9)
 		tblRange := fmt.Sprintf("A%d:A%d", incomeHeaderRow, incomeMeta.EndRow)
 		showH := true
 
@@ -1347,12 +1489,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 
 	// Record the Shared Event — only for accountants, never for practitioners.
 	if role == util.RoleAccountant && len(PracIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
 		// If clinics are filtered, narrow notifications to only those clinic owners.
 		targetPracIDs := PracIDs
 		if len(filter.ParsedClinicIDs) > 0 {
@@ -1387,7 +1523,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	}
 
 	if exportType == "pdf" {
-		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label)
+		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label, fullName, practitionerABN)
 		if err != nil {
 			return nil, err
 		}
@@ -1439,7 +1575,7 @@ func strPtr(s string) *string {
 }
 
 // Helper to convert the Excel file to PDF using HTML
-func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) (string, error) {
+func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string, fullName string, practitionerABN string) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return "", err
@@ -1461,6 +1597,8 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
 		.income-blue td {background-color: #DAEEF3 !important; }
 		.expense-blue td {background-color: #DAEEF3 !important; }
+        .meta-item { font-size: 10pt; margin-bottom: 4px; }
+        .meta-label { font-weight: bold; }
 	`)
 	b.WriteString("</style></head><body>")
 
@@ -1468,6 +1606,11 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
 	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
 	<style>@media print{.no-print{display:none}}</style></div>`)
+
+	b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Exported by:</span> %s</div>", fullName))
+	if practitionerABN != "" {
+		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>ABN:</span> %s</div>", practitionerABN))
+	}
 
 	b.WriteString("<table>")
 
@@ -1504,8 +1647,8 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 			continue
 		}
 
-		// --- ROW 5: QUARTERS ---
-		if rowNum == 5 {
+		// --- ROW 6: QUARTERS ---
+		if rowNum == 6 {
 			b.WriteString("<tr>")
 
 			// Column A spacer (Particulars column)
@@ -1542,8 +1685,8 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 			continue
 		}
 
-		// --- ROW 6: SUBHEADERS ---
-		if rowNum == 6 {
+		// --- ROW 7: SUBHEADERS ---
+		if rowNum == 7 {
 			b.WriteString("<tr>")
 			b.WriteString("<td class='header-blue'>Particulars</td>")
 			totalBlocks := len(data.Columns) + 1 // +1 for Total

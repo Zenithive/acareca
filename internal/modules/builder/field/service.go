@@ -213,13 +213,13 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clini
 	if req.Label != nil {
 		existing.Label = *req.Label
 	}
-	if req.SectionType != nil {
+	if req.SectionType != nil && *req.SectionType != "" {
 		existing.SectionType = req.SectionType
 	}
-	if req.PaymentResponsibility != nil {
+	if req.PaymentResponsibility != nil && *req.PaymentResponsibility != "" {
 		existing.PaymentResponsibility = req.PaymentResponsibility
 	}
-	if req.TaxType != nil {
+	if req.TaxType != nil && *req.TaxType != "" {
 		existing.TaxType = req.TaxType
 	}
 	if req.SortOrder != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -42,6 +43,9 @@ type Repository interface {
 	// password reset
 	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
 	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
+
+	GetDocumentByUserIDTx(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error)
+	GetDocumentByUserID(ctx context.Context, userID uuid.UUID) (*file.Document, error)
 }
 
 type repository struct {
@@ -84,6 +88,11 @@ func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*
 }
 
 func (r *repository) UpdateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
+	var docID *uuid.UUID
+	if user.Document != nil {
+		docID = &user.Document.ID
+	}
+
 	const returning = `RETURNING id, email, password, first_name, last_name, phone, role, created_at, updated_at`
 
 	query := `
@@ -92,30 +101,20 @@ func (r *repository) UpdateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*
             first_name = $3, 
             last_name = $4, 
             phone = $5,
+            document_id = $6,
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
     ` + returning
 
 	var u User
 	var err error
-	// 1. Check if a transaction was provided
 	if tx != nil {
-		// Use the transaction (tx)
 		err = tx.QueryRowxContext(ctx, query,
-			user.ID,        // $1
-			user.Email,     // $2
-			user.FirstName, // $3
-			user.LastName,  // $4
-			user.Phone,     // $5
+			user.ID, user.Email, user.FirstName, user.LastName, user.Phone, docID,
 		).StructScan(&u)
 	} else {
-		// Fallback to the standard DB connection (r.db)
 		err = r.db.QueryRowxContext(ctx, query,
-			user.ID,        // $1
-			user.Email,     // $2
-			user.FirstName, // $3
-			user.LastName,  // $4
-			user.Phone,     // $5
+			user.ID, user.Email, user.FirstName, user.LastName, user.Phone, docID,
 		).StructScan(&u)
 	}
 
@@ -123,6 +122,7 @@ func (r *repository) UpdateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
+	u.Document = user.Document
 	return &u, nil
 }
 
@@ -397,4 +397,50 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 	}
 
 	return nil
+}
+
+func (r *repository) GetDocumentByUserIDTx(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error) {
+	query := `
+		SELECT
+			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
+			d.original_name, d.extension, d.mime_type, d.size_bytes,
+			d.checksum, d.status, d.is_public,
+			d.upload_expires_at, d.uploaded_at,
+			d.created_at, d.updated_at, d.deleted_at
+		FROM tbl_document d
+		INNER JOIN tbl_user c ON c.document_id = d.id
+		WHERE c.id = $1 AND c.deleted_at IS NULL AND d.deleted_at IS NULL
+		LIMIT 1`
+
+	var doc file.Document
+	if err := tx.GetContext(ctx, &doc, query, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get document by clinic id tx: %w", err)
+	}
+	return &doc, nil
+}
+
+func (r *repository) GetDocumentByUserID(ctx context.Context, userID uuid.UUID) (*file.Document, error) {
+	query := `
+		SELECT
+			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
+			d.original_name, d.extension, d.mime_type, d.size_bytes,
+			d.checksum, d.status, d.is_public,
+			d.upload_expires_at, d.uploaded_at,
+			d.created_at, d.updated_at, d.deleted_at
+		FROM tbl_document d
+		INNER JOIN tbl_user u ON u.document_id = d.id
+		WHERE u.id = $1 AND u.deleted_at IS NULL AND d.deleted_at IS NULL
+		LIMIT 1`
+
+	var doc file.Document
+	if err := r.db.GetContext(ctx, &doc, query, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get document by user id: %w", err)
+	}
+	return &doc, nil
 }

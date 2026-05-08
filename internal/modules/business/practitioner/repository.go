@@ -258,7 +258,7 @@ func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUI
 		updateQuery := `
 			UPDATE tbl_financial_settings 
 			SET 
-				lock_date = CASE WHEN $1::text IS NULL THEN NULL ELSE TO_DATE($1, 'DD-MM-YYYY') END, 
+				lock_date = CASE WHEN $1::text IS NULL THEN NULL ELSE TO_DATE($1, 'YYYY-MM-DD') END, 
 				updated_at = NOW() 
 			WHERE practitioner_id = $2 AND financial_year_id = $3`
 		_, err = r.db.ExecContext(ctx, updateQuery, lockDate, practitionerID, fyID)
@@ -266,7 +266,7 @@ func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUI
 		// 3. If it doesn't exist, INSERT it
 		insertQuery := `
 			INSERT INTO tbl_financial_settings (practitioner_id, financial_year_id, lock_date, created_at, updated_at)
-			VALUES ($1, $2, CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'DD-MM-YYYY') END, NOW(), NOW())`
+			VALUES ($1, $2, CASE WHEN $3::text IS NULL THEN NULL ELSE TO_DATE($3, 'YYYY-MM-DD') END, NOW(), NOW())`
 		_, err = r.db.ExecContext(ctx, insertQuery, practitionerID, fyID, lockDate)
 	}
 
@@ -276,7 +276,7 @@ func (r *repository) UpdateLockDate(ctx context.Context, practitionerID uuid.UUI
 func (r *repository) GetFinancialSettings(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*FinancialSettings, error) {
 	query := `
         SELECT id, practitioner_id, financial_year_id, 
-               TO_CHAR(lock_date, 'DD-MM-YYYY') as lock_date, 
+               TO_CHAR(lock_date, 'YYYY-MM-DD') as lock_date, 
                created_at, updated_at
         FROM tbl_financial_settings
         WHERE practitioner_id = $1 AND financial_year_id = $2`

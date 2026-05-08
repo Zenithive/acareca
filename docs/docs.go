@@ -1351,6 +1351,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/get-fy/{financial_year_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fy"
+                ],
+                "summary": "Get a specific financial year by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/fy.RsFinancialYear"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/get-fys": {
             "get": {
                 "security": [
@@ -2001,7 +2052,7 @@ const docTemplate = `{
                 "tags": [
                     "fy"
                 ],
-                "summary": "Update the label of a financial year",
+                "summary": "Update a financial year",
                 "parameters": [
                     {
                         "type": "string",
@@ -2011,12 +2062,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Updated Label Data",
+                        "description": "Updated Financial Year Data",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/fy.RqUpdateFYLabel"
+                            "$ref": "#/definitions/fy.RqUpdateFY"
                         }
                     }
                 ],
@@ -2113,8 +2164,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
-                        "name": "as_of_date",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     }
                 ],
@@ -2168,8 +2225,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
-                        "name": "as_of_date",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     }
                 ],
@@ -2223,8 +2286,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Calculate as of date (YYYY-MM-DD), defaults to today",
-                        "name": "as_of_date",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     }
                 ],
@@ -2804,14 +2873,14 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter by clinic UUID",
-                        "name": "clinic_id",
+                        "description": "Start Date (YYYY-MM-DD)",
+                        "name": "start_date",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
-                        "name": "as_of_date",
+                        "description": "End Date (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     }
                 ],
@@ -2868,14 +2937,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Clinic UUID",
-                        "name": "clinic_id",
+                        "description": "Start Date (YYYY-MM-DD)",
+                        "name": "start_date",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Balance as of date (YYYY-MM-DD), defaults to today",
-                        "name": "as_of_date",
+                        "description": "End Date (YYYY-MM-DD)",
+                        "name": "end_date",
                         "in": "query"
                     },
                     {
@@ -5364,6 +5433,372 @@ const docTemplate = `{
                 }
             }
         },
+        "/files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "List documents owned by the authenticated user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "List documents",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by entity type",
+                        "name": "entity_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by entity ID",
+                        "name": "entity_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "created_at",
+                        "description": "Sort field",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort order (asc/desc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/file.RsListDocuments"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/files/presigned-upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Generate a presigned URL for direct upload to R2 storage",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Generate presigned upload URL",
+                "parameters": [
+                    {
+                        "description": "Presigned URL parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/file.RqGeneratePresignedUploadURL"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/file.RsPresignedUploadURL"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/files/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get metadata for a specific document",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Get document metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Document ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/file.RsDocument"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Update metadata for a specific document",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Update document metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Document ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/file.RqUpdateDocument"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/file.RsDocument"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Soft delete a document",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Delete a document",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Document ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/form": {
             "get": {
                 "security": [
@@ -6382,6 +6817,89 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/preferences": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the current channel preferences for the authenticated user.",
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Get notification preferences",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Updates or creates a preference for a specific event type.",
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Update notification preference",
+                "parameters": [
+                    {
+                        "description": "Preference Update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/notification.RqUpdatePreference"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8648,6 +9166,9 @@ const docTemplate = `{
                 },
                 "total_active_subscriptions": {
                     "type": "integer"
+                },
+                "total_inactive_subscriptions": {
+                    "type": "integer"
                 }
             }
         },
@@ -8861,6 +9382,9 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "document_id": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -8884,6 +9408,9 @@ const docTemplate = `{
                 "password"
             ],
             "properties": {
+                "document_id": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -8919,6 +9446,9 @@ const docTemplate = `{
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "document": {
+                    "$ref": "#/definitions/file.RsDocument"
                 },
                 "email": {
                     "type": "string"
@@ -9203,9 +9733,6 @@ const docTemplate = `{
         "bs.RsBalanceSheet": {
             "type": "object",
             "properties": {
-                "as_of_date": {
-                    "type": "string"
-                },
                 "assets": {
                     "type": "array",
                     "items": {
@@ -9214,6 +9741,9 @@ const docTemplate = `{
                 },
                 "current_year_profit": {
                     "type": "number"
+                },
+                "end_date": {
+                    "type": "string"
                 },
                 "equity": {
                     "type": "array",
@@ -9226,6 +9756,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/bs.RsAccount"
                     }
+                },
+                "start_date": {
+                    "type": "string"
                 },
                 "total_assets": {
                     "type": "number"
@@ -9594,6 +10127,12 @@ const docTemplate = `{
                 },
                 "form_version_id": {
                     "type": "string"
+                },
+                "formulas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/formula.RsFormula"
+                    }
                 }
             }
         },
@@ -9732,6 +10271,12 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "document_id": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
                 "is_active": {
                     "type": "boolean"
                 },
@@ -9787,10 +10332,16 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "document_id": {
+                    "type": "string"
+                },
                 "financial_year_id": {
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "image_url": {
                     "type": "string"
                 },
                 "is_active": {
@@ -9922,6 +10473,25 @@ const docTemplate = `{
                 }
             }
         },
+        "entry.RqDocument": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "description": "document IDs to link",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "delete": {
+                    "description": "document IDs to unlink",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "entry.RqEntryValue": {
             "type": "object",
             "properties": {
@@ -9962,6 +10532,9 @@ const docTemplate = `{
                 "date": {
                     "type": "string"
                 },
+                "documents": {
+                    "$ref": "#/definitions/entry.RqDocument"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -9982,6 +10555,9 @@ const docTemplate = `{
             "properties": {
                 "date": {
                     "type": "string"
+                },
+                "documents": {
+                    "$ref": "#/definitions/entry.RqDocument"
                 },
                 "status": {
                     "type": "string",
@@ -10064,39 +10640,31 @@ const docTemplate = `{
         "equity.OwnerEquityCalculation": {
             "type": "object",
             "properties": {
-                "as_of_date": {
-                    "type": "string"
-                },
                 "current_year_profit": {
-                    "description": "This year's profit",
                     "type": "number"
                 },
                 "drawings": {
-                    "description": "Current year withdrawals",
                     "type": "number"
                 },
+                "end_date": {
+                    "type": "string"
+                },
                 "equity_movements": {
-                    "description": "Detailed breakdown",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/equity.EquityMovements"
-                        }
-                    ]
+                    "$ref": "#/definitions/equity.EquityMovements"
                 },
                 "funds_introduced": {
-                    "description": "Current year contributions",
                     "type": "number"
                 },
                 "retained_earnings": {
-                    "description": "Prior years' profits",
                     "type": "number"
                 },
                 "share_capital": {
-                    "description": "Opening capital",
                     "type": "number"
                 },
+                "start_date": {
+                    "type": "string"
+                },
                 "total_equity": {
-                    "description": "Sum of all",
                     "type": "number"
                 }
             }
@@ -10209,12 +10777,86 @@ const docTemplate = `{
                 }
             }
         },
+        "file.RqGeneratePresignedUploadURL": {
+            "type": "object",
+            "properties": {
+                "expires_in": {
+                    "type": "integer",
+                    "maximum": 3600,
+                    "minimum": 60
+                }
+            }
+        },
+        "file.RqUpdateDocument": {
+            "type": "object",
+            "properties": {
+                "is_public": {
+                    "type": "boolean"
+                },
+                "original_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "file.RsDocument": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "file_key": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "original_name": {
+                    "type": "string"
+                },
+                "uploaded_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "file.RsListDocuments": {
+            "type": "object",
+            "properties": {
+                "documents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/file.RsDocument"
+                    }
+                }
+            }
+        },
+        "file.RsPresignedUploadURL": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "description": "verified MIME type — client must send this as Content-Type on the PUT",
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "object_key": {
+                    "type": "string"
+                },
+                "upload_url": {
+                    "type": "string"
+                }
+            }
+        },
         "form.ExpenseItem": {
             "type": "object",
             "required": [
                 "amount",
                 "business_use",
                 "coa_id",
+                "date",
                 "name"
             ],
             "properties": {
@@ -10227,6 +10869,9 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "coa_id": {
+                    "type": "string"
+                },
+                "date": {
                     "type": "string"
                 },
                 "description": {
@@ -10255,6 +10900,9 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "coa_id": {
+                    "type": "string"
+                },
+                "date": {
                     "type": "string"
                 },
                 "description": {
@@ -10338,14 +10986,10 @@ const docTemplate = `{
         "form.RqExpense": {
             "type": "object",
             "required": [
-                "date",
                 "items",
                 "name"
             ],
             "properties": {
-                "date": {
-                    "type": "string"
-                },
                 "items": {
                     "type": "array",
                     "minItems": 1,
@@ -10384,7 +11028,6 @@ const docTemplate = `{
         "form.RqUpdateExpense": {
             "type": "object",
             "required": [
-                "date",
                 "name"
             ],
             "properties": {
@@ -10393,9 +11036,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/form.ExpenseItem"
                     }
-                },
-                "date": {
-                    "type": "string"
                 },
                 "delete": {
                     "type": "array",
@@ -10557,6 +11197,32 @@ const docTemplate = `{
                 }
             }
         },
+        "formula.RsFormula": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expression": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "field_id": {
+                    "type": "string"
+                },
+                "field_key": {
+                    "type": "string"
+                },
+                "form_version_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "fy.RqCreateFY": {
             "type": "object",
             "required": [
@@ -10575,13 +11241,33 @@ const docTemplate = `{
                 }
             }
         },
-        "fy.RqUpdateFYLabel": {
+        "fy.RqUpdateFY": {
             "type": "object",
             "properties": {
+                "fy_year": {
+                    "type": "string"
+                },
                 "is_active": {
                     "type": "boolean"
                 },
                 "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "fy.RsFinancialYear": {
+            "type": "object",
+            "properties": {
+                "end_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "start_date": {
                     "type": "string"
                 }
             }
@@ -10760,6 +11446,40 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/notification.Status"
+                }
+            }
+        },
+        "notification.NotificationChannels": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "boolean"
+            }
+        },
+        "notification.NotificationEventType": {
+            "type": "string",
+            "enum": [
+                "NEW_TRANSACTION",
+                "ACCOUNTANT_ACTIVITY_ALERT",
+                "SYSTEM_ACTIVITY_ALERT"
+            ],
+            "x-enum-varnames": [
+                "EventNewTransaction",
+                "EventAccountantActivityAlert",
+                "EventSystemActivityAlert"
+            ]
+        },
+        "notification.RqUpdatePreference": {
+            "type": "object",
+            "required": [
+                "channels",
+                "event_type"
+            ],
+            "properties": {
+                "channels": {
+                    "$ref": "#/definitions/notification.NotificationChannels"
+                },
+                "event_type": {
+                    "$ref": "#/definitions/notification.NotificationEventType"
                 }
             }
         },

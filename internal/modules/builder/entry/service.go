@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
@@ -65,10 +66,11 @@ type Service struct {
 	fieldSvc       field.IService
 	invitationSvc  invitation.Service
 	detailRepo     detail.IRepository
+	financialRepo  fy.Repository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo}
 }
 
 // Create implements [IService].
@@ -84,32 +86,27 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 
 	realOwnerID := clinic.PractitionerID
 
-	// Validate lock date before creating entry
-	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
-		return nil, err
-	}
-
 	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 		return nil, err
 	}
 
-	// // Resolve the FormID to check permissions
-	// version, err := s.versionSvc.GetByID(ctx, formVersionID)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("invalid version: %w", err)
-	// }
+	// Financial Year Validation
+	if req.Date != nil && *req.Date != "" {
+		parsedDate, err := time.Parse("2006-01-02", *req.Date)
+		if err != nil {
+			return nil, fmt.Errorf("invalid date format: %w", err)
+		}
 
-	// // PERMISSION CHECK (Accountant Only)
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, version.FormId)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	// Must have 'create' or 'all'
-	// 	if perms == nil || (!perms.HasAccess("create") && !perms.HasAccess("all")) {
-	// 		return nil, errors.New("Access denied: you do not have permission to create entries for this form")
-	// 	}
-	// }
+		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		if err != nil {
+			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+		}
+	}
+
+	// Validate lock date before creating entry
+	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
+		return nil, err
+	}
 
 	status := EntryStatusDraft
 	if req.Status != "" {
@@ -136,6 +133,25 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	if err := s.repo.Create(ctx, e, values); err != nil {
 		return nil, err
 	}
+
+	// Link documents if provided
+	if req.Documents != nil && len(req.Documents.Create) > 0 {
+		docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid document id: %w", parseErr)
+		}
+		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
+		}
+		if linkErr := s.repo.LinkDocuments(ctx, tx, e.ID, docIDs); linkErr != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("link documents: %w", linkErr)
+		}
+		if txErr = tx.Commit(); txErr != nil {
+			return nil, fmt.Errorf("commit document links: %w", txErr)
+		}
+	}
 	created, vals, err := s.repo.GetByID(ctx, e.ID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch entry after create: %w", err)
@@ -144,6 +160,15 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	result := created.ToRs(vals)
 	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
+
+	// Attach documents
+	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, e.ID)
+	if docErr == nil && docs != nil {
+		result.Documents = make([]RsEntryDocument, 0, len(docs))
+		for _, d := range docs {
+			result.Documents = append(result.Documents, *d)
+		}
+	}
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -182,41 +207,20 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	if err != nil {
 		return nil, err
 	}
-	// Resolve the Form ID via Version ID
-	// formVersion, err := s.versionSvc.GetByID(ctx, e.FormVersionID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	// First, check if there's a specific permission for this ENTRY ID
-	// 	entryPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("auth error: %w", err)
-	// 	}
-
-	// 	// Fallback: If no entry perms, check the PARENT FORM permissions
-	// 	if entryPerms == nil {
-	// 		formPerms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formVersion.FormId)
-	// 		if err != nil {
-	// 			return nil, fmt.Errorf("auth error: %w", err)
-	// 		}
-
-	// 		// If no form perms either, block access entirely
-	// 		if formPerms == nil || (!formPerms.HasAccess("read") && !formPerms.HasAccess("all")) {
-	// 			return nil, errors.New("Access denied: no permission found for this entry or its parent form")
-	// 		}
-	// 		// SUCCESS: No specific entry perms, but has form-level read access. Allow read-only access.
-	// 	} else {
-	// 		// SUCCESS: Found specific Entry perms. Check for read access.
-	// 		if !entryPerms.HasAccess("read") && !entryPerms.HasAccess("all") {
-	// 			return nil, errors.New("Access denied: you do not have permission to view this entry")
-	// 		}
-	// 	}
-	// }
 
 	rs := e.ToRs(values)
 	s.attachFieldMetadata(ctx, rs)
 	s.attachICCalculation(ctx, rs)
+
+	// Attach documents
+	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
+	if docErr == nil && docs != nil {
+		rs.Documents = make([]RsEntryDocument, 0, len(docs))
+		for _, d := range docs {
+			rs.Documents = append(rs.Documents, *d)
+		}
+	}
+
 	return rs, nil
 }
 
@@ -235,19 +239,24 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if req.Date != nil {
 		dateToCheck = req.Date
 	}
+
+	// Financial Year Validation
+	if dateToCheck != nil && *dateToCheck != "" {
+		parsedDate, err := time.Parse("2006-01-02", *dateToCheck)
+		if err != nil {
+			return nil, fmt.Errorf("invalid date format: %w", err)
+		}
+
+		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		if err != nil {
+			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+		}
+	}
+
+	//Lock Date Validation
 	if err := s.validateLockDate(ctx, existing.PractitionerID, dateToCheck, &existing.CreatedAt); err != nil {
 		return nil, err
 	}
-
-	// PERMISSION CHECK (Accountant Only)
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-
-	// 	// Must have 'update' OR 'all'
-	// 	if entryPerms == nil || (!entryPerms.HasAccess("update") && !entryPerms.HasAccess("all")) {
-	// 		return nil, errors.New("Access denied: you do not have permission to update this entry")
-	// 	}
-	// }
 
 	if req.Status != nil {
 		existing.Status = *req.Status
@@ -274,6 +283,37 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if err := s.repo.Update(ctx, existing, valuesToUpdate); err != nil {
 		return nil, err
 	}
+
+	// Handle document create/delete ops
+	if req.Documents != nil {
+		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
+		if txErr != nil {
+			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		if len(req.Documents.Create) > 0 {
+			docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid document id in create: %w", parseErr)
+			}
+			if linkErr := s.repo.LinkDocuments(ctx, tx, id, docIDs); linkErr != nil {
+				return nil, fmt.Errorf("link documents: %w", linkErr)
+			}
+		}
+		if len(req.Documents.Delete) > 0 {
+			docIDs, parseErr := util.ParseUUIDs(req.Documents.Delete)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid document id in delete: %w", parseErr)
+			}
+			if unlinkErr := s.repo.UnlinkDocuments(ctx, tx, id, docIDs); unlinkErr != nil {
+				return nil, fmt.Errorf("unlink documents: %w", unlinkErr)
+			}
+		}
+		if txErr = tx.Commit(); txErr != nil {
+			return nil, fmt.Errorf("commit document ops: %w", txErr)
+		}
+	}
 	updated, vals, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("fetch entry after update: %w", err)
@@ -282,6 +322,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	result := updated.ToRs(vals)
 	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
+
+	// Attach documents
+	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
+	if docErr == nil && docs != nil {
+		result.Documents = make([]RsEntryDocument, 0, len(docs))
+		for _, d := range docs {
+			result.Documents = append(result.Documents, *d)
+		}
+	}
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -317,7 +366,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 
 // Delete implements [IService].
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	// Permission checks are handled by middleware
 
 	// Get entry details before deletion for audit log
 	existing, values, err := s.repo.GetByID(ctx, id)
@@ -330,16 +378,6 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
 		return err
 	}
-
-	// PERMISSION CHECK (Accountant Only)
-	// if strings.EqualFold(role, util.RoleAccountant) {
-	// 	entryPerms, _ := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, id)
-
-	// 	// Must have 'delete' OR 'all'
-	// 	if entryPerms == nil || (!entryPerms.HasAccess("delete") && !entryPerms.HasAccess("all")) {
-	// 		return errors.New("Access denied: you do not have permission to delete this entry")
-	// 	}
-	// }
 
 	// Record Shared Event
 	metaMap := events.JSONBMap{
@@ -639,7 +677,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		// Merge section totals into keyValues
 		maps.Copy(keyValues, sectionTotals)
 
-		// CRITICAL FIX: Add computed fields with tax types to taxTypeByKey
 		// This ensures the formula feedback mechanism uses GROSS values for dependent formulas
 		for _, f := range allFields {
 			if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
@@ -689,7 +726,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				continue
 			}
 
-			// CRITICAL FIX: Formula already returns NET amount
 			// We should NOT re-extract net from it
 			netBase := val
 			grossTotal := val
@@ -940,6 +976,12 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	})
 }
 
+// Helper to handle [uuid] format from frontend
+func cleanUUIDString(s string) string {
+	s = strings.Trim(s, "[]\" ") // Removes [, ], ", and spaces
+	return s
+}
+
 // ListCoaEntries implements [IService] - returns grouped COA rows for parent grid
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
 	var targetPracIDs []uuid.UUID
@@ -952,9 +994,12 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		// Accountant logic:
 		if filter.PractitionerID != nil && *filter.PractitionerID != "" {
 			// Case A: Specific practitioner selected in query
-			pID, err := uuid.Parse(*filter.PractitionerID)
+			// CLEAN THE STRING BEFORE PARSING
+			cleanID := cleanUUIDString(*filter.PractitionerID)
+			pID, err := uuid.Parse(cleanID)
 			if err == nil {
 				targetPracIDs = []uuid.UUID{pID}
+				filter.PractitionerID = &cleanID
 			}
 		} else {
 			// Case B: No practitioner specified - fetch all linked practitioners
@@ -1035,13 +1080,19 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 		return nil, fmt.Errorf("invalid coa_id: %w", err)
 	}
 
+	// Get the name so we can aggregate sibling accounts
+	coaName, err := s.repo.GetCoaNameByID(ctx, coaUUID)
+	if err != nil {
+		return nil, fmt.Errorf("find coa name: %w", err)
+	}
+
 	f := filter.ToCommonFilter()
 
-	items, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f, actorID, role)
+	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.CountCoaEntryDetails(ctx, coaUUID, f, actorID, role)
+	total, err := s.repo.CountCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -1059,8 +1110,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	}
 
 	for _, g := range groups {
-		coaUUID, _ := uuid.Parse(g.CoaID)
-		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+		details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			continue
 		}
@@ -1240,8 +1290,7 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow), groupHeaderStyle)
 		currRow++
 
-		coaUUID, _ := uuid.Parse(g.CoaID)
-		details, err := s.repo.ListCoaEntryDetails(ctx, coaUUID, f.ToCommonFilter(), actorID, role)
+		details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			continue
 		}

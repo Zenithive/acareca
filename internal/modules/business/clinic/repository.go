@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -58,6 +59,8 @@ type Repository interface {
 
 	DeleteClinicAddressTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
 	DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error
+	GetDocumentByClinicID(ctx context.Context, clinicID uuid.UUID) (*file.Document, error)
+	GetDocumentByClinicIDTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*file.Document, error)
 }
 
 type repository struct {
@@ -70,7 +73,7 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) GetClinicByID(ctx context.Context, id uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -187,7 +190,7 @@ var clinicSearchColumns = []string{"name", "abn", "description"}
 
 func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]*Clinic, error) {
 	base := `
-		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE practitioner_id = ? AND deleted_at IS NULL`
 
@@ -221,7 +224,7 @@ func (r *repository) CountClinicByPractitioner(ctx context.Context, practitioner
 
 func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
@@ -250,18 +253,30 @@ func (r *repository) BulkDeleteClinics(ctx context.Context, ids []uuid.UUID) err
 
 // Transaction-based methods
 func (r *repository) CreateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
+	var docID *uuid.UUID
+	if clinic.Document != nil {
+		docID = &clinic.Document.ID
+	}
+
 	query := `
-        INSERT INTO tbl_clinic (practitioner_id, profile_picture, name, abn, description, is_active)
-        VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
-        RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+        INSERT INTO tbl_clinic (practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, TRUE))
+        RETURNING id, practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active, created_at, updated_at
     `
+
 	var c Clinic
-	err := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
-		clinic.ABN, clinic.Description, clinic.IsActive,
-	).StructScan(&c)
+	var returnedDocID *uuid.UUID
+	row := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.ImageURL, clinic.Name,
+		clinic.ABN, clinic.Description, docID, clinic.IsActive,
+	)
+	err := row.Scan(
+		&c.ID, &c.PractitionerID, &c.ProfilePicture, &c.ImageURL, &c.Name,
+		&c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create clinic tx: %w", err)
 	}
+	c.Document = clinic.Document
 	return &c, nil
 }
 
@@ -329,7 +344,7 @@ func (r *repository) GetActiveFinancialYearTx(ctx context.Context, tx *sqlx.Tx) 
 
 func (r *repository) GetClinicByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id,profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -345,7 +360,7 @@ func (r *repository) GetClinicByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.U
 
 func (r *repository) GetClinicByIDAndPractitionerTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
@@ -436,24 +451,35 @@ func (r *repository) GetContactByIDTx(ctx context.Context, tx *sqlx.Tx, id uuid.
 }
 
 func (r *repository) UpdateClinicTx(ctx context.Context, tx *sqlx.Tx, clinic *Clinic) (*Clinic, error) {
+	var docID *uuid.UUID
+	if clinic.Document != nil {
+		docID = &clinic.Document.ID
+	}
+
 	query := `
 		UPDATE tbl_clinic 
-		SET practitioner_id = $1, profile_picture = $2, name = $3, abn = $4, 
-		    description = $5, is_active = $6, updated_at = now()
-		WHERE id = $7 AND deleted_at IS NULL
-		RETURNING id, practitioner_id, profile_picture, name, abn, description, is_active, created_at, updated_at
+		SET practitioner_id = $1, profile_picture = $2, image_url = $3, name = $4, abn = $5, 
+		    description = $6, is_active = $7, document_id = $8, updated_at = now()
+		WHERE id = $9 AND deleted_at IS NULL
+		RETURNING id, practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active, created_at, updated_at
 	`
 	var c Clinic
-	err := tx.QueryRowxContext(ctx, query,
-		clinic.PractitionerID, clinic.ProfilePicture, clinic.Name,
-		clinic.ABN, clinic.Description, clinic.IsActive, clinic.ID,
-	).StructScan(&c)
+	var returnedDocID *uuid.UUID
+	row := tx.QueryRowxContext(ctx, query,
+		clinic.PractitionerID, clinic.ProfilePicture, clinic.ImageURL, clinic.Name,
+		clinic.ABN, clinic.Description, clinic.IsActive, docID, clinic.ID,
+	)
+	err := row.Scan(
+		&c.ID, &c.PractitionerID, &c.ProfilePicture, &c.ImageURL, &c.Name,
+		&c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("update clinic tx: %w", err)
 	}
+	c.Document = clinic.Document
 	return &c, nil
 }
 
@@ -527,7 +553,8 @@ func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uu
         SELECT 
             c.id, 
 			c.practitioner_id,
-            c.profile_picture, 
+            c.profile_picture,
+            c.image_url, 
             c.name, 
             c.abn, 
             c.description, 
@@ -696,4 +723,50 @@ func (r *repository) DeleteClinicContactTx(ctx context.Context, tx *sqlx.Tx, id 
 	query := `UPDATE tbl_clinic_contact SET deleted_at = NOW() WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL`
 	_, err := tx.ExecContext(ctx, query, id, clinicID)
 	return err
+}
+
+func (r *repository) GetDocumentByClinicID(ctx context.Context, clinicID uuid.UUID) (*file.Document, error) {
+	query := `
+		SELECT
+			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
+			d.original_name, d.extension, d.mime_type, d.size_bytes,
+			d.checksum, d.status, d.is_public,
+			d.upload_expires_at, d.uploaded_at,
+			d.created_at, d.updated_at, d.deleted_at
+		FROM tbl_document d
+		INNER JOIN tbl_clinic c ON c.document_id = d.id
+		WHERE c.id = $1 AND c.deleted_at IS NULL AND d.deleted_at IS NULL
+		LIMIT 1`
+
+	var doc file.Document
+	if err := r.db.GetContext(ctx, &doc, query, clinicID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get document by clinic id: %w", err)
+	}
+	return &doc, nil
+}
+
+func (r *repository) GetDocumentByClinicIDTx(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*file.Document, error) {
+	query := `
+		SELECT
+			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
+			d.original_name, d.extension, d.mime_type, d.size_bytes,
+			d.checksum, d.status, d.is_public,
+			d.upload_expires_at, d.uploaded_at,
+			d.created_at, d.updated_at, d.deleted_at
+		FROM tbl_document d
+		INNER JOIN tbl_clinic c ON c.document_id = d.id
+		WHERE c.id = $1 AND c.deleted_at IS NULL AND d.deleted_at IS NULL
+		LIMIT 1`
+
+	var doc file.Document
+	if err := tx.GetContext(ctx, &doc, query, clinicID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get document by clinic id tx: %w", err)
+	}
+	return &doc, nil
 }
