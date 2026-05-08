@@ -102,10 +102,11 @@ type RsShareLink struct {
 
 // RsPresignedUploadURL represents a presigned upload URL response
 type RsPresignedUploadURL struct {
-	UploadURL  string    `json:"upload_url"`
-	ObjectKey  string    `json:"object_key"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	DocumentID uuid.UUID `json:"document_id"`
+	UploadURL   string    `json:"upload_url"`
+	ObjectKey   string    `json:"object_key"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	DocumentID  uuid.UUID `json:"document_id"`
+	ContentType string    `json:"content_type"` // verified MIME type — client must send this as Content-Type on the PUT
 }
 
 // ToRsDocument converts Document to RsDocument

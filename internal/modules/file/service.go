@@ -230,10 +230,11 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 	}
 
 	return &RsPresignedUploadURL{
-		UploadURL:  uploadURL,
-		ObjectKey:  objectKey,
-		ExpiresAt:  expiresAt,
-		DocumentID: created.ID,
+		UploadURL:   uploadURL,
+		ObjectKey:   objectKey,
+		ExpiresAt:   expiresAt,
+		DocumentID:  created.ID,
+		ContentType: mimeType,
 	}, nil
 }
 

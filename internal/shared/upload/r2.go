@@ -142,9 +142,8 @@ func (p *R2StorageProvider) GeneratePresignedURL(objectKey string, expiresIn tim
 // because headers are not transmitted by the client in a direct presigned upload.
 func (p *R2StorageProvider) GeneratePresignedUploadURL(objectKey string, contentType string, expiresIn time.Duration) (string, error) {
 	req, _ := p.client.PutObjectRequest(&s3.PutObjectInput{
-		Bucket:      aws.String(p.bucket),
-		Key:         aws.String(objectKey),
-		ContentType: aws.String(contentType),
+		Bucket: aws.String(p.bucket),
+		Key:    aws.String(objectKey),
 	})
 
 	// Inject x-amz-content-sha256 into the query string before signing so
