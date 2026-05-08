@@ -764,35 +764,37 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		OwnerID = actorId
 	}
 
-	expenseDate, err := parseFlexibleDate(rq.Date)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction date format: %w", err)
-	}
-
-	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
-	if err != nil {
-		return nil, fmt.Errorf("the date %s does not fall within an active financial year", expenseDate.Format("02-01-2006"))
-	}
-
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify lock date: %w", err)
-	}
-
-	if lockDateStr != nil && *lockDateStr != "" {
-		lockDate, err := parseFlexibleDate(*lockDateStr)
+	// Validate each item's date against FY and lock date
+	for idx, item := range rq.Items {
+		itemDate, err := parseFlexibleDate(item.Date)
 		if err != nil {
-			return nil, fmt.Errorf("invalid lock date format: %w", err)
+			return nil, fmt.Errorf("item %d: invalid date format: %w", idx, err)
 		}
 
-		if !expenseDate.After(lockDate) {
-			return nil, fmt.Errorf("cannot create expense: the financial period for %s is locked", *lockDateStr)
+		fy, err := s.financialRepo.GetFinancialYearByDate(ctx, itemDate)
+		if err != nil {
+			return nil, fmt.Errorf("item %d: the date %s does not fall within an active financial year", idx, itemDate.Format("02-01-2006"))
+		}
+
+		lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
+		if err != nil {
+			return nil, fmt.Errorf("item %d: failed to verify lock date: %w", idx, err)
+		}
+
+		if lockDateStr != nil && *lockDateStr != "" {
+			lockDate, err := parseFlexibleDate(*lockDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("item %d: invalid lock date format: %w", idx, err)
+			}
+			if !itemDate.After(lockDate) {
+				return nil, fmt.Errorf("item %d: cannot create expense: the financial period for %s is locked", idx, *lockDateStr)
+			}
 		}
 	}
 
 	var createdForm *detail.RsFormDetail
 
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		rqDetail := detail.RqFormDetail{
 			Name:        rq.Name,
 			ClinicShare: 0,
@@ -819,6 +821,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			submittedAt = &nowStr
 		}
 		entryID := uuid.New()
+		firstItemDate := rq.Items[0].Date
 		formEntry := &entry.FormEntry{
 			ID:            entryID,
 			FormVersionID: *form.ActiveVersionID,
@@ -826,7 +829,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			SubmittedBy:   &actorId,
 			Status:        status,
 			SubmittedAt:   submittedAt,
-			Date:          &rq.Date,
+			Date:          &firstItemDate,
 		}
 
 		var entryValues []*entry.FormEntryValue
@@ -877,7 +880,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
 			}
 
-			// Create entry value with calculated amounts
+			itemDate := item.Date
 			entryValue := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
@@ -886,8 +889,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
-				// TaxType:     &taxType,
-				// BusinessUse: &localBusinessUse,
+				Date:        &itemDate,
 			}
 
 			entryValues = append(entryValues, entryValue)
@@ -949,31 +951,71 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		return nil, errors.New("could not determine practitioner for this expense")
 	}
 
-	expenseDate, err := parseFlexibleDate(rq.Date)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction date format: %w", err)
+	// Extract date from the first item (update takes priority over create)
+	var rawDate string
+	if len(rq.Update) > 0 && rq.Update[0].Date != nil {
+		rawDate = *rq.Update[0].Date
+	} else if len(rq.Create) > 0 {
+		rawDate = rq.Create[0].Date
 	}
 
-	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
-	if err != nil {
-		return nil, fmt.Errorf("the date %s does not fall within an active financial year", expenseDate.Format("02-01-2006"))
-	}
-
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify lock date: %w", err)
-	}
-
-	if lockDateStr != nil && *lockDateStr != "" {
-		lockDate, err := parseFlexibleDate(*lockDateStr)
+	// Validate each update item's date
+	for idx, item := range rq.Update {
+		if item.Date == nil || *item.Date == "" {
+			continue
+		}
+		itemDate, err := parseFlexibleDate(*item.Date)
 		if err != nil {
-			return nil, fmt.Errorf("invalid lock date format: %w", err)
+			return nil, fmt.Errorf("update item %d: invalid date format: %w", idx, err)
 		}
-
-		if !expenseDate.After(lockDate) {
-			return nil, fmt.Errorf("cannot update expense: the financial period for %s is locked", *lockDateStr)
+		fy, err := s.financialRepo.GetFinancialYearByDate(ctx, itemDate)
+		if err != nil {
+			return nil, fmt.Errorf("update item %d: the date %s does not fall within an active financial year", idx, itemDate.Format("02-01-2006"))
+		}
+		lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
+		if err != nil {
+			return nil, fmt.Errorf("update item %d: failed to verify lock date: %w", idx, err)
+		}
+		if lockDateStr != nil && *lockDateStr != "" {
+			lockDate, err := parseFlexibleDate(*lockDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("update item %d: invalid lock date format: %w", idx, err)
+			}
+			if !itemDate.After(lockDate) {
+				return nil, fmt.Errorf("update item %d: cannot update expense: the financial period for %s is locked", idx, *lockDateStr)
+			}
 		}
 	}
+
+	// Validate each create item's date
+	for idx, item := range rq.Create {
+		if item.Date == "" {
+			continue
+		}
+		itemDate, err := parseFlexibleDate(item.Date)
+		if err != nil {
+			return nil, fmt.Errorf("create item %d: invalid date format: %w", idx, err)
+		}
+		fy, err := s.financialRepo.GetFinancialYearByDate(ctx, itemDate)
+		if err != nil {
+			return nil, fmt.Errorf("create item %d: the date %s does not fall within an active financial year", idx, itemDate.Format("02-01-2006"))
+		}
+		lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
+		if err != nil {
+			return nil, fmt.Errorf("create item %d: failed to verify lock date: %w", idx, err)
+		}
+		if lockDateStr != nil && *lockDateStr != "" {
+			lockDate, err := parseFlexibleDate(*lockDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("create item %d: invalid lock date format: %w", idx, err)
+			}
+			if !itemDate.After(lockDate) {
+				return nil, fmt.Errorf("create item %d: cannot update expense: the financial period for %s is locked", idx, *lockDateStr)
+			}
+		}
+	}
+
+	_ = rawDate // entry-level date updated below from first item if present
 
 	if existingForm.Method != "EXPENSE_ENTRY" {
 		return nil, errors.New("form is not an expense entry")
@@ -1147,19 +1189,27 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: description,
+				Date:        item.Date,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
 
-		// Update the date in tbl_form_entry
-		dateStr := expenseDate.Format("2006-01-02")
-		updateDateQuery := `UPDATE tbl_form_entry SET date = $1, updated_at = now() WHERE id = $2`
-		if _, err := tx.ExecContext(ctx, updateDateQuery, dateStr, existingEntry.ID); err != nil {
-			return fmt.Errorf("failed to update entry date: %w", err)
+		// Update the entry-level date from the first updated/created item (for filtering)
+		var entryDateStr *string
+		if len(rq.Update) > 0 && rq.Update[0].Date != nil && *rq.Update[0].Date != "" {
+			entryDateStr = rq.Update[0].Date
+		} else if len(rq.Create) > 0 && rq.Create[0].Date != "" {
+			entryDateStr = &rq.Create[0].Date
+		}
+		if entryDateStr != nil {
+			updateDateQuery := `UPDATE tbl_form_entry SET date = $1, updated_at = now() WHERE id = $2`
+			if _, err := tx.ExecContext(ctx, updateDateQuery, *entryDateStr, existingEntry.ID); err != nil {
+				return fmt.Errorf("failed to update entry date: %w", err)
+			}
 		}
 
 		// Handle creates
@@ -1220,10 +1270,11 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
+				Date:        &item.Date,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
 		}
@@ -1307,7 +1358,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Get entry and entry values
-	formEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
+	_, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entry values: %w", err)
 	}
@@ -1316,7 +1367,6 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	response := &RsExpense{
 		ID:             formDetail.ID,
 		Name:           formDetail.Name,
-		Date:           formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
 		PractitionerID: practitionerID,
 		Items:          []RsExpenseItem{},
 		CreatedAt:      formDetail.CreatedAt,
@@ -1348,6 +1398,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		// Find matching entry value
 		var netAmount, gstAmount, grossAmount float64
 		var description *string
+		var itemDate string
 		for _, ev := range entryValues {
 			if ev.FormFieldID != nil && *ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
 				if ev.NetAmount != nil {
@@ -1360,6 +1411,9 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 					grossAmount = *ev.GrossAmount
 				}
 				description = ev.Description
+				if ev.Date != nil {
+					itemDate = *ev.Date
+				}
 				break
 			}
 		}
@@ -1385,6 +1439,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			NetAmount:   netAmount,
 			GstAmount:   gstAmount,
 			GrossAmount: grossAmount,
+			Date:        itemDate,
 			Description: description,
 		}
 
