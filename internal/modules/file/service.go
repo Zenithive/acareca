@@ -272,25 +272,6 @@ func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.
 	})
 }
 
-func (s *service) logFileDownload(ctx context.Context, doc *Document, userID uuid.UUID) {
-	meta := auditctx.GetMetadata(ctx)
-	userIDStr := userID.String()
-	docIDStr := doc.ID.String()
-
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		UserID:     &userIDStr,
-		Action:     auditctx.ActionFileDownloaded,
-		Module:     auditctx.ModuleFile,
-		EntityType: lo.ToPtr(auditctx.EntityFile),
-		EntityID:   &docIDStr,
-		AfterState: map[string]interface{}{
-			"filename": doc.OriginalName,
-		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
-	})
-}
-
 func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.UUID, beforeState map[string]interface{}) {
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()

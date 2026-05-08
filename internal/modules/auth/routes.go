@@ -11,7 +11,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	auth.POST("/register", h.Register)
 
 	auth.POST("/login", h.Login)
-	// auth.POST("/logout", h.Logout)
 
 	auth.GET("/google", h.GoogleAuthURL)
 	auth.GET("/google/callback", h.GoogleCallback)
