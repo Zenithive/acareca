@@ -70,7 +70,6 @@ func (r *RqUser) ToDBModel() *User {
 		FirstName: r.FirstName,
 		LastName:  r.LastName,
 		Phone:     r.Phone,
-		Document:  r.ToDBModel().Document,
 	}
 }
 

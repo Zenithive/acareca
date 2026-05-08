@@ -18,7 +18,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Hub manages all active WebSocket connections keyed by entity (practitioner/accountant) ID.
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[uuid.UUID][]*client
@@ -44,8 +43,22 @@ func NewNotifier(db *sqlx.DB) *Hub {
 	}
 }
 
+// safeSend prevents panic if send is called on a closed channel.
+func safeSend(c *client, data []byte) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	select {
+	case c.send <- data:
+		return true
+	default:
+		return false
+	}
+}
+
 // Push sends a live notification event to all connections belonging to entityID.
-// Returns true if at least one client received the message.
 func (h *Hub) Push(entityID uuid.UUID, payload any) bool {
 	msg := map[string]any{
 		"type": "notification",
@@ -61,21 +74,16 @@ func (h *Hub) Push(entityID uuid.UUID, payload any) bool {
 	conns := h.clients[entityID]
 	h.mu.RUnlock()
 
-	log.Printf("notifier: Push to entityID=%s — %d active connection(s)", entityID, len(conns))
-
 	if len(conns) == 0 {
-		log.Printf("notifier: no active WS clients for entityID=%s, notification saved to DB only", entityID)
 		return false
 	}
 
 	delivered := false
 	for _, c := range conns {
-		select {
-		case c.send <- data:
-			log.Printf("notifier: queued message to entityID=%s", entityID)
+		if safeSend(c, data) {
 			delivered = true
-		default:
-			log.Printf("notifier: dropped message for entityID=%s (slow client)", entityID)
+		} else {
+			log.Printf("notifier: dropped message for entityID=%s (slow or closed client)", entityID)
 		}
 	}
 	return delivered
@@ -98,19 +106,24 @@ func (h *Hub) ServeWS(cfg *config.Config) gin.HandlerFunc {
 
 		cl := &client{conn: conn, entityID: entityID, send: make(chan []byte, 64)}
 		h.register(cl)
-		defer h.unregister(cl)
 
-		// send stored notifications immediately
-		if err := h.sendStored(c.Request.Context(), cl); err != nil {
-			log.Printf("notifier: sendStored error: %v", err)
-		}
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			// sendStored runs inside writePump's goroutine so it never
+			// blocks the handler and is guaranteed the pump is draining.
+			if err := h.sendStored(c.Request.Context(), cl); err != nil {
+				log.Printf("notifier: sendStored error: %v", err)
+			}
+			cl.writePump()
+		}()
 
-		go cl.writePump()
 		cl.readPump() // blocks until disconnect
+
+		h.unregister(cl)
+		<-done // wait for writePump to finish
 	}
 }
-
-// ── auth ─────────────────────────────────────────────────────────────────────
 
 func (h *Hub) authenticate(c *gin.Context, cfg *config.Config) (uuid.UUID, bool) {
 	tokenStr := c.Query("token")
@@ -139,14 +152,10 @@ func (h *Hub) authenticate(c *gin.Context, cfg *config.Config) (uuid.UUID, bool)
 	return entityID, true
 }
 
-// ── registry ─────────────────────────────────────────────────────────────────
-
 func (h *Hub) register(cl *client) {
 	h.mu.Lock()
 	h.clients[cl.entityID] = append(h.clients[cl.entityID], cl)
-	count := len(h.clients[cl.entityID])
 	h.mu.Unlock()
-	log.Printf("notifier: client registered entityID=%s, total=%d", cl.entityID, count)
 }
 
 func (h *Hub) unregister(cl *client) {
@@ -159,12 +168,13 @@ func (h *Hub) unregister(cl *client) {
 			break
 		}
 	}
-	log.Printf("notifier: client unregistered entityID=%s, remaining=%d", cl.entityID, len(h.clients[cl.entityID]))
+	// Clean up map entry to prevent memory leak.
+	if len(h.clients[cl.entityID]) == 0 {
+		delete(h.clients, cl.entityID)
+	}
+	// Closing the channel signals writePump to exit cleanly.
 	close(cl.send)
-	_ = cl.conn.Close()
 }
-
-// ── stored notifications ──────────────────────────────────────────────────────
 
 type storedNotification struct {
 	ID          uuid.UUID       `db:"id"`
@@ -180,7 +190,6 @@ type storedNotification struct {
 }
 
 func (h *Hub) sendStored(ctx context.Context, cl *client) error {
-	// Only fetch notifications where the in_app delivery was DELIVERED
 	const q = `
 		SELECT n.id, n.recipient_id, n.sender_id, n.event_type, n.entity_type, n.entity_id,
 		       n.status, n.payload, n.created_at, n.read_at AS readed_at
@@ -216,11 +225,15 @@ func (h *Hub) sendStored(ctx context.Context, cl *client) error {
 		"data": notifications,
 	}
 	data, _ := json.Marshal(msg)
-	cl.send <- data
+
+	// Use select to avoid blocking if buffer is full.
+	select {
+	case cl.send <- data:
+	default:
+		log.Printf("notifier: sendStored dropped for entityID=%s (buffer full)", cl.entityID)
+	}
 	return nil
 }
-
-// ── pumps ─────────────────────────────────────────────────────────────────────
 
 const (
 	writeWait  = 10 * time.Second

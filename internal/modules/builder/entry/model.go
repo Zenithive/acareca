@@ -80,6 +80,7 @@ type FormEntryValue struct {
 	GstAmount   *float64   `db:"gst_amount"`
 	GrossAmount *float64   `db:"gross_amount"`
 	Description *string    `db:"description"`
+	Date        *string    `db:"date"`
 	CreatedAt   string     `db:"created_at"`
 	UpdatedAt   *string    `db:"updated_at"`
 }
