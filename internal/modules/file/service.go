@@ -171,6 +171,11 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		return nil, errors.New("presigned URLs not supported by current storage provider")
 	}
 
+	// Validate file size and detect MIME type from actual file bytes (not client header).
+	if err := s.validator.Validate(file, header); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
 	objectKey := s.storage.GenerateObjectKey(ownerID, header.Filename)
 
 	expiresInSec := 900
@@ -178,6 +183,8 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		expiresInSec = *req.ExpiresIn
 	}
 	expiresIn := time.Duration(expiresInSec) * time.Second
+
+	// Use the detected MIME type (set by Validate) rather than the client-supplied header.
 	mimeType := header.Header.Get("Content-Type")
 
 	uploadURL, err := presignedProvider.GeneratePresignedUploadURL(objectKey, mimeType, expiresIn)

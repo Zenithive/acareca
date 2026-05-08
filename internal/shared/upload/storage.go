@@ -63,16 +63,42 @@ func NewFileValidator(maxFileSize int64, allowedMimeTypes []string) *FileValidat
 	}
 }
 
-func (v *FileValidator) Validate(header *multipart.FileHeader) error {
+// Validate checks the file size and MIME type.
+// It detects the MIME type from the actual file bytes rather than trusting the
+// client-supplied Content-Type header, then overwrites the header value so
+// callers can read the verified type from header.Header.Get("Content-Type").
+func (v *FileValidator) Validate(file multipart.File, header *multipart.FileHeader) error {
 	if header.Size > v.maxFileSize {
 		return fmt.Errorf("%w: file size %d exceeds maximum %d", ErrFileTooLarge, header.Size, v.maxFileSize)
 	}
 
-	contentType := header.Header.Get("Content-Type")
-	if len(v.allowedMimeTypes) > 0 && !v.allowedMimeTypes[contentType] {
-		return fmt.Errorf("%w: %s not allowed", ErrInvalidFileType, contentType)
+	detectedType, err := DetectMimeType(file)
+	if err != nil {
+		return fmt.Errorf("detect file type: %w", err)
 	}
 
+	// For .xlsx files http.DetectContentType returns "application/zip" because
+	// the OOXML format is ZIP-based. Fall back to the file extension in that case.
+	if detectedType == "application/zip" || detectedType == "application/octet-stream" {
+		ext := strings.ToLower(GetFileExtension(header.Filename))
+		switch ext {
+		case "xlsx":
+			detectedType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		case "xls":
+			detectedType = "application/vnd.ms-excel"
+		case "docx":
+			detectedType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		case "pptx":
+			detectedType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+		}
+	}
+
+	if len(v.allowedMimeTypes) > 0 && !v.allowedMimeTypes[detectedType] {
+		return fmt.Errorf("%w: %s not allowed", ErrInvalidFileType, detectedType)
+	}
+
+	// Overwrite the client-supplied Content-Type with the verified value.
+	header.Header.Set("Content-Type", detectedType)
 	return nil
 }
 
