@@ -118,7 +118,12 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		}
 	}
 
-	exportedFile, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs)
+	pracIDStr := ""
+	if f.PractitionerID != nil {
+		pracIDStr = *f.PractitionerID
+	}
+
+	exportedFile, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
