@@ -20,9 +20,10 @@ type DefaultChartRow struct {
 func DefaultChartOfAccounts() []DefaultChartRow {
 	return []DefaultChartRow{
 		// Revenue accounts
-		{Code: 200, Name: "Patient Fee Account", AccountTypeID: 4, AccountTaxID: 5, IsSystem: false},
-		{Code: 201, Name: "Commission Received", AccountTypeID: 4, AccountTaxID: 1, IsSystem: false},
-		{Code: 202, Name: "Other Income", AccountTypeID: 4, AccountTaxID: 1, IsSystem: false},
+		{Code: 200, Name: "Patient Fee Account (GST Free)", AccountTypeID: 4, AccountTaxID: 5, IsSystem: false},
+		{Code: 201, Name: "Patient Fee Account (GST)", AccountTypeID: 4, AccountTaxID: 1, IsSystem: false},
+		{Code: 202, Name: "Commission Received", AccountTypeID: 4, AccountTaxID: 1, IsSystem: false},
+		{Code: 203, Name: "Other Income", AccountTypeID: 4, AccountTaxID: 1, IsSystem: false},
 
 		// Expense accounts
 		{Code: 400, Name: "Home Office (GST)", AccountTypeID: 5, AccountTaxID: 2, IsSystem: false},
