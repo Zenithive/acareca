@@ -270,48 +270,19 @@ func (h *handler) ExportReport(c *gin.Context) {
 		return
 	}
 
-	// Resolve PracIDs (for data scoping) and notifIDs (for Shared Events).
-	// Scenario A: practitioner_id in query → scope + notify only that one.
-	// Scenario B: no practitioner_id → fetch all linked, notify all.
-	// Practitioner: scope to self, no shared events.
-	var PracIDs []uuid.UUID
 	var notifIDs []uuid.UUID
+	pracIDParam := c.Query("practitioner_id") // This matches your frontend filter
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			// Scenario A
-			pracUUID, err := uuid.Parse(pracIDStr)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
-				return
-			}
-			f.PractitionerID = pracIDStr
-			PracIDs = []uuid.UUID{pracUUID}
+		if pracIDParam != "" {
+			pracUUID := uuid.MustParse(pracIDParam)
 			notifIDs = []uuid.UUID{pracUUID}
+			f.PractitionerID = pracIDParam
 		} else {
-			// Scenario B
-			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
-			if err != nil {
-				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
-				return
-			}
-			if len(linked) == 0 {
-				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
-				return
-			}
-			PracIDs = linked
+			// Fetch all linked practitioners if no filter is applied
+			linked, _ := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
 			notifIDs = linked
-			// f.PractitionerID left empty — service resolves via clinicRepo
 		}
-	} else {
-		PracIDs = []uuid.UUID{*actorID}
-		notifIDs = nil // practitioners never receive their own shared events
-	}
-
-	// Safely handle optional ClinicID
-	clinicIDParam := ""
-	if f.ClinicID != nil {
-		clinicIDParam = *f.ClinicID
 	}
 
 	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
@@ -322,13 +293,11 @@ func (h *handler) ExportReport(c *gin.Context) {
 	}
 
 	// Generate the Excel/PDF file
-	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, clinicIDParam)
+	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDParam)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-
-	_ = PracIDs // used for scoping context; notifIDs drives notifications
 
 	switch v := excelFile.(type) {
 	case *excelize.File:

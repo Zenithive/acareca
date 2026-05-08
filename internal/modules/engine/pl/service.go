@@ -26,7 +26,7 @@ type Service interface {
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
 	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error)
-	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error)
+	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 }
 
 type service struct {
@@ -253,10 +253,12 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	// Record the Shared Event
 	if isAccountant && len(targetNotifIDs) > 0 {
 		var fullName string
-		user, err := s.authRepo.FindByID(ctx, actorID)
+		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
+
+		fmt.Printf("\nName: %s\n", fullName)
 
 		for _, pID := range targetNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
@@ -375,7 +377,7 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterClinicID string) (interface{}, error) {
+func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
 	// --- FETCH METADATA ---
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
@@ -384,18 +386,25 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	}
 
 	var practitionerABN string
-	if role == util.RolePractitioner {
-		prac, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
+	// If a practitioner is filtered, resolve that specific profile for the ABN.
+	// Otherwise, fallback to the actor context.
+	targetID := ""
+	if filterPractitionerID != "" {
+		targetID = filterPractitionerID
+	} else if role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
 		if err == nil && prac.ABN != nil {
 			practitionerABN = *prac.ABN
 		}
-	} else {
-		// If an accountant is exporting, get the ABN from the practitioner filter
-		if len(notifIDs) > 0 {
-			prac, err := s.practitionerSvc.GetPractitioner(ctx, notifIDs[0])
-			if err == nil && prac.ABN != nil {
-				practitionerABN = *prac.ABN
-			}
+	} else if len(notifIDs) > 0 {
+		// Fallback for accountants with no specific filter
+		prac, err := s.practitionerSvc.GetPractitioner(ctx, notifIDs[0])
+		if err == nil && prac.ABN != nil {
+			practitionerABN = *prac.ABN
 		}
 	}
 
@@ -588,17 +597,9 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	f.UpdateLinkedValue()
 
 	// --- NOTIFICATION LOGIC ---
-	// notifIDs is already scoped by the handler (Scenario A or B).
-	// If a specific clinic was filtered, further narrow to only that clinic's owner.
-	targetNotifIDs := notifIDs
-	if filterClinicID != "" && len(notifIDs) > 1 {
-		clinicUUID, err := uuid.Parse(filterClinicID)
-		if err == nil {
-			clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicUUID)
-			if err == nil {
-				targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
-			}
-		}
+	finalNotifIDs := notifIDs
+	if filterPractitionerID != "" {
+		finalNotifIDs = []uuid.UUID{uuid.MustParse(filterPractitionerID)}
 	}
 
 	// --- AUDIT LOG ---
@@ -623,8 +624,8 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	})
 
 	// Record the Shared Event — only for accountants, never for practitioners.
-	if role == util.RoleAccountant && len(targetNotifIDs) > 0 {
-		for _, pID := range targetNotifIDs {
+	if role == util.RoleAccountant && len(finalNotifIDs) > 0 {
+		for _, pID := range finalNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
 				PractitionerID: pID,
