@@ -20,7 +20,6 @@ var (
 type Repository interface {
 	Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*Document, error)
-	FindByObjectKey(ctx context.Context, objectKey string) (*Document, error)
 	FindByOwner(ctx context.Context, ownerID uuid.UUID, filters *RqListDocuments) ([]Document, int64, error)
 	Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
 	Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
@@ -92,30 +91,6 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Document, err
 			return nil, ErrDocumentNotFound
 		}
 		return nil, fmt.Errorf("find document by id: %w", err)
-	}
-
-	return &doc, nil
-}
-
-// FindByObjectKey finds a document by object key
-func (r *repository) FindByObjectKey(ctx context.Context, objectKey string) (*Document, error) {
-	query := `
-		SELECT 
-			id, owner_id, owner_role, object_key, bucket,
-			original_name, extension, mime_type, size_bytes,
-			checksum, status, is_public,
-			upload_expires_at, uploaded_at,
-			created_at, updated_at, deleted_at
-		FROM tbl_document
-		WHERE object_key = $1 AND deleted_at IS NULL`
-
-	var doc Document
-	err := r.db.GetContext(ctx, &doc, query, objectKey)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrDocumentNotFound
-		}
-		return nil, fmt.Errorf("find document by object key: %w", err)
 	}
 
 	return &doc, nil

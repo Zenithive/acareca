@@ -214,21 +214,6 @@ func (h *handler) Logout(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "Logged out successfully")
 }
 
-// GoogleLogin godoc
-// @Summary Get Google OAuth consent-screen URL
-// @Description get Google OAuth consent-screen URL
-// @Tags auth
-// @Produce json
-// @Success 200 {object} response.RsBase
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
-// @Router /auth/google [get]
-func (h *handler) GoogleLogin(c *gin.Context) {
-	state := util.NewUUID()
-	result := h.svc.GoogleAuthURL(state)
-	response.JSON(c, http.StatusOK, result, "Google OAuth consent-screen URL fetched successfully")
-}
-
 // GoogleAuthURL godoc
 // @Summary Get Google OAuth consent-screen URL
 // @Description get Google OAuth consent-screen URL
