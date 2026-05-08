@@ -14,6 +14,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -24,28 +25,30 @@ import (
 
 type Service interface {
 	GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error)
-	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID) (interface{}, error)
+	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 }
 
 type service struct {
-	repo          Repository
-	equitySvc     equity.Service
-	db            sqlx.DB
-	auditSvc      audit.Service
-	eventsSvc     events.Service
-	authRepo      auth.Repository
-	invitationSvc invitation.Service
+	repo            Repository
+	equitySvc       equity.Service
+	db              sqlx.DB
+	auditSvc        audit.Service
+	eventsSvc       events.Service
+	authRepo        auth.Repository
+	invitationSvc   invitation.Service
+	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service) Service {
+func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, practitionerSvc practitioner.IService) Service {
 	return &service{
-		repo:          repo,
-		equitySvc:     equitySvc,
-		db:            db,
-		auditSvc:      auditSvc,
-		eventsSvc:     eventsSvc,
-		authRepo:      authRepo,
-		invitationSvc: invitationSvc,
+		repo:            repo,
+		equitySvc:       equitySvc,
+		db:              db,
+		auditSvc:        auditSvc,
+		eventsSvc:       eventsSvc,
+		authRepo:        authRepo,
+		invitationSvc:   invitationSvc,
+		practitionerSvc: practitionerSvc,
 	}
 }
 
@@ -266,27 +269,40 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	return result, nil
 }
 
-func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID) (interface{}, error) {
+func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
 	f := excelize.NewFile()
 	sheet := "Balance Sheet"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
+
+	// --- FETCH METADATA ---
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	targetID := filterPractitionerID
+	if targetID == "" && role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		pracUUID, err := uuid.Parse(targetID)
+		if err == nil {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+			if err == nil && prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	}
 
 	// --- STYLES ---
 	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
 		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-	})
-	styleItalic, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{
-			Italic: true,
-			Family: "Calibri",
-			Size:   10,
-		},
-		Alignment: &excelize.Alignment{
-			Horizontal: "left",
-		},
 	})
 	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
@@ -329,27 +345,39 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
 		},
 	})
-
-	var dateText string
-	start := data.StartDate
-	end := data.EndDate
-
-	if start != "" && end != "" {
-		dateText = fmt.Sprintf("For the period of: %s to %s", start, end)
-	} else if end != "" {
-		dateText = fmt.Sprintf("As of: %s", end)
-	} else if start != "" {
-		dateText = fmt.Sprintf("From: %s onwards", start)
+	setRichMeta := func(cell string, label string, value string) {
+		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
 	}
 
 	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Balance Sheet")
 	f.MergeCell(sheet, "A1", "B1")
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
-	f.SetCellValue(sheet, "A2", dateText)
-	f.SetCellStyle(sheet, "A2", "A2", styleItalic)
 
-	currentRow := 4
+	f.MergeCell(sheet, "A2", "B2")
+	setRichMeta("A2", "Exported by:", fullName)
+
+	f.MergeCell(sheet, "A3", "B3")
+	if practitionerABN != "" {
+		setRichMeta("A3", "ABN:", practitionerABN)
+	}
+
+	var dateText string
+	if data.StartDate != "" && data.EndDate != "" {
+		dateText = fmt.Sprintf("%s to %s", data.StartDate, data.EndDate)
+	} else if data.EndDate != "" {
+		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	}
+	f.MergeCell(sheet, "A4", "B4")
+	setRichMeta("A4", "Period:", dateText)
+
+	// --- BLANK ROW AFTER METADATA ---
+	f.MergeCell(sheet, "A5", "B5")
+
+	currentRow := 6
 
 	// Helper to render sections with Excel Filters
 	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
@@ -435,8 +463,6 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	})
 
 	if role == util.RoleAccountant && len(notifIDs) > 0 {
-		user, _ := s.authRepo.FindByID(ctx, userID)
-		fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		for _, pID := range notifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -456,12 +482,12 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	f.UpdateLinkedValue()
 
 	if exportType == "pdf" {
-		return s.generateBSHTMLString(f, sheet, data)
+		return s.generateBSHTMLString(f, sheet, data, fullName, practitionerABN)
 	}
 	return f, nil
 }
 
-func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data *RsBalanceSheet) (string, error) {
+func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data *RsBalanceSheet, fullName string, practitionerABN string) (string, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return "", err
@@ -482,6 +508,8 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 		.final-total-value { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; border: 1.5pt solid #000; }
 		.data-grid { text-align: right; }
 		.spacer { height: 10px; border: none; }
+		.meta-item { font-size: 10pt; margin-bottom: 6px; text-align: left; }
+		.meta-label { font-weight: bold; }
 	`)
 	b.WriteString("</style></head><body>")
 
@@ -490,9 +518,33 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
 	<style>@media print{.no-print{display:none}}</style></div>`)
 
+	b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Exported by:</span> %s</div>", fullName))
+	if practitionerABN != "" {
+		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>ABN:</span> %s</div>", practitionerABN))
+	}
+
+	var dateText string
+	if data.StartDate != "" && data.EndDate != "" {
+		dateText = fmt.Sprintf("%s to %s", data.StartDate, data.EndDate)
+	} else if data.EndDate != "" {
+		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	} else if data.StartDate != "" {
+		dateText = fmt.Sprintf("From %s onwards", data.StartDate)
+	}
+
+	if dateText != "" {
+		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Period:</span> %s</div>", dateText))
+	}
+
+	b.WriteString("<div style='margin-bottom: 20px;'></div>") // Spacer after metadata
+
 	b.WriteString("<table><colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
 
 	for rIdx, row := range rows {
+		if rIdx >= 1 && rIdx <= 4 {
+			continue
+		}
+
 		if len(row) == 0 {
 			b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
 			continue
@@ -510,18 +562,9 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 
 		classA, classB := "data-left", "data-grid"
 
-		// Check for any of the possible date header prefixes
-		isDateHeader := strings.HasPrefix(valA, "For the period") ||
-			strings.HasPrefix(valA, "As of") ||
-			strings.HasPrefix(valA, "From")
-
 		switch {
 		case rIdx == 0:
 			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='header-blue'>%s</td></tr>", valA))
-			continue
-
-		case isDateHeader:
-			b.WriteString(fmt.Sprintf("<tr><td colspan='2' style='border:none;font-style:italic;'>%s</td></tr>", valA))
 			continue
 
 		case valA == "ASSETS" || valA == "LIABILITIES" || valA == "EQUITY":

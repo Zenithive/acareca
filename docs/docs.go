@@ -5530,91 +5530,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/files/entity/{entity_type}/{entity_id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "List documents associated with a specific entity",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "files"
-                ],
-                "summary": "List documents by entity",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Entity type",
-                        "name": "entity_type",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Entity ID (UUID)",
-                        "name": "entity_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by status",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "Page number",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "Items per page",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.RsBase"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/file.RsListDocuments"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/files/presigned-upload": {
             "post": {
                 "security": [
@@ -5671,103 +5586,6 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/files/upload": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Upload a single file with optional entity association",
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "files"
-                ],
-                "summary": "Upload a file",
-                "parameters": [
-                    {
-                        "type": "file",
-                        "description": "File to upload",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Entity type (practitioner, clinic, transaction, etc.)",
-                        "name": "entity_type",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Entity ID (UUID)",
-                        "name": "entity_id",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Make file publicly accessible",
-                        "name": "is_public",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "File description",
-                        "name": "description",
-                        "in": "formData"
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.RsBase"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/file.RsUploadDocument"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -5968,128 +5786,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/files/{id}/confirm": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Confirm that a file was successfully uploaded via presigned URL",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "files"
-                ],
-                "summary": "Confirm file upload",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Document ID (UUID)",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/files/{id}/download": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Download a file by ID",
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "files"
-                ],
-                "summary": "Download a file",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Document ID (UUID)",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Temporary access token",
-                        "name": "token",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Display inline in browser",
-                        "name": "inline",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9686,6 +9382,9 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "document_id": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -9709,6 +9408,9 @@ const docTemplate = `{
                 "password"
             ],
             "properties": {
+                "document_id": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -9744,6 +9446,9 @@ const docTemplate = `{
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "document": {
+                    "$ref": "#/definitions/file.RsDocument"
                 },
                 "email": {
                     "type": "string"
@@ -10422,6 +10127,12 @@ const docTemplate = `{
                 },
                 "form_version_id": {
                     "type": "string"
+                },
+                "formulas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/formula.RsFormula"
+                    }
                 }
             }
         },
@@ -10560,6 +10271,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "document_id": {
+                    "type": "string"
+                },
                 "image_url": {
                     "type": "string"
                 },
@@ -10616,6 +10330,9 @@ const docTemplate = `{
                     }
                 },
                 "description": {
+                    "type": "string"
+                },
+                "document_id": {
                     "type": "string"
                 },
                 "financial_year_id": {
@@ -10756,6 +10473,25 @@ const docTemplate = `{
                 }
             }
         },
+        "entry.RqDocument": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "description": "document IDs to link",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "delete": {
+                    "description": "document IDs to unlink",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "entry.RqEntryValue": {
             "type": "object",
             "properties": {
@@ -10796,6 +10532,9 @@ const docTemplate = `{
                 "date": {
                     "type": "string"
                 },
+                "documents": {
+                    "$ref": "#/definitions/entry.RqDocument"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -10816,6 +10555,9 @@ const docTemplate = `{
             "properties": {
                 "date": {
                     "type": "string"
+                },
+                "documents": {
+                    "$ref": "#/definitions/entry.RqDocument"
                 },
                 "status": {
                     "type": "string",
@@ -11038,25 +10780,6 @@ const docTemplate = `{
         "file.RqGeneratePresignedUploadURL": {
             "type": "object",
             "properties": {
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string",
-                    "enum": [
-                        "practitioner",
-                        "accountant",
-                        "admin",
-                        "clinic",
-                        "transaction",
-                        "invoice",
-                        "report",
-                        "user",
-                        "business",
-                        "form",
-                        "form_entry"
-                    ]
-                },
                 "expires_in": {
                     "type": "integer",
                     "maximum": 3600,
@@ -11067,25 +10790,6 @@ const docTemplate = `{
         "file.RqUpdateDocument": {
             "type": "object",
             "properties": {
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string",
-                    "enum": [
-                        "practitioner",
-                        "accountant",
-                        "admin",
-                        "clinic",
-                        "transaction",
-                        "invoice",
-                        "report",
-                        "user",
-                        "business",
-                        "form",
-                        "form_entry"
-                    ]
-                },
                 "is_public": {
                     "type": "boolean"
                 },
@@ -11100,34 +10804,13 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
-                "download_url": {
-                    "type": "string"
-                },
-                "entity_id": {
-                    "type": "string"
-                },
-                "entity_type": {
-                    "type": "string"
-                },
-                "extension": {
+                "file_key": {
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "is_public": {
-                    "type": "boolean"
-                },
-                "mime_type": {
-                    "type": "string"
-                },
                 "original_name": {
-                    "type": "string"
-                },
-                "size_bytes": {
-                    "type": "integer"
-                },
-                "status": {
                     "type": "string"
                 },
                 "uploaded_at": {
@@ -11143,32 +10826,16 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/file.RsDocument"
                     }
-                },
-                "pagination": {
-                    "$ref": "#/definitions/file.RsPaginationMeta"
-                }
-            }
-        },
-        "file.RsPaginationMeta": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer"
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "total_pages": {
-                    "type": "integer"
                 }
             }
         },
         "file.RsPresignedUploadURL": {
             "type": "object",
             "properties": {
+                "content_type": {
+                    "description": "verified MIME type — client must send this as Content-Type on the PUT",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
@@ -11183,38 +10850,13 @@ const docTemplate = `{
                 }
             }
         },
-        "file.RsUploadDocument": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "download_url": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "mime_type": {
-                    "type": "string"
-                },
-                "original_name": {
-                    "type": "string"
-                },
-                "size_bytes": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
         "form.ExpenseItem": {
             "type": "object",
             "required": [
                 "amount",
                 "business_use",
                 "coa_id",
+                "date",
                 "name"
             ],
             "properties": {
@@ -11227,6 +10869,9 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "coa_id": {
+                    "type": "string"
+                },
+                "date": {
                     "type": "string"
                 },
                 "description": {
@@ -11255,6 +10900,9 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "coa_id": {
+                    "type": "string"
+                },
+                "date": {
                     "type": "string"
                 },
                 "description": {
@@ -11338,14 +10986,10 @@ const docTemplate = `{
         "form.RqExpense": {
             "type": "object",
             "required": [
-                "date",
                 "items",
                 "name"
             ],
             "properties": {
-                "date": {
-                    "type": "string"
-                },
                 "items": {
                     "type": "array",
                     "minItems": 1,
@@ -11384,7 +11028,6 @@ const docTemplate = `{
         "form.RqUpdateExpense": {
             "type": "object",
             "required": [
-                "date",
                 "name"
             ],
             "properties": {
@@ -11393,9 +11036,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/form.ExpenseItem"
                     }
-                },
-                "date": {
-                    "type": "string"
                 },
                 "delete": {
                     "type": "array",
@@ -11554,6 +11194,32 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "formula.RsFormula": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expression": {
+                    "$ref": "#/definitions/formula.ExprNode"
+                },
+                "field_id": {
+                    "type": "string"
+                },
+                "field_key": {
+                    "type": "string"
+                },
+                "form_version_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },

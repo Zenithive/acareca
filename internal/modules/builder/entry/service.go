@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
@@ -65,10 +66,11 @@ type Service struct {
 	fieldSvc       field.IService
 	invitationSvc  invitation.Service
 	detailRepo     detail.IRepository
+	financialRepo  fy.Repository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo}
 }
 
 // Create implements [IService].
@@ -84,12 +86,25 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 
 	realOwnerID := clinic.PractitionerID
 
-	// Validate lock date before creating entry
-	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
+	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 		return nil, err
 	}
 
-	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
+	// Financial Year Validation
+	if req.Date != nil && *req.Date != "" {
+		parsedDate, err := time.Parse("2006-01-02", *req.Date)
+		if err != nil {
+			return nil, fmt.Errorf("invalid date format: %w", err)
+		}
+
+		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		if err != nil {
+			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+		}
+	}
+
+	// Validate lock date before creating entry
+	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
 		return nil, err
 	}
 
@@ -224,6 +239,21 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	if req.Date != nil {
 		dateToCheck = req.Date
 	}
+
+	// Financial Year Validation
+	if dateToCheck != nil && *dateToCheck != "" {
+		parsedDate, err := time.Parse("2006-01-02", *dateToCheck)
+		if err != nil {
+			return nil, fmt.Errorf("invalid date format: %w", err)
+		}
+
+		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		if err != nil {
+			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+		}
+	}
+
+	//Lock Date Validation
 	if err := s.validateLockDate(ctx, existing.PractitionerID, dateToCheck, &existing.CreatedAt); err != nil {
 		return nil, err
 	}

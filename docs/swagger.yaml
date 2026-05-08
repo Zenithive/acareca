@@ -581,6 +581,8 @@ definitions:
     properties:
       abn:
         type: string
+      document_id:
+        type: string
       email:
         type: string
       first_name:
@@ -592,6 +594,8 @@ definitions:
     type: object
   auth.RqUser:
     properties:
+      document_id:
+        type: string
       email:
         type: string
       first_name:
@@ -621,6 +625,8 @@ definitions:
         type: string
       created_at:
         type: string
+      document:
+        $ref: '#/definitions/file.RsDocument'
       email:
         type: string
       first_name:
@@ -1077,6 +1083,10 @@ definitions:
         type: array
       form_version_id:
         type: string
+      formulas:
+        items:
+          $ref: '#/definitions/formula.RsFormula'
+        type: array
     type: object
   calculation.RsPreviewFieldValue:
     properties:
@@ -1166,6 +1176,8 @@ definitions:
         type: array
       description:
         type: string
+      document_id:
+        type: string
       image_url:
         type: string
       is_active:
@@ -1205,6 +1217,8 @@ definitions:
           $ref: '#/definitions/clinic.RqUpdateContact'
         type: array
       description:
+        type: string
+      document_id:
         type: string
       financial_year_id:
         type: string
@@ -1302,6 +1316,19 @@ definitions:
       is_unique:
         type: boolean
     type: object
+  entry.RqDocument:
+    properties:
+      create:
+        description: document IDs to link
+        items:
+          type: string
+        type: array
+      delete:
+        description: document IDs to unlink
+        items:
+          type: string
+        type: array
+    type: object
   entry.RqEntryValue:
     properties:
       amount:
@@ -1327,6 +1354,8 @@ definitions:
         type: string
       date:
         type: string
+      documents:
+        $ref: '#/definitions/entry.RqDocument'
       status:
         enum:
         - DRAFT
@@ -1343,6 +1372,8 @@ definitions:
     properties:
       date:
         type: string
+      documents:
+        $ref: '#/definitions/entry.RqDocument'
       status:
         enum:
         - DRAFT
@@ -1497,22 +1528,6 @@ definitions:
     type: object
   file.RqGeneratePresignedUploadURL:
     properties:
-      entity_id:
-        type: string
-      entity_type:
-        enum:
-        - practitioner
-        - accountant
-        - admin
-        - clinic
-        - transaction
-        - invoice
-        - report
-        - user
-        - business
-        - form
-        - form_entry
-        type: string
       expires_in:
         maximum: 3600
         minimum: 60
@@ -1520,22 +1535,6 @@ definitions:
     type: object
   file.RqUpdateDocument:
     properties:
-      entity_id:
-        type: string
-      entity_type:
-        enum:
-        - practitioner
-        - accountant
-        - admin
-        - clinic
-        - transaction
-        - invoice
-        - report
-        - user
-        - business
-        - form
-        - form_entry
-        type: string
       is_public:
         type: boolean
       original_name:
@@ -1545,25 +1544,11 @@ definitions:
     properties:
       created_at:
         type: string
-      download_url:
-        type: string
-      entity_id:
-        type: string
-      entity_type:
-        type: string
-      extension:
+      file_key:
         type: string
       id:
         type: string
-      is_public:
-        type: boolean
-      mime_type:
-        type: string
       original_name:
-        type: string
-      size_bytes:
-        type: integer
-      status:
         type: string
       uploaded_at:
         type: string
@@ -1574,22 +1559,13 @@ definitions:
         items:
           $ref: '#/definitions/file.RsDocument'
         type: array
-      pagination:
-        $ref: '#/definitions/file.RsPaginationMeta'
-    type: object
-  file.RsPaginationMeta:
-    properties:
-      limit:
-        type: integer
-      page:
-        type: integer
-      total:
-        type: integer
-      total_pages:
-        type: integer
     type: object
   file.RsPresignedUploadURL:
     properties:
+      content_type:
+        description: verified MIME type — client must send this as Content-Type on
+          the PUT
+        type: string
       document_id:
         type: string
       expires_at:
@@ -1597,23 +1573,6 @@ definitions:
       object_key:
         type: string
       upload_url:
-        type: string
-    type: object
-  file.RsUploadDocument:
-    properties:
-      created_at:
-        type: string
-      download_url:
-        type: string
-      id:
-        type: string
-      mime_type:
-        type: string
-      original_name:
-        type: string
-      size_bytes:
-        type: integer
-      status:
         type: string
     type: object
   form.ExpenseItem:
@@ -1626,6 +1585,8 @@ definitions:
         type: number
       coa_id:
         type: string
+      date:
+        type: string
       description:
         type: string
       name:
@@ -1636,6 +1597,7 @@ definitions:
     - amount
     - business_use
     - coa_id
+    - date
     - name
     type: object
   form.ExpenseItemUpdate:
@@ -1647,6 +1609,8 @@ definitions:
         minimum: 0
         type: number
       coa_id:
+        type: string
+      date:
         type: string
       description:
         type: string
@@ -1708,8 +1672,6 @@ definitions:
     type: object
   form.RqExpense:
     properties:
-      date:
-        type: string
       items:
         items:
           $ref: '#/definitions/form.ExpenseItem'
@@ -1718,7 +1680,6 @@ definitions:
       name:
         type: string
     required:
-    - date
     - items
     - name
     type: object
@@ -1743,8 +1704,6 @@ definitions:
         items:
           $ref: '#/definitions/form.ExpenseItem'
         type: array
-      date:
-        type: string
       delete:
         items:
           type: string
@@ -1756,7 +1715,6 @@ definitions:
           $ref: '#/definitions/form.ExpenseItemUpdate'
         type: array
     required:
-    - date
     - name
     type: object
   form.RqUpdateFormStatus:
@@ -1858,6 +1816,23 @@ definitions:
     - expression
     - field_key
     - name
+    type: object
+  formula.RsFormula:
+    properties:
+      created_at:
+        type: string
+      expression:
+        $ref: '#/definitions/formula.ExprNode'
+      field_id:
+        type: string
+      field_key:
+        type: string
+      form_version_id:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
     type: object
   fy.RqCreateFY:
     properties:
@@ -6073,137 +6048,6 @@ paths:
       summary: Update document metadata
       tags:
       - files
-  /files/{id}/confirm:
-    post:
-      description: Confirm that a file was successfully uploaded via presigned URL
-      parameters:
-      - description: Document ID (UUID)
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Confirm file upload
-      tags:
-      - files
-  /files/{id}/download:
-    get:
-      description: Download a file by ID
-      parameters:
-      - description: Document ID (UUID)
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Temporary access token
-        in: query
-        name: token
-        type: string
-      - description: Display inline in browser
-        in: query
-        name: inline
-        type: boolean
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: file
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Download a file
-      tags:
-      - files
-  /files/entity/{entity_type}/{entity_id}:
-    get:
-      description: List documents associated with a specific entity
-      parameters:
-      - description: Entity type
-        in: path
-        name: entity_type
-        required: true
-        type: string
-      - description: Entity ID (UUID)
-        in: path
-        name: entity_id
-        required: true
-        type: string
-      - description: Filter by status
-        in: query
-        name: status
-        type: string
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: Items per page
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.RsBase'
-            - properties:
-                data:
-                  $ref: '#/definitions/file.RsListDocuments'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: List documents by entity
-      tags:
-      - files
   /files/presigned-upload:
     post:
       consumes:
@@ -6243,66 +6087,6 @@ paths:
       security:
       - BearerToken: []
       summary: Generate presigned upload URL
-      tags:
-      - files
-  /files/upload:
-    post:
-      consumes:
-      - multipart/form-data
-      description: Upload a single file with optional entity association
-      parameters:
-      - description: File to upload
-        in: formData
-        name: file
-        required: true
-        type: file
-      - description: Entity type (practitioner, clinic, transaction, etc.)
-        in: formData
-        name: entity_type
-        type: string
-      - description: Entity ID (UUID)
-        in: formData
-        name: entity_id
-        type: string
-      - description: Make file publicly accessible
-        in: formData
-        name: is_public
-        type: boolean
-      - description: File description
-        in: formData
-        name: description
-        type: string
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.RsBase'
-            - properties:
-                data:
-                  $ref: '#/definitions/file.RsUploadDocument'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Upload a file
       tags:
       - files
   /form:

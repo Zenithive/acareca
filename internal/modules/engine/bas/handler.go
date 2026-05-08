@@ -296,40 +296,35 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		return
 	}
 
-	// Resolve practitionerIDs (data scope) and notifIDs (Shared Events).
-	// Scenario A: practitioner_id in query → scope + notify only that one.
-	// Scenario B: no practitioner_id → all linked practitioners.
-	// Practitioner: self only, no shared events.
-	var practitionerIDs []uuid.UUID
+	// 1. Resolve Practitioner Scope and Notification Targets
 	var notifIDs []uuid.UUID
+	pracIDStr := c.Query("practitioner_id")
 
-	if role == util.RoleAccountant {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			// Scenario A
+	if strings.EqualFold(role, util.RoleAccountant) {
+		if pracIDStr != "" {
+			// Scenario A: Specific practitioner filtered
 			pracUUID, err := uuid.Parse(pracIDStr)
 			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id"))
 				return
 			}
-			practitionerIDs = []uuid.UUID{pracUUID}
 			notifIDs = []uuid.UUID{pracUUID}
 		} else {
-			// Scenario B
+			// Scenario B: No filter, fetch all linked
 			linkedIDs, err := h.invitationSvc.GetPractitionersLinkedToAccountant(ctx, *actorID)
 			if err != nil {
-				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
+				response.Error(c, http.StatusInternalServerError, err)
 				return
 			}
 			if len(linkedIDs) == 0 {
-				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
+				response.Error(c, http.StatusForbidden, fmt.Errorf("no linked practitioners found"))
 				return
 			}
-			practitionerIDs = linkedIDs
 			notifIDs = linkedIDs
 		}
 	} else {
-		practitionerIDs = []uuid.UUID{*actorID}
-		notifIDs = nil // practitioners never receive their own shared events
+		// Practitioner role: scope to self
+		notifIDs = nil
 	}
 
 	// Get Export Type from query
@@ -341,16 +336,18 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		return
 	}
 
+	// Ensure f.PractitionerID is set for the data fetching service
+	if pracIDStr != "" {
+		f.PractitionerID = pracIDStr
+	} else if role == util.RolePractitioner {
+		f.PractitionerID = actorID.String()
+	}
+
 	// Ensure either Quarter or Month is provided
 	if len(f.QuarterIDs) == 0 && (f.Month == nil || *f.Month == "") {
 		response.Error(c, http.StatusBadRequest, errors.New("either quarter_id or month must be provided"))
 		return
 	}
-
-	// For accountants: use the first linked practitioner ID.
-	// For practitioners: use their own ID.
-	// This ensures f.PractitionerID is always a valid practitioner UUID.
-	f.PractitionerID = practitionerIDs[0].String()
 
 	// Fetch ALL 4 quarters for the selected Financial Year
 	fyID, _ := uuid.Parse(*f.FinancialYearID)
@@ -379,8 +376,13 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		tempID := qInfo.ID
 		origFilter := BASReportFilter{
 			PractitionerID: f.PractitionerID,
-			QuarterID:      &tempID,
-			Month:          f.Month,
+		}
+
+		if f.Month != nil && *f.Month != "" {
+			origFilter.Month = f.Month
+			origFilter.QuarterID = nil // Force the service to use Month dates
+		} else {
+			origFilter.QuarterID = &tempID
 		}
 
 		report, _ := h.svc.GetReport(ctx, &origFilter, nil, userID, *actorID, role)
@@ -404,7 +406,7 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 	}
 
 	// Call Service with exportType
-	result, contentType, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, exportType, *actorID, role, userID, notifIDs)
+	result, contentType, err := h.svc.ExportActivityStatement(ctx, allQuartersData, basePrevDates, exportType, *actorID, role, userID, notifIDs, pracIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return
@@ -446,19 +448,17 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	// Resolve PracIDs (data scope) and notifIDs (Shared Events).
-	// var PracIDs []uuid.UUID
 	var notifIDs []uuid.UUID
+	pracIDStr := c.Query("practitioner_id")
 
 	if role == util.RoleAccountant {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+		if pracIDStr != "" {
 			// Scenario A
 			pracUUID, err := uuid.Parse(pracIDStr)
 			if err != nil {
 				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
 				return
 			}
-			// PracIDs = []uuid.UUID{pracUUID}
 			notifIDs = []uuid.UUID{pracUUID}
 		} else {
 			// Scenario B
@@ -471,11 +471,9 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
 				return
 			}
-			// PracIDs = linkedIDs
 			notifIDs = linkedIDs
 		}
 	} else {
-		// PracIDs = []uuid.UUID{*actorID}
 		notifIDs = nil // practitioners never receive their own shared events
 	}
 
@@ -495,7 +493,7 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		return
 	}
 
-	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, *actorID, role, UserID, &f, exportType, notifIDs)
+	file, err := h.svc.ExportBASPreparation(c.Request.Context(), data, *actorID, role, UserID, &f, exportType, notifIDs, pracIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
