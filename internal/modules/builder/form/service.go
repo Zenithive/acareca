@@ -1175,10 +1175,25 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				return fmt.Errorf("failed to update field: %w", err)
 			}
 
+			// Find existing entry value for this field to preserve date if not provided
+			var existingDate *string
+			for _, ev := range existingValues {
+				if ev.FormFieldID != nil && *ev.FormFieldID == item.ID && ev.UpdatedAt == nil {
+					existingDate = ev.Date
+					break
+				}
+			}
+
 			// Update entry value - mark old as updated and insert new
 			markOldQuery := `UPDATE tbl_form_entry_value SET updated_at = now() WHERE form_field_id = $1 AND entry_id = $2 AND updated_at IS NULL`
 			if _, err := tx.ExecContext(ctx, markOldQuery, item.ID, existingEntry.ID); err != nil {
 				return fmt.Errorf("failed to mark old entry value: %w", err)
+			}
+
+			// Use new date if provided, otherwise preserve the existing item-level date
+			dateToUse := item.Date
+			if dateToUse == nil {
+				dateToUse = existingDate
 			}
 
 			newEntryValue := &entry.FormEntryValue{
@@ -1189,7 +1204,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: description,
-				Date:        item.Date,
+				Date:        dateToUse,
 			}
 
 			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
@@ -1411,7 +1426,8 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 					grossAmount = *ev.GrossAmount
 				}
 				description = ev.Description
-				if ev.Date != nil {
+				if ev.Date != nil && *ev.Date != "" {
+					// Use item-level date (primary source for expense entries)
 					itemDate = *ev.Date
 				}
 				break

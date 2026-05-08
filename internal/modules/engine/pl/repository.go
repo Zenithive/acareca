@@ -45,14 +45,13 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 	args := []interface{}{clinicID}
 	idx := 2
 
-	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) >= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND date::DATE >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) <= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND date::DATE <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
@@ -87,7 +86,7 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 }
 
 func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLAccountRow, error) {
-	// Query vw_pl_line_items directly to access transaction_date field
+	// Query vw_pl_line_items directly; date field already uses item-level date for expense entries
 	query := `
 		SELECT
 			practitioner_id, period_month,
@@ -106,14 +105,13 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 	args := []any{clinicID}
 	idx := 2
 
-	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) >= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND date::DATE >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) <= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND date::DATE <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
@@ -129,7 +127,7 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 }
 
 func (r *repository) GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error) {
-	// Query vw_pl_line_items directly to access transaction_date field
+	// Query vw_pl_line_items directly; date field already uses item-level date for expense entries
 	query := `
 		SELECT
 			practitioner_id, period_month,
@@ -145,14 +143,13 @@ func (r *repository) GetByResponsibility(ctx context.Context, clinicID uuid.UUID
 	args := []interface{}{clinicID}
 	idx := 2
 
-	// Use transaction_date for filtering (the actual date field from tbl_form_entry)
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) >= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND date::DATE >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND COALESCE(transaction_date, date::DATE) <= $%d::DATE", idx)
+		query += fmt.Sprintf(" AND date::DATE <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
