@@ -286,8 +286,20 @@ func (h *handler) ListTransactions(c *gin.Context) {
 		return
 	}
 
-	// pracIDStr := practitionerID.String()
-	// filter.PractitionerID = &pracIDStr
+	// Handle PractitionerID with JSON array format parsing
+	if role == util.RoleAccountant {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
+			pID, err := uuid.Parse(cleanedStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, err)
+				return
+			}
+			filter.PractitionerID = &pID
+		}
+	} else {
+		filter.PractitionerID = &actorID
+	}
 
 	list, err := h.svc.ListTransactions(c.Request.Context(), filter, actorID, role)
 	if err != nil {
@@ -360,15 +372,23 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 	}
 
 	if role == util.RoleAccountant {
-		// If the frontend sent ["uuid"], strip the brackets and quotes
 		if filter.PractitionerID != nil {
-			cleaned := cleanUUIDString(*filter.PractitionerID)
-			filter.PractitionerID = &cleaned
+			pracIDStr := c.Query("practitioner_id")
+			// Handle JSON-encoded array format: ["uuid-value"]
+			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
+			pID, err := uuid.Parse(cleanedStr)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, err)
+				return
+			}
+			filter.PractitionerID = &pID
 		}
-		if filter.ClinicID != nil {
-			cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
-			filter.ClinicID = &cleanID
-		}
+	} else {
+		filter.PractitionerID = actorID
+	}
+	if filter.ClinicID != nil {
+		cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
+		filter.ClinicID = &cleanID
 	}
 
 	filter.Role = role
@@ -445,7 +465,7 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 // @Security BearerToken
 // @Router /entry/coa-entries/export [get]
 func (h *handler) HandleExport(c *gin.Context) {
-	// 1. Auth check
+	// Auth check
 	actorID, role, ok := util.GetRoleBasedID(c)
 	userID, ok := util.GetUserID(c)
 	if !ok {
@@ -453,46 +473,7 @@ func (h *handler) HandleExport(c *gin.Context) {
 		return
 	}
 
-	// --- COLLECTION LOGIC ---
-	// Scenario A: practitioner_id provided in query → scope to that one practitioner only.
-	// Scenario B: no practitioner_id → fetch all linked practitioners.
-	var PracIDs []uuid.UUID
-	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
-
-	if role == util.RoleAccountant {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			// Scenario A
-			pracUUID, err := uuid.Parse(pracIDStr)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
-				return
-			}
-			PracIDs = []uuid.UUID{pracUUID}
-			notifIDs = []uuid.UUID{pracUUID}
-		} else {
-			// Scenario B
-			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
-			if err != nil {
-				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
-				return
-			}
-			if len(linked) == 0 {
-				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
-				return
-			}
-			PracIDs = linked
-			notifIDs = linked
-		}
-	} else {
-		// Practitioner: scope to self, no shared events
-		PracIDs = []uuid.UUID{*actorID}
-		notifIDs = nil // practitioners never receive their own shared events
-	}
-
-	// 2. Get export type from query (default to excel)
-	exportType := c.DefaultQuery("export_type", "excel")
-
-	// 3. Bind filters
+	// Bind filters
 	var filter TransactionFilter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -500,16 +481,28 @@ func (h *handler) HandleExport(c *gin.Context) {
 	}
 	filter.Role = role
 
-	// Set PractitionerID in the filter.
-	// For accountants Scenario A: the specific practitioner_id is already in PracIDs[0].
-	// For accountants Scenario B: leave empty so the repo uses the full PracIDs list via actorID/role.
-	// For practitioners: always their own ID.
-	if role != util.RoleAccountant {
-		pracIDStr := PracIDs[0].String()
-		filter.PractitionerID = &pracIDStr
+	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
+
+	if role == util.RoleAccountant {
+		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
+			cleanID := strings.Trim(pracIDStr, "[]\" ")
+			pracUUID, err := uuid.Parse(cleanID)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
+				return
+			}
+			notifIDs = []uuid.UUID{pracUUID}
+			filter.PractitionerID = &pracUUID
+		}
+	} else {
+		// Practitioner: scope to self, no shared events
+		notifIDs = nil
+		filter.PractitionerID = actorID
 	}
 
-	// 4. Call Service (Service now returns buffer, contentType, and error)
+	// Get export type from query (default to excel)
+	exportType := c.DefaultQuery("export_type", "excel")
+
 	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
@@ -531,7 +524,7 @@ func (h *handler) HandleExport(c *gin.Context) {
 
 	fileName := fmt.Sprintf("Transaction_Report_%s.xlsx", time.Now().Format("2006-01-02_1504"))
 
-	// 6. Set Headers
+	// Set Headers
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 	c.Header("Content-Type", contentType)
 	c.Header("Content-Transfer-Encoding", "binary")

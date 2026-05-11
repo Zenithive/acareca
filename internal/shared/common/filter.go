@@ -30,7 +30,7 @@ type Condition struct {
 }
 
 type Filter struct {
-	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	PractitionerID *uuid.UUID `form:"-"`
 	Search         *string    `form:"search"`
 	Where          []Condition
 	Limit          *int    `form:"limit"`
