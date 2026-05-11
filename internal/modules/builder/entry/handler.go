@@ -582,10 +582,5 @@ func (h *handler) ExportTransactions(c *gin.Context) {
 		return
 	}
 
-	// Match your requested JSON format
-	c.JSON(http.StatusOK, gin.H{
-		"status":  200,
-		"message": "COA entries fetched successfully",
-		"data":    data,
-	})
+	response.JSON(c, http.StatusOK, data, "COA entries fetched successfully")
 }
