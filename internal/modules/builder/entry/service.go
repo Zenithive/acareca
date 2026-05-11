@@ -584,34 +584,24 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
-			// Xero Manual GST: user enters Gross + explicit GST.
-			// On CREATE: frontend sends net_amount=Gross (user input), gst_amount=GST
-			// On UPDATE: frontend may send net_amount=Net (from DB), gross_amount=Gross, gst_amount=GST
-			// We need to use gross_amount if provided, otherwise treat net_amount as Gross (for backward compat)
-			if v.GstAmount == nil {
-				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", f.FieldKey)
-			}
-			
-			// Determine the actual Gross amount
-			var grossInput float64
-			if v.GrossAmount != nil {
-				// UPDATE case: use the explicit gross_amount from frontend
-				grossInput = *v.GrossAmount
-			} else {
-				// CREATE case: treat inputAmount (net_amount) as Gross for backward compatibility
-				grossInput = inputAmount
-			}
-			
-			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
-				Amount:    grossInput, // Gross
-				GstAmount: v.GstAmount,
-			})
+			fm, err := s.fieldSvc.GetByID(ctx, f.ID)
 			if err != nil {
-				return nil, fmt.Errorf("manual tax calc for field %s: %w", f.FieldKey, err)
+				return nil, fmt.Errorf("get form for field %s: %w", f.FieldKey, err)
 			}
-			netBase = result.Amount         // Gross - GST
-			gstAmount = &result.GstAmount   // as entered
-			grossTotal = result.TotalAmount // Gross (as entered)
+
+			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
+				gstAmount = v.GstAmount
+				grossTotal = inputAmount
+				if v.GstAmount != nil {
+					netBase = inputAmount - *v.GstAmount
+				}
+			} else {
+				gstAmount = v.GstAmount
+				netBase = inputAmount
+				if gstAmount != nil {
+					grossTotal = inputAmount + *gstAmount
+				}
+			}
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
