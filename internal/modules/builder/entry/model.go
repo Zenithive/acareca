@@ -211,16 +211,15 @@ type RsTransaction struct {
 }
 
 type TransactionFilter struct {
-	PractitionerID *string `form:"practitioner_id"`
-	ClinicID       *string `form:"clinic_id"`
-	FormID         *string `form:"form_id"`
-	CoaID          *string `form:"coa_id"`
-	TaxTypeID      *int16  `form:"tax_type_id"`
-	StartDate      *string `form:"start_date"`
-	EndDate        *string `form:"end_date"`
-	VersionID      *string `form:"version_id"`
-	Status         *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Role           string  `form:"-"`
+	ClinicID  *string `form:"clinic_id"`
+	FormID    *string `form:"form_id"`
+	CoaID     *string `form:"coa_id"`
+	TaxTypeID *int16  `form:"tax_type_id"`
+	StartDate *string `form:"start_date"`
+	EndDate   *string `form:"end_date"`
+	VersionID *string `form:"version_id"`
+	Status    *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Role      string  `form:"-"`
 	common.Filter
 }
 
@@ -228,10 +227,8 @@ func (f *TransactionFilter) ToCommonFilter() common.Filter {
 	filters := map[string]interface{}{}
 	operators := map[string]common.Operator{}
 
-	if f.PractitionerID != nil && *f.PractitionerID != "" {
-		if id, err := uuid.Parse(*f.PractitionerID); err == nil {
-			filters["practitioner_id"] = id
-		}
+	if f.PractitionerID != nil {
+		filters["practitioner_id"] = *f.PractitionerID
 	}
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		if id, err := uuid.Parse(*f.ClinicID); err == nil {
@@ -355,4 +352,18 @@ type RsCoaEntryDetail struct {
 	CreatedAt     string   `json:"created_at"`
 	UpdatedAt     *string  `json:"updated_at,omitempty"`
 	Date          *string  `json:"date,omitempty"`
+}
+
+type RsExportData struct {
+	Items []*RsCoaExportItem `json:"items"`
+}
+
+type RsCoaExportItem struct {
+	CoaID            string              `json:"coa_id"`
+	CoaName          string              `json:"coa_name"`
+	TotalNetAmount   float64             `json:"total_net_amount"`
+	TotalGstAmount   float64             `json:"total_gst_amount"`
+	TotalGrossAmount float64             `json:"total_gross_amount"`
+	EntryCount       int                 `json:"entry_count"`
+	Entries          []*RsCoaEntryDetail `json:"entries"`
 }
