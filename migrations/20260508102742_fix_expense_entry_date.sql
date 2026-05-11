@@ -331,6 +331,7 @@ WHERE fe.status = 'SUBMITTED'
   AND fe.deleted_at IS NULL
   AND ff.deleted_at IS NULL
   AND coa.deleted_at IS NULL
+  AND ff.is_formula = False
   AND ff.coa_id IS NOT NULL;
 -- +goose StatementEnd
 
