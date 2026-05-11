@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"log"
 	"maps"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
@@ -46,31 +49,34 @@ type IService interface {
 
 	//ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
 	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
-	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
+	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, fullName string, practitionerABN string, period string) (*bytes.Buffer, error)
+
+	ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error)
 }
 
 type Service struct {
-	repo           IRepository
-	fieldRepo      field.IRepository
-	methodSvc      method.IService
-	limitsSvc      limits.Service
-	detailSvc      detail.IService
-	versionSvc     version.IService
-	auditSvc       audit.Service
-	eventsSvc      events.Service
-	accountantRepo accountant.Repository
-	authRepo       auth.Repository
-	clinicRepo     clinic.Repository
-	formClinic     clinic.Service
-	formulaSvc     formula.IService
-	fieldSvc       field.IService
-	invitationSvc  invitation.Service
-	detailRepo     detail.IRepository
-	financialRepo  fy.Repository
+	repo            IRepository
+	fieldRepo       field.IRepository
+	methodSvc       method.IService
+	limitsSvc       limits.Service
+	detailSvc       detail.IService
+	versionSvc      version.IService
+	auditSvc        audit.Service
+	eventsSvc       events.Service
+	accountantRepo  accountant.Repository
+	authRepo        auth.Repository
+	clinicRepo      clinic.Repository
+	formClinic      clinic.Service
+	formulaSvc      formula.IService
+	fieldSvc        field.IService
+	invitationSvc   invitation.Service
+	detailRepo      detail.IRepository
+	financialRepo   fy.Repository
+	practitionerSvc practitioner.IService
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
 }
 
 // Create implements [IService].
@@ -591,8 +597,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			if err != nil {
 				return nil, fmt.Errorf("manual tax calc for field %s: %w", f.FieldKey, err)
 			}
-			netBase = result.Amount       // Gross - GST
-			gstAmount = &result.GstAmount // as entered
+			netBase = result.Amount         // Gross - GST
+			gstAmount = &result.GstAmount   // as entered
 			grossTotal = result.TotalAmount // Gross (as entered)
 
 		case method.TaxTreatmentZero:
@@ -974,41 +980,8 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	})
 }
 
-// Helper to handle [uuid] format from frontend
-func cleanUUIDString(s string) string {
-	s = strings.Trim(s, "[]\" ") // Removes [, ], ", and spaces
-	return s
-}
-
 // ListCoaEntries implements [IService] - returns grouped COA rows for parent grid
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	var targetPracIDs []uuid.UUID
-	if role == util.RolePractitioner {
-		// Practitioner logic: Only them
-		pracIdStr := actorID.String()
-		filter.PractitionerID = &pracIdStr
-		targetPracIDs = []uuid.UUID{actorID}
-	} else if role == util.RoleAccountant {
-		// Accountant logic:
-		if filter.PractitionerID != nil && *filter.PractitionerID != "" {
-			// Case A: Specific practitioner selected in query
-			// CLEAN THE STRING BEFORE PARSING
-			cleanID := cleanUUIDString(*filter.PractitionerID)
-			pID, err := uuid.Parse(cleanID)
-			if err == nil {
-				targetPracIDs = []uuid.UUID{pID}
-				filter.PractitionerID = &cleanID
-			}
-		} else {
-			// Case B: No practitioner specified - fetch all linked practitioners
-			linked, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
-			}
-			targetPracIDs = linked
-		}
-	}
-
 	// --- AUDIT LOG ---
 	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
@@ -1038,21 +1011,24 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
 
-		for _, pID := range targetPracIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "transaction_report.generated",
-				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s generated Transaction Report", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Transaction Report"},
-				CreatedAt:      time.Now(),
-			})
+		var pID uuid.UUID
+		if filter.PractitionerID != nil {
+			pID = *filter.PractitionerID
 		}
+
+		_ = s.eventsSvc.Record(ctx, events.SharedEvent{
+			ID:             uuid.New(),
+			PractitionerID: pID,
+			AccountantID:   actorID,
+			ActorID:        userID,
+			ActorName:      &fullName,
+			ActorType:      role,
+			EventType:      "transaction_report.generated",
+			EntityType:     "REPORT",
+			Description:    fmt.Sprintf("Accountant %s generated Transaction Report", fullName),
+			Metadata:       events.JSONBMap{"report_type": "Transaction Report"},
+			CreatedAt:      time.Now(),
+		})
 	}
 
 	f := filter.ToCommonFilter()
@@ -1118,10 +1094,60 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	var result interface{}
 	var contentType string
 
+	// Get Full Name
+	var fullName string
+	user, _ := s.authRepo.FindByID(ctx, userID)
+	if user != nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var practitionerABN string
+	if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
+		// pracUUID, _ := uuid.Parse(*f.PractitionerID.String())
+		prac, _ := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
+		if prac != nil && prac.ABN != nil {
+			practitionerABN = *prac.ABN
+		}
+	}
+
+	formatDateHelper := func(dateStr string) string {
+		if dateStr == "" || dateStr == "<nil>" {
+			return "-"
+		}
+		// Extract YYYY-MM-DD
+		input := dateStr
+		if len(dateStr) >= 10 {
+			input = dateStr[:10]
+		}
+		t, err := time.Parse("2006-01-02", input)
+		if err != nil {
+			return dateStr
+		}
+		return t.Format("02-01-2006")
+	}
+
+	var period string
+	if f.StartDate != nil && *f.StartDate != "" && f.EndDate != nil && *f.EndDate != "" {
+		period = fmt.Sprintf("%s to %s", formatDateHelper(*f.StartDate), formatDateHelper(*f.EndDate))
+	} else if f.EndDate != nil && *f.EndDate != "" {
+		period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
+	}
+
 	// Handle HTML Export
 	if strings.ToLower(exportType) == "pdf" {
-		data := struct{ Groups interface{} }{Groups: groups}
-		htmlContent, err := s.generateTransactionHTML(data)
+		data := struct {
+			Groups   interface{}
+			FullName string
+			ABN      string
+			Period   string
+		}{
+			Groups:   groups,
+			FullName: fullName,
+			ABN:      practitionerABN,
+			Period:   period,
+		}
+
+		htmlContent, err := s.generateTransactionHTML(data, formatDateHelper)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to generate html: %w", err)
 		}
@@ -1129,7 +1155,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		contentType = "text/html"
 	} else {
 		// Handle Excel Export
-		buf, err := s.generateExcelReport(ctx, f, actorID, role)
+		buf, err := s.generateExcelReport(ctx, f, actorID, role, fullName, practitionerABN, period)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to generate excel: %w", err)
 		}
@@ -1176,13 +1202,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 
 	// Record the Shared Event
 	if role == util.RoleAccountant {
-		// Fetching user details
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
 		for _, pID := range targetNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -1203,18 +1222,40 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	return result, contentType, nil
 }
 
-func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error) {
+func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, fullName string, practitionerABN string, period string) (*bytes.Buffer, error) {
 	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 	if err != nil {
 		return nil, err
 	}
+
+	formatDate := func(dateStr string) string {
+		if len(dateStr) < 10 {
+			return dateStr
+		}
+		t, err := time.Parse("2006-01-02", dateStr[:10])
+		if err != nil {
+			return dateStr
+		}
+		return t.Format("02-01-2006")
+	}
+
+	// --- FETCH METADATA ---
 
 	xl := excelize.NewFile()
 	defer xl.Close()
 	sheet := "Transactions"
 	xl.SetSheetName("Sheet1", sheet)
 
+	// Define the width of the report (Columns A through I)
+	lastCol := "I"
+
 	// 1. Define Styles
+	styleHeaderBlue, _ := xl.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Size: 14, Color: "FFFFFF"},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+	})
+
 	headerStyle, _ := xl.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
 		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
@@ -1254,33 +1295,49 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 		return *s
 	}
 
-	// Format date to YYYY-MM-DD
-	formatDate := func(dateStr string) string {
-		if dateStr == "" || dateStr == "<nil>" {
-			return "-"
-		}
+	// --- 1. RENDER METADATA ---
+	// Row 1: Title
+	xl.MergeCell(sheet, "A1", lastCol+"1")
+	xl.SetCellValue(sheet, "A1", "Transaction Report")
+	xl.SetCellStyle(sheet, "A1", "A1", styleHeaderBlue)
 
-		// Try to parse the standard ISO format
-		t, err := time.Parse(time.RFC3339, dateStr)
-		if err != nil {
-			// Fallback: If it's already a simple date string "2026-04-27"
-			t, err = time.Parse("2006-01-02", strings.Split(dateStr, "T")[0])
-			if err != nil {
-				return dateStr // Return raw string if parsing fails
-			}
-		}
-		return t.Format("2006-01-02")
+	setRichMeta := func(row int, label, value string) {
+		cell := fmt.Sprintf("A%d", row)
+		xl.MergeCell(sheet, cell, lastCol+strconv.Itoa(row))
+		xl.SetCellRichText(sheet, cell, []excelize.RichTextRun{
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+		})
+	}
+
+	metaRow := 2
+
+	// Exported By (Always show)
+	setRichMeta(metaRow, "Exported by:", fullName)
+	metaRow++
+
+	// ABN (Skip if empty)
+	if practitionerABN != "" {
+		setRichMeta(metaRow, "ABN:", practitionerABN)
+		metaRow++
+	}
+
+	// Period (Skip if nil/empty)
+	if period != "" {
+		setRichMeta(metaRow, "Period:", period)
+		metaRow++
 	}
 
 	// 2. Set Headers
+	headerRow := metaRow + 1
 	headers := []string{"Date", "Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Type"}
 	for i, h := range headers {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		cell, _ := excelize.CoordinatesToCellName(i+1, headerRow)
 		xl.SetCellValue(sheet, cell, h)
 	}
-	xl.SetCellStyle(sheet, "A1", "I1", headerStyle)
+	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", headerRow), fmt.Sprintf("I%d", headerRow), headerStyle)
 
-	currRow := 2
+	currRow := headerRow + 1
 	for _, g := range groups {
 		// --- 4. GROUP HEADER ---
 		xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), g.CoaName)
@@ -1328,8 +1385,8 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 		currRow += 2 // Gap between groups
 	}
 
-	// Add AutoFilter to the header row (A1 to I1)
-	if err := xl.AutoFilter(sheet, "A1:I1", nil); err != nil {
+	// Add AutoFilter to the header row (A to I)
+	if err := xl.AutoFilter(sheet, fmt.Sprintf("A%d:I%d", headerRow, headerRow), nil); err != nil {
 		return nil, err
 	}
 
@@ -1393,49 +1450,49 @@ const reportTemplate = `
         margin: 1cm;
     }
 
-    body { 
-        font-family: 'sans-serif; 
-        font-size: 12pt; 
+    body {
+        font-family: sans-serif;
+        font-size: 12pt;
         color: #000;
-        margin: 0;
+        margin: 12px;
     }
 
-    table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        table-layout: fixed; 
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
         margin-bottom: 30px;
     }
 
-    th, td { 
-        border: 1px solid #d1d1d1; 
+    th, td {
+        border: 1px solid #d1d1d1;
         padding: 8px 6px;
         word-wrap: break-word;
         vertical-align: middle;
     }
-    
-    th { 
-        background-color: #4EA7B3; 
-        color: white; 
-        text-align: center; 
+
+    th {
+        background-color: #4EA7B3;
+        color: white;
+        text-align: center;
         font-weight: bold;
-        font-size: 14pt; 
+        font-size: 14pt;
     }
-    
-    .group-row { 
-        background-color: #DAEEF3; 
-        font-weight: bold; 
+
+    .group-row {
+        background-color: #DAEEF3;
+        font-weight: bold;
         color: #2A5D63;
         font-size: 13pt;
     }
-    
+
     /* Total Rows: Bold, Gray Background, Size 12pt */
-    .total-row { 
-        background-color: #E1E1E1; 
+    .total-row {
+        background-color: #E1E1E1;
         font-weight: bold;
         font-size: 12pt;
     }
-    
+
     .amount { text-align: right; }
     .date-cell { text-align: center; }
 
@@ -1447,9 +1504,17 @@ const reportTemplate = `
     .col-clinic { width: 15%; }
     .col-amt  { width: 9%; }
     .col-type  { width: 10%; }
+
+	.header-blue { background-color: #4EA7B3 !important; font-weight: bold; font-size: 14pt; text-align: center; border: 1px solid #ffffff; padding:10px; margin: 8px; color: #ffffff;}
+	.meta-item { margin-bottom: 4px; color: #555;  margin: 4px;}
+    .meta-label { font-weight: bold; width: 100px; display: inline-block; color: #555; margin: 4px;}
 </style>
 </head>
 <body>
+		<div class="header-blue">Transaction Report</div>
+		<div class="meta-item"><span class="meta-label">Exported by:</span> {{.FullName}}</div>
+		{{if .ABN}}<div class="meta-item"><span class="meta-label">ABN:</span> {{.ABN}}</div>{{end}}
+        {{if .Period}}<div class="meta-item"><span class="meta-label">Period:</span> {{.Period}}</div>{{end}}
     <table>
         <thead>
             <tr>
@@ -1517,7 +1582,7 @@ type CoaDetail struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-func (s *Service) generateTransactionHTML(data interface{}) (string, error) {
+func (s *Service) generateTransactionHTML(data interface{}, dateHelper func(string) string) (string, error) {
 	tmpl, err := template.New("pdf").Funcs(template.FuncMap{
 		"getFloat": func(f *float64) float64 {
 			if f == nil {
@@ -1526,20 +1591,7 @@ func (s *Service) generateTransactionHTML(data interface{}) (string, error) {
 			return *f
 		},
 		// Helper to format strings or time objects from specific format
-		"formatDate": func(t interface{}) string {
-			switch v := t.(type) {
-			case time.Time:
-				return v.Format("2006-01-02")
-			case string:
-				// If it's a full timestamp like "2026-04-20T10:00:00Z", just take the date part
-				if len(v) >= 10 {
-					return v[:10]
-				}
-				return v
-			default:
-				return ""
-			}
-		},
+		"formatDate": dateHelper,
 	}).Parse(reportTemplate)
 
 	if err != nil {
@@ -1559,4 +1611,41 @@ func (s *Service) generateTransactionHTML(data interface{}) (string, error) {
 	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
 
 	return finalHTML, nil
+}
+
+func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error) {
+	f := filter.ToCommonFilter()
+
+	// 1. Fetch the COA Summaries (The parent groups)
+	// We set limit to -1 or a large number to get all groups for export
+	f.Limit = lo.ToPtr(1000)
+	coaSummaries, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
+	if err != nil {
+		return nil, err
+	}
+
+	exportItems := make([]*RsCoaExportItem, 0, len(coaSummaries))
+
+	// 2. For each COA group, fetch the individual entries
+	for _, summary := range coaSummaries {
+		// Use the existing Detail repo method
+		// Note: We use summary.CoaName because your repo method ListCoaEntryDetails uses Name
+		details, err := s.repo.ListCoaEntryDetails(ctx, summary.CoaName, f, actorID, role)
+		if err != nil {
+			log.Printf("Error fetching details for COA %s: %v", summary.CoaName, err)
+			continue
+		}
+
+		exportItems = append(exportItems, &RsCoaExportItem{
+			CoaID:            summary.CoaID,
+			CoaName:          summary.CoaName,
+			TotalNetAmount:   summary.TotalNetAmount,
+			TotalGstAmount:   summary.TotalGSTAmount,
+			TotalGrossAmount: summary.TotalGrossAmount,
+			EntryCount:       summary.EntryCount,
+			Entries:          details,
+		})
+	}
+
+	return &RsExportData{Items: exportItems}, nil
 }
