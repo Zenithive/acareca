@@ -235,7 +235,8 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid
             period_quarter,
             section_type,
             bas_category,
-			account_name, -- Note: We group by Name for aggregation
+            coa_id,
+            account_name,
             SUM(net_amount) AS net_amount,
             SUM(gst_amount) AS gst_amount,
             SUM(gross_amount) AS gross_amount
