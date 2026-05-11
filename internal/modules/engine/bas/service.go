@@ -227,84 +227,42 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		isAccountant = true
 	}
 
-	var ownerID uuid.UUID
-	var clinicIDs []uuid.UUID
-
 	// Track unique practitioners to notify
 	practitionerMap := make(map[uuid.UUID]bool)
 
-	// Convert BASFilter to common.Filter for clinic listing
-	commonFilter := f.MapToFilter()
-
-	// Use clinic_id array from BASFilter
-	requestedClinicIDs := f.ParsedClinicIDs
+	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		// If clinic_ids are provided, verify permission for each clinic
-		if len(requestedClinicIDs) > 0 {
-			for _, clinicID := range requestedClinicIDs {
-				permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicID)
-				if err != nil {
-					return nil, fmt.Errorf("permission denied for clinic %s", clinicID)
-				}
-				practitionerMap[permission.PractitionerID] = true
-				ownerID = permission.PractitionerID
-				clinicIDs = append(clinicIDs, clinicID)
-			}
-		} else {
-			// If no clinic_ids provided, get all clinics the accountant has access to
-			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
-			}
-			if len(clinics) == 0 {
-				return nil, fmt.Errorf("no clinics found for this accountant")
-			}
-			// Use the first clinic's practitioner as owner (they should all belong to same practitioner)
-			ownerID = clinics[0].PractitionerID
-			for _, clinic := range clinics {
-				practitionerMap[clinic.PractitionerID] = true
-				clinicIDs = append(clinicIDs, clinic.ID)
-			}
+		// For accountants, get all practitioners they have access to
+		// This is done by fetching clinics and extracting unique practitioner IDs
+		commonFilter := f.MapToFilter()
+		clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch accessible practitioners: %w", err)
+		}
+		
+		// Extract unique practitioner IDs from clinics
+		for _, clinic := range clinics {
+			practitionerMap[clinic.PractitionerID] = true
+		}
+		
+		// Convert map to slice
+		for pID := range practitionerMap {
+			targetPracIDs = append(targetPracIDs, pID)
+		}
+		
+		// If no practitioners found, return empty result instead of error
+		if len(targetPracIDs) == 0 {
+			return &RsBASPreparation{Columns: []BASColumn{}}, nil
 		}
 	} else {
-		ownerID = actorID
-
-		if len(requestedClinicIDs) > 0 {
-			// Verify the practitioner owns each requested clinic
-			for _, clinicID := range requestedClinicIDs {
-				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicID, ownerID)
-				if err != nil {
-					return nil, fmt.Errorf("clinic %s not found or access denied", clinicID.String())
-				}
-				clinicIDs = append(clinicIDs, clinicID)
-			}
-		} else {
-			// Get all clinics for this practitioner
-			clinics, err := s.clinicRepo.ListClinicByPractitioner(ctx, ownerID, commonFilter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
-			}
-			if len(clinics) == 0 {
-				return nil, fmt.Errorf("no clinics found for this practitioner")
-			}
-			for _, clinic := range clinics {
-				clinicIDs = append(clinicIDs, clinic.ID)
-			}
-		}
-	}
-	var rawRows []*BASLineItemRow
-
-	var targetPracIDs []uuid.UUID
-	for pID := range practitionerMap {
-		targetPracIDs = append(targetPracIDs, pID)
-	}
-
-	// If it's a practitioner (not accountant), they are the only one
-	if !isAccountant {
+		// For practitioners, use their own ID
 		targetPracIDs = []uuid.UUID{actorID}
+		practitionerMap[actorID] = true
 	}
 
+	// Fetch BAS line items without clinic filtering
+	var rawRows []*BASLineItemRow
 	nilClinic := uuid.Nil
 	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, f)
 	if err != nil {
