@@ -476,7 +476,7 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 					// Treat entry.NetAmount as Gross (backward compat)
 					grossInput = entry.NetAmount
 				}
-				
+
 				// Calculate Net from Gross - GST
 				if entry.GstAmount != nil {
 					actualNetAmount = grossInput - *entry.GstAmount
@@ -1038,43 +1038,23 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 			payload.grossamount = &grossVal
 
 		case method.TaxTreatmentManual:
-			// Xero Manual GST: user enters Gross + explicit GST.
-			// On CREATE/preview: entry.NetAmount = user's entered Gross
-			// On UPDATE/live: entry.GrossAmount = actual Gross (if provided)
-			if entry.GstAmount == nil {
-				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", field.FieldKey)
-			}
-			
-			// Determine the actual Gross amount
-			var grossInput float64
-			if entry.GrossAmount != nil {
-				// Use explicit gross_amount if provided (UPDATE/live calculation)
-				grossInput = *entry.GrossAmount
+			if field.SectionType != nil && *field.SectionType == "COLLECTION" {
+				payload.actualamount = entry.NetAmount
+				payload.displaynet = entry.NetAmount
+				if entry.GstAmount != nil {
+					payload.gstamount = entry.GstAmount
+					gross := entry.NetAmount + *entry.GstAmount
+					payload.grossamount = &gross
+				}
 			} else {
-				// Treat entry.NetAmount as Gross (CREATE/preview, backward compat)
-				grossInput = entry.NetAmount
+				payload.actualamount = entry.NetAmount
+				payload.displaynet = entry.NetAmount
+				payload.gstamount = entry.GstAmount
+				if entry.GstAmount != nil {
+					gross := entry.NetAmount + *entry.GstAmount
+					payload.grossamount = &gross
+				}
 			}
-			
-			taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
-				Amount:    grossInput, // Gross
-				GstAmount: entry.GstAmount,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
-			}
-			netVal := taxResult.Amount       // derived: Gross - GST
-			gstVal := taxResult.GstAmount    // as entered
-			grossVal := taxResult.TotalAmount // as entered (Gross)
-
-			payload.displaynet = netVal
-			// Formula feed: OTHER_COST deductions use GROSS (full cost to deduct)
-			if field.SectionType != nil && *field.SectionType == "OTHER_COST" {
-				payload.actualamount = grossVal
-			} else {
-				payload.actualamount = netVal
-			}
-			payload.gstamount = &gstVal
-			payload.grossamount = &grossVal
 
 		case method.TaxTreatmentZero:
 			payload.actualamount = entry.NetAmount
