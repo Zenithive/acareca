@@ -585,13 +585,25 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		case method.TaxTreatmentManual:
 			// Xero Manual GST: user enters Gross + explicit GST.
-			// inputAmount is the Gross, v.GstAmount is the explicit GST.
-			// Net = Gross - GST
+			// On CREATE: frontend sends net_amount=Gross (user input), gst_amount=GST
+			// On UPDATE: frontend may send net_amount=Net (from DB), gross_amount=Gross, gst_amount=GST
+			// We need to use gross_amount if provided, otherwise treat net_amount as Gross (for backward compat)
 			if v.GstAmount == nil {
 				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", f.FieldKey)
 			}
+			
+			// Determine the actual Gross amount
+			var grossInput float64
+			if v.GrossAmount != nil {
+				// UPDATE case: use the explicit gross_amount from frontend
+				grossInput = *v.GrossAmount
+			} else {
+				// CREATE case: treat inputAmount (net_amount) as Gross for backward compatibility
+				grossInput = inputAmount
+			}
+			
 			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
-				Amount:    inputAmount, // Gross
+				Amount:    grossInput, // Gross
 				GstAmount: v.GstAmount,
 			})
 			if err != nil {

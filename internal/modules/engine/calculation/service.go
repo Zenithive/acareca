@@ -465,13 +465,23 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 				// User entered NET amount, use as-is
 
 			case method.TaxTreatmentManual:
-				if (f.SectionType) != nil && *f.SectionType == "COLLECTION" {
-					// if entry.GstAmount != nil {
-					actualNetAmount = entry.NetAmount
-					// }
+				// Xero Manual GST: user enters Gross + explicit GST
+				// On CREATE/preview: entry.NetAmount = user's entered Gross
+				// On UPDATE/live: entry.GrossAmount = actual Gross (if provided)
+				var grossInput float64
+				if entry.GrossAmount != nil {
+					// Use explicit gross_amount if provided
+					grossInput = *entry.GrossAmount
 				} else {
-					// For MANUAL tax type, use GROSS amount if provided, otherwise use net
-					actualNetAmount = entry.NetAmount
+					// Treat entry.NetAmount as Gross (backward compat)
+					grossInput = entry.NetAmount
+				}
+				
+				// Calculate Net from Gross - GST
+				if entry.GstAmount != nil {
+					actualNetAmount = grossInput - *entry.GstAmount
+				} else {
+					actualNetAmount = grossInput
 				}
 			}
 
@@ -1029,13 +1039,24 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 
 		case method.TaxTreatmentManual:
 			// Xero Manual GST: user enters Gross + explicit GST.
-			// entry.NetAmount is actually the GROSS (misleading name from frontend).
-			// entry.GstAmount is the explicit GST the user typed.
+			// On CREATE/preview: entry.NetAmount = user's entered Gross
+			// On UPDATE/live: entry.GrossAmount = actual Gross (if provided)
 			if entry.GstAmount == nil {
 				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", field.FieldKey)
 			}
+			
+			// Determine the actual Gross amount
+			var grossInput float64
+			if entry.GrossAmount != nil {
+				// Use explicit gross_amount if provided (UPDATE/live calculation)
+				grossInput = *entry.GrossAmount
+			} else {
+				// Treat entry.NetAmount as Gross (CREATE/preview, backward compat)
+				grossInput = entry.NetAmount
+			}
+			
 			taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
-				Amount:    entry.NetAmount, // this is actually Gross
+				Amount:    grossInput, // Gross
 				GstAmount: entry.GstAmount,
 			})
 			if err != nil {
