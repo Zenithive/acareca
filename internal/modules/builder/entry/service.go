@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"log"
 	"maps"
 	"strconv"
 	"strings"
@@ -49,6 +50,8 @@ type IService interface {
 	//ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
 	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
 	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, fullName string, practitionerABN string, period string) (*bytes.Buffer, error)
+
+	ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error)
 }
 
 type Service struct {
@@ -594,8 +597,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			if err != nil {
 				return nil, fmt.Errorf("manual tax calc for field %s: %w", f.FieldKey, err)
 			}
-			netBase = result.Amount       // Gross - GST
-			gstAmount = &result.GstAmount // as entered
+			netBase = result.Amount         // Gross - GST
+			gstAmount = &result.GstAmount   // as entered
 			grossTotal = result.TotalAmount // Gross (as entered)
 
 		case method.TaxTreatmentZero:
@@ -1608,4 +1611,41 @@ func (s *Service) generateTransactionHTML(data interface{}, dateHelper func(stri
 	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
 
 	return finalHTML, nil
+}
+
+func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error) {
+	f := filter.ToCommonFilter()
+
+	// 1. Fetch the COA Summaries (The parent groups)
+	// We set limit to -1 or a large number to get all groups for export
+	f.Limit = lo.ToPtr(1000)
+	coaSummaries, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
+	if err != nil {
+		return nil, err
+	}
+
+	exportItems := make([]*RsCoaExportItem, 0, len(coaSummaries))
+
+	// 2. For each COA group, fetch the individual entries
+	for _, summary := range coaSummaries {
+		// Use the existing Detail repo method
+		// Note: We use summary.CoaName because your repo method ListCoaEntryDetails uses Name
+		details, err := s.repo.ListCoaEntryDetails(ctx, summary.CoaName, f, actorID, role)
+		if err != nil {
+			log.Printf("Error fetching details for COA %s: %v", summary.CoaName, err)
+			continue
+		}
+
+		exportItems = append(exportItems, &RsCoaExportItem{
+			CoaID:            summary.CoaID,
+			CoaName:          summary.CoaName,
+			TotalNetAmount:   summary.TotalNetAmount,
+			TotalGstAmount:   summary.TotalGSTAmount,
+			TotalGrossAmount: summary.TotalGrossAmount,
+			EntryCount:       summary.EntryCount,
+			Entries:          details,
+		})
+	}
+
+	return &RsExportData{Items: exportItems}, nil
 }

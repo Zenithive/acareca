@@ -353,3 +353,17 @@ type RsCoaEntryDetail struct {
 	UpdatedAt     *string  `json:"updated_at,omitempty"`
 	Date          *string  `json:"date,omitempty"`
 }
+
+type RsExportData struct {
+	Items []*RsCoaExportItem `json:"items"`
+}
+
+type RsCoaExportItem struct {
+	CoaID            string              `json:"coa_id"`
+	CoaName          string              `json:"coa_name"`
+	TotalNetAmount   float64             `json:"total_net_amount"`
+	TotalGstAmount   float64             `json:"total_gst_amount"`
+	TotalGrossAmount float64             `json:"total_gross_amount"`
+	EntryCount       int                 `json:"entry_count"`
+	Entries          []*RsCoaEntryDetail `json:"entries"`
+}

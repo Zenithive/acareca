@@ -29,6 +29,8 @@ type IHandler interface {
 	ListCoaEntryDetails(c *gin.Context)
 	// GetFieldSummary(c *gin.Context)
 	HandleExport(c *gin.Context)
+
+	ExportTransactions(c *gin.Context)
 }
 
 type handler struct {
@@ -532,4 +534,58 @@ func (h *handler) HandleExport(c *gin.Context) {
 
 	// 7. Write Data
 	c.Data(http.StatusOK, contentType, buf.Bytes())
+}
+
+// @Summary Export transaction data for report generation
+// @Description Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation.
+// @Tags entry
+// @Accept  json
+// @Produce json
+// @Param practitioner_id query string false "Filter by practitioner ID (supports array string format)"
+// @Param clinic_id query string false "Filter by clinic ID"
+// @Param form_id query string false "Filter by form ID"
+// @Param coa_id query string false "Filter by Chart of Accounts ID"
+// @Param tax_type_id query string false "Filter by Tax Type ID"
+// @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
+// @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
+// @Param search query string false "Search by account, field, or clinic name"
+// @Success 200 {object} map[string]interface{} "JSON containing status, message, and nested transaction data"
+// @Failure 400 {object} response.RsError "Invalid request parameters"
+// @Failure 401 {object} response.RsError "Unauthorized"
+// @Failure 500 {object} response.RsError "Internal server error"
+// @Security BearerToken
+// @Router /entry/transactions/export [get]
+func (h *handler) ExportTransactions(c *gin.Context) {
+	actorID, role, _ := util.GetRoleBasedID(c)
+
+	// Apply the "Manual Clean" logic we discussed to avoid the 400 UUID error
+	var filter TransactionFilter
+	if rawID := c.Query("practitioner_id"); rawID != "" {
+		cleanID := strings.Trim(rawID, "[]\" ")
+		if u, err := uuid.Parse(cleanID); err == nil {
+			filter.Filter.PractitionerID = &u
+		}
+		// Remove from query to prevent BindAndValidate crash
+		q := c.Request.URL.Query()
+		q.Del("practitioner_id")
+		c.Request.URL.RawQuery = q.Encode()
+	}
+
+	if err := util.BindAndValidate(c, &filter); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	data, err := h.svc.ExportTransactionData(c.Request.Context(), filter, *actorID, role)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Match your requested JSON format
+	c.JSON(http.StatusOK, gin.H{
+		"status":  200,
+		"message": "COA entries fetched successfully",
+		"data":    data,
+	})
 }
