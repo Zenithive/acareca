@@ -270,27 +270,34 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	}
 	rawRows = append(rawRows, rows...)
 
-	masterAccounts := make(map[string]*BASLineItemRow)
-	for _, r := range rawRows {
+	// rowKey identifies a unique account slot per (coa_id, section_type).
+	// We intentionally exclude bas_category so that multiple DB rows for the
+	// same coa_id (e.g. TAXABLE + GST_FREE entries) are treated as the same
+	// account and all flow into mapToBASColumn for correct summing.
+	rowKey := func(r *BASLineItemRow) string {
 		sec := ""
 		if r.SectionType != nil {
 			sec = *r.SectionType
 		}
-		// Use a unique key for the map including coa_id to prevent duplicates
-		key := fmt.Sprintf("%s-%s-%s", r.CoaID, r.AccountName, sec)
-
-		if _, exists := masterAccounts[key]; !exists {
-			masterAccounts[key] = r
-		}
+		return fmt.Sprintf("%s-%s", r.CoaID, sec)
 	}
 
+	// masterAccounts tracks which account slots exist across all quarters.
+	// We store a slice of rows per key so every bas_category variant is preserved.
+	masterAccounts := make(map[string][]*BASLineItemRow)
+	for _, r := range rawRows {
+		key := rowKey(r)
+		masterAccounts[key] = append(masterAccounts[key], r)
+	}
+
+	// quarterGroups indexes rows by their period_quarter date string so we can
+	// look them up when iterating over the requested quarter IDs.
 	quarterGroups := make(map[string][]*BASLineItemRow)
 	for _, r := range rawRows {
 		k := r.PeriodQuarter.Format("2006-01-02")
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
 
-	// DEBUG 3: Quarter Matching
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
@@ -302,35 +309,29 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 				continue
 			}
 
-			currentQuarterRows := quarterGroups[qInfo.StartDate]
+			// Index this quarter's rows by their account key for O(1) lookup.
+			quarterRowIndex := make(map[string][]*BASLineItemRow)
+			for _, qr := range quarterGroups[qInfo.StartDate] {
+				key := rowKey(qr)
+				quarterRowIndex[key] = append(quarterRowIndex[key], qr)
+			}
 
 			normalizedRows := make([]*BASLineItemRow, 0)
 			for key := range masterAccounts {
-				var foundRow *BASLineItemRow
-				for _, qr := range currentQuarterRows {
-					// Build the same key format to match including coa_id
-					sec := ""
-					if qr.SectionType != nil {
-						sec = *qr.SectionType
-					}
-					qrKey := fmt.Sprintf("%s-%s-%s", qr.CoaID, qr.AccountName, sec)
-
-					if qrKey == key {
-						foundRow = qr
-						break
+				foundRows, exists := quarterRowIndex[key]
+				if !exists {
+					continue
+				}
+				// Include all rows for this account (all bas_category variants).
+				for _, foundRow := range foundRows {
+					if foundRow.GrossAmount != 0 || foundRow.GstAmount != 0 || foundRow.NetAmount != 0 {
+						normalizedRows = append(normalizedRows, foundRow)
 					}
 				}
-
-				// Only add rows that have actual values (not zero)
-				if foundRow != nil && (foundRow.GrossAmount != 0 || foundRow.GstAmount != 0 || foundRow.NetAmount != 0) {
-					normalizedRows = append(normalizedRows, foundRow)
-				}
-				// If no row found for this quarter, don't add a placeholder (this prevents zero-value entries)
 			}
 
 			finalizedRowsForTotal = append(finalizedRowsForTotal, normalizedRows...)
 
-			// Map the normalized rows to the column
 			col := s.mapToBASColumn(normalizedRows)
 			col.Quarter = *qInfo
 			resp.Columns = append(resp.Columns, col)

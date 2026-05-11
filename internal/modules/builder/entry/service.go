@@ -578,24 +578,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = result.TotalAmount
 
 		case method.TaxTreatmentManual:
-			fm, err := s.fieldSvc.GetByID(ctx, f.ID)
+			// Xero Manual GST: user enters Gross + explicit GST.
+			// inputAmount is the Gross, v.GstAmount is the explicit GST.
+			// Net = Gross - GST
+			if v.GstAmount == nil {
+				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", f.FieldKey)
+			}
+			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
+				Amount:    inputAmount, // Gross
+				GstAmount: v.GstAmount,
+			})
 			if err != nil {
-				return nil, fmt.Errorf("get form for field %s: %w", f.FieldKey, err)
+				return nil, fmt.Errorf("manual tax calc for field %s: %w", f.FieldKey, err)
 			}
-
-			if fm.SectionType != nil && *fm.SectionType == "COLLECTION" {
-				gstAmount = v.GstAmount
-				grossTotal = inputAmount
-				if v.GstAmount != nil {
-					netBase = inputAmount - *v.GstAmount
-				}
-			} else {
-				gstAmount = v.GstAmount
-				netBase = inputAmount
-				if gstAmount != nil {
-					grossTotal = inputAmount + *gstAmount
-				}
-			}
+			netBase = result.Amount       // Gross - GST
+			gstAmount = &result.GstAmount // as entered
+			grossTotal = result.TotalAmount // Gross (as entered)
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
