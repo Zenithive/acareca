@@ -22,6 +22,7 @@ type Config struct {
 	ResendAPIKey       string
 	Env                string
 	DevUrl             string
+	ProdUrl            string
 	LocalUrl           string
 	AllowedOrigins     string
 	StripeSecretKey    string
@@ -79,6 +80,7 @@ func NewConfig() *Config {
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
 		Env:                getEnv("ENV", "local"),
 		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
+		ProdUrl:            getEnv("PROD_API_URL", "https://aca-reca-frontend-production.up.railway.app"),
 		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
 		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
@@ -103,7 +105,9 @@ func (c *Config) GetBaseURL() (string, error) {
 	switch c.Env {
 	case "":
 		return "", fmt.Errorf("environment not set")
-	case "production":
+	case "prod":
+		return c.ProdUrl, nil
+	case "dev":
 		return c.DevUrl, nil
 	default:
 		return c.LocalUrl, nil

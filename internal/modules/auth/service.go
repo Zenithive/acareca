@@ -521,11 +521,9 @@ func (s *service) sendVerificationEmail(to string, firstName string, tokenID uui
 	url := "https://api.resend.com/emails"
 	apikey := s.cfg.ResendAPIKey
 
-	var baseUrl string
-	if s.cfg.Env == "dev" {
-		baseUrl = s.cfg.DevUrl
-	} else {
-		baseUrl = s.cfg.LocalUrl
+	baseUrl, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return err
 	}
 
 	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
@@ -849,21 +847,12 @@ func (s *service) SendForgotPasswordEmail(to string, firstName string, token str
 	url := "https://api.resend.com/emails"
 	apikey := s.cfg.ResendAPIKey
 
-	var baseURL string
-
-	if s.cfg.Env == "dev" {
-		baseURL = s.cfg.DevUrl
-	} else {
-		baseURL = s.cfg.LocalUrl
+	baseUrl, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return err
 	}
 
-	// 2. Fallback Safety Net: In case envs are missing
-	if baseURL == "" {
-
-		return fmt.Errorf("system configuration error: frontend application URL is not defined")
-	}
-
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseUrl, token)
 	expiryTime := "15 minutes"
 
 	payload := map[string]interface{}{
