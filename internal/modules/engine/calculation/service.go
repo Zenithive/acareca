@@ -1046,12 +1046,8 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 			grossVal := taxResult.TotalAmount // as entered (Gross)
 
 			payload.displaynet = netVal
-			// Formula feed: OTHER_COST deductions use GROSS (full cost to deduct)
-			if field.SectionType != nil && *field.SectionType == "OTHER_COST" {
-				payload.actualamount = grossVal
-			} else {
-				payload.actualamount = netVal
-			}
+			// Formula feed: MANUAL tax type now uses GROSS amount for all sections
+			payload.actualamount = grossVal
 			payload.gstamount = &gstVal
 			payload.grossamount = &grossVal
 
@@ -1161,13 +1157,9 @@ func (s *service) evaluatePreviewFormulas(ctx context.Context, fields []RqPrevie
 			case "ZERO":
 				feedbackVal = val // No GST
 			case "MANUAL":
-				// For MANUAL, val is NET amount
-				// Add manually entered GST to get gross amount for dependent formulas
-				if gst, hasGST := manualGSTByKey[cf.fieldKey]; hasGST {
-					feedbackVal = val + gst // NET + GST = GROSS
-				} else {
-					feedbackVal = val
-				}
+				// For MANUAL, val is already GROSS amount (formula uses GROSS directly)
+				// No need to add GST since formula already calculated with GROSS
+				feedbackVal = val // Use GROSS as-is
 			}
 		}
 		vals[cf.fieldKey] = feedbackVal
