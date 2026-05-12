@@ -329,9 +329,13 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 			case "ZERO":
 				feedbackVal = val // No GST
 			case "MANUAL":
-				// For MANUAL, val is already GROSS amount (formula uses GROSS directly)
-				// No need to add GST since formula already calculated with GROSS
-				feedbackVal = val // Use GROSS as-is
+				// For MANUAL, val is NET amount (e.g., 60% of something)
+				// We need to add the manually entered GST to get the gross amount for dependent formulas
+				if gst, hasGST := manualGSTByKey[fw.formula.FieldKey]; hasGST {
+					feedbackVal = val + gst // NET + GST = GROSS
+				} else {
+					feedbackVal = val // No GST provided, use NET
+				}
 			}
 		}
 		vals[fw.formula.FieldKey] = feedbackVal

@@ -547,6 +547,25 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		netBase := inputAmount
 		grossTotal := inputAmount
 
+		// Auto-detect MANUAL tax type if GST amount is provided but no tax type is set
+		if f.TaxType == nil && v.GstAmount != nil && *v.GstAmount > 0 {
+			// Treat as MANUAL: net_amount contains GROSS, gst_amount is user-provided
+			gstAmount = v.GstAmount
+			grossTotal = inputAmount
+			netBase = inputAmount - *v.GstAmount
+			
+			keyValues[f.FieldKey] = netBase
+			out = append(out, &FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: &fieldID,
+				NetAmount:   &netBase,
+				GstAmount:   gstAmount,
+				GrossAmount: &grossTotal,
+			})
+			continue
+		}
+
 		if f.TaxType == nil {
 			// No tax type: net = gross, use netBase for formulas
 			// EXCEPTION: OTHER_COST always uses gross (which equals net here)
@@ -617,16 +636,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
 		}
 
-		// CRITICAL: Formula amount logic based on tax type
-		// - MANUAL tax type: Use GROSS amount for formulas
-		// - OTHER_COST fields: Use GROSS amount (to match live calculation)
-		// - All other cases: Use NET amount
+		// CRITICAL: Always use NET amount for formulas
+		// EXCEPTION: OTHER_COST fields use GROSS amount (to match live calculation)
 		valueForFormula := netBase
-		if taxType == method.TaxTreatmentManual {
-			// MANUAL tax type always uses GROSS amount in formulas
-			valueForFormula = grossTotal
-		} else if f.SectionType != nil && *f.SectionType == "OTHER_COST" {
-			// OTHER_COST fields use GROSS amount
+		if f.SectionType != nil && *f.SectionType == "OTHER_COST" {
 			valueForFormula = grossTotal
 		}
 		keyValues[f.FieldKey] = valueForFormula
@@ -766,7 +779,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 					grossTotal = val + gst // NET + GST = GROSS
 				case method.TaxTreatmentManual:
 					// For MANUAL tax type on computed fields:
-					// Formula returns GROSS amount, we need to extract NET
+					// Formula returns NET amount, we need to add GST to get GROSS
 					var entryGST *float64
 					for _, v := range rq {
 						if v.FormFieldID == nil || *v.FormFieldID == "" {
@@ -782,17 +795,17 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 						}
 					}
 
-					// val is GROSS from formula
-					grossTotal = val
+					// val is NET from formula
+					netBase = val
 					if entryGST == nil {
 						// No GST provided, gross = net
 						gst := 0.0
 						gstAmount = &gst
-						netBase = val
+						grossTotal = val
 					} else {
-						// GST provided: net = gross - gst
+						// GST provided: gross = net + gst
 						gstAmount = entryGST
-						netBase = val - *entryGST
+						grossTotal = val + *entryGST
 					}
 				case method.TaxTreatmentZero:
 					gstAmount = nil
