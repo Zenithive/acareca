@@ -147,13 +147,6 @@ func (filter *Filter) MapToFilter(actorID *uuid.UUID) common.Filter {
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
-	// Only add the "Not Equal" condition if the user DID NOT provide a status filter
-	if filter.Status == nil {
-		f.Where = append(f.Where, common.Condition{
-			Field: "status", Operator: common.OpNotEq, Value: StatusResent,
-		})
-	}
-
 	return f
 }
 

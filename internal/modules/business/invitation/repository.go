@@ -35,10 +35,10 @@ type Repository interface {
 
 	ListPermissions(ctx context.Context, accountantID uuid.UUID, f common.Filter) ([]*InvitationWithPermissions, error)
 
-	GetPermission(ctx context.Context, accountantID *uuid.UUID, entityID uuid.UUID, email *string) (*Permissions, error)
+	GetPermission(ctx context.Context, accountantID *uuid.UUID, practitionerID uuid.UUID, email *string) (*Permissions, error)
 	GetPermissionsByPractitionerAndAccountant(ctx context.Context, practitionerID uuid.UUID, accountantID uuid.UUID) (*Permissions, error)
 	// GetPermissionsByEmail(ctx context.Context, pID uuid.UUID, email string) ([]RqPermissionDetail, error)
-	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions, providedID uuid.UUID) error
 	DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
@@ -426,25 +426,32 @@ func (r *repository) GetPermissionsByPractitionerAndAccountant(ctx context.Conte
 	return &perms, nil
 }
 
-func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions) error {
+func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID uuid.UUID, accID *uuid.UUID, email string, perms Permissions, providedID uuid.UUID) error {
 	// First, get or verify the invitation
 	var invitationID uuid.UUID
-	var query string
 
-	if accID != nil && *accID != uuid.Nil {
-		query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 LIMIT 1`
-		err := tx.GetContext(ctx, &invitationID, query, pID, accID)
-		if err != nil {
-			return fmt.Errorf("invitation not found for accountant: %w", err)
-		}
+	// Logic: If we provided an ID (Create/Resend flow), use it.
+	// Otherwise, find it (Legacy/Update flow).
+	if providedID != uuid.Nil {
+		invitationID = providedID
 	} else {
-		if email == "" {
-			return fmt.Errorf("email required when accountant ID is absent")
-		}
-		query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND email = $2 LIMIT 1`
-		err := tx.GetContext(ctx, &invitationID, query, pID, email)
-		if err != nil {
-			return fmt.Errorf("invitation not found for email: %w", err)
+		var query string
+
+		if accID != nil && *accID != uuid.Nil {
+			query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND accountant_id = $2 ORDER BY created_at DESC LIMIT 1`
+			err := tx.GetContext(ctx, &invitationID, query, pID, accID)
+			if err != nil {
+				return fmt.Errorf("invitation not found for accountant: %w", err)
+			}
+		} else {
+			if email == "" {
+				return fmt.Errorf("email required when accountant ID is absent")
+			}
+			query = `SELECT id FROM tbl_invitation WHERE practitioner_id = $1 AND email = $2 ORDER BY created_at DESC LIMIT 1`
+			err := tx.GetContext(ctx, &invitationID, query, pID, email)
+			if err != nil {
+				return fmt.Errorf("invitation not found for email: %w", err)
+			}
 		}
 	}
 
@@ -483,7 +490,7 @@ func (r *repository) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, p
 
 func (r *repository) DeletePermissionTx(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error {
 	query := `
-		DELETE FROM tbl_invite_permissions 
+		UPDATE tbl_invite_permissions SET deleted_at = now()
 		WHERE invitation_id IN (
 			SELECT id FROM tbl_invitation WHERE practitioner_id = $1
 		)
