@@ -56,16 +56,11 @@ func (s *service) manual(_ context.Context, input *Input) (*Result, error) {
 	if input.GstAmount == nil {
 		return nil, errors.New("gst amount is required")
 	}
-	// Xero Manual GST: user enters Gross + explicit GST.
-	// input.Amount = Gross (1100), input.GstAmount = GST (100)
-	// Net = Gross - GST = 1000
-	gross := input.Amount
-	gst := *input.GstAmount
-	net := gross - gst
+	gstAmount := *input.GstAmount
 	return &Result{
-		Amount:      net,   // 1000
-		GstAmount:   gst,   // 100
-		TotalAmount: gross, // 1100
+		Amount:      input.Amount,
+		GstAmount:   gstAmount,
+		TotalAmount: input.Amount + gstAmount,
 	}, nil
 }
 

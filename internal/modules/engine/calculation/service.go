@@ -465,13 +465,23 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 				// User entered NET amount, use as-is
 
 			case method.TaxTreatmentManual:
-				if (f.SectionType) != nil && *f.SectionType == "COLLECTION" {
-					// if entry.GstAmount != nil {
-					actualNetAmount = entry.NetAmount
-					// }
+				// Xero Manual GST: user enters Gross + explicit GST
+				// On CREATE/preview: entry.NetAmount = user's entered Gross
+				// On UPDATE/live: entry.GrossAmount = actual Gross (if provided)
+				var grossInput float64
+				if entry.GrossAmount != nil {
+					// Use explicit gross_amount if provided
+					grossInput = *entry.GrossAmount
 				} else {
-					// For MANUAL tax type, use GROSS amount if provided, otherwise use net
-					actualNetAmount = entry.NetAmount
+					// Treat entry.NetAmount as Gross (backward compat)
+					grossInput = entry.NetAmount
+				}
+
+				// Calculate Net from Gross - GST
+				if entry.GstAmount != nil {
+					actualNetAmount = grossInput - *entry.GstAmount
+				} else {
+					actualNetAmount = grossInput
 				}
 			}
 
