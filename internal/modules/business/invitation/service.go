@@ -35,7 +35,7 @@ type Service interface {
 
 	GetPermissionsForAccountant(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) (*Permissions, error)
 	UpdatePermissions(ctx context.Context, practitionerID uuid.UUID, req *RqUpdatePermissions) (*Permissions, error)
-	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error
+	GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions, invitationID uuid.UUID) error
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
@@ -99,10 +99,11 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		if err := s.repo.CreateTx(ctx, tx, invite); err != nil {
 			return fmt.Errorf("failed to save invite: %w", err)
 		}
-
-		err = s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, invite.Email, *req.Permissions)
-		if err != nil {
-			return fmt.Errorf("failed to save permissions: %w", err)
+		if req.Permissions != nil {
+			err = s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, existingAccID, invite.Email, *req.Permissions, invite.ID)
+			if err != nil {
+				return fmt.Errorf("failed to save permissions: %w", err)
+			}
 		}
 
 		return nil
@@ -498,13 +499,6 @@ func (s *service) ListInvitations(ctx context.Context, actorID *uuid.UUID, f *Fi
 		return nil, err
 	}
 
-	// Add invite links for SENT status
-	for _, row := range listRows {
-		if row.Status == StatusSent {
-			row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseUrl, row.ID)
-		}
-	}
-
 	var rsList util.RsList
 	rsList.MapToList(listRows, total, *ft.Offset, *ft.Limit)
 	return &rsList, nil
@@ -532,14 +526,31 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return nil, fmt.Errorf("cannot resend: invitation is already %s", oldInv.Status)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, oldInv.ID, StatusResent, oldInv.AccountantID); err != nil {
-		return nil, fmt.Errorf("failed to invalidate old invitation: %w", err)
+	permissions, err := s.repo.GetPermission(ctx, oldInv.AccountantID, oldInv.PractitionerID, &oldInv.Email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch permissions: %w", err)
+	}
+
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.UpdateStatusTx(ctx, tx, oldInv.ID, StatusResent, oldInv.AccountantID); err != nil {
+			return fmt.Errorf("failed to invalidate old invitation: %w", err)
+		}
+
+		if err := s.repo.DeletePermissionTx(ctx, tx, oldInv.PractitionerID); err != nil {
+			return fmt.Errorf("failed to invalidate old invitation: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to resend invitation: %w", err)
 	}
 
 	// Resend invitation - log after successful resend
 	newInvite, err := s.SendInvite(ctx, practitionerID, &RqSendInvitation{
-		Email: oldInv.Email,
+		Email:       oldInv.Email,
+		Permissions: permissions,
 	})
+
 	if err == nil {
 		// Audit log for resend (use new invite ID)
 		meta := auditctx.GetMetadata(ctx)
@@ -670,10 +681,10 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if useEmail {
 			// For pending invitations, pass nil accountant_id and the email
-			return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, nil, req.Email, *req.Permissions)
+			return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, nil, req.Email, *req.Permissions, uuid.Nil)
 		} else {
 			// For registered accountants, pass the accountant_id
-			return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, accountantID, req.Email, *req.Permissions)
+			return s.repo.GrantEntityPermissionTx(ctx, tx, practitionerID, accountantID, req.Email, *req.Permissions, uuid.Nil)
 		}
 	})
 	if err != nil {
@@ -707,8 +718,8 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 	return req.Permissions, nil
 }
 
-func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions) error {
-	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, email, perms)
+func (s *service) GrantEntityPermissionTx(ctx context.Context, tx *sqlx.Tx, pID, aID uuid.UUID, email string, perms Permissions, invitationID uuid.UUID) error {
+	return s.repo.GrantEntityPermissionTx(ctx, tx, pID, &aID, email, perms, invitationID)
 }
 
 func (s *service) DeletePermission(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error {
