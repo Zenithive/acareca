@@ -1038,23 +1038,28 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 			payload.grossamount = &grossVal
 
 		case method.TaxTreatmentManual:
-			if field.SectionType != nil && *field.SectionType == "COLLECTION" {
-				payload.actualamount = entry.NetAmount
-				payload.displaynet = entry.NetAmount
-				if entry.GstAmount != nil {
-					payload.gstamount = entry.GstAmount
-					gross := entry.NetAmount + *entry.GstAmount
-					payload.grossamount = &gross
-				}
-			} else {
-				payload.actualamount = entry.NetAmount
-				payload.displaynet = entry.NetAmount
-				payload.gstamount = entry.GstAmount
-				if entry.GstAmount != nil {
-					gross := entry.NetAmount + *entry.GstAmount
-					payload.grossamount = &gross
-				}
+			// Xero Manual GST: user enters Gross + explicit GST.
+			// entry.NetAmount is actually the GROSS (misleading name from frontend).
+			// entry.GstAmount is the explicit GST the user typed.
+			if entry.GstAmount == nil {
+				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", field.FieldKey)
 			}
+			taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
+				Amount:    entry.NetAmount, // this is actually Gross
+				GstAmount: entry.GstAmount,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
+			}
+			netVal := taxResult.Amount       // derived: Gross - GST
+			gstVal := taxResult.GstAmount    // as entered
+			grossVal := taxResult.TotalAmount // as entered (Gross)
+
+			payload.displaynet = netVal
+			// Formula feed: MANUAL tax type uses GROSS amount
+			payload.actualamount = grossVal
+			payload.gstamount = &gstVal
+			payload.grossamount = &grossVal
 
 		case method.TaxTreatmentZero:
 			payload.actualamount = entry.NetAmount
@@ -1162,13 +1167,9 @@ func (s *service) evaluatePreviewFormulas(ctx context.Context, fields []RqPrevie
 			case "ZERO":
 				feedbackVal = val // No GST
 			case "MANUAL":
-				// For MANUAL, val is NET amount
-				// Add manually entered GST to get gross amount for dependent formulas
-				if gst, hasGST := manualGSTByKey[cf.fieldKey]; hasGST {
-					feedbackVal = val + gst // NET + GST = GROSS
-				} else {
-					feedbackVal = val
-				}
+				// For MANUAL, val is GROSS amount from formula calculation
+				// No need to add GST since formula already used GROSS
+				feedbackVal = val
 			}
 		}
 		vals[cf.fieldKey] = feedbackVal

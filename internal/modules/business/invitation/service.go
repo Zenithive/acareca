@@ -453,11 +453,9 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 }
 
 func (s *service) ListInvitations(ctx context.Context, actorID *uuid.UUID, f *Filter) (*util.RsList, error) {
-	var baseURL string
-	if s.cfg.Env == "dev" {
-		baseURL = s.cfg.DevUrl
-	} else {
-		baseURL = s.cfg.LocalUrl
+	baseUrl, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return nil, err
 	}
 
 	// Accountant path: query by email with practitioner details
@@ -481,7 +479,7 @@ func (s *service) ListInvitations(ctx context.Context, actorID *uuid.UUID, f *Fi
 		// Add invite links for SENT status
 		for _, row := range listRows {
 			if row.Status == StatusSent {
-				row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseURL, row.ID)
+				row.InviteLink = fmt.Sprintf("%s/accept-invite?token=%s", baseUrl, row.ID)
 			}
 		}
 
