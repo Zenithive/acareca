@@ -261,3 +261,31 @@ func (nc NotificationChannels) Value() (driver.Value, error) {
 type RqBulkDismiss struct {
 	IDs []uuid.UUID `json:"ids" validate:"required,min=1"`
 }
+
+const (
+	// NATS subjects
+	SubjectNotificationCreate = "notification.create"
+	SubjectNotificationEmail  = "notification.email"
+	SubjectNotificationPush   = "notification.push"
+
+	// Stream and consumer names
+	StreamNotifications = "NOTIFICATIONS"
+	ConsumerCreate      = "notification-create-consumer"
+	ConsumerEmail       = "notification-email-consumer"
+	ConsumerPush        = "notification-push-consumer"
+)
+
+// NotificationEvent represents the event payload published to NATS
+type NotificationEvent struct {
+	ID            uuid.UUID       `json:"id"`
+	RecipientID   uuid.UUID       `json:"recipient_id"`
+	RecipientType ActorType       `json:"recipient_type"`
+	SenderID      *uuid.UUID      `json:"sender_id"`
+	SenderType    *ActorType      `json:"sender_type"`
+	EventType     EventType       `json:"event_type"`
+	EntityType    EntityType      `json:"entity_type"`
+	EntityID      uuid.UUID       `json:"entity_id"`
+	Payload       json.RawMessage `json:"payload"`
+	Channels      []Channel       `json:"channels"`
+	CreatedAt     time.Time       `json:"created_at"`
+}
