@@ -2011,6 +2011,16 @@ definitions:
     - EventNewTransaction
     - EventAccountantActivityAlert
     - EventSystemActivityAlert
+  notification.RqBulkDismiss:
+    properties:
+      ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
   notification.RqUpdatePreference:
     properties:
       channels:
@@ -6820,40 +6830,6 @@ paths:
       summary: List notifications
       tags:
       - notification
-  /notification/{id}/dismissed:
-    patch:
-      description: Marks a specific notification as DISMISSED for the authenticated
-        entity.
-      parameters:
-      - description: Notification UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Dismiss a notification
-      tags:
-      - notification
   /notification/{id}/read:
     patch:
       description: Marks a specific notification as READ for the authenticated entity.
@@ -6885,6 +6861,43 @@ paths:
       security:
       - BearerToken: []
       summary: Mark notification as read
+      tags:
+      - notification
+  /notification/dismiss:
+    patch:
+      consumes:
+      - application/json
+      description: Marks a list of specific notifications as DISMISSED for the authenticated
+        entity.
+      parameters:
+      - description: List of Notification UUIDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/notification.RqBulkDismiss'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Dismiss multiple notifications
       tags:
       - notification
   /notification/preferences:

@@ -110,27 +110,31 @@ func (h *handler) MarkAllRead(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "all notifications marked as read")
 }
 
-// @Summary      Dismiss a notification
-// @Description  Marks a specific notification as DISMISSED for the authenticated entity.
+// @Summary      Dismiss multiple notifications
+// @Description  Marks a list of specific notifications as DISMISSED for the authenticated entity.
 // @Tags         notification
+// @Accept       json
 // @Produce      json
-// @Param        id   path      string  true  "Notification UUID"
+// @Param        request body     RqBulkDismiss  true  "List of Notification UUIDs"
 // @Success      200  {object}  response.RsBase
 // @Failure      404  {object}  response.RsError
 // @Failure      409  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken
-// @Router       /notification/{id}/dismissed [patch]
+// @Router       /notification/dismiss [patch]
 func (h *handler) MarkDismissed(c *gin.Context) {
 	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}
-	id, ok := util.ParseUuidID(c, "id")
-	if !ok {
+
+	var req RqBulkDismiss
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	if err := h.svc.MarkDismissed(c.Request.Context(), id, entityID); err != nil {
+
+	if err := h.svc.MarkDismissed(c.Request.Context(), req.IDs, entityID); err != nil {
 		h.handleTransitionError(c, err)
 		return
 	}

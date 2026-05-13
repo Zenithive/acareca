@@ -24,7 +24,7 @@ type Repository interface {
 	GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
-	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
 	// Delivery worker methods
 	ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error)
 	MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error
@@ -169,25 +169,31 @@ func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) err
 }
 
 // MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.
-func (r *repository) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
+func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error {
 	// First, try to mark as READ if it's UNREAD (this may fail if already READ, which is fine)
 	_, _ = r.db.ExecContext(ctx,
-		`UPDATE tbl_notification
-		 SET status = 'READ', read_at = NOW()
-		 WHERE id = $1 AND recipient_id = $2 AND status = 'UNREAD'`,
-		id, recipientID,
+		`UPDATE tbl_notification 
+         SET status = 'READ', read_at = NOW() 
+         WHERE recipient_id = $1 
+           AND status = 'UNREAD' 
+           AND id = ANY($2)`,
+		recipientID, ids,
 	)
 
 	// Now mark as DISMISSED (works for both UNREAD and READ status)
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE tbl_notification
-		 SET status = 'DISMISSED'
-		 WHERE id = $1 AND recipient_id = $2 AND status IN ('UNREAD', 'READ')`,
-		id, recipientID,
+		`UPDATE tbl_notification 
+         SET status = 'DISMISSED' 
+         WHERE recipient_id = $1 
+           AND status IN ('UNREAD', 'READ') 
+           AND id = ANY($2)`,
+		recipientID, ids,
 	)
 	if err != nil {
 		return err
 	}
+
+	// Check if at least one row was updated
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
