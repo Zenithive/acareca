@@ -354,3 +354,43 @@ type RsBASPreparation struct {
 	Columns    []BASColumn `json:"columns"`
 	GrandTotal BASColumn   `json:"grand_total"`
 }
+
+// BAS PREPARATION ANALYTICS
+type BASValue struct {
+	Date  string  `json:"date"`
+	Gross float64 `json:"gross"`
+	GST   float64 `json:"gst"`
+	Net   float64 `json:"net"`
+}
+
+type BASAccountGroup struct {
+	ID     string     `json:"id,omitempty"`
+	Name   string     `json:"name"`
+	Values []BASValue `json:"values"`
+}
+
+type RsBASAnalytics struct {
+	// omitempty will hide the key if the slice is nil or empty
+	Income        []BASAccountGroup `json:"income,omitempty"`
+	Expense       []BASAccountGroup `json:"expense,omitempty"`
+	NetProfitLoss *BASAccountGroup  `json:"netProfitLoss,omitempty"` // Use pointer for easier omitting
+	GSTPayable    *BASAccountGroup  `json:"gstPayable,omitempty"`    // Use pointer for easier omitting
+}
+
+type BASAnalyticsFilter struct {
+	FinancialYearID string  `form:"financial_year_id" binding:"required"`
+	QuarterIDs      *string `form:"quarter_ids"` // Comma-separated UUIDs
+
+	// Period options: "today", "yesterday", "this_week", "last_month", "custom_date", etc.
+	Period string `form:"period"`
+
+	// For "custom_date" or "custom_month" (DD-MM-YYYY)
+	FromDate *string `form:"from_date"`
+	ToDate   *string `form:"to_date"`
+
+	// Sections multi-select (Comma-separated: "income,expense,net_profit,gst_payable")
+	Sections *string `form:"sections"`
+
+	// Row multi-select (Comma-separated COA IDs)
+	SelectedCoaIDs *string `form:"coa_ids"`
+}
