@@ -240,17 +240,17 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch accessible practitioners: %w", err)
 		}
-		
+
 		// Extract unique practitioner IDs from clinics
 		for _, clinic := range clinics {
 			practitionerMap[clinic.PractitionerID] = true
 		}
-		
+
 		// Convert map to slice
 		for pID := range practitionerMap {
 			targetPracIDs = append(targetPracIDs, pID)
 		}
-		
+
 		// If no practitioners found, return empty result instead of error
 		if len(targetPracIDs) == 0 {
 			return &RsBASPreparation{Columns: []BASColumn{}}, nil
@@ -553,7 +553,8 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	col.Sections.NetProfitLoss.Items = []BASLineItem{
 		{Name: "Net Profit/Loss", Amounts: BASAmount{Net: roundToTwo(totalIncome.Net - subtotalExpenses.Net)}},
 	}
-	col.NetGSTPayable = roundToTwo(0 - b1.Gross)
+	// col.NetGSTPayable = roundToTwo(0 - b1.Gross)
+	col.NetGSTPayable = roundToTwo(totalIncome.GST - subtotalExpenses.GST)
 
 	return col
 }
