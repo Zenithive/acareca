@@ -245,3 +245,7 @@ func (nc NotificationChannels) Value() (driver.Value, error) {
 	}
 	return json.Marshal(nc)
 }
+
+type RqBulkDismiss struct {
+	IDs []uuid.UUID `json:"ids" validate:"required,min=1"`
+}

@@ -3053,6 +3053,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/bas/analytics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.\nSupports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "BAS Analytics Time-Series",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "today, yesterday, this week, last month, etc.",
+                        "name": "period",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "YYYY-MM-DD",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "YYYY-MM-DD",
+                        "name": "to_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated: income, expense, netProfitLoss, gstPayable (Section Filters)",
+                        "name": "sections",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated Chart of Account UUIDs (Row Filters)",
+                        "name": "coa_ids",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bas.RsBASAnalytics"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/bas/bas-preparation": {
             "get": {
                 "security": [
@@ -6927,6 +7015,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/notification/dismiss": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Marks a list of specific notifications as DISMISSED for the authenticated entity.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Dismiss multiple notifications",
+                "parameters": [
+                    {
+                        "description": "List of Notification UUIDs",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/notification.RqBulkDismiss"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/notification/preferences": {
             "get": {
                 "security": [
@@ -7034,58 +7179,6 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/notification/{id}/dismissed": {
-            "patch": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Marks a specific notification as DISMISSED for the authenticated entity.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "notification"
-                ],
-                "summary": "Dismiss a notification",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Notification UUID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9573,6 +9666,23 @@ const docTemplate = `{
                 }
             }
         },
+        "bas.BASAccountGroup": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASValue"
+                    }
+                }
+            }
+        },
         "bas.BASAmount": {
             "type": "object",
             "properties": {
@@ -9651,6 +9761,57 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/bas.BASLineItem"
                     }
+                }
+            }
+        },
+        "bas.BASValue": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "gross": {
+                    "type": "number"
+                },
+                "gst": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.RsBASAnalytics": {
+            "type": "object",
+            "properties": {
+                "expense": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASAccountGroup"
+                    }
+                },
+                "gstPayable": {
+                    "description": "Use pointer for easier omitting",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/bas.BASAccountGroup"
+                        }
+                    ]
+                },
+                "income": {
+                    "description": "omitempty will hide the key if the slice is nil or empty",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASAccountGroup"
+                    }
+                },
+                "netProfitLoss": {
+                    "description": "Use pointer for easier omitting",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/bas.BASAccountGroup"
+                        }
+                    ]
                 }
             }
         },
@@ -11564,6 +11725,21 @@ const docTemplate = `{
                 "EventAccountantActivityAlert",
                 "EventSystemActivityAlert"
             ]
+        },
+        "notification.RqBulkDismiss": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
         },
         "notification.RqUpdatePreference": {
             "type": "object",

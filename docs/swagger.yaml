@@ -644,6 +644,17 @@ definitions:
       updated_at:
         type: string
     type: object
+  bas.BASAccountGroup:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/bas.BASValue'
+        type: array
+    type: object
   bas.BASAmount:
     properties:
       gross:
@@ -695,6 +706,37 @@ definitions:
         items:
           $ref: '#/definitions/bas.BASLineItem'
         type: array
+    type: object
+  bas.BASValue:
+    properties:
+      date:
+        type: string
+      gross:
+        type: number
+      gst:
+        type: number
+      net:
+        type: number
+    type: object
+  bas.RsBASAnalytics:
+    properties:
+      expense:
+        items:
+          $ref: '#/definitions/bas.BASAccountGroup'
+        type: array
+      gstPayable:
+        allOf:
+        - $ref: '#/definitions/bas.BASAccountGroup'
+        description: Use pointer for easier omitting
+      income:
+        description: omitempty will hide the key if the slice is nil or empty
+        items:
+          $ref: '#/definitions/bas.BASAccountGroup'
+        type: array
+      netProfitLoss:
+        allOf:
+        - $ref: '#/definitions/bas.BASAccountGroup'
+        description: Use pointer for easier omitting
     type: object
   bas.RsBASByAccount:
     properties:
@@ -2011,6 +2053,16 @@ definitions:
     - EventNewTransaction
     - EventAccountantActivityAlert
     - EventSystemActivityAlert
+  notification.RqBulkDismiss:
+    properties:
+      ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
   notification.RqUpdatePreference:
     properties:
       channels:
@@ -4319,6 +4371,66 @@ paths:
       security:
       - BearerToken: []
       summary: Export Business Activity Statement to Excel
+      tags:
+      - engine/bas
+  /bas/analytics:
+    get:
+      description: |-
+        Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.
+        Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.
+      parameters:
+      - description: Financial Year UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      - description: Comma-separated Quarter UUIDs
+        in: query
+        name: quarter_ids
+        type: string
+      - description: today, yesterday, this week, last month, etc.
+        in: query
+        name: period
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: from_date
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: to_date
+        type: string
+      - description: 'Comma-separated: income, expense, netProfitLoss, gstPayable
+          (Section Filters)'
+        in: query
+        name: sections
+        type: string
+      - description: Comma-separated Chart of Account UUIDs (Row Filters)
+        in: query
+        name: coa_ids
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bas.RsBASAnalytics'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: BAS Analytics Time-Series
       tags:
       - engine/bas
   /bas/bas-preparation:
@@ -6820,40 +6932,6 @@ paths:
       summary: List notifications
       tags:
       - notification
-  /notification/{id}/dismissed:
-    patch:
-      description: Marks a specific notification as DISMISSED for the authenticated
-        entity.
-      parameters:
-      - description: Notification UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Dismiss a notification
-      tags:
-      - notification
   /notification/{id}/read:
     patch:
       description: Marks a specific notification as READ for the authenticated entity.
@@ -6885,6 +6963,43 @@ paths:
       security:
       - BearerToken: []
       summary: Mark notification as read
+      tags:
+      - notification
+  /notification/dismiss:
+    patch:
+      consumes:
+      - application/json
+      description: Marks a list of specific notifications as DISMISSED for the authenticated
+        entity.
+      parameters:
+      - description: List of Notification UUIDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/notification.RqBulkDismiss'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Dismiss multiple notifications
       tags:
       - notification
   /notification/preferences:
