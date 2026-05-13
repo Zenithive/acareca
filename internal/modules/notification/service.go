@@ -31,36 +31,20 @@ func NewService(repo Repository, notifier *sharednotification.Hub) Service {
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
-	// Determine which preference bucket this belongs to
-	prefCategory := s.getPreferenceCategory(rq)
-	if prefCategory == "" {
-		return nil
-	}
-
 	// Fetch preferences for the recipient
-	prefs, err := s.repo.GetPreference(ctx, rq.RecipientID, rq.RecipientType, prefCategory)
+	prefs, err := s.repo.GetPreference(ctx, rq.RecipientID, rq.RecipientType, NotificationEventType(rq.EventType))
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			fmt.Printf("Err in fetching preferences: %s\n", err)
 		}
 	}
 
-	var allowedChannels []Channel
+	allowedChannels, len, err := s.filterChannels(ctx, prefs, rq)
 	if err != nil {
-		// If no preference record exists, default to sending on all requested channels
-		allowedChannels = rq.Channels
-	} else {
-		for _, ch := range rq.Channels {
-			// If the user explicitly set channel to false, skip it
-			if enabled, exists := prefs.Channels[string(ch)]; exists && !enabled {
-				continue
-			}
-			allowedChannels = append(allowedChannels, ch)
-		}
+		return err
 	}
-
-	if len(allowedChannels) == 0 {
-		return nil // User has muted all requested channels for this category
+	if len == 0 {
+		return nil // No channels allowed, skip notification
 	}
 
 	notificationID, err := s.repo.CreateNotification(ctx, rq.MapToDB())
@@ -74,7 +58,7 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 
 	// Attempt in_app delivery via WebSocket and update delivery status
 	for _, ch := range allowedChannels {
-		if ch == ChannelInApp && s.notifier != nil {
+		if ch.IsValid() && s.notifier != nil {
 			push := map[string]any{
 				"id":           notificationID,
 				"recipient_id": rq.RecipientID,
@@ -92,8 +76,8 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 				_ = s.repo.MarkDeliveryFailed(ctx, notificationID, ChannelInApp, "no active WebSocket clients")
 			}
 		}
-		// push / email channels: delivery workers handle those separately
 	}
+
 	return nil
 }
 
@@ -153,19 +137,14 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 	return s.repo.UpsertPreference(ctx, pref)
 }
 
-func (s *service) getPreferenceCategory(rq RqNotification) NotificationEventType {
-	// Parse the payload title
-	var payload NotificationPayload
-	if err := json.Unmarshal(rq.Payload, &payload); err == nil {
-		if payload.Title == "Accountant Activity Alert" {
-			return EventAccountantActivityAlert
+func (s *service) filterChannels(ctx context.Context, prefs *NotificationPreference, rq RqNotification) ([]Channel, int, error) {
+	var allowedChannels []Channel
+
+	for _, ch := range rq.Channels {
+		if err := prefs.Channels.Scan(ch); err != nil {
+			return nil, 0, err
 		}
-		if payload.Title == "System Activity Alert" {
-			return EventSystemActivityAlert
-		}
-		if rq.EventType == EventType(EventTransactionCreated) {
-			return EventNewTransaction
-		}
+		allowedChannels = append(allowedChannels, ch)
 	}
-	return ""
+	return allowedChannels, len(allowedChannels), nil
 }

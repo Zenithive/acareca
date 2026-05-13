@@ -71,6 +71,17 @@ const (
 	ChannelEmail Channel = "email"
 )
 
+func (c Channel) IsValid() bool {
+	switch c {
+	case ChannelInApp, ChannelPush, ChannelEmail:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChannelMap map[string]bool
+
 type ActorType string
 
 const (
@@ -164,6 +175,7 @@ type Preference struct {
 type NotificationPayload struct {
 	Title      string                  `json:"title"`
 	Body       json.RawMessage         `json:"body"`
+	Channel    *Channel                `json:"channel,omitempty"`
 	SenderName *string                 `json:"sender_name,omitempty"`
 	EntityName *string                 `json:"entity_name,omitempty"`
 	ExtraData  *map[string]interface{} `json:"extra_data,omitempty"`
@@ -194,14 +206,14 @@ func BuildNotificationPayload(title string, body json.RawMessage, senderName *st
 	}
 }
 
-// --- NOTIFICATION PEREFERENCES ---
+// --- NOTIFICATION PREFERENCES ---
 
 type NotificationEventType string
 
 const (
-	EventNewTransaction          NotificationEventType = "NEW_TRANSACTION"
-	EventAccountantActivityAlert NotificationEventType = "ACCOUNTANT_ACTIVITY_ALERT"
-	EventSystemActivityAlert     NotificationEventType = "SYSTEM_ACTIVITY_ALERT"
+	EventNewTransaction          NotificationEventType = "new.transaction"
+	EventAccountantActivityAlert NotificationEventType = "accountant.activity.alert"
+	EventSystemActivityAlert     NotificationEventType = "system.activity.alert"
 )
 
 type NotificationPreference struct {
