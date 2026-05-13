@@ -3050,6 +3050,94 @@
                 }
             }
         },
+        "/bas/analytics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.\nSupports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engine/bas"
+                ],
+                "summary": "BAS Analytics Time-Series",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Financial Year UUID",
+                        "name": "financial_year_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated Quarter UUIDs",
+                        "name": "quarter_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "today, yesterday, this week, last month, etc.",
+                        "name": "period",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "YYYY-MM-DD",
+                        "name": "from_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "YYYY-MM-DD",
+                        "name": "to_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated: income, expense, netProfitLoss, gstPayable (Section Filters)",
+                        "name": "sections",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated Chart of Account UUIDs (Row Filters)",
+                        "name": "coa_ids",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/bas.RsBASAnalytics"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/bas/bas-preparation": {
             "get": {
                 "security": [
@@ -9575,6 +9663,23 @@
                 }
             }
         },
+        "bas.BASAccountGroup": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASValue"
+                    }
+                }
+            }
+        },
         "bas.BASAmount": {
             "type": "object",
             "properties": {
@@ -9653,6 +9758,57 @@
                     "items": {
                         "$ref": "#/definitions/bas.BASLineItem"
                     }
+                }
+            }
+        },
+        "bas.BASValue": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "gross": {
+                    "type": "number"
+                },
+                "gst": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                }
+            }
+        },
+        "bas.RsBASAnalytics": {
+            "type": "object",
+            "properties": {
+                "expense": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASAccountGroup"
+                    }
+                },
+                "gstPayable": {
+                    "description": "Use pointer for easier omitting",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/bas.BASAccountGroup"
+                        }
+                    ]
+                },
+                "income": {
+                    "description": "omitempty will hide the key if the slice is nil or empty",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/bas.BASAccountGroup"
+                    }
+                },
+                "netProfitLoss": {
+                    "description": "Use pointer for easier omitting",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/bas.BASAccountGroup"
+                        }
+                    ]
                 }
             }
         },

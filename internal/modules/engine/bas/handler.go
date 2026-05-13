@@ -25,6 +25,7 @@ type IHandler interface {
 	GetBASPreparation(c *gin.Context)
 	ExportBASReport(c *gin.Context)
 	ExportBASPreparation(c *gin.Context)
+	GetBASAnalytics(c *gin.Context)
 }
 
 type handler struct {
@@ -516,4 +517,49 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 	default:
 		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
 	}
+}
+
+// GetBASAnalytics godoc
+// @Summary      BAS Analytics Time-Series
+// @Description  Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.
+// @Description  Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.
+// @Tags         engine/bas
+// @Produce      json
+// @Param        financial_year_id  query    string  true   "Financial Year UUID"
+// @Param        quarter_ids        query    string  false  "Comma-separated Quarter UUIDs"
+// @Param        period             query    string  false  "today, yesterday, this week, last month, etc."
+// @Param        from_date          query    string  false  "YYYY-MM-DD"
+// @Param        to_date            query    string  false  "YYYY-MM-DD"
+// @Param        sections           query    string  false  "Comma-separated: income, expense, netProfitLoss, gstPayable (Section Filters)"
+// @Param        coa_ids            query    string  false  "Comma-separated Chart of Account UUIDs (Row Filters)"
+// @Success      200  {object}  RsBASAnalytics
+// @Failure      400  {object}  response.RsError
+// @Failure      403  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /bas/analytics [get]
+func (h *handler) GetBASAnalytics(c *gin.Context) {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok || actorID == nil {
+		return
+	}
+
+	if role != util.RolePractitioner {
+		response.Error(c, http.StatusForbidden, errors.New("only practitioners can view BAS analytics"))
+		return
+	}
+
+	var f BASAnalyticsFilter
+	if err := c.ShouldBindQuery(&f); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.svc.GetBASAnalytics(c.Request.Context(), []uuid.UUID{*actorID}, &f)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, result, "BAS analytics data fetched")
 }
