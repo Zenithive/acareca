@@ -21,7 +21,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	businessEvents "github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
@@ -29,6 +29,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
+	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
@@ -39,7 +40,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker, notification.Service) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -67,12 +68,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// notification (in-app list)
 	notificationRepo := notification.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
-	notificationSvc := notification.NewService(notificationRepo, notifier)
+	notificationSvc := notification.NewService(notificationRepo, notifier, events)
 
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo, notificationSvc)
-
 	// ============ FILE UPLOAD MODULE ============
 	fileRepo := file.NewRepository(dbConn)
 
@@ -135,8 +135,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	admin.RegisterRoutes(v1, adminHandler, cfg)
 
 	// Initialize events service first
-	eventsRepo := events.NewRepository(dbConn)
-	eventsSvc := events.NewService(eventsRepo, notificationSvc, auditSvc)
+	eventsRepo := businessEvents.NewRepository(dbConn)
+	eventsSvc := businessEvents.NewService(eventsRepo, notificationSvc, auditSvc)
 
 	// ============ CLINIC SERVICE (cross-module dependency) ============
 	clinicRepo := clinic.NewRepository(dbConn)
@@ -231,6 +231,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
-	return auditSvc, notifier, notificationRepo, fileUploadWorker
+	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc
 
 }

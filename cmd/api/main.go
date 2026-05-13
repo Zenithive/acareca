@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nats-io/nats.go"
 
 	"github.com/iamarpitzala/acareca/docs"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
+	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/iamarpitzala/acareca/route"
@@ -65,6 +67,61 @@ func main() {
 	}
 	log.Println("migrations applied successfully")
 
+	// ============================================
+	// NATS SETUP
+	// ============================================
+	var events sharedEvents.IEvent
+	var nc *nats.Conn
+
+	// Connect to NATS
+	nc, err = nats.Connect(
+		cfg.NATSUrl,
+		nats.Name("acareca-notification-service"),
+		nats.MaxReconnects(-1), // Infinite reconnects
+		nats.ReconnectWait(2*time.Second),
+		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
+			log.Printf("⚠️  NATS disconnected: %v", err)
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			log.Printf("✅ NATS reconnected to %s", nc.ConnectedUrl())
+		}),
+		nats.ClosedHandler(func(nc *nats.Conn) {
+			log.Println("❌ NATS connection closed")
+		}),
+	)
+	if err != nil {
+		log.Printf("⚠️  Warning: Failed to connect to NATS at %s: %v", cfg.NATSUrl, err)
+		log.Println("📝 Notifications will not be processed asynchronously")
+		log.Println("💡 To enable NATS: Set NATS_URL in .env or start NATS server")
+		events = nil
+	} else {
+		defer nc.Close()
+		log.Printf("✅ Connected to NATS at %s", cfg.NATSUrl)
+
+		// Setup Event System with JetStream
+		events, err = sharedEvents.NewEvent(
+			nc,
+			5,                                    // maxDeliver - retry up to 5 times
+			100,                                  // maxAckPending - process up to 100 messages concurrently
+			512,                                  // maxWaiting - queue up to 512 pull requests
+			30*time.Second,                       // ackWait - wait 30s for acknowledgment
+			"DLQ",                                // dlqPrefix - dead letter queue prefix
+			notification.StreamNotifications,     // stream name
+			[]string{                             // subjects
+				notification.SubjectNotificationCreate,
+				notification.SubjectNotificationEmail,
+				notification.SubjectNotificationPush,
+			},
+		)
+		if err != nil {
+			log.Printf("⚠️  Warning: Failed to setup JetStream: %v", err)
+			log.Println("📝 Notifications will not be processed asynchronously")
+			events = nil
+		} else {
+			log.Println("✅ JetStream initialized successfully")
+		}
+	}
+
 	// Set Gin mode; prefer env GIN_MODE over hardcoded
 	ginMode := os.Getenv("GIN_MODE")
 	if ginMode == "" {
@@ -85,14 +142,52 @@ func main() {
 	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
 	// r.Use(middleware.RateLimitMiddleware(1000, 1000))
-	auditSvc, notifier, notificationRepo, fileUploadWorker := route.RegisterRoutes(r, cfg)
+	auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc := route.RegisterRoutes(r, cfg, events)
 
-	// Start the in_app delivery retry worker
+	// ============================================
+	// START NATS CONSUMERS (if NATS is available)
+	// ============================================
+	if events != nil {
+		// Start notification creation consumer
+		go func() {
+			log.Println("🚀 Starting notification create consumer...")
+			if err := notificationSvc.StartNotificationCreateConsumer(context.Background()); err != nil {
+				log.Printf("❌ Notification create consumer stopped: %v", err)
+			}
+		}()
+
+		// Optional: Start email consumer (uncomment when email service is ready)
+		// go func() {
+		// 	log.Println("🚀 Starting email delivery consumer...")
+		// 	if err := notificationSvc.StartEmailConsumer(context.Background()); err != nil {
+		// 		log.Printf("❌ Email consumer stopped: %v", err)
+		// 	}
+		// }()
+
+		// Optional: Start push consumer (uncomment when push service is ready)
+		// go func() {
+		// 	log.Println("🚀 Starting push notification consumer...")
+		// 	if err := notificationSvc.StartPushConsumer(context.Background()); err != nil {
+		// 		log.Printf("❌ Push consumer stopped: %v", err)
+		// 	}
+		// }()
+
+		log.Println("✅ All NATS consumers started")
+	}
+
+	// ============================================
+	// START BACKGROUND WORKERS
+	// ============================================
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
-	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
 
+	// Start the in_app delivery retry worker
+	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
+	log.Println("✅ Notification retry worker started")
+
+	// Start file upload worker
 	go fileUploadWorker.Start(workerCtx)
+	log.Println("✅ File upload worker started")
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
@@ -111,14 +206,17 @@ func main() {
 	}()
 
 	<-quit
-	log.Println("shutting down server...")
+	log.Println("🛑 Shutting down server...")
+
+	// Cancel worker context first
+	workerCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("server forced to shutdown: %v", err)
+		log.Printf("⚠️  Server forced to shutdown: %v", err)
 	}
 
 	auditSvc.Shutdown()
-	log.Println("server exited")
+	log.Println("✅ Server exited gracefully")
 }
