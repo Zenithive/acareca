@@ -16,7 +16,7 @@ type Service interface {
 	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
-	MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
+	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
 	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
 }
@@ -127,8 +127,8 @@ func (s *service) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error 
 	return s.repo.MarkAllRead(ctx, recipientID)
 }
 
-func (s *service) MarkDismissed(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
-	return s.repo.MarkDismissed(ctx, id, recipientID)
+func (s *service) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error {
+	return s.repo.MarkDismissed(ctx, ids, recipientID)
 }
 
 func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error) {
