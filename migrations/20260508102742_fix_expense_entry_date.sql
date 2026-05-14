@@ -34,7 +34,6 @@ SELECT
     f.method                             AS calculation_method,
     fe.id                                AS entry_id,
 
-    -- Use item-level date for expense entries, entry-level date for all others
     CASE
         WHEN f.method = 'EXPENSE_ENTRY' THEN fev.date::date
         ELSE fe."date"::date

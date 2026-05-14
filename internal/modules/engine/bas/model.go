@@ -343,9 +343,8 @@ type BASLineItemRow struct {
 type BASColumn struct {
 	Quarter  BASQuarterInfo `json:"quarter"`
 	Sections struct {
-		Income        BASSection `json:"income"`
-		Expenses      BASSection `json:"expenses"`
-		NetProfitLoss BASSection `json:"net_profit_loss"`
+		Income   BASSection `json:"income"`
+		Expenses BASSection `json:"expenses"`
 	} `json:"sections"`
 	NetGSTPayable float64 `json:"net_gst_payable"`
 }
@@ -378,13 +377,15 @@ type RsBASAnalytics struct {
 }
 
 type BASAnalyticsFilter struct {
-	FinancialYearID string  `form:"financial_year_id" binding:"required"`
-	QuarterIDs      *string `form:"quarter_ids"` // Comma-separated UUIDs
+	FinancialYearID string `form:"financial_year_id" binding:"required"`
 
-	// Period options: "today", "yesterday", "this_week", "last_month", "custom_date", etc.
+	// Period and QuarterIDs are independent filters; QuarterIDs takes priority when both are set.
+	QuarterIDs *string `form:"quarter_ids"` // Comma-separated UUIDs
+
+	// Period options: "today", "yesterday", "this_week", "last_month", "custom_range", etc.
 	Period string `form:"period"`
 
-	// For "custom_date" or "custom_month" (DD-MM-YYYY)
+	// For "custom_range" or "custom_month" (DD-MM-YYYY)
 	FromDate *string `form:"from_date"`
 	ToDate   *string `form:"to_date"`
 
