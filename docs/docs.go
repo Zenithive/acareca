@@ -9714,9 +9714,6 @@ const docTemplate = `{
                         },
                         "income": {
                             "$ref": "#/definitions/bas.BASSection"
-                        },
-                        "net_profit_loss": {
-                            "$ref": "#/definitions/bas.BASSection"
                         }
                     }
                 }
