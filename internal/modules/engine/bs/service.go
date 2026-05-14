@@ -248,6 +248,16 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+			var dateDescription string
+			if startDate != "" && endDate != "" {
+				dateDescription = fmt.Sprintf("for the period of %s to %s", formatDateForDisplay(startDate), formatDateForDisplay(endDate))
+			} else if startDate != "" {
+				dateDescription = fmt.Sprintf("for the period of %s to %s", formatDateForDisplay(startDate), formatDateForDisplay(endDate))
+			} else if endDate != "" {
+				dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(endDate))
+			}
+
+			description := fmt.Sprintf("Accountant %s generated Balance Sheet %s", fullName, dateDescription)
 			for _, pID := range targetPracIDs {
 				_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 					ID:             uuid.New(),
@@ -258,7 +268,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 					ActorType:      role,
 					EventType:      "balance_sheet.generated",
 					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s generated Balance Sheet for period of %s to %s", fullName, startDate, endDate),
+					Description:    description,
 					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "start_date": startDate, "end_date": endDate},
 					CreatedAt:      time.Now(),
 				})
@@ -463,6 +473,16 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	})
 
 	if role == util.RoleAccountant && len(notifIDs) > 0 {
+		var dateDescription string
+		if data.StartDate != "" && data.EndDate != "" {
+			dateDescription = fmt.Sprintf("for the period of %s to %s", formatDateForDisplay(data.StartDate), formatDateForDisplay(data.EndDate))
+		} else if data.StartDate != "" {
+			dateDescription = fmt.Sprintf("for the period of %s to %s", formatDateForDisplay(data.StartDate), formatDateForDisplay(data.EndDate))
+		} else if data.EndDate != "" {
+			dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(data.EndDate))
+		}
+
+		description := fmt.Sprintf("Accountant %s exported Balance Sheet (%s) %s", fullName, exportType, dateDescription)
 		for _, pID := range notifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -473,7 +493,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 				ActorType:      role,
 				EventType:      "balance_sheet.exported",
 				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s exported Balance Sheet (%s) for period of %s to %s", fullName, exportType, data.StartDate, data.EndDate),
+				Description:    description,
 				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
 				CreatedAt:      time.Now(),
 			})
