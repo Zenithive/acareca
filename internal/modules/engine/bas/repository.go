@@ -22,6 +22,8 @@ type Repository interface {
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
+
+	GetBASAnalytics(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 }
 
 type repository struct {
@@ -349,4 +351,54 @@ func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID u
 		return nil, err
 	}
 	return list, nil
+}
+
+func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
+	// We use 'date' instead of 'period_quarter' to prevent the quarter mapping on custom ranges
+	query := `
+        SELECT 
+            date AS period_quarter, -- Aliased to keep the struct compatible
+            section_type,
+            bas_category,
+            coa_id,
+            account_name,
+            SUM(net_amount) AS net_amount,
+            SUM(gst_amount) AS gst_amount,
+            SUM(gross_amount) AS gross_amount
+        FROM vw_bas_line_items
+        WHERE practitioner_id IN (?)
+    `
+	args := []interface{}{practitionerIDs}
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND clinic_id = ?"
+		args = append(args, *clinicID)
+	}
+
+	// Filter by the actual transaction date
+	if f.FromDate != nil && *f.FromDate != "" {
+		query += " AND date >= ?"
+		args = append(args, *f.FromDate)
+	}
+	if f.ToDate != nil && *f.ToDate != "" {
+		query += " AND date <= ?"
+		args = append(args, *f.ToDate)
+	}
+
+	query += ` GROUP BY date, section_type, bas_category, coa_id, account_name 
+               ORDER BY date ASC`
+
+	fullQuery, fullArgs, err := sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery := r.db.Rebind(fullQuery)
+	var rows []*BASLineItemRow
+
+	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }

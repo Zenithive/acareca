@@ -130,7 +130,7 @@ type ExpenseItem struct {
 	Name        string    `json:"name" validate:"required"`
 	CoaID       uuid.UUID `json:"coa_id" validate:"required,uuid"`
 	BusinessUse float64   `json:"business_use" validate:"required,min=0,max=100"`
-	Amount      float64   `json:"amount" validate:"required,gt=0"`
+	Amount      float64   `json:"amount" validate:"required"`
 	Date        string    `json:"date" validate:"required"`
 	Description *string   `json:"description,omitempty"`
 	TaxType     *string   `json:"tax_type" validate:"omitempty"`
