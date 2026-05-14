@@ -622,6 +622,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		SELECT
 			MAX(coa.id::text)::uuid     AS coa_id,
 			coa.name        AS coa_name,
+			MAX(coa.is_system::int)::bool AS is_system,
 			COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
 			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
 			COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
@@ -634,7 +635,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
 		LEFT  JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause
+		WHERE coa.deleted_at IS NULL` + permissionClause
 
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -654,6 +655,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	type coaEntryRow struct {
 		CoaID            uuid.UUID `db:"coa_id"`
 		CoaName          string    `db:"coa_name"`
+		IsSystem         bool      `db:"is_system"`
 		TotalNetAmount   float64   `db:"total_net_amount"`
 		TotalGSTAmount   float64   `db:"total_gst_amount"`
 		TotalGrossAmount float64   `db:"total_gross_amount"`
@@ -671,6 +673,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		result = append(result, &RsCoaEntry{
 			CoaID:            row.CoaID.String(),
 			CoaName:          row.CoaName,
+			IsSystem:         row.IsSystem,
 			TotalNetAmount:   row.TotalNetAmount,
 			TotalGSTAmount:   row.TotalGSTAmount,
 			TotalGrossAmount: row.TotalGrossAmount,
@@ -727,7 +730,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
 		LEFT  JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE` + permissionClause
+		WHERE coa.deleted_at IS NULL` + permissionClause
 
 	searchCols := []string{"coa.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
@@ -811,7 +814,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
 		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
@@ -932,7 +935,7 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 		FROM tbl_form_entry_value ev
 		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
 		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
 		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
