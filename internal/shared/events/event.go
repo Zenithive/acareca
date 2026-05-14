@@ -34,6 +34,9 @@ func NewEvent(nc *nats.Conn, maxDeliver, maxAckPending, maxWaiting int, ackWait 
 		return nil, err
 	}
 
+	// Add DLQ subjects to capture dead letter queue messages
+	allSubjects := append(subject, dlqPrefix+".*")
+
 	e := &Event{
 		js:            js,
 		maxDeliver:    maxDeliver,
@@ -42,7 +45,7 @@ func NewEvent(nc *nats.Conn, maxDeliver, maxAckPending, maxWaiting int, ackWait 
 		ackWait:       ackWait,
 		dlqPrefix:     dlqPrefix,
 		stream:        stream,
-		subject:       subject,
+		subject:       allSubjects,
 	}
 
 	// exists before any Publish or Consume calls are made.

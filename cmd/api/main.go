@@ -101,14 +101,14 @@ func main() {
 		// Setup Event System with JetStream
 		events, err = sharedEvents.NewEvent(
 			nc,
-			5,                                    // maxDeliver - retry up to 5 times
-			100,                                  // maxAckPending - process up to 100 messages concurrently
-			512,                                  // maxWaiting - queue up to 512 pull requests
-			30*time.Second,                       // ackWait - wait 30s for acknowledgment
-			"DLQ",                                // dlqPrefix - dead letter queue prefix
-			notification.StreamNotifications,     // stream name
-			[]string{                             // subjects
-				notification.SubjectNotificationCreate,
+			5,                               // maxDeliver - retry up to 5 times
+			100,                             // maxAckPending - process up to 100 messages concurrently
+			512,                             // maxWaiting - queue up to 512 pull requests
+			30*time.Second,                  // ackWait - wait 30s for acknowledgment
+			"DLQ",                           // dlqPrefix - dead letter queue prefix
+			notification.StreamNotification, // stream name
+			[]string{ // subjects
+				notification.SubjectNotificationInApp,
 				notification.SubjectNotificationEmail,
 				notification.SubjectNotificationPush,
 			},
@@ -156,21 +156,21 @@ func main() {
 			}
 		}()
 
-		// Optional: Start email consumer (uncomment when email service is ready)
-		// go func() {
-		// 	log.Println("🚀 Starting email delivery consumer...")
-		// 	if err := notificationSvc.StartEmailConsumer(context.Background()); err != nil {
-		// 		log.Printf("❌ Email consumer stopped: %v", err)
-		// 	}
-		// }()
+		// Start email consumer
+		go func() {
+			log.Println("🚀 Starting email delivery consumer...")
+			if err := notificationSvc.StartEmailConsumer(context.Background()); err != nil {
+				log.Printf("❌ Email consumer stopped: %v", err)
+			}
+		}()
 
-		// Optional: Start push consumer (uncomment when push service is ready)
-		// go func() {
-		// 	log.Println("🚀 Starting push notification consumer...")
-		// 	if err := notificationSvc.StartPushConsumer(context.Background()); err != nil {
-		// 		log.Printf("❌ Push consumer stopped: %v", err)
-		// 	}
-		// }()
+		// Start push consumer
+		go func() {
+			log.Println("🚀 Starting push notification consumer...")
+			if err := notificationSvc.StartPushConsumer(context.Background()); err != nil {
+				log.Printf("❌ Push consumer stopped: %v", err)
+			}
+		}()
 
 		log.Println("✅ All NATS consumers started")
 	}

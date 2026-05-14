@@ -33,7 +33,7 @@ func NewHandler(svc Service) IHandler {
 // @Param        status  query     string  false  "Filter by status (UNREAD, READ, DISMISSED)"
 // @Param        limit   query     int     false  "Number of records to return"
 // @Param        page    query     int     false  "Page number"
-// @Success      200     {object}  response.RsBase{data=RsListNotification}
+// @Success      200     {object}  response.RsBase{data=util.RsList}
 // @Failure      400     {object}  response.RsError
 // @Failure      500     {object}  response.RsError
 // @Security     BearerToken

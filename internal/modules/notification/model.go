@@ -1,9 +1,7 @@
 package notification
 
 import (
-	"database/sql/driver"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -188,14 +186,6 @@ type FilterNotification struct {
 	Page   int     `form:"page"`
 }
 
-type RsListNotification struct {
-	Notifications []Notification `json:"notifications"`
-	UnreadCount   int            `json:"unread_count"`
-	Total         int            `json:"total"`
-	Page          int            `json:"page"`
-	Limit         int            `json:"limit"`
-}
-
 func BuildNotificationPayload(title string, body json.RawMessage, senderName *string, entityName *string, extraData *map[string]interface{}) *NotificationPayload {
 	return &NotificationPayload{
 		Title:      title,
@@ -216,63 +206,44 @@ const (
 	EventSystemActivityAlert     NotificationEventType = "system.activity.alert"
 )
 
+type NotificationEventTypes []NotificationEventType
+
 type NotificationPreference struct {
-	ID         uuid.UUID             `db:"id" json:"id"`
-	UserID     uuid.UUID             `db:"user_id" json:"user_id"`
-	EntityID   uuid.UUID             `db:"entity_id" json:"entity_id"`
-	EntityType string                `db:"entity_type" json:"entity_type"`
-	EventType  NotificationEventType `db:"event_type" json:"event_type"`
-	Channels   NotificationChannels  `db:"channels" json:"channels"` // JSONB Map
-	CreatedAt  time.Time             `db:"created_at" json:"created_at"`
-	UpdatedAt  time.Time             `db:"updated_at" json:"updated_at"`
-	DeletedAt  *time.Time            `db:"deleted_at" json:"-"`
+	ID         uuid.UUID              `db:"id" json:"id"`
+	UserID     uuid.UUID              `db:"user_id" json:"user_id"`
+	EntityID   uuid.UUID              `db:"entity_id" json:"entity_id"`
+	EntityType string                 `db:"entity_type" json:"entity_type"`
+	EventType  NotificationEventTypes `db:"event_type" json:"event_type"`
+	Channels   NotificationChannels   `db:"channels" json:"channels"` // JSONB Map
+	CreatedAt  time.Time              `db:"created_at" json:"created_at"`
+	UpdatedAt  time.Time              `db:"updated_at" json:"updated_at"`
+	DeletedAt  *time.Time             `db:"deleted_at" json:"-"`
 }
 
 type RqUpdatePreference struct {
-	EventType NotificationEventType `json:"event_type" binding:"required"`
-	Channels  NotificationChannels  `json:"channels"   binding:"required"`
+	EventType NotificationEventTypes `json:"event_type" validate:"required"`
+	Channels  NotificationChannels   `json:"channels"   validate:"required"`
 }
 
 // Define a custom type for the channels map
 type NotificationChannels map[string]bool
-
-// Implement the Scan method so SQL knows how to handle JSONB
-func (nc *NotificationChannels) Scan(value interface{}) error {
-	// If the DB value is NULL, initialize an empty map
-	if value == nil {
-		*nc = make(NotificationChannels)
-		return nil
-	}
-	bytes, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("type assertion to []byte failed")
-	}
-	return json.Unmarshal(bytes, nc)
-}
-
-// Value implements the driver.Valuer interface (WRITING to DB)
-func (nc NotificationChannels) Value() (driver.Value, error) {
-	if nc == nil {
-		return json.Marshal(map[string]bool{})
-	}
-	return json.Marshal(nc)
-}
 
 type RqBulkDismiss struct {
 	IDs []uuid.UUID `json:"ids" validate:"required,min=1"`
 }
 
 const (
-	// NATS subjects
-	SubjectNotificationCreate = "notification.create"
-	SubjectNotificationEmail  = "notification.email"
-	SubjectNotificationPush   = "notification.push"
+	// Subjects
+	SubjectNotificationInApp = "notification.in_app"
+	SubjectNotificationEmail = "notification.email"
+	SubjectNotificationPush  = "notification.push"
 
-	// Stream and consumer names
-	StreamNotifications = "NOTIFICATIONS"
-	ConsumerCreate      = "notification-create-consumer"
-	ConsumerEmail       = "notification-email-consumer"
-	ConsumerPush        = "notification-push-consumer"
+	// JetStream
+	StreamNotification = "NOTIFICATION_STREAM"
+
+	ConsumerNotificationInApp = "notification.in_app.consumer"
+	ConsumerNotificationEmail = "notification.email.consumer"
+	ConsumerNotificationPush  = "notification.push.consumer"
 )
 
 // NotificationEvent represents the event payload published to NATS

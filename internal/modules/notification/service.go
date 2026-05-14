@@ -5,42 +5,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
 type Service interface {
 	// Core notification operations
 	Publish(ctx context.Context, rq RqNotification) error
-	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error)
+	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
-	
+
 	// Preference operations
 	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
-	
+
 	// Consumer operations (for NATS event processing)
 	StartNotificationCreateConsumer(ctx context.Context) error
 	StartEmailConsumer(ctx context.Context) error
 	StartPushConsumer(ctx context.Context) error
+	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error
 }
 
 type service struct {
 	repo     Repository
 	notifier *sharednotification.Hub
 	events   sharedEvents.IEvent
+	db       *sqlx.DB
 }
 
-func NewService(repo Repository, notifier *sharednotification.Hub, events sharedEvents.IEvent) Service {
+func NewService(repo Repository, notifier *sharednotification.Hub, events sharedEvents.IEvent, db *sqlx.DB) Service {
 	return &service{
 		repo:     repo,
 		notifier: notifier,
 		events:   events,
+		db:       db,
 	}
 }
 
@@ -65,33 +71,48 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		CreatedAt:     rq.CreatedAt,
 	}
 
-	if err := s.events.Publish(ctx, SubjectNotificationCreate, event); err != nil {
+	if err := s.events.Publish(ctx, SubjectNotificationInApp, event); err != nil {
 		return fmt.Errorf("failed to publish notification event: %w", err)
 	}
 
 	return nil
 }
 
-func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error) {
-	notifications, total, page, limit, err := s.repo.ListByRecipient(ctx, recipientID, filter)
+func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error) {
+	notifications, total, err := s.repo.ListByRecipient(ctx, recipientID, filter)
 	if err != nil {
-		return RsListNotification{}, err
+		return nil, err
 	}
 
 	// Get the GLOBAL unread count
-	unread := 0
-	unread, err = s.repo.GetUnreadCount(ctx, recipientID)
+	unreadCount := 0
+	unreadCount, err = s.repo.GetUnreadCount(ctx, recipientID)
 	if err != nil {
-		fmt.Printf("Error in count notifications: %s", err)
+		log.Printf("Error in count notifications: %s", err)
 	}
 
-	return RsListNotification{
-		Notifications: notifications,
-		UnreadCount:   unread,
-		Total:         total,
-		Page:          page,
-		Limit:         limit,
-	}, nil
+	// Set pagination defaults
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	page := filter.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	// Create response with unread count in metadata
+	result := &util.RsList{
+		Items: map[string]interface{}{
+			"notifications": notifications,
+			"unread_count":  unreadCount,
+		},
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	}
+
+	return result, nil
 }
 
 func (s *service) MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
@@ -125,7 +146,7 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 		EventType:  rq.EventType,
 		Channels:   rq.Channels,
 	}
-	return s.repo.UpsertPreference(ctx, pref)
+	return s.repo.CreatePreference(ctx, pref)
 }
 
 // filterChannels returns only the channels that are enabled in user preferences
@@ -152,9 +173,9 @@ func (s *service) StartNotificationCreateConsumer(ctx context.Context) error {
 
 	return s.events.Consume(
 		ctx,
-		StreamNotifications,
-		ConsumerCreate,
-		SubjectNotificationCreate,
+		StreamNotification,
+		ConsumerNotificationInApp,
+		SubjectNotificationInApp,
 		s.handleNotificationCreate,
 	)
 }
@@ -162,7 +183,7 @@ func (s *service) StartNotificationCreateConsumer(ctx context.Context) error {
 // handleNotificationCreate processes notification creation events
 func (s *service) handleNotificationCreate(msg jetstream.Msg) error {
 	ctx := context.Background()
-	
+
 	var event NotificationEvent
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
@@ -194,7 +215,7 @@ func (s *service) handleNotificationCreate(msg jetstream.Msg) error {
 		return nil // Successfully processed (user opted out)
 	}
 
-	// Create notification in database
+	// Create notification record
 	notification := Notification{
 		ID:            event.ID,
 		RecipientID:   event.RecipientID,
@@ -209,14 +230,15 @@ func (s *service) handleNotificationCreate(msg jetstream.Msg) error {
 		CreatedAt:     event.CreatedAt,
 	}
 
-	notificationID, err := s.repo.CreateNotification(ctx, notification)
+	// Create notification and deliveries in a transaction
+	var notificationID uuid.UUID
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var txErr error
+		notificationID, txErr = s.repo.CreateNotificationWithDeliveries(ctx, tx, notification, allowedChannels)
+		return txErr
+	})
 	if err != nil {
-		return fmt.Errorf("failed to create notification: %w", err)
-	}
-
-	// Create delivery records
-	if err := s.repo.CreateDeliveries(ctx, notificationID, allowedChannels); err != nil {
-		return fmt.Errorf("failed to create deliveries: %w", err)
+		return fmt.Errorf("failed to create notification with deliveries: %w", err)
 	}
 
 	// Attempt real-time delivery for each channel
@@ -225,11 +247,33 @@ func (s *service) handleNotificationCreate(msg jetstream.Msg) error {
 		case ChannelInApp:
 			s.deliverInApp(ctx, notificationID, event)
 		case ChannelEmail:
-			log.Printf("Email delivery queued for notification %s", notificationID)
-			// Email delivery will be handled by email consumer
+			// Publish to email subject for email consumer to process
+			emailEvent := map[string]interface{}{
+				"notification_id": notificationID,
+				"recipient_id":    event.RecipientID,
+				"event_type":      event.EventType,
+				"payload":         event.Payload,
+			}
+			if err := s.events.Publish(ctx, SubjectNotificationEmail, emailEvent); err != nil {
+				log.Printf("Failed to publish email event for notification %s: %v", notificationID, err)
+				_ = s.repo.MarkDeliveryFailed(ctx, notificationID, ChannelEmail, "failed to publish to NATS")
+			} else {
+				log.Printf("Email delivery queued for notification %s", notificationID)
+			}
 		case ChannelPush:
-			log.Printf("Push delivery queued for notification %s", notificationID)
-			// Push delivery will be handled by push consumer
+			// Publish to push subject for push consumer to process
+			pushEvent := map[string]interface{}{
+				"notification_id": notificationID,
+				"recipient_id":    event.RecipientID,
+				"event_type":      event.EventType,
+				"payload":         event.Payload,
+			}
+			if err := s.events.Publish(ctx, SubjectNotificationPush, pushEvent); err != nil {
+				log.Printf("Failed to publish push event for notification %s: %v", notificationID, err)
+				_ = s.repo.MarkDeliveryFailed(ctx, notificationID, ChannelPush, "failed to publish to NATS")
+			} else {
+				log.Printf("Push delivery queued for notification %s", notificationID)
+			}
 		}
 	}
 
@@ -285,8 +329,8 @@ func (s *service) StartEmailConsumer(ctx context.Context) error {
 
 	return s.events.Consume(
 		ctx,
-		StreamNotifications,
-		ConsumerEmail,
+		StreamNotification,
+		ConsumerNotificationEmail,
 		SubjectNotificationEmail,
 		s.handleEmailDelivery,
 	)
@@ -295,7 +339,7 @@ func (s *service) StartEmailConsumer(ctx context.Context) error {
 // handleEmailDelivery processes email delivery events
 func (s *service) handleEmailDelivery(msg jetstream.Msg) error {
 	ctx := context.Background()
-	
+
 	var event map[string]interface{}
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
 		return fmt.Errorf("failed to unmarshal email event: %w", err)
@@ -337,8 +381,8 @@ func (s *service) StartPushConsumer(ctx context.Context) error {
 
 	return s.events.Consume(
 		ctx,
-		StreamNotifications,
-		ConsumerPush,
+		StreamNotification,
+		ConsumerNotificationPush,
 		SubjectNotificationPush,
 		s.handlePushDelivery,
 	)
@@ -347,7 +391,7 @@ func (s *service) StartPushConsumer(ctx context.Context) error {
 // handlePushDelivery processes push notification delivery events
 func (s *service) handlePushDelivery(msg jetstream.Msg) error {
 	ctx := context.Background()
-	
+
 	var event map[string]interface{}
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
 		return fmt.Errorf("failed to unmarshal push event: %w", err)
@@ -373,6 +417,32 @@ func (s *service) handlePushDelivery(msg jetstream.Msg) error {
 
 	if err := s.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelPush); err != nil {
 		return fmt.Errorf("failed to mark push as delivered: %w", err)
+	}
+
+	return nil
+}
+
+// PreferenceSetting implements [Service].
+func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error {
+	var p NotificationPreference
+	p.UserID = userID
+	p.EntityID = entityID
+	p.EntityType = entityType
+	p.Channels = NotificationChannels{
+		string(ChannelInApp): true,
+		string(ChannelEmail): false,
+		string(ChannelPush):  false,
+	}
+	p.EventType = NotificationEventTypes{
+		EventNewTransaction,
+		EventAccountantActivityAlert,
+		EventSystemActivityAlert,
+	}
+	p.CreatedAt = time.Now()
+
+	err := s.repo.CreatePreference(ctx, p)
+	if err != nil {
+		return fmt.Errorf("failed to create preference: %w", err)
 	}
 
 	return nil

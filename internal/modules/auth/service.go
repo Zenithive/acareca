@@ -20,6 +20,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -70,9 +71,10 @@ type service struct {
 	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
 	fileRepo         filemod.Repository
+	NotificationSvc  notification.Service
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, notificationSvc notification.Service) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -96,6 +98,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		adminSvc:         adminSvc,
 		inviteRepo:       inviteRepo,
 		fileRepo:         fileRepo,
+		NotificationSvc:  notificationSvc,
 	}
 }
 
@@ -200,6 +203,14 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			)
 		}
 	}()
+
+	err = s.NotificationSvc.PreferenceSetting(ctx, created.ID, entityID, created.Role)
+	if err != nil {
+		fmt.Printf("[AUTH ERROR] Failed to set notification preferences: %v\n", err)
+		s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "auth.set_notification_preferences",
+			err, created.ID.String(), entityID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+		)
+	}
 
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
