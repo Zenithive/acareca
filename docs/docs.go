@@ -3084,7 +3084,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "today, yesterday, this week, last month, etc.",
+                        "description": "today, yesterday, this_week, last_week, last_28_days, last_30_days, last_month, custom_range, custom_month, etc.",
                         "name": "period",
                         "in": "query"
                     },
@@ -3108,7 +3108,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Comma-separated Chart of Account UUIDs (Row Filters)",
+                        "description": "Comma-separated COA UUIDs (Row Filters)",
                         "name": "coa_ids",
                         "in": "query"
                     }

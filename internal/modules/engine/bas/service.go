@@ -1732,7 +1732,6 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 }
 
 func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error) {
-	// 1. Parse Financial Year
 	fyID, err := uuid.Parse(f.FinancialYearID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid financial year id: %w", err)
@@ -1743,51 +1742,85 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 		return nil, fmt.Errorf("financial year not found: %w", err)
 	}
 
-	// 2. Resolve EXACT Boundaries
 	now := time.Now()
 	var resolvedFrom, resolvedTo time.Time
 
-	// Default to FY boundaries
+	// Default to the financial year boundaries.
 	resolvedFrom, resolvedTo = fy.StartDate, fy.EndDate
-
 	period := strings.ToLower(f.Period)
-	switch period {
-	case "today":
-		resolvedFrom, resolvedTo = now, now
-	case "yesterday":
-		resolvedFrom = now.AddDate(0, 0, -1)
-		resolvedTo = resolvedFrom
-	case "this_week":
-		resolvedFrom = now.AddDate(0, 0, -int(now.Weekday()))
-		resolvedTo = now
-	case "last_week":
-		resolvedFrom = now.AddDate(0, 0, -int(now.Weekday())-7)
-		resolvedTo = resolvedFrom.AddDate(0, 0, 6)
-	case "last_28_days":
-		resolvedFrom = now.AddDate(0, 0, -28)
-		resolvedTo = now
-	case "last_30_days":
-		resolvedFrom = now.AddDate(0, 0, -30)
-		resolvedTo = now
-	case "last_month":
-		resolvedFrom = time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
-		resolvedTo = resolvedFrom.AddDate(0, 1, -1)
-	case "custom_range":
-		if f.FromDate != nil && *f.FromDate != "" {
-			resolvedFrom, _ = time.Parse("2006-01-02", *f.FromDate)
+
+	//When quarter_ids are provided, shrink the boundaries to exactly that quarter's date range.
+	quarterSelected := f.QuarterIDs != nil && *f.QuarterIDs != ""
+	if quarterSelected {
+		idStrings := strings.Split(*f.QuarterIDs, ",")
+		var minStart, maxEnd time.Time
+		foundValidQuarter := false
+
+		for _, sID := range idStrings {
+			uID, parseErr := uuid.Parse(strings.TrimSpace(sID))
+			if parseErr != nil {
+				continue
+			}
+
+			qInfo, qErr := s.repo.GetQuarterInfoByID(ctx, uID)
+			if qErr == nil && qInfo != nil {
+				sTime, _ := time.Parse("2006-01-02", qInfo.StartDate)
+				eTime, _ := time.Parse("2006-01-02", qInfo.EndDate)
+
+				if minStart.IsZero() || sTime.Before(minStart) {
+					minStart = sTime
+				}
+				if maxEnd.IsZero() || eTime.After(maxEnd) {
+					maxEnd = eTime
+				}
+				foundValidQuarter = true
+			}
 		}
-		if f.ToDate != nil && *f.ToDate != "" {
-			resolvedTo, _ = time.Parse("2006-01-02", *f.ToDate)
+
+		if foundValidQuarter {
+			resolvedFrom = minStart
+			resolvedTo = maxEnd
 		}
-	case "custom_month":
-		if f.FromDate != nil && *f.FromDate != "" {
-			t, _ := time.Parse("2006-01", *f.FromDate)
-			resolvedFrom = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+	} else if period != "" {
+		// Period is only applied when no quarter is selected.
+		switch period {
+		case "today":
+			resolvedFrom, resolvedTo = now, now
+		case "yesterday":
+			resolvedFrom = now.AddDate(0, 0, -1)
+			resolvedTo = resolvedFrom
+		case "this_week":
+			resolvedFrom = now.AddDate(0, 0, -int(now.Weekday()))
+			resolvedTo = now
+		case "last_week":
+			resolvedFrom = now.AddDate(0, 0, -int(now.Weekday())-7)
+			resolvedTo = resolvedFrom.AddDate(0, 0, 6)
+		case "last_28_days":
+			resolvedFrom = now.AddDate(0, 0, -28)
+			resolvedTo = now
+		case "last_30_days":
+			resolvedFrom = now.AddDate(0, 0, -30)
+			resolvedTo = now
+		case "last_month":
+			resolvedFrom = time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
 			resolvedTo = resolvedFrom.AddDate(0, 1, -1)
+		case "custom_range":
+			if f.FromDate != nil && *f.FromDate != "" {
+				resolvedFrom, _ = time.Parse("2006-01-02", *f.FromDate)
+			}
+			if f.ToDate != nil && *f.ToDate != "" {
+				resolvedTo, _ = time.Parse("2006-01-02", *f.ToDate)
+			}
+		case "custom_month":
+			if f.FromDate != nil && *f.FromDate != "" {
+				t, _ := time.Parse("2006-01", *f.FromDate)
+				resolvedFrom = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+				resolvedTo = resolvedFrom.AddDate(0, 1, -1)
+			}
 		}
 	}
 
-	// Boundary Clamping: Ensure selection doesn't exceed the chosen FY
+	// Boundary Clamping ensures the dates never escape the selected Financial Year.
 	if !resolvedFrom.IsZero() && resolvedFrom.Before(fy.StartDate) {
 		resolvedFrom = fy.StartDate
 	}
@@ -1795,7 +1828,7 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 		resolvedTo = fy.EndDate
 	}
 
-	// 3. Setup Repo Filter & Fetch
+	// Prepare the repository filter.
 	fromStr, toStr := resolvedFrom.Format("2006-01-02"), resolvedTo.Format("2006-01-02")
 	repoFilter := &BASFilter{
 		FinancialYearID: &f.FinancialYearID,
@@ -1805,18 +1838,17 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 	}
 	_ = repoFilter.MapToFilter()
 
-	// Clear quarters if we are using a specific custom period to force date-based SQL
-	if period != "quarters" && period != "" {
+	// When no quarters are selected and a period filter is active, clear ParsedQuarterIDs so the repo uses the resolved date range instead of quarter-based filtering.
+	if !quarterSelected && period != "" {
 		repoFilter.ParsedQuarterIDs = nil
 	}
 
 	nilClinic := uuid.Nil
-	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, repoFilter)
+	rows, err := s.repo.GetBASAnalytics(ctx, targetPracIDs, &nilClinic, repoFilter)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. Grouping & Memory-Level DATE GUARD
 	incomeMap := make(map[string]*BASAccountGroup)
 	expenseMap := make(map[string]*BASAccountGroup)
 	incomeTotalsByDate := make(map[string]BASValue)
@@ -1835,14 +1867,10 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 			continue
 		}
 
-		// --- CRITICAL FIX: THE DATE BOUNCER ---
-		// We normalize row dates to compare exactly against our resolved range.
-		// If DB returns April (04-01) but filter is Jan (01-01 to 01-31), skip it.
 		if r.PeriodQuarter.Before(resolvedFrom) || r.PeriodQuarter.After(resolvedTo) {
 			continue
 		}
 
-		// COA Guard
 		if len(selectedCoas) > 0 && !selectedCoas[r.CoaID] {
 			continue
 		}
@@ -1862,9 +1890,9 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 
 			t := incomeTotalsByDate[dateKey]
 			t.Date = dateKey
-			t.Gross = roundToTwo(t.Gross + val.Gross)
-			t.GST = roundToTwo(t.GST + val.GST)
-			t.Net = roundToTwo(t.Net + val.Net)
+			t.Gross += val.Gross
+			t.GST += val.GST
+			t.Net += val.Net
 			incomeTotalsByDate[dateKey] = t
 		} else {
 			if _, ok := expenseMap[r.CoaID]; !ok {
@@ -1874,14 +1902,14 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 
 			t := expenseTotalsByDate[dateKey]
 			t.Date = dateKey
-			t.Gross = roundToTwo(t.Gross + val.Gross)
-			t.GST = roundToTwo(t.GST + val.GST)
-			t.Net = roundToTwo(t.Net + val.Net)
+			t.Gross += val.Gross
+			t.GST += val.GST
+			t.Net += val.Net
 			expenseTotalsByDate[dateKey] = t
 		}
 	}
 
-	// 5. Response Assembly
+	// Assemble the final response based on the categorized maps.
 	resp := &RsBASAnalytics{}
 	secStr := ""
 	if f.Sections != nil {
@@ -1894,10 +1922,9 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 	}
 	sort.Strings(sortedDates)
 
+	// Summary calculations for net profit and GST payable.
 	showIncome := strings.Contains(secStr, "income") || secStr == ""
 	showExpense := strings.Contains(secStr, "expense") || secStr == ""
-	showProfit := strings.Contains(secStr, "netProfitLoss") || secStr == ""
-	showGST := strings.Contains(secStr, "gstPayable") || secStr == ""
 
 	if showIncome && len(incomeMap) > 0 {
 		for _, acc := range incomeMap {
@@ -1921,7 +1948,7 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 		resp.Expense = append(resp.Expense, BASAccountGroup{Name: "total", Values: tv})
 	}
 
-	if showProfit && len(dateSet) > 0 {
+	if (strings.Contains(secStr, "netProfitLoss") || secStr == "") && len(dateSet) > 0 {
 		resp.NetProfitLoss = &BASAccountGroup{Name: "netProfitLoss"}
 		for _, d := range sortedDates {
 			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
@@ -1929,12 +1956,13 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 		}
 	}
 
-	if showGST && len(dateSet) > 0 {
+	if (strings.Contains(secStr, "gstPayable") || secStr == "") && len(dateSet) > 0 {
 		resp.GSTPayable = &BASAccountGroup{Name: "gstPayable"}
 		for _, d := range sortedDates {
 			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
 			resp.GSTPayable.Values = append(resp.GSTPayable.Values, BASValue{Date: d, GST: roundToTwo(inc.GST - exp.GST)})
 		}
 	}
+
 	return resp, nil
 }

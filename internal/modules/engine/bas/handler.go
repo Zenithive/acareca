@@ -527,11 +527,11 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 // @Produce      json
 // @Param        financial_year_id  query    string  true   "Financial Year UUID"
 // @Param        quarter_ids        query    string  false  "Comma-separated Quarter UUIDs"
-// @Param        period             query    string  false  "today, yesterday, this week, last month, etc."
+// @Param        period             query    string  false  "today, yesterday, this_week, last_week, last_28_days, last_30_days, last_month, custom_range, custom_month, etc."
 // @Param        from_date          query    string  false  "YYYY-MM-DD"
 // @Param        to_date            query    string  false  "YYYY-MM-DD"
 // @Param        sections           query    string  false  "Comma-separated: income, expense, netProfitLoss, gstPayable (Section Filters)"
-// @Param        coa_ids            query    string  false  "Comma-separated Chart of Account UUIDs (Row Filters)"
+// @Param        coa_ids            query    string  false  "Comma-separated COA UUIDs (Row Filters)"
 // @Success      200  {object}  RsBASAnalytics
 // @Failure      400  {object}  response.RsError
 // @Failure      403  {object}  response.RsError

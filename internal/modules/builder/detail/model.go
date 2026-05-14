@@ -84,6 +84,7 @@ type RqUpdateFormDetail struct {
 type FormDetail struct {
 	ID              uuid.UUID  `db:"id" json:"id"`
 	ClinicID        uuid.UUID  `db:"clinic_id" json:"clinic_id"`
+	ClinicName      string     `db:"clinic_name" json:"clinic_name"`
 	Name            string     `db:"name" json:"name"`
 	Description     *string    `db:"description" json:"description,omitempty"`
 	Status          string     `db:"status" json:"status"`
