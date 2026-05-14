@@ -343,9 +343,8 @@ type BASLineItemRow struct {
 type BASColumn struct {
 	Quarter  BASQuarterInfo `json:"quarter"`
 	Sections struct {
-		Income        BASSection `json:"income"`
-		Expenses      BASSection `json:"expenses"`
-		NetProfitLoss BASSection `json:"net_profit_loss"`
+		Income   BASSection `json:"income"`
+		Expenses BASSection `json:"expenses"`
 	} `json:"sections"`
 	NetGSTPayable float64 `json:"net_gst_payable"`
 }
