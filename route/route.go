@@ -73,6 +73,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := notification.NewPublisher(events)
 	notificationConsumer := notification.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher)
+	
+	// Wire stream manager to WebSocket hub for real-time delivery
+	if events != nil {
+		streamManager := notificationConsumer.GetStreamManager()
+		notifier.SetStreamManager(streamManager)
+		log.Println("✅ NATS stream manager connected to WebSocket hub")
+	}
 
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)

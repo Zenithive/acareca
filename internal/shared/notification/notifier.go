@@ -18,9 +18,13 @@ import (
 )
 
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[uuid.UUID][]*client
-	db      *sqlx.DB
+	mu            sync.RWMutex
+	clients       map[uuid.UUID][]*client
+	db            *sqlx.DB
+	streamManager interface {
+		AttachUserStream(userID uuid.UUID, handler func(interface{})) error
+		DetachUserStream(userID uuid.UUID)
+	}
 }
 
 type client struct {
@@ -40,6 +44,14 @@ func NewNotifier(db *sqlx.DB) *Hub {
 		clients: make(map[uuid.UUID][]*client),
 		db:      db,
 	}
+}
+
+// SetStreamManager sets the stream manager for real-time NATS integration
+func (h *Hub) SetStreamManager(sm interface {
+	AttachUserStream(userID uuid.UUID, handler func(interface{})) error
+	DetachUserStream(userID uuid.UUID)
+}) {
+	h.streamManager = sm
 }
 
 // Push sends a live notification event to all connections belonging to entityID.
@@ -110,11 +122,38 @@ func (h *Hub) register(cl *client) {
 	h.mu.Lock()
 	h.clients[cl.entityID] = append(h.clients[cl.entityID], cl)
 	h.mu.Unlock()
+
+	// Attach NATS stream for real-time notifications
+	if h.streamManager != nil {
+		handler := func(event interface{}) {
+			data, err := json.Marshal(map[string]any{
+				"type": "notification",
+				"data": event,
+			})
+			if err != nil {
+				log.Printf("notifier: marshal error for stream event: %v", err)
+				return
+			}
+
+			select {
+			case cl.send <- data:
+			default:
+				log.Printf("notifier: dropped stream message for entityID=%s (buffer full)", cl.entityID)
+			}
+		}
+
+		if err := h.streamManager.AttachUserStream(cl.entityID, handler); err != nil {
+			log.Printf("notifier: failed to attach stream for user %s: %v", cl.entityID, err)
+		} else {
+			log.Printf("notifier: attached NATS stream for user %s", cl.entityID)
+		}
+	}
 }
 
 func (h *Hub) unregister(cl *client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	
 	list := h.clients[cl.entityID]
 	for i, c := range list {
 		if c == cl {
@@ -122,10 +161,18 @@ func (h *Hub) unregister(cl *client) {
 			break
 		}
 	}
+	
 	// Clean up map entry to prevent memory leak.
 	if len(h.clients[cl.entityID]) == 0 {
 		delete(h.clients, cl.entityID)
+		
+		// Detach NATS stream when last client disconnects
+		if h.streamManager != nil {
+			h.streamManager.DetachUserStream(cl.entityID)
+			log.Printf("notifier: detached NATS stream for user %s", cl.entityID)
+		}
 	}
+	
 	// Closing the channel signals writePump to exit cleanly.
 	close(cl.send)
 }
