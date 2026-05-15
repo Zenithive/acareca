@@ -9572,11 +9572,30 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "acn": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "address": {
+                    "description": "Optional",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "SOLE_TRADER",
+                        "COMPANY",
+                        "TRUST"
+                    ]
                 },
                 "first_name": {
                     "type": "string"
@@ -9585,6 +9604,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                },
+                "profession": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "tax_agent_number": {
+                    "description": "Optional",
                     "type": "string"
                 }
             }

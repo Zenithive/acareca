@@ -26,7 +26,7 @@ type IService interface {
 	DeletePractitioner(ctx context.Context, id uuid.UUID) error
 	ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error)
-	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+	UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error
 	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 	VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error
@@ -107,8 +107,8 @@ func (s *service) GetPractitionerByUserID(ctx context.Context, userID string) (*
 }
 
 // UpdateABN implements [IService].
-func (s *service) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error {
-	return s.repo.UpdateABN(ctx, userID, abn)
+func (s *service) UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error {
+	return s.repo.UpdatePractitionerProfile(ctx, userID, req)
 }
 
 // ListPractitioners implements [IService].

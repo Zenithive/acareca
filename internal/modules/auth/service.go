@@ -771,19 +771,34 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		return nil, fmt.Errorf("update profile: %w", err)
 	}
 
-	// Update ABN if user is a practitioner and abn was provided
-	if user.Role == util.RolePractitioner && req.ABN != nil {
-		if err := s.practitionerSvc.UpdateABN(ctx, userID, req.ABN); err != nil {
-			return nil, fmt.Errorf("update abn: %w", err)
+	// Update Role-Specific Entity Details
+	switch user.Role {
+	case util.RolePractitioner:
+		// We pass the relevant fields from the request to the practitioner service
+		err := s.practitionerSvc.UpdatePractitionerProfile(ctx, userID, &practitioner.RqUpdatePractitioner{
+			ABN:        req.ABN,
+			EntityType: req.EntityType,
+			EntityName: req.EntityName,
+			ACN:        req.ACN,
+			Address:    req.Address,
+			Profession: req.Profession,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update practitioner profile: %w", err)
 		}
-		updated.Role = user.Role // keep role intact for response
-	}
 
-	rs := updated.ToRsUser()
-	if user.Role == util.RolePractitioner {
-		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
-		if err == nil {
-			rs.ABN = p.ABN
+	case util.RoleAccountant:
+		err := s.accountantSvc.UpdateAccountantProfile(ctx, userID, &accountant.RqUpdateAccountant{
+			ABN:            req.ABN,
+			EntityType:     req.EntityType,
+			EntityName:     req.EntityName,
+			ACN:            req.ACN,
+			Address:        req.Address,
+			Profession:     req.Profession,
+			TaxAgentNumber: req.TaxAgentNumber,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update accountant profile: %w", err)
 		}
 	}
 
@@ -802,7 +817,7 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		UserAgent:   meta.UserAgent,
 	})
 
-	return rs, nil
+	return s.GetProfile(ctx, userID)
 }
 
 func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {

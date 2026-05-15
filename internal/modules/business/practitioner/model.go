@@ -56,6 +56,15 @@ type RqCreatePractitioner struct {
 	Profession *string `json:"profession"`
 }
 
+type RqUpdatePractitioner struct {
+	ABN        *string
+	EntityType string
+	EntityName string
+	ACN        *string
+	Address    *string
+	Profession *string
+}
+
 type RsUserInfo struct {
 	ID         uuid.UUID `json:"id"`
 	Email      string    `json:"email"`

@@ -24,7 +24,7 @@ type Repository interface {
 	CountPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error)
 
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
-	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+	UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 
@@ -194,9 +194,26 @@ func (r *repository) CountPractitionersForAccountant(ctx context.Context, accoun
 	return count, nil
 }
 
-func (r *repository) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error {
-	query := `UPDATE tbl_practitioner SET abn = $1, updated_at = NOW() WHERE user_id = $2 AND deleted_at IS NULL`
-	_, err := r.db.ExecContext(ctx, query, abn, userID)
+func (r *repository) UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error {
+	query := `UPDATE tbl_practitioner 
+		SET 
+			abn = COALESCE($1, abn),
+			entity_type = CASE 
+                            WHEN $2::text = '' THEN entity_type 
+                            ELSE $2::business_entity_type 
+                          END,
+			entity_name = CASE 
+                            WHEN $3 = '' THEN entity_name 
+                            ELSE $3 
+                          END,
+			acn = COALESCE($4, acn),
+			address = COALESCE($5, address),
+			profession = COALESCE($6, profession),
+			updated_at = NOW()
+		WHERE user_id = $7 AND deleted_at IS NULL`
+	_, err := r.db.ExecContext(ctx, query,
+		req.ABN, req.EntityType, req.EntityName,
+		req.ACN, req.Address, req.Profession, userID)
 	return err
 }
 
@@ -205,14 +222,6 @@ func (r *repository) UpdateStripeCustomerID(ctx context.Context, practitionerID 
 	_, err := r.db.ExecContext(ctx, query, practitionerID, customerID)
 	return err
 }
-
-/*
-func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
-	query := `UPDATE tbl_practitioner SET deleted_at = now() WHERE user_id = $1 AND deleted_at IS NULL`
-	_, err := r.db.ExecContext(ctx, query, userID)
-	return err
-}
-*/
 
 func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
 	// 1. Soft Delete the Practitioner Profile

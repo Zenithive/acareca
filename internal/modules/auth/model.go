@@ -74,12 +74,18 @@ type RqUser struct {
 }
 
 type RqUpdateUser struct {
-	Email      *string `json:"email"      validate:"omitempty,email"`
-	FirstName  *string `json:"first_name" validate:"omitempty"`
-	LastName   *string `json:"last_name"  validate:"omitempty"`
-	Phone      *string `json:"phone"      validate:"omitempty,e164"`
-	ABN        *string `json:"abn"        validate:"omitempty"`
-	DocumentId *string `json:"document_id" validate:"omitempty"`
+	Email          *string `json:"email"      validate:"omitempty,email"`
+	FirstName      *string `json:"first_name" validate:"omitempty"`
+	LastName       *string `json:"last_name"  validate:"omitempty"`
+	Phone          *string `json:"phone"      validate:"omitempty,e164"`
+	ABN            *string `json:"abn"        validate:"omitempty"`
+	DocumentId     *string `json:"document_id" validate:"omitempty"`
+	EntityType     string  `json:"entity_type" validate:"omitempty,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName     string  `json:"entity_name" validate:"omitempty"`
+	ACN            *string `json:"acn" validate:"omitempty"`              // Optional
+	Address        *string `json:"address" validate:"omitempty"`          // Optional
+	Profession     *string `json:"profession" validate:"omitempty"`       // Optional
+	TaxAgentNumber *string `json:"tax_agent_number" validate:"omitempty"` // Optional
 }
 
 func (r *RqUser) ToDBModel() *User {

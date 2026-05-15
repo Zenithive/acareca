@@ -35,6 +35,16 @@ type RqCreateAccountant struct {
 	Profession     *string
 }
 
+type RqUpdateAccountant struct {
+	ABN            *string
+	EntityType     string
+	EntityName     string
+	ACN            *string
+	Address        *string
+	Profession     *string
+	TaxAgentNumber *string
+}
+
 type RsAccountant struct {
 	ID             uuid.UUID `json:"id"`
 	UserID         string    `json:"user_id"`

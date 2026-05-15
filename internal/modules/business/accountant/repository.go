@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -11,6 +12,7 @@ import (
 type Repository interface {
 	CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error)
 	GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error)
+	UpdateAccountantProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateAccountant) error
 
 	GetAllUsers(ctx context.Context, userID string) ([]RsAccountantUser, error)
 	GetClinicsForAccountant(ctx context.Context, accountantID string) ([]ClinicDetail, error)
@@ -82,6 +84,34 @@ func (r *repository) GetAccountantByUserID(ctx context.Context, userID string) (
 		Profession:     a.Profession,
 		TaxAgentNumber: a.TaxAgentNumber,
 	}, nil
+}
+
+func (r *repository) UpdateAccountantProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateAccountant) error {
+	query := `
+		UPDATE tbl_accountant 
+		SET 
+			abn = COALESCE($1, abn),
+			-- Explicitly cast $2 to text for the check, then to the enum for the update
+			entity_type = CASE 
+                            WHEN $2::text = '' THEN entity_type 
+                            ELSE $2::business_entity_type 
+                          END,
+			entity_name = CASE 
+                            WHEN $3 = '' THEN entity_name 
+                            ELSE $3 
+                          END,
+			acn = COALESCE($4, acn),
+			address = COALESCE($5, address),
+			profession = COALESCE($6, profession),
+			tax_agent_number = COALESCE($7, tax_agent_number),
+			updated_at = NOW()
+		WHERE user_id = $8 AND deleted_at IS NULL`
+
+	_, err := r.db.ExecContext(ctx, query,
+		req.ABN, req.EntityType, req.EntityName,
+		req.ACN, req.Address, req.Profession,
+		req.TaxAgentNumber, userID)
+	return err
 }
 
 func (r *repository) GetAllUsers(ctx context.Context, userID string) ([]RsAccountantUser, error) {
