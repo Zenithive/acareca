@@ -55,7 +55,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, clinicID 
 
 	f := req.ToDB(formVersionID)
 
-	if !req.IsComputed {
+	if !req.IsComputed && req.CoaID != "" {
 		coaID, err := uuid.Parse(req.CoaID)
 		if err != nil {
 			return nil, err
@@ -105,6 +105,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 			return nil, err
 		}
 		existing.CoaID = &parsed
+	} else {
+		existing.CoaID = nil
 	}
 	if req.Label != nil {
 		existing.Label = *req.Label
@@ -162,7 +164,7 @@ func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.
 
 	f := req.ToDB(formVersionID)
 
-	if !req.IsComputed {
+	if !req.IsComputed && req.CoaID != "" {
 		coaID, err := uuid.Parse(req.CoaID)
 		if err != nil {
 			return nil, err
@@ -209,6 +211,8 @@ func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clini
 			return nil, err
 		}
 		existing.CoaID = &parsed
+	} else {
+		existing.CoaID = nil
 	}
 	if req.Label != nil {
 		existing.Label = *req.Label

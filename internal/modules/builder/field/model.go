@@ -42,9 +42,6 @@ type RqCreateField struct {
 
 func (r *RqCreateField) Validate() error {
 	if !r.IsComputed {
-		if r.CoaID == nil || *r.CoaID == "" {
-			return errors.New("coa_id is required for non-computed fields")
-		}
 		if r.SectionType == "" {
 			return errors.New("section_type is required for non-computed fields")
 		}
