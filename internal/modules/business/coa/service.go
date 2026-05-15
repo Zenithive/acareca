@@ -88,6 +88,7 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 }
 
 func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error) {
+	var targetTypeID int16
 	if f.AccountType != nil {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
@@ -96,26 +97,57 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 		typeID := int16(id)
 		f.AccountTypeID = &typeID
 	}
+
+	// SAVE the original ID, then NIL it out so MapToFilter doesn't use it
+	originalID := f.AccountTypeID
+	f.AccountTypeID = nil
 	ft := f.MapToFilter()
 
-	// Add the AccountTypeID condition to the filter slice
-	if f.AccountTypeID != nil {
-		ft.Where = append(ft.Where, common.Condition{
-			Field:    "account_type_id",
-			Operator: common.OpEq,
-			Value:    *f.AccountTypeID,
-		})
+	// Restore it if needed elsewhere
+	f.AccountTypeID = originalID
+
+	// Handle the Exclusion Logic
+	if f.AccountType != nil {
+		if *f.AccountType == "Revenue" {
+			// Exclude Expense
+			excludeID, err := s.repo.GetAccountTypeByName(ctx, "Expense")
+			if err == nil {
+				ft.Where = append(ft.Where, common.Condition{
+					Field:    "account_type_id",
+					Operator: common.OpNotEq,
+					Value:    int16(excludeID),
+				})
+			}
+		} else if *f.AccountType == "Expense" {
+			// Exclude Revenue
+			excludeID, err := s.repo.GetAccountTypeByName(ctx, "Revenue")
+			if err == nil {
+				ft.Where = append(ft.Where, common.Condition{
+					Field:    "account_type_id",
+					Operator: common.OpNotEq,
+					Value:    int16(excludeID), // Make sure this ID is actually 5
+				})
+			}
+		} else {
+			// Standard Behaviour
+			ft.Where = append(ft.Where, common.Condition{
+				Field:    "account_type_id",
+				Operator: common.OpEq,
+				Value:    targetTypeID,
+			})
+		}
 	}
 
 	// Logic for Practitioner vs Accountant
-	if role == util.RolePractitioner {
+	switch role {
+	case util.RolePractitioner:
 		// PRACTITIONER: Force filter to their own ID to prevent seeing other's data
 		ft.Where = append(ft.Where, common.Condition{
 			Field:    "practitioner_id",
 			Operator: common.OpEq,
 			Value:    actorID,
 		})
-	} else if role == util.RoleAccountant {
+	case util.RoleAccountant:
 		// ACCOUNTANT:
 		// If they passed a practitioner_id in the query, use it.
 		// If not, SQL will return all COAs
