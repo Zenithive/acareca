@@ -78,8 +78,6 @@ func (c Channel) IsValid() bool {
 	}
 }
 
-type ChannelMap map[string]bool
-
 type ActorType string
 
 const (
@@ -142,30 +140,6 @@ type FailedDelivery struct {
 	EntityID       uuid.UUID       `db:"entity_id"`
 	Payload        json.RawMessage `db:"payload"`
 	CreatedAt      time.Time       `db:"created_at"`
-}
-
-func (n *RqNotification) MapToDB() Notification {
-	return Notification{
-		ID:            n.ID,
-		RecipientID:   n.RecipientID,
-		RecipientType: n.RecipientType,
-		SenderID:      n.SenderID,
-		SenderType:    n.SenderType,
-		EventType:     n.EventType,
-		EntityType:    n.EntityType,
-		EntityID:      n.EntityID,
-		Status:        StatusUnread,
-		Payload:       n.Payload,
-		CreatedAt:     n.CreatedAt,
-		ReadedAt:      n.ReadedAt,
-	}
-}
-
-type Preference struct {
-	EntityID  uuid.UUID `db:"entity_id"`
-	EventType EventType `db:"event_type"`
-	// JSON array: ["in_app","email","push"]
-	Channels []byte `db:"channels"`
 }
 
 // ─── Payload helpers (stored as jsonb) ───────────────────────────────────────
