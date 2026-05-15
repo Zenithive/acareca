@@ -182,8 +182,8 @@ type NotificationPayload struct {
 type FilterNotification struct {
 	Status *string `form:"status"`
 	Search *string `form:"search"`
-	Limit  int     `form:"limit"`
-	Page   int     `form:"page"`
+	Limit  *int    `form:"limit"`
+	Offset *int    `form:"offset"`
 }
 
 func BuildNotificationPayload(title string, body json.RawMessage, senderName *string, entityName *string, extraData *map[string]interface{}) *NotificationPayload {
@@ -214,7 +214,7 @@ type NotificationPreference struct {
 	EntityID   uuid.UUID              `db:"entity_id" json:"entity_id"`
 	EntityType string                 `db:"entity_type" json:"entity_type"`
 	EventType  NotificationEventTypes `db:"event_type" json:"event_type"`
-	Channels   NotificationChannels   `db:"channels" json:"channels"` // JSONB Map
+	Channels   NotificationChannels   `db:"channels" json:"channels"`
 	CreatedAt  time.Time              `db:"created_at" json:"created_at"`
 	UpdatedAt  time.Time              `db:"updated_at" json:"updated_at"`
 	DeletedAt  *time.Time             `db:"deleted_at" json:"-"`

@@ -34,7 +34,6 @@ func NewEvent(nc *nats.Conn, maxDeliver, maxAckPending, maxWaiting int, ackWait 
 		return nil, err
 	}
 
-	// Add DLQ subjects to capture dead letter queue messages
 	allSubjects := append(subject, dlqPrefix+".*")
 
 	e := &Event{

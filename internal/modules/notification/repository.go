@@ -32,7 +32,6 @@ type Repository interface {
 	// Deduplication check for system error/warning notifications
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
 
-	GetPreference(ctx context.Context, entityID uuid.UUID, role ActorType, eventType NotificationEventType) (*NotificationPreference, error)
 	GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	CreatePreference(ctx context.Context, pref NotificationPreference) error
 }
@@ -106,15 +105,16 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		return nil, 0, fmt.Errorf("count notifications: %w", err)
 	}
 
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 10
+	// Set pagination defaults
+	limit := 10
+	if filter.Limit != nil && *filter.Limit > 0 {
+		limit = *filter.Limit
 	}
-	page := filter.Page
-	if page <= 0 {
-		page = 1
+	
+	offset := 0
+	if filter.Offset != nil && *filter.Offset >= 0 {
+		offset = *filter.Offset
 	}
-	offset := (page - 1) * limit
 
 	q := fmt.Sprintf(`
 		SELECT id, recipient_id, sender_id, event_type, entity_type, entity_id,
@@ -298,22 +298,6 @@ func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID u
 		return false, fmt.Errorf("check active system notification: %w", err)
 	}
 	return count > 0, nil
-}
-
-func (r *repository) GetPreference(ctx context.Context, entityID uuid.UUID, role ActorType, eventType NotificationEventType) (*NotificationPreference, error) {
-	var pref NotificationPreference
-
-	query := `
-		SELECT id, user_id, entity_id, entity_type, event_type, channels, created_at, updated_at
-		FROM tbl_notification_preferences
-		WHERE entity_id = $1 AND entity_type = $2 AND event_type = $3
-		LIMIT 1`
-
-	err := r.db.GetContext(ctx, &pref, query, entityID, role, eventType)
-	if err != nil {
-		return nil, err
-	}
-	return &pref, nil
 }
 
 func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error) {

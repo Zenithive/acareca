@@ -14,6 +14,7 @@ type IHandler interface {
 	MarkRead(c *gin.Context)
 	MarkAllRead(c *gin.Context)
 	MarkDismissed(c *gin.Context)
+
 	GetPreferences(c *gin.Context)
 	UpdatePreference(c *gin.Context)
 }

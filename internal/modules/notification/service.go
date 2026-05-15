@@ -92,25 +92,22 @@ func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter Filter
 	}
 
 	// Set pagination defaults
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 10
+	limit := 10
+	if filter.Limit != nil && *filter.Limit > 0 {
+		limit = *filter.Limit
 	}
-	page := filter.Page
-	if page <= 0 {
-		page = 1
+	
+	offset := 0
+	if filter.Offset != nil && *filter.Offset >= 0 {
+		offset = *filter.Offset
 	}
 
 	// Create response with unread count in metadata
-	result := &util.RsList{
-		Items: map[string]interface{}{
-			"notifications": notifications,
-			"unread_count":  unreadCount,
-		},
-		Total: total,
-		Page:  page,
-		Limit: limit,
-	}
+	result := &util.RsList{}
+	result.MapToList(map[string]interface{}{
+		"notifications": notifications,
+		"unread_count":  unreadCount,
+	}, total, offset, limit)
 
 	return result, nil
 }
@@ -149,13 +146,29 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 	return s.repo.CreatePreference(ctx, pref)
 }
 
-// filterChannels returns only the channels that are enabled in user preferences
-func (s *service) filterChannels(prefs *NotificationPreference, requestedChannels []Channel) []Channel {
-	var allowedChannels []Channel
+func (s *service) filterChannels(ctx context.Context, userID uuid.UUID, requestedChannels []Channel) []Channel {
+	// Get all preferences for the user
+	prefs, err := s.repo.GetAllPreferences(ctx, userID)
+	if err != nil || len(prefs) == 0 {
+		log.Printf("No preferences found for user %s, using default (in_app only)", userID)
+		return []Channel{ChannelInApp}
+	}
 
+	enabledChannels := make(map[Channel]bool)
+	for _, pref := range prefs {
+		for channelKey, enabled := range pref.Channels {
+			if enabled {
+				ch := Channel(channelKey)
+				if ch.IsValid() {
+					enabledChannels[ch] = true
+				}
+			}
+		}
+	}
+
+	var allowedChannels []Channel
 	for _, ch := range requestedChannels {
-		channelKey := string(ch)
-		if enabled, exists := prefs.Channels[channelKey]; exists && enabled {
+		if enabledChannels[ch] {
 			allowedChannels = append(allowedChannels, ch)
 		}
 	}
@@ -169,8 +182,6 @@ func (s *service) StartNotificationCreateConsumer(ctx context.Context) error {
 		return fmt.Errorf("events system not configured")
 	}
 
-	log.Println("Starting notification create consumer...")
-
 	return s.events.Consume(
 		ctx,
 		StreamNotification,
@@ -183,36 +194,16 @@ func (s *service) StartNotificationCreateConsumer(ctx context.Context) error {
 // handleNotificationCreate processes notification creation events
 func (s *service) handleNotificationCreate(msg jetstream.Msg) error {
 	ctx := context.Background()
-
 	var event NotificationEvent
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
 	}
 
-	log.Printf("Processing notification: %s for recipient: %s", event.ID, event.RecipientID)
-
-	// Fetch preferences for the recipient
-	prefs, err := s.repo.GetPreference(
-		ctx,
-		event.RecipientID,
-		event.RecipientType,
-		NotificationEventType(event.EventType),
-	)
-	if err != nil {
-		log.Printf("Failed to fetch preferences for recipient %s, using default channels: %v", event.RecipientID, err)
-		// Use default channels if preferences not found
-		prefs = &NotificationPreference{
-			Channels: NotificationChannels{
-				string(ChannelInApp): true,
-			},
-		}
-	}
-
-	// Filter channels based on preferences
-	allowedChannels := s.filterChannels(prefs, event.Channels)
+	// Filter channels based on user preferences
+	allowedChannels := s.filterChannels(ctx, event.RecipientID, event.Channels)
 	if len(allowedChannels) == 0 {
-		log.Printf("No channels allowed for notification %s, skipping", event.ID)
-		return nil // Successfully processed (user opted out)
+		log.Printf("No channels enabled for notification %s, skipping", event.ID)
+		return nil
 	}
 
 	// Create notification record
@@ -232,7 +223,7 @@ func (s *service) handleNotificationCreate(msg jetstream.Msg) error {
 
 	// Create notification and deliveries in a transaction
 	var notificationID uuid.UUID
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
 		notificationID, txErr = s.repo.CreateNotificationWithDeliveries(ctx, tx, notification, allowedChannels)
 		return txErr
