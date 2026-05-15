@@ -110,7 +110,7 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 	if filter.Limit != nil && *filter.Limit > 0 {
 		limit = *filter.Limit
 	}
-	
+
 	offset := 0
 	if filter.Offset != nil && *filter.Offset >= 0 {
 		offset = *filter.Offset

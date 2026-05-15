@@ -40,7 +40,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker, notification.Service) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker, notification.Service, *notification.Consumer) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -68,7 +68,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// notification (in-app list)
 	notificationRepo := notification.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
-	notificationSvc := notification.NewService(notificationRepo, notifier, events, dbConn)
+	notificationSvc := notification.NewService(notificationRepo, events)
+	
+	// Initialize notification consumer (separate from service)
+	notificationPublisher := notification.NewPublisher(events)
+	notificationConsumer := notification.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher)
 
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
@@ -231,6 +235,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
-	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc
+	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc, notificationConsumer
 
 }

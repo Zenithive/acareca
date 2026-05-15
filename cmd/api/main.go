@@ -142,7 +142,7 @@ func main() {
 	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
 	// r.Use(middleware.RateLimitMiddleware(1000, 1000))
-	auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc := route.RegisterRoutes(r, cfg, events)
+	auditSvc, notifier, notificationRepo, fileUploadWorker, _, notificationConsumer := route.RegisterRoutes(r, cfg, events)
 
 	// ============================================
 	// START NATS CONSUMERS (if NATS is available)
@@ -151,7 +151,7 @@ func main() {
 		// Start notification creation consumer
 		go func() {
 			log.Println("🚀 Starting notification create consumer...")
-			if err := notificationSvc.StartNotificationCreateConsumer(context.Background()); err != nil {
+			if err := notificationConsumer.StartNotificationCreateConsumer(context.Background()); err != nil {
 				log.Printf("❌ Notification create consumer stopped: %v", err)
 			}
 		}()
@@ -159,7 +159,7 @@ func main() {
 		// Start email consumer
 		go func() {
 			log.Println("🚀 Starting email delivery consumer...")
-			if err := notificationSvc.StartEmailConsumer(context.Background()); err != nil {
+			if err := notificationConsumer.StartEmailConsumer(context.Background()); err != nil {
 				log.Printf("❌ Email consumer stopped: %v", err)
 			}
 		}()
@@ -167,7 +167,7 @@ func main() {
 		// Start push consumer
 		go func() {
 			log.Println("🚀 Starting push notification consumer...")
-			if err := notificationSvc.StartPushConsumer(context.Background()); err != nil {
+			if err := notificationConsumer.StartPushConsumer(context.Background()); err != nil {
 				log.Printf("❌ Push consumer stopped: %v", err)
 			}
 		}()

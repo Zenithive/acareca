@@ -208,6 +208,20 @@ const (
 
 type NotificationEventTypes []NotificationEventType
 
+func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
+	switch eventType {
+	case EventTransactionCreated, EventTransactionUpdated:
+		return EventNewTransaction
+	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded,
+		EventInviteSent, EventInviteAccepted, EventInviteDeclined:
+		return EventAccountantActivityAlert
+	case EventAuditLogCreated, EventSystemError, EventSystemWarning:
+		return EventSystemActivityAlert
+	default:
+		return EventSystemActivityAlert
+	}
+}
+
 type NotificationPreference struct {
 	ID         uuid.UUID              `db:"id" json:"id"`
 	UserID     uuid.UUID              `db:"user_id" json:"user_id"`
