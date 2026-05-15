@@ -644,6 +644,17 @@ definitions:
       updated_at:
         type: string
     type: object
+  bas.BASAccountGroup:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/bas.BASValue'
+        type: array
+    type: object
   bas.BASAmount:
     properties:
       gross:
@@ -664,8 +675,6 @@ definitions:
           expenses:
             $ref: '#/definitions/bas.BASSection'
           income:
-            $ref: '#/definitions/bas.BASSection'
-          net_profit_loss:
             $ref: '#/definitions/bas.BASSection'
         type: object
     type: object
@@ -695,6 +704,37 @@ definitions:
         items:
           $ref: '#/definitions/bas.BASLineItem'
         type: array
+    type: object
+  bas.BASValue:
+    properties:
+      date:
+        type: string
+      gross:
+        type: number
+      gst:
+        type: number
+      net:
+        type: number
+    type: object
+  bas.RsBASAnalytics:
+    properties:
+      expense:
+        items:
+          $ref: '#/definitions/bas.BASAccountGroup'
+        type: array
+      gstPayable:
+        allOf:
+        - $ref: '#/definitions/bas.BASAccountGroup'
+        description: Use pointer for easier omitting
+      income:
+        description: omitempty will hide the key if the slice is nil or empty
+        items:
+          $ref: '#/definitions/bas.BASAccountGroup'
+        type: array
+      netProfitLoss:
+        allOf:
+        - $ref: '#/definitions/bas.BASAccountGroup'
+        description: Use pointer for easier omitting
     type: object
   bas.RsBASByAccount:
     properties:
@@ -4329,6 +4369,67 @@ paths:
       security:
       - BearerToken: []
       summary: Export Business Activity Statement to Excel
+      tags:
+      - engine/bas
+  /bas/analytics:
+    get:
+      description: |-
+        Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.
+        Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.
+      parameters:
+      - description: Financial Year UUID
+        in: query
+        name: financial_year_id
+        required: true
+        type: string
+      - description: Comma-separated Quarter UUIDs
+        in: query
+        name: quarter_ids
+        type: string
+      - description: today, yesterday, this_week, last_week, last_28_days, last_30_days,
+          last_month, custom_range, custom_month, etc.
+        in: query
+        name: period
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: from_date
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: to_date
+        type: string
+      - description: 'Comma-separated: income, expense, netProfitLoss, gstPayable
+          (Section Filters)'
+        in: query
+        name: sections
+        type: string
+      - description: Comma-separated COA UUIDs (Row Filters)
+        in: query
+        name: coa_ids
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/bas.RsBASAnalytics'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: BAS Analytics Time-Series
       tags:
       - engine/bas
   /bas/bas-preparation:

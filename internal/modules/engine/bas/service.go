@@ -37,6 +37,7 @@ type Service interface {
 	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, fullName string, practitionerABN string) (*bytes.Buffer, error)
 	generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error)
 	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
+	GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error)
 }
 
 type service struct {
@@ -549,11 +550,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		Net:   roundToTwo(tNet),
 	}
 
-	// --- Profit/Loss & GST Payable ---
-	col.Sections.NetProfitLoss.Items = []BASLineItem{
-		{Name: "Net Profit/Loss", Amounts: BASAmount{Net: roundToTwo(totalIncome.Net - subtotalExpenses.Net)}},
-	}
-	// col.NetGSTPayable = roundToTwo(0 - b1.Gross)
+	// --- GST Payable ---
 	col.NetGSTPayable = roundToTwo(totalIncome.GST - subtotalExpenses.GST)
 
 	return col
@@ -1156,42 +1153,9 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		},
 	})
 
-	// Section Titles (INCOME / EXPENSES) - Bold, Underline, Large
+	// Section Titles (INCOME, EXPENSES, Net GST Payable) - Bold, Underline, Large
 	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
-	})
-
-	// Net Profit/Loss
-	styleNetProfit, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "000000"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Net Profit/Loss (Green cell background)
-	styleNetProfitCol, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Color: "28a745"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Net GST Payable
-	styleGSTTotal, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
 	})
 
 	// Net GST Payable (Red Text)
@@ -1307,7 +1271,13 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		for i := range allCols {
 			cIdx := 1 + (i * 4)
 			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+			midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
 			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
+
+			// INITIALIZE WITH ZEROS (This ensures $0.00 shows if data is missing)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", midCol, currentRow), 0)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
 
 			// Always apply borders
 			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
@@ -1346,11 +1316,14 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		for i := range allCols {
 			cIdx := 1 + (i * 4)
 			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
+			midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
 			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
 
 			// Force $0.00 by initializing with 0
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", midCol, currentRow), 0)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
+
 			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
 			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Expenses.Items, name, styleTableGrid)
 		}
@@ -1374,46 +1347,25 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 
 	// --- SUMMARY SECTION ---
 	currentRow += 2
-	netProfitRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net Profit/Loss")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleNetProfit)
-	for i, col := range allCols {
-		cIdx := 1 + (i * 4)
-		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-		if len(col.Sections.NetProfitLoss.Items) > 0 {
-			// Force $0.00 by initializing with 0
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), col.Sections.NetProfitLoss.Items[0].Amounts.Net)
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleNetProfitCol)
-		}
-	}
-
-	currentRow++
-	currentRow++
 	netGSTRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net GST Payable")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleGSTTotal)
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
 
 	// Apply Dynamic Formulas for each Quarter Column
 	for i := range allCols {
 		cIdx := 1 + (i * 4)
+		grossCol, _ := excelize.ColumnNumberToName(cIdx + 1)
 		gstCol, _ := excelize.ColumnNumberToName(cIdx + 2) // GST column
 		netCol, _ := excelize.ColumnNumberToName(cIdx + 3) // Net column
 
-		// Net Profit Formula (Net Income - Net Expenses)
-		incomeSum := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", netCol, incomeMeta.StartRow, netCol, incomeMeta.EndRow)
-		expenseSum := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", netCol, expenseMeta.StartRow, netCol, expenseMeta.EndRow)
-		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netProfitRow), fmt.Sprintf("%s-%s", incomeSum, expenseSum))
-		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netProfitRow), fmt.Sprintf("%s%d", netCol, netProfitRow), styleNetProfitCol)
+		f.MergeCell(sheet, fmt.Sprintf("%s%d", grossCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow))
 
 		// Net GST Payable Formula (GST Income - GST Expenses)
 		incomeGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, incomeMeta.StartRow, gstCol, incomeMeta.EndRow)
 		expenseGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, expenseMeta.StartRow, gstCol, expenseMeta.EndRow)
 		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s-%s", incomeGST, expenseGST))
-		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
+		// f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
+		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", grossCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
 	}
 
 	// --- FINAL DIMENSIONS ---
@@ -1696,19 +1648,12 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 			}
 
 			// Handle Special Rows
-			if valA == "Net Profit/Loss" && len(col.Sections.NetProfitLoss.Items) > 0 {
-				item := col.Sections.NetProfitLoss.Items[0]
-				g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
-				found = true
-			} else if valA == "Net GST Payable" {
+			if valA == "Net GST Payable" {
 				gst = col.NetGSTPayable
 				found = true
 			}
 
 			cellClass := "text-right"
-			if valA == "Net Profit/Loss" {
-				cellClass += " profit-green"
-			}
 			if valA == "Net GST Payable" {
 				cellClass += " gst-red"
 			}
@@ -1728,4 +1673,240 @@ func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *R
 	b.WriteString("</table></body></html>")
 
 	return b.String(), err
+}
+
+func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error) {
+	fyID, err := uuid.Parse(f.FinancialYearID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid financial year id: %w", err)
+	}
+
+	fy, err := s.fyRepo.GetFinancialYearByID(ctx, fyID)
+	if err != nil {
+		return nil, fmt.Errorf("financial year not found: %w", err)
+	}
+
+	now := time.Now()
+	var resolvedFrom, resolvedTo time.Time
+
+	// Default to the financial year boundaries.
+	resolvedFrom, resolvedTo = fy.StartDate, fy.EndDate
+	period := strings.ToLower(f.Period)
+
+	//When quarter_ids are provided, shrink the boundaries to exactly that quarter's date range.
+	quarterSelected := f.QuarterIDs != nil && *f.QuarterIDs != ""
+	if quarterSelected {
+		idStrings := strings.Split(*f.QuarterIDs, ",")
+		var minStart, maxEnd time.Time
+		foundValidQuarter := false
+
+		for _, sID := range idStrings {
+			uID, parseErr := uuid.Parse(strings.TrimSpace(sID))
+			if parseErr != nil {
+				continue
+			}
+
+			qInfo, qErr := s.repo.GetQuarterInfoByID(ctx, uID)
+			if qErr == nil && qInfo != nil {
+				sTime, _ := time.Parse("2006-01-02", qInfo.StartDate)
+				eTime, _ := time.Parse("2006-01-02", qInfo.EndDate)
+
+				if minStart.IsZero() || sTime.Before(minStart) {
+					minStart = sTime
+				}
+				if maxEnd.IsZero() || eTime.After(maxEnd) {
+					maxEnd = eTime
+				}
+				foundValidQuarter = true
+			}
+		}
+
+		if foundValidQuarter {
+			resolvedFrom = minStart
+			resolvedTo = maxEnd
+		}
+	} else if period != "" {
+		// Period is only applied when no quarter is selected.
+		switch period {
+		case "today":
+			resolvedFrom, resolvedTo = now, now
+		case "yesterday":
+			resolvedFrom = now.AddDate(0, 0, -1)
+			resolvedTo = resolvedFrom
+		case "this_week":
+			resolvedFrom = now.AddDate(0, 0, -int(now.Weekday()))
+			resolvedTo = now
+		case "last_week":
+			resolvedFrom = now.AddDate(0, 0, -int(now.Weekday())-7)
+			resolvedTo = resolvedFrom.AddDate(0, 0, 6)
+		case "last_28_days":
+			resolvedFrom = now.AddDate(0, 0, -28)
+			resolvedTo = now
+		case "last_30_days":
+			resolvedFrom = now.AddDate(0, 0, -30)
+			resolvedTo = now
+		case "last_month":
+			resolvedFrom = time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
+			resolvedTo = resolvedFrom.AddDate(0, 1, -1)
+		case "custom_range":
+			if f.FromDate != nil && *f.FromDate != "" {
+				resolvedFrom, _ = time.Parse("2006-01-02", *f.FromDate)
+			}
+			if f.ToDate != nil && *f.ToDate != "" {
+				resolvedTo, _ = time.Parse("2006-01-02", *f.ToDate)
+			}
+		case "custom_month":
+			if f.FromDate != nil && *f.FromDate != "" {
+				t, _ := time.Parse("2006-01", *f.FromDate)
+				resolvedFrom = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+				resolvedTo = resolvedFrom.AddDate(0, 1, -1)
+			}
+		}
+	}
+
+	// Boundary Clamping ensures the dates never escape the selected Financial Year.
+	if !resolvedFrom.IsZero() && resolvedFrom.Before(fy.StartDate) {
+		resolvedFrom = fy.StartDate
+	}
+	if !resolvedTo.IsZero() && resolvedTo.After(fy.EndDate) {
+		resolvedTo = fy.EndDate
+	}
+
+	// Prepare the repository filter.
+	fromStr, toStr := resolvedFrom.Format("2006-01-02"), resolvedTo.Format("2006-01-02")
+	repoFilter := &BASFilter{
+		FinancialYearID: &f.FinancialYearID,
+		QuarterIDs:      f.QuarterIDs,
+		FromDate:        &fromStr,
+		ToDate:          &toStr,
+	}
+	_ = repoFilter.MapToFilter()
+
+	// When no quarters are selected and a period filter is active, clear ParsedQuarterIDs so the repo uses the resolved date range instead of quarter-based filtering.
+	if !quarterSelected && period != "" {
+		repoFilter.ParsedQuarterIDs = nil
+	}
+
+	nilClinic := uuid.Nil
+	rows, err := s.repo.GetBASAnalytics(ctx, targetPracIDs, &nilClinic, repoFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	incomeMap := make(map[string]*BASAccountGroup)
+	expenseMap := make(map[string]*BASAccountGroup)
+	incomeTotalsByDate := make(map[string]BASValue)
+	expenseTotalsByDate := make(map[string]BASValue)
+	dateSet := make(map[string]bool)
+
+	selectedCoas := make(map[string]bool)
+	if f.SelectedCoaIDs != nil && *f.SelectedCoaIDs != "" {
+		for _, id := range strings.Split(*f.SelectedCoaIDs, ",") {
+			selectedCoas[strings.TrimSpace(id)] = true
+		}
+	}
+
+	for _, r := range rows {
+		if BASCategory(r.BasCategory) == BASCategoryBASExcluded {
+			continue
+		}
+
+		if r.PeriodQuarter.Before(resolvedFrom) || r.PeriodQuarter.After(resolvedTo) {
+			continue
+		}
+
+		if len(selectedCoas) > 0 && !selectedCoas[r.CoaID] {
+			continue
+		}
+
+		dateKey := r.PeriodQuarter.Format("2006-01-02")
+		dateSet[dateKey] = true
+		val := BASValue{
+			Date: dateKey, Gross: roundToTwo(r.GrossAmount),
+			GST: roundToTwo(r.GstAmount), Net: roundToTwo(r.NetAmount),
+		}
+
+		if r.SectionType != nil && strings.ToUpper(*r.SectionType) == "COLLECTION" {
+			if _, ok := incomeMap[r.CoaID]; !ok {
+				incomeMap[r.CoaID] = &BASAccountGroup{ID: r.CoaID, Name: r.AccountName}
+			}
+			incomeMap[r.CoaID].Values = append(incomeMap[r.CoaID].Values, val)
+
+			t := incomeTotalsByDate[dateKey]
+			t.Date = dateKey
+			t.Gross += val.Gross
+			t.GST += val.GST
+			t.Net += val.Net
+			incomeTotalsByDate[dateKey] = t
+		} else {
+			if _, ok := expenseMap[r.CoaID]; !ok {
+				expenseMap[r.CoaID] = &BASAccountGroup{ID: r.CoaID, Name: r.AccountName}
+			}
+			expenseMap[r.CoaID].Values = append(expenseMap[r.CoaID].Values, val)
+
+			t := expenseTotalsByDate[dateKey]
+			t.Date = dateKey
+			t.Gross += val.Gross
+			t.GST += val.GST
+			t.Net += val.Net
+			expenseTotalsByDate[dateKey] = t
+		}
+	}
+
+	// Assemble the final response based on the categorized maps.
+	resp := &RsBASAnalytics{}
+	secStr := ""
+	if f.Sections != nil {
+		secStr = *f.Sections
+	}
+
+	sortedDates := make([]string, 0, len(dateSet))
+	for d := range dateSet {
+		sortedDates = append(sortedDates, d)
+	}
+	sort.Strings(sortedDates)
+
+	// Summary calculations for net profit and GST payable.
+	showIncome := strings.Contains(secStr, "income") || secStr == ""
+	showExpense := strings.Contains(secStr, "expense") || secStr == ""
+
+	if showIncome && len(incomeMap) > 0 {
+		for _, acc := range incomeMap {
+			resp.Income = append(resp.Income, *acc)
+		}
+		var tv []BASValue
+		for _, d := range sortedDates {
+			tv = append(tv, incomeTotalsByDate[d])
+		}
+		resp.Income = append(resp.Income, BASAccountGroup{Name: "total", Values: tv})
+	}
+
+	if showExpense && len(expenseMap) > 0 {
+		for _, acc := range expenseMap {
+			resp.Expense = append(resp.Expense, *acc)
+		}
+		var tv []BASValue
+		for _, d := range sortedDates {
+			tv = append(tv, expenseTotalsByDate[d])
+		}
+		resp.Expense = append(resp.Expense, BASAccountGroup{Name: "total", Values: tv})
+	}
+
+	if (strings.Contains(secStr, "netProfitLoss") || secStr == "") && len(dateSet) > 0 {
+		resp.NetProfitLoss = &BASAccountGroup{Name: "netProfitLoss"}
+		for _, d := range sortedDates {
+			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
+			resp.NetProfitLoss.Values = append(resp.NetProfitLoss.Values, BASValue{Date: d, Net: roundToTwo(inc.Net - exp.Net)})
+		}
+	}
+
+	if (strings.Contains(secStr, "gstPayable") || secStr == "") && len(dateSet) > 0 {
+		resp.GSTPayable = &BASAccountGroup{Name: "gstPayable"}
+		for _, d := range sortedDates {
+			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
+			resp.GSTPayable.Values = append(resp.GSTPayable.Values, BASValue{Date: d, GST: roundToTwo(inc.GST - exp.GST)})
+		}
+	}
+
+	return resp, nil
 }

@@ -343,9 +343,8 @@ type BASLineItemRow struct {
 type BASColumn struct {
 	Quarter  BASQuarterInfo `json:"quarter"`
 	Sections struct {
-		Income        BASSection `json:"income"`
-		Expenses      BASSection `json:"expenses"`
-		NetProfitLoss BASSection `json:"net_profit_loss"`
+		Income   BASSection `json:"income"`
+		Expenses BASSection `json:"expenses"`
 	} `json:"sections"`
 	NetGSTPayable float64 `json:"net_gst_payable"`
 }
@@ -353,4 +352,46 @@ type BASColumn struct {
 type RsBASPreparation struct {
 	Columns    []BASColumn `json:"columns"`
 	GrandTotal BASColumn   `json:"grand_total"`
+}
+
+// BAS PREPARATION ANALYTICS
+type BASValue struct {
+	Date  string  `json:"date"`
+	Gross float64 `json:"gross"`
+	GST   float64 `json:"gst"`
+	Net   float64 `json:"net"`
+}
+
+type BASAccountGroup struct {
+	ID     string     `json:"id,omitempty"`
+	Name   string     `json:"name"`
+	Values []BASValue `json:"values"`
+}
+
+type RsBASAnalytics struct {
+	// omitempty will hide the key if the slice is nil or empty
+	Income        []BASAccountGroup `json:"income,omitempty"`
+	Expense       []BASAccountGroup `json:"expense,omitempty"`
+	NetProfitLoss *BASAccountGroup  `json:"netProfitLoss,omitempty"` // Use pointer for easier omitting
+	GSTPayable    *BASAccountGroup  `json:"gstPayable,omitempty"`    // Use pointer for easier omitting
+}
+
+type BASAnalyticsFilter struct {
+	FinancialYearID string `form:"financial_year_id" binding:"required"`
+
+	// Period and QuarterIDs are independent filters; QuarterIDs takes priority when both are set.
+	QuarterIDs *string `form:"quarter_ids"` // Comma-separated UUIDs
+
+	// Period options: "today", "yesterday", "this_week", "last_month", "custom_range", etc.
+	Period string `form:"period"`
+
+	// For "custom_range" or "custom_month" (DD-MM-YYYY)
+	FromDate *string `form:"from_date"`
+	ToDate   *string `form:"to_date"`
+
+	// Sections multi-select (Comma-separated: "income,expense,net_profit,gst_payable")
+	Sections *string `form:"sections"`
+
+	// Row multi-select (Comma-separated COA IDs)
+	SelectedCoaIDs *string `form:"coa_ids"`
 }
