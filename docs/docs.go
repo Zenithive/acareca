@@ -9572,11 +9572,30 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "acn": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "address": {
+                    "description": "Optional",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "SOLE_TRADER",
+                        "COMPANY",
+                        "TRUST"
+                    ]
                 },
                 "first_name": {
                     "type": "string"
@@ -9586,23 +9605,57 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "profession": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "tax_agent_number": {
+                    "description": "Optional",
+                    "type": "string"
                 }
             }
         },
         "auth.RqUser": {
             "type": "object",
             "required": [
+                "abn",
                 "email",
+                "entity_name",
+                "entity_type",
                 "first_name",
                 "last_name",
                 "password"
             ],
             "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "address": {
+                    "description": "Optional",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "description": "New Onboarding Fields",
+                    "type": "string",
+                    "enum": [
+                        "SOLE_TRADER",
+                        "COMPANY",
+                        "TRUST"
+                    ]
                 },
                 "first_name": {
                     "type": "string"
@@ -9615,6 +9668,14 @@ const docTemplate = `{
                     "minLength": 8
                 },
                 "phone": {
+                    "type": "string"
+                },
+                "profession": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "tax_agent_number": {
+                    "description": "Optional",
                     "type": "string"
                 }
             }
@@ -9634,6 +9695,12 @@ const docTemplate = `{
                     "description": "Role-specific fields (populated based on role)",
                     "type": "string"
                 },
+                "acn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -9641,6 +9708,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/file.RsDocument"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
                     "type": "string"
                 },
                 "first_name": {
@@ -9652,13 +9725,16 @@ const docTemplate = `{
                 "last_name": {
                     "type": "string"
                 },
-                "license_no": {
-                    "type": "string"
-                },
                 "phone": {
                     "type": "string"
                 },
+                "profession": {
+                    "type": "string"
+                },
                 "role": {
+                    "type": "string"
+                },
+                "tax_agent_number": {
                     "type": "string"
                 },
                 "updated_at": {

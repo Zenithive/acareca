@@ -581,9 +581,23 @@ definitions:
     properties:
       abn:
         type: string
+      acn:
+        description: Optional
+        type: string
+      address:
+        description: Optional
+        type: string
       document_id:
         type: string
       email:
+        type: string
+      entity_name:
+        type: string
+      entity_type:
+        enum:
+        - SOLE_TRADER
+        - COMPANY
+        - TRUST
         type: string
       first_name:
         type: string
@@ -591,12 +605,35 @@ definitions:
         type: string
       phone:
         type: string
+      profession:
+        description: Optional
+        type: string
+      tax_agent_number:
+        description: Optional
+        type: string
     type: object
   auth.RqUser:
     properties:
+      abn:
+        type: string
+      acn:
+        description: Optional
+        type: string
+      address:
+        description: Optional
+        type: string
       document_id:
         type: string
       email:
+        type: string
+      entity_name:
+        type: string
+      entity_type:
+        description: New Onboarding Fields
+        enum:
+        - SOLE_TRADER
+        - COMPANY
+        - TRUST
         type: string
       first_name:
         type: string
@@ -607,8 +644,17 @@ definitions:
         type: string
       phone:
         type: string
+      profession:
+        description: Optional
+        type: string
+      tax_agent_number:
+        description: Optional
+        type: string
     required:
+    - abn
     - email
+    - entity_name
+    - entity_type
     - first_name
     - last_name
     - password
@@ -623,11 +669,19 @@ definitions:
       abn:
         description: Role-specific fields (populated based on role)
         type: string
+      acn:
+        type: string
+      address:
+        type: string
       created_at:
         type: string
       document:
         $ref: '#/definitions/file.RsDocument'
       email:
+        type: string
+      entity_name:
+        type: string
+      entity_type:
         type: string
       first_name:
         type: string
@@ -635,11 +689,13 @@ definitions:
         type: string
       last_name:
         type: string
-      license_no:
-        type: string
       phone:
         type: string
+      profession:
+        type: string
       role:
+        type: string
+      tax_agent_number:
         type: string
       updated_at:
         type: string

@@ -148,12 +148,28 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 		switch created.Role {
 		case util.RolePractitioner:
-			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+				UserID:     created.ID.String(),
+				EntityType: req.EntityType,
+				EntityName: req.EntityName,
+				ABN:        req.ABN,
+				ACN:        req.ACN,
+				Address:    req.Address,
+				Profession: req.Profession,
+			}, tx)
 			if txErr == nil {
 				entityID = p.ID
 			}
 		case util.RoleAccountant:
-			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{UserID: created.ID.String()}, tx)
+			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
+				UserID:     created.ID.String(),
+				EntityType: req.EntityType,
+				EntityName: req.EntityName,
+				ABN:        req.ABN,
+				ACN:        req.ACN,
+				Address:    req.Address,
+				Profession: req.Profession,
+			}, tx)
 			if txErr == nil {
 				entityID = a.ID
 			}
@@ -687,12 +703,23 @@ func (s *service) GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, er
 	case util.RolePractitioner:
 		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
 		if err == nil {
+			rs.EntityType = p.EntityType
+			rs.EntityName = p.EntityName
 			rs.ABN = p.ABN
+			rs.ACN = p.ACN
+			rs.Address = p.Address
+			rs.Profession = p.Profession
 		}
 	case util.RoleAccountant:
 		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, userID.String())
 		if err == nil {
-			rs.LicenseNo = acc.LicenseNo
+			rs.TaxAgentNumber = acc.TaxAgentNumber
+			rs.EntityType = acc.EntityType
+			rs.EntityName = acc.EntityName
+			rs.ABN = acc.ABN
+			rs.ACN = acc.ACN
+			rs.Address = acc.Address
+			rs.Profession = acc.Profession
 		}
 	}
 
@@ -744,19 +771,34 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		return nil, fmt.Errorf("update profile: %w", err)
 	}
 
-	// Update ABN if user is a practitioner and abn was provided
-	if user.Role == util.RolePractitioner && req.ABN != nil {
-		if err := s.practitionerSvc.UpdateABN(ctx, userID, req.ABN); err != nil {
-			return nil, fmt.Errorf("update abn: %w", err)
+	// Update Role-Specific Entity Details
+	switch user.Role {
+	case util.RolePractitioner:
+		// We pass the relevant fields from the request to the practitioner service
+		err := s.practitionerSvc.UpdatePractitionerProfile(ctx, userID, &practitioner.RqUpdatePractitioner{
+			ABN:        req.ABN,
+			EntityType: req.EntityType,
+			EntityName: req.EntityName,
+			ACN:        req.ACN,
+			Address:    req.Address,
+			Profession: req.Profession,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update practitioner profile: %w", err)
 		}
-		updated.Role = user.Role // keep role intact for response
-	}
 
-	rs := updated.ToRsUser()
-	if user.Role == util.RolePractitioner {
-		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
-		if err == nil {
-			rs.ABN = p.ABN
+	case util.RoleAccountant:
+		err := s.accountantSvc.UpdateAccountantProfile(ctx, userID, &accountant.RqUpdateAccountant{
+			ABN:            req.ABN,
+			EntityType:     req.EntityType,
+			EntityName:     req.EntityName,
+			ACN:            req.ACN,
+			Address:        req.Address,
+			Profession:     req.Profession,
+			TaxAgentNumber: req.TaxAgentNumber,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("update accountant profile: %w", err)
 		}
 	}
 
@@ -775,7 +817,7 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		UserAgent:   meta.UserAgent,
 	})
 
-	return rs, nil
+	return s.GetProfile(ctx, userID)
 }
 
 func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
