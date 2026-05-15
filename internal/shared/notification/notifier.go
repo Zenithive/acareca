@@ -21,6 +21,7 @@ type Hub struct {
 	mu            sync.RWMutex
 	clients       map[uuid.UUID][]*client
 	db            *sqlx.DB
+	streamMu      sync.RWMutex // Separate mutex for stream manager
 	streamManager interface {
 		AttachUserStream(userID uuid.UUID, handler func(interface{})) error
 		DetachUserStream(userID uuid.UUID)
@@ -51,6 +52,8 @@ func (h *Hub) SetStreamManager(sm interface {
 	AttachUserStream(userID uuid.UUID, handler func(interface{})) error
 	DetachUserStream(userID uuid.UUID)
 }) {
+	h.streamMu.Lock()
+	defer h.streamMu.Unlock()
 	h.streamManager = sm
 }
 
@@ -123,8 +126,12 @@ func (h *Hub) register(cl *client) {
 	h.clients[cl.entityID] = append(h.clients[cl.entityID], cl)
 	h.mu.Unlock()
 
-	// Attach NATS stream for real-time notifications
-	if h.streamManager != nil {
+	// Attach NATS stream for real-time notifications with proper synchronization
+	h.streamMu.RLock()
+	sm := h.streamManager
+	h.streamMu.RUnlock()
+
+	if sm != nil {
 		handler := func(event interface{}) {
 			data, err := json.Marshal(map[string]any{
 				"type": "notification",
@@ -142,7 +149,7 @@ func (h *Hub) register(cl *client) {
 			}
 		}
 
-		if err := h.streamManager.AttachUserStream(cl.entityID, handler); err != nil {
+		if err := sm.AttachUserStream(cl.entityID, handler); err != nil {
 			log.Printf("notifier: failed to attach stream for user %s: %v", cl.entityID, err)
 		} else {
 			log.Printf("notifier: attached NATS stream for user %s", cl.entityID)
@@ -166,9 +173,13 @@ func (h *Hub) unregister(cl *client) {
 	if len(h.clients[cl.entityID]) == 0 {
 		delete(h.clients, cl.entityID)
 		
-		// Detach NATS stream when last client disconnects
-		if h.streamManager != nil {
-			h.streamManager.DetachUserStream(cl.entityID)
+		// Detach NATS stream when last client disconnects with proper synchronization
+		h.streamMu.RLock()
+		sm := h.streamManager
+		h.streamMu.RUnlock()
+
+		if sm != nil {
+			sm.DetachUserStream(cl.entityID)
 			log.Printf("notifier: detached NATS stream for user %s", cl.entityID)
 		}
 	}

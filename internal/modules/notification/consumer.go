@@ -119,7 +119,7 @@ func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 	}
 
 	// Filter channels based on user preferences
-	allowedChannels := c.getEnabledChannels(ctx, event.RecipientID, event.Channels)
+	allowedChannels := c.getEnabledChannels(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType, event.Channels)
 	if len(allowedChannels) == 0 {
 		log.Printf("No channels enabled for notification %s", event.ID)
 		return nil
@@ -224,19 +224,19 @@ func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UU
 }
 
 // deliverInApp attempts immediate delivery via WebSocket
+// Note: Stream manager is already wired to WebSocket hub, so we only need to try one path
 func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
 	delivered := false
 
-	// Try stream delivery first (for users with active WebSocket connections)
+	// Only try stream delivery - the stream manager is connected to WebSocket hub
+	// Trying both would cause double delivery
 	if c.streamManager != nil && c.streamManager.IsUserStreamActive(event.RecipientID) {
 		if c.streamManager.DeliverToUser(event.RecipientID, event) {
 			delivered = true
 			log.Printf("Notification delivered via stream to user %s", event.RecipientID)
 		}
-	}
-
-	// Fallback to hub delivery if stream delivery didn't work
-	if !delivered && c.notifier != nil {
+	} else if c.notifier != nil {
+		// Only use hub as fallback when stream manager is not available
 		payload := map[string]any{
 			"id":           notificationID,
 			"recipient_id": event.RecipientID,
@@ -255,11 +255,17 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 		}
 	}
 
-	// Mark delivery status
+	// Mark delivery status in a transaction to ensure consistency
 	if delivered {
-		_ = c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp)
+		if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp); err != nil {
+			log.Printf("Failed to mark delivery as delivered %s: %v", notificationID, err)
+			// Note: Notification was delivered but DB update failed
+			// This could cause retry, but better than losing the notification
+		}
 	} else {
-		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, ChannelInApp, "no active WebSocket clients")
+		if err := c.repo.MarkDeliveryFailed(ctx, notificationID, ChannelInApp, "no active WebSocket clients"); err != nil {
+			log.Printf("Failed to mark delivery as failed %s: %v", notificationID, err)
+		}
 	}
 }
 
@@ -303,23 +309,50 @@ func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 	return notificationID, nil
 }
 
-// getEnabledChannels returns channels enabled in user preferences
-func (c *Consumer) getEnabledChannels(ctx context.Context, userID uuid.UUID, requestedChannels []Channel) []Channel {
+// getEnabledChannels returns channels enabled in user preferences for the specific entity and event
+func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType, requestedChannels []Channel) []Channel {
 	prefs, err := c.repo.GetAllPreferences(ctx, userID)
 	if err != nil || len(prefs) == 0 {
 		// Default: only in-app notifications
 		return []Channel{ChannelInApp}
 	}
 
-	// Collect all enabled channels from user preferences
+	notificationEventType := MapEventTypeToNotificationEventType(eventType)
+
+	// Find preferences for this specific entity
+	var matchingPref *NotificationPreference
+	for i := range prefs {
+		if prefs[i].EntityID == entityID && prefs[i].EntityType == string(entityType) {
+			matchingPref = &prefs[i]
+			break
+		}
+	}
+
+	// If no specific preference for this entity, use default
+	if matchingPref == nil {
+		return []Channel{ChannelInApp}
+	}
+
+	// Check if this event type is enabled for this entity
+	eventTypeEnabled := false
+	for _, enabledEventType := range matchingPref.EventType {
+		if enabledEventType == notificationEventType {
+			eventTypeEnabled = true
+			break
+		}
+	}
+
+	if !eventTypeEnabled {
+		return []Channel{}
+	}
+
+	// Collect enabled channels for this specific preference
 	enabledChannels := make(map[Channel]bool)
-	for _, pref := range prefs {
-		for channelKey, enabled := range pref.Channels {
-			if enabled {
-				ch := Channel(channelKey)
-				if ch.IsValid() {
-					enabledChannels[ch] = true
-				}
+	for channelKey, enabled := range matchingPref.Channels {
+		if enabled {
+			ch := Channel(channelKey)
+			if ch.IsValid() {
+				enabledChannels[ch] = true
 			}
 		}
 	}

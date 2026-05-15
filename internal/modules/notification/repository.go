@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -138,7 +139,8 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 
 func (r *repository) GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM tbl_notification WHERE recipient_id = $1 AND status = 'UNREAD'`
+	// Exclude dismissed notifications from unread count to match list query behavior
+	query := `SELECT COUNT(*) FROM tbl_notification WHERE recipient_id = $1 AND status = 'UNREAD' AND status != 'DISMISSED'`
 	err := r.db.GetContext(ctx, &count, query, recipientID)
 	return count, err
 }
@@ -173,7 +175,7 @@ func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) err
 // MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.
 func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error {
 	// First, try to mark as READ if it's UNREAD (this may fail if already READ, which is fine)
-	_, _ = r.db.ExecContext(ctx,
+	_, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification 
          SET status = 'READ', read_at = NOW() 
          WHERE recipient_id = $1 
@@ -181,6 +183,11 @@ func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipie
            AND id = ANY($2)`,
 		recipientID, ids,
 	)
+	// Only log database errors, not "no rows affected" scenarios
+	if err != nil {
+		log.Printf("Warning: Failed to mark notifications as READ before dismissing: %v", err)
+		// Continue anyway - we'll try to dismiss them regardless
+	}
 
 	// Now mark as DISMISSED (works for both UNREAD and READ status)
 	res, err := r.db.ExecContext(ctx,

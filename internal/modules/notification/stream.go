@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
@@ -24,7 +25,7 @@ type UserStream struct {
 	cancel   context.CancelFunc
 	handler  func(NotificationEvent)
 	active   bool
-	msgCount int
+	msgCount int32 // Changed to int32 for atomic operations
 }
 
 func NewStreamManager(events sharedEvents.IEvent, consumer *Consumer) *StreamManager {
@@ -44,8 +45,10 @@ func (sm *StreamManager) AttachUserStream(userID uuid.UUID, handler func(interfa
 	// Check if user already has an active stream
 	if existing, ok := sm.streams[userID]; ok {
 		if existing.active {
-			log.Printf("User %s already has an active stream", userID)
-			return nil
+			log.Printf("User %s already has an active stream, cleaning up old stream", userID)
+			// Cancel the old stream's context to prevent memory leak
+			existing.cancel()
+			existing.active = false
 		}
 	}
 
@@ -91,7 +94,8 @@ func (sm *StreamManager) DetachUserStream(userID uuid.UUID) {
 	// Remove from map
 	delete(sm.streams, userID)
 
-	log.Printf("Detached notification stream for user %s (processed %d messages)", userID, stream.msgCount)
+	msgCount := atomic.LoadInt32(&stream.msgCount) // Thread-safe read
+	log.Printf("Detached notification stream for user %s (processed %d messages)", userID, msgCount)
 }
 
 // DeliverToUser delivers a notification to a specific user if they have an active stream
@@ -107,7 +111,7 @@ func (sm *StreamManager) DeliverToUser(userID uuid.UUID, event NotificationEvent
 
 	// Deliver to user's handler (WebSocket)
 	stream.handler(event)
-	stream.msgCount++
+	atomic.AddInt32(&stream.msgCount, 1) // Thread-safe increment
 
 	return true
 }
@@ -145,9 +149,10 @@ func (sm *StreamManager) GetUserStreamInfo(userID uuid.UUID) map[string]interfac
 		return nil
 	}
 
+	msgCount := atomic.LoadInt32(&stream.msgCount) // Thread-safe read
 	return map[string]interface{}{
 		"user_id":       stream.userID,
 		"active":        stream.active,
-		"message_count": stream.msgCount,
+		"message_count": msgCount,
 	}
 }
