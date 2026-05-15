@@ -98,6 +98,15 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 	}
 	ft := f.MapToFilter()
 
+	// Add the AccountTypeID condition to the filter slice
+	if f.AccountTypeID != nil {
+		ft.Where = append(ft.Where, common.Condition{
+			Field:    "account_type_id",
+			Operator: common.OpEq,
+			Value:    *f.AccountTypeID,
+		})
+	}
+
 	// Logic for Practitioner vs Accountant
 	if role == util.RolePractitioner {
 		// PRACTITIONER: Force filter to their own ID to prevent seeing other's data
