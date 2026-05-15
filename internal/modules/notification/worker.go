@@ -14,7 +14,6 @@ const (
 	workerBatchSize = 50
 )
 
-// StartRetryWorker polls for FAILED in_app deliveries and retries them via WebSocket.
 func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotification.Hub) {
 	ticker := time.NewTicker(workerInterval)
 	defer ticker.Stop()
@@ -42,7 +41,6 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		return
 	}
 
-	log.Printf("retry worker: retrying %d failed in_app deliveries", len(deliveries))
 
 	for _, d := range deliveries {
 		// Check if context is cancelled before processing each delivery
@@ -53,6 +51,9 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		default:
 		}
 
+		// Try to push to active WebSocket clients if available
+		pushedToWebSocket := false
+		
 		// Construct complete notification payload matching NotificationEvent structure
 		push := map[string]any{
 			"id":             d.NotificationID,
@@ -68,18 +69,18 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 			"created_at":     d.CreatedAt,
 		}
 
-		// Try to push to WebSocket first
 		if hub.Push(d.RecipientID, push) {
-			// Push succeeded, mark as delivered
-			if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, ChannelInApp); err != nil {
-				log.Printf("retry worker: failed to mark delivered %s: %v", d.NotificationID, err)
-			} else {
-				log.Printf("retry worker: delivered %s", d.NotificationID)
-			}
+			pushedToWebSocket = true
+			log.Printf("retry worker: pushed to active WebSocket for user %s", d.RecipientID)
+		}
+
+		if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, ChannelInApp); err != nil {
+			log.Printf("retry worker: failed to mark delivered %s: %v", d.NotificationID, err)
 		} else {
-			// Push failed, increment retry count
-			if err := repo.MarkDeliveryFailed(ctx, d.NotificationID, ChannelInApp, "no active WebSocket clients"); err != nil {
-				log.Printf("retry worker: failed to update retry count %s: %v", d.NotificationID, err)
+			if pushedToWebSocket {
+				log.Printf("retry worker: delivered %s (pushed to WebSocket)", d.NotificationID)
+			} else {
+				log.Printf("retry worker: delivered %s (stored for later retrieval)", d.NotificationID)
 			}
 		}
 	}

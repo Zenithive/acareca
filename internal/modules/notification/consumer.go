@@ -110,7 +110,6 @@ func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
 	}
 
-	log.Printf("Processing notification: %s for recipient: %s", event.ID, event.RecipientID)
 
 	// Check if user should be notified based on event type preferences
 	if !c.shouldNotifyUser(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType) {
@@ -223,20 +222,15 @@ func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UU
 	}
 }
 
-// deliverInApp attempts immediate delivery via WebSocket
-// Note: Stream manager is already wired to WebSocket hub, so we only need to try one path
 func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
-	delivered := false
+	pushedToWebSocket := false
 
-	// Only try stream delivery - the stream manager is connected to WebSocket hub
-	// Trying both would cause double delivery
 	if c.streamManager != nil && c.streamManager.IsUserStreamActive(event.RecipientID) {
 		if c.streamManager.DeliverToUser(event.RecipientID, event) {
-			delivered = true
-			log.Printf("Notification delivered via stream to user %s", event.RecipientID)
+			pushedToWebSocket = true
+			log.Printf("Notification pushed to active WebSocket for user %s", event.RecipientID)
 		}
 	} else if c.notifier != nil {
-		// Only use hub as fallback when stream manager is not available
 		payload := map[string]any{
 			"id":           notificationID,
 			"recipient_id": event.RecipientID,
@@ -250,21 +244,18 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 		}
 
 		if c.notifier.Push(event.RecipientID, payload) {
-			delivered = true
-			log.Printf("In-app notification delivered via hub: %s", notificationID)
+			pushedToWebSocket = true
+			log.Printf("Notification pushed to active WebSocket via hub: %s", notificationID)
 		}
 	}
 
-	// Mark delivery status in a transaction to ensure consistency
-	if delivered {
-		if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp); err != nil {
-			log.Printf("Failed to mark delivery as delivered %s: %v", notificationID, err)
-			// Note: Notification was delivered but DB update failed
-			// This could cause retry, but better than losing the notification
-		}
+	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp); err != nil {
+		log.Printf("Failed to mark delivery as delivered %s: %v", notificationID, err)
 	} else {
-		if err := c.repo.MarkDeliveryFailed(ctx, notificationID, ChannelInApp, "no active WebSocket clients"); err != nil {
-			log.Printf("Failed to mark delivery as failed %s: %v", notificationID, err)
+		if pushedToWebSocket {
+			log.Printf("In-app notification delivered (pushed to WebSocket): %s", notificationID)
+		} else {
+			log.Printf("In-app notification delivered (stored for later retrieval): %s", notificationID)
 		}
 	}
 }
