@@ -34,7 +34,7 @@ type PractitionerWithUser struct {
 	UpdatedAt        time.Time  `db:"updated_at"`
 	DeletedAt        *time.Time `db:"deleted_at"`
 	EntityType       string     `db:"entity_type"`
-	EntityName       string     `db:"entity_name"`
+	EntityName       *string    `db:"entity_name"`
 	ACN              *string    `db:"acn"`
 	Address          *string    `db:"address"`
 	Profession       *string    `db:"profession"`
@@ -49,7 +49,7 @@ type PractitionerWithUser struct {
 type RqCreatePractitioner struct {
 	UserID     string  `json:"user_id"`
 	EntityType string  `json:"entity_type"`
-	EntityName string  `json:"entity_name"`
+	EntityName *string `json:"entity_name"`
 	ABN        *string `json:"abn"`
 	ACN        *string `json:"acn"`
 	Address    *string `json:"address"`
@@ -80,7 +80,7 @@ type RsPractitioner struct {
 	Verified   bool        `json:"verified"`
 	User       *RsUserInfo `json:"user"`
 	EntityType string      `json:"entity_type"`
-	EntityName string      `json:"entity_name"`
+	EntityName *string     `json:"entity_name"`
 	ACN        *string     `json:"acn"`
 	Address    *string     `json:"address"`
 	Profession *string     `json:"profession"`
@@ -92,7 +92,7 @@ func (p *Practitioner) ToRs() *RsPractitioner {
 		ABN:        p.ABN,
 		Verified:   p.Verified,
 		EntityType: p.EntityType,
-		EntityName: safeString(p.EntityName),
+		EntityName: p.EntityName,
 		ACN:        p.ACN,
 		Address:    p.Address,
 		Profession: p.Profession,
@@ -165,11 +165,4 @@ type FinancialSettings struct {
 	LockDate        *string   `db:"lock_date"`
 	CreatedAt       time.Time `db:"created_at"`
 	UpdatedAt       time.Time `db:"updated_at"`
-}
-
-func safeString(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }

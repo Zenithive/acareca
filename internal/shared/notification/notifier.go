@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -19,9 +18,14 @@ import (
 )
 
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[uuid.UUID][]*client
-	db      *sqlx.DB
+	mu            sync.RWMutex
+	clients       map[uuid.UUID][]*client
+	db            *sqlx.DB
+	streamMu      sync.RWMutex // Separate mutex for stream manager
+	streamManager interface {
+		AttachUserStream(userID uuid.UUID, handler func(interface{})) error
+		DetachUserStream(userID uuid.UUID)
+	}
 }
 
 type client struct {
@@ -43,19 +47,14 @@ func NewNotifier(db *sqlx.DB) *Hub {
 	}
 }
 
-// safeSend prevents panic if send is called on a closed channel.
-func safeSend(c *client, data []byte) (ok bool) {
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
-	select {
-	case c.send <- data:
-		return true
-	default:
-		return false
-	}
+// SetStreamManager sets the stream manager for real-time NATS integration
+func (h *Hub) SetStreamManager(sm interface {
+	AttachUserStream(userID uuid.UUID, handler func(interface{})) error
+	DetachUserStream(userID uuid.UUID)
+}) {
+	h.streamMu.Lock()
+	defer h.streamMu.Unlock()
+	h.streamManager = sm
 }
 
 // Push sends a live notification event to all connections belonging to entityID.
@@ -80,20 +79,19 @@ func (h *Hub) Push(entityID uuid.UUID, payload any) bool {
 
 	delivered := false
 	for _, c := range conns {
-		if safeSend(c, data) {
+		select {
+		case c.send <- data:
 			delivered = true
-		} else {
+		default:
 			log.Printf("notifier: dropped message for entityID=%s (slow or closed client)", entityID)
 		}
 	}
 	return delivered
 }
 
-// ServeWS upgrades the HTTP connection to WebSocket, authenticates via ?token=,
-// sends stored notifications, then streams live pushes.
 func (h *Hub) ServeWS(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		entityID, ok := h.authenticate(c, cfg)
+		entityID, ok := util.GetEntityID(c)
 		if !ok {
 			return
 		}
@@ -110,10 +108,8 @@ func (h *Hub) ServeWS(cfg *config.Config) gin.HandlerFunc {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			// sendStored runs inside writePump's goroutine so it never
-			// blocks the handler and is guaranteed the pump is draining.
-			if err := h.sendStored(c.Request.Context(), cl); err != nil {
-				log.Printf("notifier: sendStored error: %v", err)
+			if err := h.StoredNotifications(c.Request.Context(), cl); err != nil {
+				log.Printf("notifier: StoredNotifications error: %v", err)
 			}
 			cl.writePump()
 		}()
@@ -125,42 +121,46 @@ func (h *Hub) ServeWS(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func (h *Hub) authenticate(c *gin.Context, cfg *config.Config) (uuid.UUID, bool) {
-	tokenStr := c.Query("token")
-	if tokenStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
-		return uuid.Nil, false
-	}
-
-	claims := &util.CustomClaims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return []byte(cfg.JWTSecret), nil
-	})
-	if err != nil || !token.Valid || claims.ID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-		return uuid.Nil, false
-	}
-
-	entityID, err := uuid.Parse(claims.ID)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid entity id"})
-		return uuid.Nil, false
-	}
-	return entityID, true
-}
-
 func (h *Hub) register(cl *client) {
 	h.mu.Lock()
 	h.clients[cl.entityID] = append(h.clients[cl.entityID], cl)
 	h.mu.Unlock()
+
+	// Attach NATS stream for real-time notifications with proper synchronization
+	h.streamMu.RLock()
+	sm := h.streamManager
+	h.streamMu.RUnlock()
+
+	if sm != nil {
+		handler := func(event interface{}) {
+			data, err := json.Marshal(map[string]any{
+				"type": "notification",
+				"data": event,
+			})
+			if err != nil {
+				log.Printf("notifier: marshal error for stream event: %v", err)
+				return
+			}
+
+			select {
+			case cl.send <- data:
+			default:
+				log.Printf("notifier: dropped stream message for entityID=%s (buffer full)", cl.entityID)
+			}
+		}
+
+		if err := sm.AttachUserStream(cl.entityID, handler); err != nil {
+			log.Printf("notifier: failed to attach stream for user %s: %v", cl.entityID, err)
+		} else {
+			log.Printf("notifier: attached NATS stream for user %s", cl.entityID)
+		}
+	}
 }
 
 func (h *Hub) unregister(cl *client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	
 	list := h.clients[cl.entityID]
 	for i, c := range list {
 		if c == cl {
@@ -168,15 +168,27 @@ func (h *Hub) unregister(cl *client) {
 			break
 		}
 	}
+	
 	// Clean up map entry to prevent memory leak.
 	if len(h.clients[cl.entityID]) == 0 {
 		delete(h.clients, cl.entityID)
+		
+		// Detach NATS stream when last client disconnects with proper synchronization
+		h.streamMu.RLock()
+		sm := h.streamManager
+		h.streamMu.RUnlock()
+
+		if sm != nil {
+			sm.DetachUserStream(cl.entityID)
+			log.Printf("notifier: detached NATS stream for user %s", cl.entityID)
+		}
 	}
+	
 	// Closing the channel signals writePump to exit cleanly.
 	close(cl.send)
 }
 
-type storedNotification struct {
+type Notification struct {
 	ID          uuid.UUID       `db:"id"`
 	RecipientID uuid.UUID       `db:"recipient_id"`
 	SenderID    *uuid.UUID      `db:"sender_id"`
@@ -189,7 +201,7 @@ type storedNotification struct {
 	ReadedAt    *time.Time      `db:"readed_at"`
 }
 
-func (h *Hub) sendStored(ctx context.Context, cl *client) error {
+func (h *Hub) StoredNotifications(ctx context.Context, cl *client) error {
 	const q = `
 		SELECT n.id, n.recipient_id, n.sender_id, n.event_type, n.entity_type, n.entity_id,
 		       n.status, n.payload, n.created_at, n.read_at AS readed_at
@@ -208,9 +220,9 @@ func (h *Hub) sendStored(ctx context.Context, cl *client) error {
 	}
 	defer rows.Close()
 
-	var notifications []storedNotification
+	var notifications []Notification
 	for rows.Next() {
-		var n storedNotification
+		var n Notification
 		if err := rows.StructScan(&n); err != nil {
 			return fmt.Errorf("scan notification: %w", err)
 		}
@@ -226,11 +238,10 @@ func (h *Hub) sendStored(ctx context.Context, cl *client) error {
 	}
 	data, _ := json.Marshal(msg)
 
-	// Use select to avoid blocking if buffer is full.
 	select {
 	case cl.send <- data:
 	default:
-		log.Printf("notifier: sendStored dropped for entityID=%s (buffer full)", cl.entityID)
+		log.Printf("notifier: StoredNotifications dropped for entityID=%s (buffer full)", cl.entityID)
 	}
 	return nil
 }

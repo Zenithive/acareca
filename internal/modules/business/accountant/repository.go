@@ -57,7 +57,7 @@ func (r *repository) CreateAccountant(ctx context.Context, req *RqCreateAccounta
 		UserID:         a.UserID.String(),
 		Verified:       a.Verified,
 		EntityType:     a.EntityType,
-		EntityName:     *a.EntityName,
+		EntityName:     a.EntityName,
 		ABN:            a.ABN,
 		ACN:            a.ACN,
 		Address:        a.Address,
@@ -77,7 +77,7 @@ func (r *repository) GetAccountantByUserID(ctx context.Context, userID string) (
 		UserID:         a.UserID.String(),
 		Verified:       a.Verified,
 		EntityType:     a.EntityType,
-		EntityName:     safeString(a.EntityName),
+		EntityName:     a.EntityName,
 		ABN:            a.ABN,
 		ACN:            a.ACN,
 		Address:        a.Address,
@@ -419,11 +419,4 @@ func (r *repository) GetForms(ctx context.Context, accountantID string, ft commo
 	}
 
 	return forms, nil
-}
-
-func safeString(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
