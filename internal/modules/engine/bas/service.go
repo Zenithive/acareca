@@ -1892,14 +1892,6 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 		resp.Expense = append(resp.Expense, BASAccountGroup{Name: "total", Values: tv})
 	}
 
-	if (strings.Contains(secStr, "netProfitLoss") || secStr == "") && len(dateSet) > 0 {
-		resp.NetProfitLoss = &BASAccountGroup{Name: "netProfitLoss"}
-		for _, d := range sortedDates {
-			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
-			resp.NetProfitLoss.Values = append(resp.NetProfitLoss.Values, BASValue{Date: d, Net: roundToTwo(inc.Net - exp.Net)})
-		}
-	}
-
 	if (strings.Contains(secStr, "gstPayable") || secStr == "") && len(dateSet) > 0 {
 		resp.GSTPayable = &BASAccountGroup{Name: "gstPayable"}
 		for _, d := range sortedDates {
