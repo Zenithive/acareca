@@ -56,7 +56,14 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 	if err == nil && existing != nil {
 		return existing, nil
 	}
-	t, err := s.repo.CreatePractitioner(ctx, &RqCreatePractitioner{UserID: req.UserID}, tx)
+	t, err := s.repo.CreatePractitioner(ctx, &RqCreatePractitioner{
+		UserID:     req.UserID,
+		EntityType: req.EntityType,
+		EntityName: req.EntityName,
+		ABN:        req.ABN,
+		ACN:        req.ACN,
+		Address:    req.Address,
+		Profession: req.Profession}, tx)
 	if err != nil {
 		return nil, err
 	}

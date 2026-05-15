@@ -148,12 +148,28 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 		switch created.Role {
 		case util.RolePractitioner:
-			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: created.ID.String()}, tx)
+			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+				UserID:     created.ID.String(),
+				EntityType: req.EntityType,
+				EntityName: req.EntityName,
+				ABN:        req.ABN,
+				ACN:        req.ACN,
+				Address:    req.Address,
+				Profession: req.Profession,
+			}, tx)
 			if txErr == nil {
 				entityID = p.ID
 			}
 		case util.RoleAccountant:
-			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{UserID: created.ID.String()}, tx)
+			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
+				UserID:     created.ID.String(),
+				EntityType: req.EntityType,
+				EntityName: req.EntityName,
+				ABN:        req.ABN,
+				ACN:        req.ACN,
+				Address:    req.Address,
+				Profession: req.Profession,
+			}, tx)
 			if txErr == nil {
 				entityID = a.ID
 			}
@@ -687,12 +703,23 @@ func (s *service) GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, er
 	case util.RolePractitioner:
 		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, userID.String())
 		if err == nil {
+			rs.EntityType = p.EntityType
+			rs.EntityName = p.EntityName
 			rs.ABN = p.ABN
+			rs.ACN = p.ACN
+			rs.Address = p.Address
+			rs.Profession = p.Profession
 		}
 	case util.RoleAccountant:
 		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, userID.String())
 		if err == nil {
-			rs.LicenseNo = acc.LicenseNo
+			rs.TaxAgentNumber = acc.TaxAgentNumber
+			rs.EntityType = acc.EntityType
+			rs.EntityName = acc.EntityName
+			rs.ABN = acc.ABN
+			rs.ACN = acc.ACN
+			rs.Address = acc.Address
+			rs.Profession = acc.Profession
 		}
 	}
 

@@ -33,12 +33,12 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error) {
 	query := `
-		INSERT INTO tbl_accountant (user_id)
-		VALUES ($1)
-		RETURNING id, user_id, verified
+		INSERT INTO tbl_accountant (user_id, entity_type, entity_name, abn, acn, address, tax_agent_number, profession)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, user_id, verified, entity_type, entity_name, abn, acn, tax_agent_number, address, profession
 	`
 	var a Accountant
-	if err := tx.QueryRowxContext(ctx, query, req.UserID).StructScan(&a); err != nil {
+	if err := tx.QueryRowxContext(ctx, query, req.UserID, req.EntityType, req.EntityName, req.ABN, req.ACN, req.Address, req.TaxAgentNumber, req.Profession).StructScan(&a); err != nil {
 		return nil, err
 	}
 
@@ -51,19 +51,37 @@ func (r *repository) CreateAccountant(ctx context.Context, req *RqCreateAccounta
 	}
 
 	return &RsAccountant{
-		ID:       a.ID,
-		UserID:   a.UserID.String(),
-		Verified: a.Verified,
+		ID:             a.ID,
+		UserID:         a.UserID.String(),
+		Verified:       a.Verified,
+		EntityType:     a.EntityType,
+		EntityName:     *a.EntityName,
+		ABN:            a.ABN,
+		ACN:            a.ACN,
+		Address:        a.Address,
+		Profession:     a.Profession,
+		TaxAgentNumber: a.TaxAgentNumber,
 	}, nil
 }
 
 func (r *repository) GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error) {
-	query := `SELECT id, user_id, verified FROM tbl_accountant WHERE user_id = $1 AND deleted_at IS NULL`
+	query := `SELECT id, user_id, verified, entity_type, entity_name, address, abn,acn, profession, tax_agent_number FROM tbl_accountant WHERE user_id = $1 AND deleted_at IS NULL`
 	var a Accountant
 	if err := r.db.GetContext(ctx, &a, query, userID); err != nil {
 		return nil, err
 	}
-	return &RsAccountant{ID: a.ID, UserID: a.UserID.String(), Verified: a.Verified}, nil
+	return &RsAccountant{
+		ID:             a.ID,
+		UserID:         a.UserID.String(),
+		Verified:       a.Verified,
+		EntityType:     a.EntityType,
+		EntityName:     *a.EntityName,
+		ABN:            a.ABN,
+		ACN:            a.ACN,
+		Address:        a.Address,
+		Profession:     a.Profession,
+		TaxAgentNumber: a.TaxAgentNumber,
+	}, nil
 }
 
 func (r *repository) GetAllUsers(ctx context.Context, userID string) ([]RsAccountantUser, error) {

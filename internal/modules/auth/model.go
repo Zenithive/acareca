@@ -20,6 +20,15 @@ type User struct {
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
+
+	// Role-specific fields (populated based on role)
+	ABN            *string `json:"abn,omitempty"`
+	TaxAgentNumber *string `json:"tax_agent_number,omitempty"`
+	EntityType     string  `json:"entity_type"`
+	EntityName     string  `json:"entity_name"`
+	ACN            *string `json:"acn,omitempty"`
+	Address        *string `json:"address,omitempty"`
+	Profession     *string `json:"profession,omitempty"`
 }
 
 type AuthProvider struct {
@@ -53,6 +62,15 @@ type RqUser struct {
 	LastName   string  `json:"last_name"  validate:"required"`
 	Phone      *string `json:"phone"      validate:"omitempty,e164"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
+
+	// New Onboarding Fields
+	EntityType     string  `json:"entity_type" validate:"required,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName     string  `json:"entity_name" validate:"required"`
+	ABN            *string `json:"abn" validate:"required"`
+	ACN            *string `json:"acn"`              // Optional
+	Address        *string `json:"address"`          // Optional
+	Profession     *string `json:"profession"`       // Optional
+	TaxAgentNumber *string `json:"tax_agent_number"` // Optional
 }
 
 type RqUpdateUser struct {
@@ -66,10 +84,17 @@ type RqUpdateUser struct {
 
 func (r *RqUser) ToDBModel() *User {
 	return &User{
-		Email:     r.Email,
-		FirstName: r.FirstName,
-		LastName:  r.LastName,
-		Phone:     r.Phone,
+		Email:          r.Email,
+		FirstName:      r.FirstName,
+		LastName:       r.LastName,
+		Phone:          r.Phone,
+		ABN:            r.ABN,
+		TaxAgentNumber: r.TaxAgentNumber,
+		EntityType:     r.EntityType,
+		EntityName:     r.EntityName,
+		ACN:            r.ACN,
+		Address:        r.Address,
+		Profession:     r.Profession,
 	}
 }
 
@@ -107,8 +132,13 @@ type RsUser struct {
 	Document *file.RsDocument `json:"document"`
 
 	// Role-specific fields (populated based on role)
-	ABN       *string `json:"abn,omitempty"`
-	LicenseNo *string `json:"license_no,omitempty"`
+	ABN            *string `json:"abn"`
+	TaxAgentNumber *string `json:"tax_agent_number"`
+	EntityType     string  `json:"entity_type"`
+	EntityName     string  `json:"entity_name"`
+	ACN            *string `json:"acn"`
+	Address        *string `json:"address"`
+	Profession     *string `json:"profession"`
 }
 
 func (u *User) ToRsUser() *RsUser {
@@ -123,15 +153,22 @@ func (u *User) ToRsUser() *RsUser {
 		}
 	}
 	return &RsUser{
-		ID:        u.ID,
-		Email:     u.Email,
-		FirstName: u.FirstName,
-		LastName:  u.LastName,
-		Phone:     u.Phone,
-		Role:      u.Role,
-		Document:  doc,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
+		ID:             u.ID,
+		Email:          u.Email,
+		FirstName:      u.FirstName,
+		LastName:       u.LastName,
+		Phone:          u.Phone,
+		Role:           u.Role,
+		Document:       doc,
+		CreatedAt:      u.CreatedAt,
+		UpdatedAt:      u.UpdatedAt,
+		ABN:            u.ABN,
+		TaxAgentNumber: u.TaxAgentNumber,
+		EntityType:     u.EntityType,
+		EntityName:     u.EntityName,
+		ACN:            u.ACN,
+		Address:        u.Address,
+		Profession:     u.Profession,
 	}
 }
 

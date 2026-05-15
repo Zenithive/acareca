@@ -9,25 +9,43 @@ import (
 )
 
 type Accountant struct {
-	ID        uuid.UUID  `db:"id"`
-	UserID    uuid.UUID  `db:"user_id"`
-	LicenseNo *string    `db:"license_no"`
-	Verified  bool       `db:"verified"`
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
+	ID             uuid.UUID  `db:"id"`
+	UserID         uuid.UUID  `db:"user_id"`
+	TaxAgentNumber *string    `db:"tax_agent_number"`
+	Verified       bool       `db:"verified"`
+	CreatedAt      time.Time  `db:"created_at"`
+	UpdatedAt      time.Time  `db:"updated_at"`
+	DeletedAt      *time.Time `db:"deleted_at"`
+	EntityType     string     `db:"entity_type"`
+	EntityName     *string    `db:"entity_name"`
+	ABN            *string    `db:"abn"`
+	ACN            *string    `db:"acn"`
+	Address        *string    `db:"address"`
+	Profession     *string    `db:"profession"`
 }
 
 type RqCreateAccountant struct {
-	UserID    string `json:"user_id"`
-	LicenseNo string `json:"license_no"`
+	UserID         string `json:"user_id"`
+	EntityType     string
+	EntityName     string
+	ABN            *string
+	ACN            *string
+	Address        *string
+	TaxAgentNumber *string
+	Profession     *string
 }
 
 type RsAccountant struct {
-	ID        uuid.UUID `json:"id"`
-	UserID    string    `json:"user_id"`
-	LicenseNo *string   `json:"license_no"`
-	Verified  bool      `json:"verified"`
+	ID             uuid.UUID `json:"id"`
+	UserID         string    `json:"user_id"`
+	TaxAgentNumber *string   `json:"tax_agent_number,omitempty"`
+	Verified       bool      `json:"verified"`
+	EntityType     string    `json:"entity_type"`
+	EntityName     string    `json:"entity_name"`
+	ABN            *string   `json:"abn"`
+	ACN            *string   `json:"acn,omitempty"`
+	Address        *string   `json:"address,omitempty"`
+	Profession     *string   `json:"profession,omitempty"`
 }
 
 type RsAccountantUser struct {
