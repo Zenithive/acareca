@@ -27,7 +27,7 @@ type Accountant struct {
 type RqCreateAccountant struct {
 	UserID         string `json:"user_id"`
 	EntityType     string
-	EntityName     string
+	EntityName     *string
 	ABN            *string
 	ACN            *string
 	Address        *string

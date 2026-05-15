@@ -25,7 +25,7 @@ type User struct {
 	ABN            *string `json:"abn,omitempty"`
 	TaxAgentNumber *string `json:"tax_agent_number,omitempty"`
 	EntityType     string  `json:"entity_type"`
-	EntityName     string  `json:"entity_name"`
+	EntityName     *string `json:"entity_name"`
 	ACN            *string `json:"acn,omitempty"`
 	Address        *string `json:"address,omitempty"`
 	Profession     *string `json:"profession,omitempty"`
@@ -65,7 +65,7 @@ type RqUser struct {
 
 	// New Onboarding Fields
 	EntityType     string  `json:"entity_type" validate:"required,oneof=SOLE_TRADER COMPANY TRUST"`
-	EntityName     string  `json:"entity_name" validate:"required"`
+	EntityName     *string `json:"entity_name" validate:"required"`
 	ABN            *string `json:"abn" validate:"required"`
 	ACN            *string `json:"acn"`              // Optional
 	Address        *string `json:"address"`          // Optional
@@ -141,7 +141,7 @@ type RsUser struct {
 	ABN            *string `json:"abn"`
 	TaxAgentNumber *string `json:"tax_agent_number"`
 	EntityType     string  `json:"entity_type"`
-	EntityName     string  `json:"entity_name"`
+	EntityName     *string `json:"entity_name"`
 	ACN            *string `json:"acn"`
 	Address        *string `json:"address"`
 	Profession     *string `json:"profession"`
