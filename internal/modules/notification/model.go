@@ -229,9 +229,9 @@ const (
 	// JetStream
 	StreamNotification = "NOTIFICATION_STREAM"
 
-	ConsumerNotificationInApp = "notification.in_app.consumer"
-	ConsumerNotificationEmail = "notification.email.consumer"
-	ConsumerNotificationPush  = "notification.push.consumer"
+	ConsumerNotificationInApp = "notification_in_app_consumer"
+	ConsumerNotificationEmail = "notification_email_consumer"
+	ConsumerNotificationPush  = "notification_push_consumer"
 )
 
 // NotificationEvent represents the event payload published to NATS

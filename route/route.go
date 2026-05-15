@@ -235,7 +235,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// ============ NOTIFICATION ============
 	notificationHandler := notification.NewHandler(notificationSvc)
 	nft := v1.Group("/notification")
-	nft.GET("/ws", notifier.ServeWS(cfg))
+	nft.GET("/ws", middleware.Auth(cfg), notifier.ServeWS(cfg))
 	nft.Use(middleware.Auth(cfg))
 	notification.RegisterRoutes(nft, notificationHandler)
 

@@ -44,12 +44,6 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 	log.Printf("retry worker: retrying %d failed in_app deliveries", len(deliveries))
 
 	for _, d := range deliveries {
-		// Mark DELIVERED in DB first before attempting WS push
-		if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, ChannelInApp); err != nil {
-			log.Printf("retry worker: mark delivered %s: %v", d.NotificationID, err)
-			continue
-		}
-
 		push := map[string]any{
 			"id":           d.NotificationID,
 			"recipient_id": d.RecipientID,
@@ -60,13 +54,19 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 			"created_at":   d.CreatedAt,
 		}
 
-		if !hub.Push(d.RecipientID, push) {
-			// Push failed — revert back to FAILED
-			if err := repo.MarkDeliveryFailed(ctx, d.NotificationID, ChannelInApp, "no active WebSocket clients"); err != nil {
-				log.Printf("retry worker: revert to failed %s: %v", d.NotificationID, err)
+		// Try to push to WebSocket first
+		if hub.Push(d.RecipientID, push) {
+			// Push succeeded, mark as delivered
+			if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, ChannelInApp); err != nil {
+				log.Printf("retry worker: failed to mark delivered %s: %v", d.NotificationID, err)
+			} else {
+				log.Printf("retry worker: delivered %s", d.NotificationID)
 			}
 		} else {
-			log.Printf("retry worker: delivered %s", d.NotificationID)
+			// Push failed, increment retry count
+			if err := repo.MarkDeliveryFailed(ctx, d.NotificationID, ChannelInApp, "no active WebSocket clients"); err != nil {
+				log.Printf("retry worker: failed to update retry count %s: %v", d.NotificationID, err)
+			}
 		}
 	}
 }
