@@ -52,12 +52,17 @@ func (r *repository) CreateAccountant(ctx context.Context, req *RqCreateAccounta
 		return nil, err
 	}
 
+	entityName := ""
+	if a.EntityName != nil {
+		entityName = *a.EntityName
+	}
+
 	return &RsAccountant{
 		ID:             a.ID,
 		UserID:         a.UserID.String(),
 		Verified:       a.Verified,
 		EntityType:     a.EntityType,
-		EntityName:     *a.EntityName,
+		EntityName:     entityName,
 		ABN:            a.ABN,
 		ACN:            a.ACN,
 		Address:        a.Address,
@@ -72,12 +77,18 @@ func (r *repository) GetAccountantByUserID(ctx context.Context, userID string) (
 	if err := r.db.GetContext(ctx, &a, query, userID); err != nil {
 		return nil, err
 	}
+	
+	entityName := ""
+	if a.EntityName != nil {
+		entityName = *a.EntityName
+	}
+	
 	return &RsAccountant{
 		ID:             a.ID,
 		UserID:         a.UserID.String(),
 		Verified:       a.Verified,
 		EntityType:     a.EntityType,
-		EntityName:     *a.EntityName,
+		EntityName:     entityName,
 		ABN:            a.ABN,
 		ACN:            a.ACN,
 		Address:        a.Address,
