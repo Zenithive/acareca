@@ -553,7 +553,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			gstAmount = v.GstAmount
 			grossTotal = inputAmount
 			netBase = inputAmount - *v.GstAmount
-			
+
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
@@ -604,11 +604,11 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
-			
+
 			// MANUAL tax type: User enters GROSS + GST
 			// CREATE: net_amount contains GROSS, gst_amount contains GST
 			// UPDATE: gross_amount contains GROSS, net_amount contains pre-calculated NET, gst_amount contains GST
-			
+
 			if v.GrossAmount != nil {
 				// UPDATE case: explicit gross_amount provided
 				grossTotal = *v.GrossAmount
@@ -1131,12 +1131,44 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
 
+	var entityName string
 	var practitionerABN string
 	if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
 		// pracUUID, _ := uuid.Parse(*f.PractitionerID.String())
-		prac, _ := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
-		if prac != nil && prac.ABN != nil {
-			practitionerABN = *prac.ABN
+		prac, err := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
+		if err == nil {
+			if prac.EntityName != nil {
+				entityName = *prac.EntityName
+			} else {
+				entityName = fullName
+			}
+			if prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
+		}
+	} else {
+		if role == util.RolePractitioner {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
+			entityName = fullName
+			if err == nil {
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		} else {
+			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+			{
+				if err == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
+			}
 		}
 	}
 
@@ -1185,7 +1217,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		contentType = "text/html"
 	} else {
 		// Handle Excel Export
-		buf, err := s.generateExcelReport(ctx, f, actorID, role, fullName, practitionerABN, period)
+		buf, err := s.generateExcelReport(ctx, f, actorID, role, entityName, practitionerABN, period)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to generate excel: %w", err)
 		}
@@ -1252,7 +1284,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	return result, contentType, nil
 }
 
-func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, fullName string, practitionerABN string, period string) (*bytes.Buffer, error) {
+func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, entityName string, practitionerABN string, period string) (*bytes.Buffer, error) {
 	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 	if err != nil {
 		return nil, err
@@ -1343,7 +1375,7 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 	metaRow := 2
 
 	// Exported By (Always show)
-	setRichMeta(metaRow, "Exported by:", fullName)
+	setRichMeta(metaRow, "Exported by:", entityName)
 	metaRow++
 
 	// ABN (Skip if empty)
@@ -1357,6 +1389,10 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 		setRichMeta(metaRow, "Period:", period)
 		metaRow++
 	}
+
+	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
+	setRichMeta(metaRow, "Generated:", currentTimeStr)
+	metaRow++
 
 	// 2. Set Headers
 	headerRow := metaRow + 1

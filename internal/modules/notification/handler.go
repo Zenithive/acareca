@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -14,6 +15,7 @@ type IHandler interface {
 	MarkRead(c *gin.Context)
 	MarkAllRead(c *gin.Context)
 	MarkDismissed(c *gin.Context)
+	MarkAllDismissed(c *gin.Context)
 
 	GetPreferences(c *gin.Context)
 	UpdatePreference(c *gin.Context)
@@ -111,6 +113,35 @@ func (h *handler) MarkAllRead(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "all notifications marked as read")
 }
 
+// @Summary      Mark a notification as dismissed
+// @Description  Dismisses a specific notification by its UUID for the authenticated clinic/practitioner entity context.
+// @Tags         notification
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string  true  "Notification UUID"  Format(uuid)
+// @Success      200  {object}  response.RsBase
+// @Failure      400  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/{id}/dismiss [patch]
+func (h *handler) MarkDismissed(c *gin.Context) {
+	entityID, ok := util.GetEntityID(c)
+	if !ok {
+		return
+	}
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+	var notifIds []uuid.UUID
+	notifIds = append(notifIds, id)
+	if err := h.svc.MarkDismissed(c.Request.Context(), notifIds, entityID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, nil, "dismissed")
+}
+
 // @Summary      Dismiss multiple notifications
 // @Description  Marks a list of specific notifications as DISMISSED for the authenticated entity.
 // @Tags         notification
@@ -123,7 +154,7 @@ func (h *handler) MarkAllRead(c *gin.Context) {
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken
 // @Router       /notification/dismiss [patch]
-func (h *handler) MarkDismissed(c *gin.Context) {
+func (h *handler) MarkAllDismissed(c *gin.Context) {
 	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
