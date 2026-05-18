@@ -6993,7 +6993,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/notification.RsListNotification"
+                                            "$ref": "#/definitions/util.RsList"
                                         }
                                     }
                                 }
@@ -7185,6 +7185,56 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/{id}/dismiss": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Dismisses a specific notification by its UUID for the authenticated clinic/practitioner entity context.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Mark a notification as dismissed",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Notification UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -10088,9 +10138,6 @@ const docTemplate = `{
                         "$ref": "#/definitions/bs.RsAccount"
                     }
                 },
-                "start_date": {
-                    "type": "string"
-                },
                 "total_assets": {
                     "type": "number"
                 },
@@ -11672,114 +11719,6 @@ const docTemplate = `{
                 }
             }
         },
-        "notification.ActorType": {
-            "type": "string",
-            "enum": [
-                "PRACTITIONER",
-                "ACCOUNTANT",
-                "ADMIN",
-                "SYSTEM"
-            ],
-            "x-enum-varnames": [
-                "ActorPractitioner",
-                "ActorAccountant",
-                "ActorAdmin",
-                "ActorSystem"
-            ]
-        },
-        "notification.EntityType": {
-            "type": "string",
-            "enum": [
-                "clinic",
-                "form",
-                "transaction",
-                "document",
-                "invite",
-                "audit_log",
-                "system"
-            ],
-            "x-enum-varnames": [
-                "EntityClinic",
-                "EntityForm",
-                "EntityTransaction",
-                "EntityDocument",
-                "EntityInvite",
-                "EntityAuditLog",
-                "EntitySystem"
-            ]
-        },
-        "notification.EventType": {
-            "type": "string",
-            "enum": [
-                "invite.sent",
-                "invite.accepted",
-                "invite.declined",
-                "clinic.updated",
-                "form.submitted",
-                "form.updated",
-                "transaction.created",
-                "transaction.status_changed",
-                "document.uploaded",
-                "audit_log.created",
-                "system.error",
-                "system.warning"
-            ],
-            "x-enum-varnames": [
-                "EventInviteSent",
-                "EventInviteAccepted",
-                "EventInviteDeclined",
-                "EventClinicUpdated",
-                "EventFormSubmitted",
-                "EventFormUpdated",
-                "EventTransactionCreated",
-                "EventTransactionUpdated",
-                "EventDocumentUploaded",
-                "EventAuditLogCreated",
-                "EventSystemError",
-                "EventSystemWarning"
-            ]
-        },
-        "notification.Notification": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "entityID": {
-                    "type": "string"
-                },
-                "entityType": {
-                    "$ref": "#/definitions/notification.EntityType"
-                },
-                "eventType": {
-                    "$ref": "#/definitions/notification.EventType"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "payload": {
-                    "type": "object"
-                },
-                "readedAt": {
-                    "type": "string"
-                },
-                "recipientID": {
-                    "type": "string"
-                },
-                "recipientType": {
-                    "$ref": "#/definitions/notification.ActorType"
-                },
-                "senderID": {
-                    "type": "string"
-                },
-                "senderType": {
-                    "$ref": "#/definitions/notification.ActorType"
-                },
-                "status": {
-                    "$ref": "#/definitions/notification.Status"
-                }
-            }
-        },
         "notification.NotificationChannels": {
             "type": "object",
             "additionalProperties": {
@@ -11789,9 +11728,9 @@ const docTemplate = `{
         "notification.NotificationEventType": {
             "type": "string",
             "enum": [
-                "NEW_TRANSACTION",
-                "ACCOUNTANT_ACTIVITY_ALERT",
-                "SYSTEM_ACTIVITY_ALERT"
+                "new.transaction",
+                "accountant.activity.alert",
+                "system.activity.alert"
             ],
             "x-enum-varnames": [
                 "EventNewTransaction",
@@ -11825,45 +11764,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/notification.NotificationChannels"
                 },
                 "event_type": {
-                    "$ref": "#/definitions/notification.NotificationEventType"
-                }
-            }
-        },
-        "notification.RsListNotification": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer"
-                },
-                "notifications": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/notification.Notification"
+                        "$ref": "#/definitions/notification.NotificationEventType"
                     }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "unread_count": {
-                    "type": "integer"
                 }
             }
-        },
-        "notification.Status": {
-            "type": "string",
-            "enum": [
-                "UNREAD",
-                "READ",
-                "DISMISSED"
-            ],
-            "x-enum-varnames": [
-                "StatusUnread",
-                "StatusRead",
-                "StatusDismissed"
-            ]
         },
         "pl.RsPLAccount": {
             "type": "object",
@@ -12329,8 +12235,8 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0.0",
 	Host:             "",
-	BasePath:         "/api/v1",
-	Schemes:          []string{"http", "https"},
+	BasePath:         "",
+	Schemes:          []string{},
 	Title:            "Backend API",
 	Description:      "Backend API for acareca",
 	InfoInstanceName: "swagger",

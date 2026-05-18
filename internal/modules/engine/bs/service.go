@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
@@ -36,10 +37,11 @@ type service struct {
 	eventsSvc       events.Service
 	authRepo        auth.Repository
 	invitationSvc   invitation.Service
+	accountantRepo  accountant.Repository
 	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
 	return &service{
 		repo:            repo,
 		equitySvc:       equitySvc,
@@ -48,6 +50,7 @@ func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc 
 		eventsSvc:       eventsSvc,
 		authRepo:        authRepo,
 		invitationSvc:   invitationSvc,
+		accountantRepo:  accountantRepo,
 		practitionerSvc: practitionerSvc,
 	}
 }
@@ -279,6 +282,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
 
+	var entityName string
 	var practitionerABN string
 	targetID := filterPractitionerID
 	if targetID == "" && role == util.RolePractitioner {
@@ -289,8 +293,39 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		pracUUID, err := uuid.Parse(targetID)
 		if err == nil {
 			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
-			if err == nil && prac.ABN != nil {
-				practitionerABN = *prac.ABN
+			if err == nil {
+				if prac.EntityName != nil {
+					entityName = *prac.EntityName
+				} else {
+					entityName = fullName
+				}
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		}
+	} else {
+		if role == util.RolePractitioner {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+			entityName = fullName
+			if err == nil {
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		} else {
+			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+			{
+				if err == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
 			}
 		}
 	}
@@ -355,7 +390,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
 
 	f.MergeCell(sheet, "A2", "B2")
-	setRichMeta("A2", "Exported by:", fullName)
+	setRichMeta("A2", "Exported by:", entityName)
 
 	f.MergeCell(sheet, "A3", "B3")
 	if practitionerABN != "" {
@@ -363,18 +398,21 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	}
 
 	var dateText string
-	if data.StartDate != "" && data.EndDate != "" {
-		dateText = fmt.Sprintf("%s to %s", data.StartDate, data.EndDate)
-	} else if data.EndDate != "" {
+	if data.EndDate != "" {
 		dateText = fmt.Sprintf("As of %s", data.EndDate)
 	}
+
 	f.MergeCell(sheet, "A4", "B4")
 	setRichMeta("A4", "Period:", dateText)
 
-	// --- BLANK ROW AFTER METADATA ---
+	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
 	f.MergeCell(sheet, "A5", "B5")
+	setRichMeta("A5", "Generated:", currentTimeStr)
 
-	currentRow := 6
+	// --- BLANK ROW AFTER METADATA ---
+	f.MergeCell(sheet, "A6", "B6")
+
+	currentRow := 7
 
 	// Helper to render sections with Excel Filters
 	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
@@ -454,18 +492,14 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		EntityType: strPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
-		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
+		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
 
 	if role == util.RoleAccountant && len(notifIDs) > 0 {
 		var dateDescription string
-		if data.StartDate != "" && data.EndDate != "" {
-			dateDescription = fmt.Sprintf("for the period of %s to %s", formatDateForDisplay(data.StartDate), formatDateForDisplay(data.EndDate))
-		} else if data.StartDate != "" {
-			dateDescription = fmt.Sprintf("for the period of %s to %s", formatDateForDisplay(data.StartDate), formatDateForDisplay(data.EndDate))
-		} else if data.EndDate != "" {
+		if data.EndDate != "" {
 			dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(data.EndDate))
 		}
 
@@ -481,7 +515,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 				EventType:      "balance_sheet.exported",
 				EntityType:     "REPORT",
 				Description:    description,
-				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "start_date": data.StartDate, "end_date": data.EndDate},
+				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
 				CreatedAt:      time.Now(),
 			})
 		}
@@ -531,12 +565,8 @@ func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data 
 	}
 
 	var dateText string
-	if data.StartDate != "" && data.EndDate != "" {
-		dateText = fmt.Sprintf("%s to %s", data.StartDate, data.EndDate)
-	} else if data.EndDate != "" {
+	if data.EndDate != "" {
 		dateText = fmt.Sprintf("As of %s", data.EndDate)
-	} else if data.StartDate != "" {
-		dateText = fmt.Sprintf("From %s onwards", data.StartDate)
 	}
 
 	if dateText != "" {

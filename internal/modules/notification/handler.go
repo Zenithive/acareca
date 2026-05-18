@@ -115,14 +115,14 @@ func (h *handler) MarkAllRead(c *gin.Context) {
 
 // @Summary      Mark a notification as dismissed
 // @Description  Dismisses a specific notification by its UUID for the authenticated clinic/practitioner entity context.
-// @Tags         Notifications
+// @Tags         notification
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "Notification UUID"  Format(uuid)
 // @Success      200  {object}  response.RsBase
 // @Failure      400  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
-// @Security     BearerAuth
+// @Security     BearerToken
 // @Router       /notification/{id}/dismiss [patch]
 func (h *handler) MarkDismissed(c *gin.Context) {
 	entityID, ok := util.GetEntityID(c)

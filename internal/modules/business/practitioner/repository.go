@@ -70,7 +70,7 @@ func (r *repository) DeletePractitioner(ctx context.Context, id uuid.UUID) error
 // GetPractitioner implements [Repository].
 func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
 	query := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.entity_type, p.entity_name, p.address, p.acn, p.profession, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL

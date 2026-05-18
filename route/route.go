@@ -69,11 +69,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	notificationRepo := notification.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
 	notificationSvc := notification.NewService(notificationRepo, events)
-	
+
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := notification.NewPublisher(events)
 	notificationConsumer := notification.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher)
-	
+
 	// Wire stream manager to WebSocket hub for real-time delivery
 	if events != nil {
 		streamManager := notificationConsumer.GetStreamManager()
@@ -205,7 +205,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, *dbConn, auditSvc, eventsSvc, authRepo, invitationSvc, practitionerSvc)
+	bsSvc := bs.NewService(bsRepo, equitySvc, *dbConn, auditSvc, eventsSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 
