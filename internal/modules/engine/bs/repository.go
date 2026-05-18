@@ -30,13 +30,7 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 	args := []interface{}{practitionerIDs}
 	idx := 2
 
-	// Strictly Start and End Date filters
-	if f.StartDate != nil && *f.StartDate != "" {
-		conditions = append(conditions, fmt.Sprintf("date::DATE >= $%d::DATE", idx))
-		args = append(args, *f.StartDate)
-		idx++
-	}
-
+	// End Date filter
 	if f.EndDate != nil && *f.EndDate != "" {
 		conditions = append(conditions, fmt.Sprintf("date::DATE <= $%d::DATE", idx))
 		args = append(args, *f.EndDate)

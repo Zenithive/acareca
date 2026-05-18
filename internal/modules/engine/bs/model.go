@@ -20,7 +20,6 @@ type BSRow struct {
 // BSFilter defines query parameters for balance sheet
 type BSFilter struct {
 	PractitionerID *string `form:"practitioner_id"`
-	StartDate      *string `form:"start_date"`
 	EndDate        *string `form:"end_date"`
 }
 
