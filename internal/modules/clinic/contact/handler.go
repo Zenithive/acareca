@@ -28,6 +28,16 @@ func NewHandler(svc IService) IHandler {
 }
 
 // Create implements [IHandler].
+// @Summary Create a new contact for a clinic
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param request body RqContact true "Contact Data"
+// @Success 200 {object} response.RsBase{data=RsContact}
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/contact [post]
 func (h *handler) Create(c *gin.Context) {
 	var rq RqContact
 
@@ -46,6 +56,16 @@ func (h *handler) Create(c *gin.Context) {
 }
 
 // Delete implements [IHandler].
+// @Summary Delete a contact by ID
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param id path string true "Contact ID"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/contact/{id} [delete]
 func (h *handler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	uuid, err := uuid.Parse(id)
@@ -58,6 +78,16 @@ func (h *handler) Delete(c *gin.Context) {
 }
 
 // Get implements [IHandler].
+// @Summary Get a contact by ID
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param id path string true "Contact ID"
+// @Success 200 {object} response.RsBase{data=RsContact}
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/contact/{id} [get]
 func (h *handler) Get(c *gin.Context) {
 	id := c.Param("id")
 	uuid, err := uuid.Parse(id)
@@ -75,6 +105,15 @@ func (h *handler) Get(c *gin.Context) {
 }
 
 // List implements [IHandler].
+// @Summary List all contacts for a clinic
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Success 200 {object} response.RsBase{data=[]RsContact}
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/contact [get]
 func (h *handler) List(c *gin.Context) {
 	contacts, err := h.svc.List(c)
 	if err != nil {
@@ -85,6 +124,17 @@ func (h *handler) List(c *gin.Context) {
 }
 
 // Update implements [IHandler].
+// @Summary Update a contact by ID
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param id path string true "Contact ID"
+// @Param request body RqUpdateContact true "Updated Contact Data"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/contact/{id} [put]
 func (h *handler) Update(c *gin.Context) {
 	var rq RqUpdateContact
 
@@ -111,6 +161,16 @@ func (h *handler) Update(c *gin.Context) {
 }
 
 // DeleteAddressByID implements [IHandler].
+// @Summary Delete a contact address by ID
+// @Tags clinic
+// @Accept json
+// @Produce json
+// @Param id path string true "Contact Address ID"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/contact/address/{id} [delete]
 func (h *handler) DeleteAddressByID(c *gin.Context) {
 	id := c.Param("id")
 	uuid, err := uuid.Parse(id)
