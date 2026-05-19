@@ -45,13 +45,13 @@ type RqChangePassword struct {
 }
 
 type RqUpdateClinic struct {
-	ClinicName  *string                    `json:"clinic_name" validate:"omitempty,min=2,max=255"`
-	Description *string                    `json:"description,omitempty"`
-	DocumentID  *string                    `json:"document_id,omitempty"`
-	ABN         *string                    `json:"abn,omitempty"`
-	ACN         *string                    `json:"acn,omitempty"`
-	Addresses   *RqAddressChangeset        `json:"addresses,omitempty"`
-	Contacts    *RqContactChangeset        `json:"contacts,omitempty"`
+	ClinicName  *string             `json:"clinic_name" validate:"omitempty,min=2,max=255"`
+	Description *string             `json:"description,omitempty"`
+	DocumentID  *string             `json:"document_id,omitempty"`
+	ABN         *string             `json:"abn,omitempty"`
+	ACN         *string             `json:"acn,omitempty"`
+	Addresses   *RqAddressChangeset `json:"addresses,omitempty"`
+	Contacts    *RqContactChangeset `json:"contacts,omitempty"`
 }
 
 // RqAddressChangeset holds the three address operation buckets.
@@ -107,6 +107,13 @@ type RqClinicContact struct {
 	Value       string  `json:"value"`
 	Label       *string `json:"label,omitempty"`
 	IsPrimary   bool    `json:"is_primary"`
+}
+
+type RqClinic struct {
+	DocumentId *string `json:"document_id"`
+	Name       string  `json:"name" validate:"required, min=3, max=100"`
+	Email      string  `json:"email" validate:"required,email"`
+	Password   string  `json:"password" validate:"required,min=8"`
 }
 
 // ==========================================
@@ -216,4 +223,11 @@ type RsClinicContact struct {
 	Value       string    `json:"value"`
 	Label       *string   `json:"label,omitempty"`
 	IsPrimary   bool      `json:"is_primary"`
+}
+
+type RsClinic struct {
+	ID         string  `json:"id"`
+	DocumentId *string `json:"document_id,omitempty"`
+	Name       string  `json:"name"`
+	Email      string  `json:"email"`
 }
