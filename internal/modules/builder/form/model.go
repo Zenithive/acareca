@@ -171,10 +171,11 @@ type RsExpense struct {
 }
 
 type RsExpenseDocument struct {
-	ID        uuid.UUID `json:"id"`
-	FileName  string    `json:"file_name"`
-	FileURL   string    `json:"file_url"`
-	CreatedAt string    `json:"created_at"`
+	ID           uuid.UUID `json:"id"`
+	OriginalName string    `json:"original_name"`
+	FileKey      string    `json:"file_key"`
+	UploadedAt   *string   `json:"uploaded_at,omitempty"`
+	CreatedAt    string    `json:"created_at"`
 }
 
 type RsExpenseItem struct {
