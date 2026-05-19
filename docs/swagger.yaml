@@ -541,6 +541,33 @@ definitions:
     required:
     - new_password
     type: object
+  auth.RqClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  auth.RqClinicContact:
+    properties:
+      contact_type:
+        enum:
+        - PHONE
+        - WEBSITE
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    type: object
   auth.RqForgotPassword:
     properties:
       email:
@@ -558,12 +585,69 @@ definitions:
     - email
     - password
     type: object
+  auth.RqLoginClinic:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
   auth.RqLogout:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
+    type: object
+  auth.RqLogoutClinic:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  auth.RqRegisterClinic:
+    properties:
+      abn:
+        type: string
+      acn:
+        type: string
+      addresses:
+        items:
+          $ref: '#/definitions/auth.RqClinicAddress'
+        minItems: 1
+        type: array
+      clinic_name:
+        maxLength: 255
+        minLength: 2
+        type: string
+      contacts:
+        items:
+          $ref: '#/definitions/auth.RqClinicContact'
+        minItems: 1
+        type: array
+      description:
+        type: string
+      document_id:
+        type: string
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      role:
+        enum:
+        - CLINIC
+        type: string
+    required:
+    - abn
+    - clinic_name
+    - email
+    - password
+    - role
     type: object
   auth.RqResetPassword:
     properties:
@@ -1682,6 +1766,10 @@ definitions:
         type: string
       description:
         type: string
+      document_ids:
+        items:
+          type: string
+        type: array
       name:
         type: string
       tax_type:
@@ -1707,6 +1795,17 @@ definitions:
         type: string
       description:
         type: string
+      documents:
+        properties:
+          create:
+            items:
+              type: string
+            type: array
+          delete:
+            items:
+              type: string
+            type: array
+        type: object
       id:
         type: string
       name:
@@ -5080,6 +5179,171 @@ paths:
       summary: Bulk update clinics
       tags:
       - clinic
+  /clinic/login:
+    post:
+      consumes:
+      - application/json
+      description: authenticates an invoice clinic profile and issues access tokens
+      parameters:
+      - description: Clinic Login Credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqLoginClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "411":
+          description: Length Required
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Login an invoice clinic
+      tags:
+      - invoice
+  /clinic/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidates a provided refresh token and tears down the tracking
+        database session state
+      parameters:
+      - description: Clinic Session Logout Payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqLogoutClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Logout current invoice clinic session
+      tags:
+      - invoice
+  /clinic/profile:
+    get:
+      description: Returns the profile details of the authenticated clinic
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get current invoice clinic profile
+      tags:
+      - invoice
+  /clinic/register:
+    post:
+      consumes:
+      - application/json
+      description: registers an isolated invoice clinic with its primary address and
+        contacts
+      parameters:
+      - description: Clinic Registration Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqRegisterClinic'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Register a new invoice clinic
+      tags:
+      - invoice
+  /clinic/verify:
+    get:
+      description: Validates the UUID token sent via email. If valid, marks the clinic
+        as verified and the token as used.
+      parameters:
+      - description: Verification Token (UUID)
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email verified successfully
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Invalid token format or token already used
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "410":
+          description: Token has expired
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Verify clinic email address
+      tags:
+      - invoice
   /coa/account-taxes:
     get:
       parameters:

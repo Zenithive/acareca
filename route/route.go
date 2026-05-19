@@ -242,6 +242,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
+	// ============ INVOICE MODULE ============
+	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc)
+
 	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc, notificationConsumer
 
 }
