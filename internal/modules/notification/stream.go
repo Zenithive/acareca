@@ -31,7 +31,7 @@ type UserStream struct {
 func NewStreamManager(events sharedEvents.IEvent, consumer *Consumer) *StreamManager {
 	return &StreamManager{
 		events:    events,
-		streams:   make(map[uuid.UUID]*UserStream),
+		streams:   make(map[uuid.UUID]*UserStream, 100), // Preallocate for 100 users
 		consumers: consumer,
 	}
 }
