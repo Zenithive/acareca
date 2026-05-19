@@ -12,6 +12,8 @@ type IService interface {
 	Delete(ctx context.Context, Id uuid.UUID) error
 	Get(ctx context.Context, Id uuid.UUID) (RsContact, error)
 	List(ctx context.Context) ([]RsContact, error)
+
+	DeleteAddressByID(ctx context.Context, Id uuid.UUID) error
 }
 
 type service struct {
@@ -63,4 +65,9 @@ func (s *service) List(ctx context.Context) ([]RsContact, error) {
 // Update implements [Service].
 func (s *service) Update(ctx context.Context, contact RqUpdateContact) error {
 	return s.repo.Update(ctx, contact.ToContact())
+}
+
+// DeleteAddressByID implements [IService].
+func (s *service) DeleteAddressByID(ctx context.Context, Id uuid.UUID) error {
+	return s.repo.DeleteAddressByID(ctx, Id)
 }

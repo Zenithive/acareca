@@ -15,6 +15,8 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	Get(c *gin.Context)
 	List(c *gin.Context)
+
+	DeleteAddressByID(c *gin.Context)
 }
 
 type handler struct {
@@ -106,4 +108,19 @@ func (h *handler) Update(c *gin.Context) {
 
 	response.JSON(c, http.StatusOK, nil, "contact updated")
 
+}
+
+// DeleteAddressByID implements [IHandler].
+func (h *handler) DeleteAddressByID(c *gin.Context) {
+	id := c.Param("id")
+	uuid, err := uuid.Parse(id)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.svc.DeleteAddressByID(c, uuid); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, nil, "address deleted")
 }

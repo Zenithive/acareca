@@ -10,8 +10,10 @@ CREATE TABLE IF NOT EXISTS tbl_clinic_contact_address (
     state VARCHAR(100) NOT NULL,
     postal_code VARCHAR(20) NOT NULL,
     country VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS tbl_clinic_contact (
@@ -24,8 +26,9 @@ CREATE TABLE IF NOT EXISTS tbl_clinic_contact (
     website VARCHAR(255),
     abn VARCHAR(20),
     note TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
 );
 
 -- +goose StatementEnd

@@ -38,12 +38,12 @@ func (r *RqContact) ToContact() Contact {
 
 type RqAddress struct {
 	IsPrimary    bool    `json:"primary" validate:"omitempty"`
-	AddressLine1 string  `json:"street" validate:"required"`
-	AddressLine2 *string `json:"street2" validate:"omitempty"`
-	City         string  `json:"city" validate:"required"`
-	State        string  `json:"state" validate:"required"`
-	Postcode     string  `json:"postcode" validate:"required"`
-	Country      string  `json:"country" validate:"required"`
+	AddressLine1 string  `json:"address1" validate:"omitempty"`
+	AddressLine2 *string `json:"address2" validate:"omitempty"`
+	City         string  `json:"city" validate:"omitempty"`
+	State        string  `json:"state" validate:"omitempty"`
+	Postcode     string  `json:"postcode" validate:"omitempty"`
+	Country      string  `json:"country" validate:"omitempty"`
 }
 
 func (r *RqAddress) ToAddress() Address {
@@ -60,13 +60,12 @@ func (r *RqAddress) ToAddress() Address {
 }
 
 type RqUpdateContact struct {
-	ID       uuid.UUID    `json:"id" validate:"required"`
+	ID       uuid.UUID    `json:"id" validate:"-"`
 	ClinicID uuid.UUID    `json:"clinic_id" validate:"required"`
 	Fname    *string      `json:"fname" validate:"required"`
 	Lname    *string      `json:"lname" validate:"required"`
 	Phone    *string      `json:"phone" validate:"required"`
 	Email    *string      `json:"email" validate:"required,email"`
-	Number   *string      `json:"number" validate:"required"`
 	Website  *string      `json:"website" validate:"omitempty,url"`
 	ABN      *string      `json:"abn" validate:"omitempty"`
 	Note     *string      `json:"note" validate:"omitempty"`
@@ -76,7 +75,7 @@ type RqUpdateContact struct {
 func (r *RqUpdateContact) ToContact() Contact {
 	addresses := make([]*Address, 0, len(r.Address))
 	for _, addr := range r.Address {
-		addresses = append(addresses, lo.ToPtr(addr.ToAddress()))
+		addresses = append(addresses, new(addr.ToAddress()))
 	}
 	return Contact{
 		ID:       r.ID,
@@ -99,7 +98,6 @@ type Contact struct {
 	Lname    string     `db:"lname"`
 	Phone    string     `db:"phone"`
 	Email    string     `db:"email"`
-	Number   string     `db:"number"`
 	Website  string     `db:"website"`
 	ABN      string     `db:"abn"`
 	Note     string     `db:"note"`
@@ -124,7 +122,6 @@ type RsContact struct {
 	Lname    string       `json:"lname"`
 	Phone    string       `json:"phone"`
 	Email    string       `json:"email"`
-	Number   string       `json:"number"`
 	Website  string       `json:"website"`
 	ABN      string       `json:"abn"`
 	Note     string       `json:"note"`
@@ -143,7 +140,6 @@ func (c *Contact) ToRsContact() RsContact {
 		Lname:    c.Lname,
 		Phone:    c.Phone,
 		Email:    c.Email,
-		Number:   c.Number,
 		Website:  c.Website,
 		ABN:      c.ABN,
 		Note:     c.Note,

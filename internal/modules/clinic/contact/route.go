@@ -11,4 +11,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	contact.PUT("/:id", h.Update)
 	contact.DELETE("/:id", h.Delete)
 
+	contact.DELETE("/address/:id", h.DeleteAddressByID)
 }
