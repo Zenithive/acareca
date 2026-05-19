@@ -24,7 +24,6 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		items = append(items, rqItem.ToItem())
 	}
 	return &Invoice{
-		ID:            uuid.New(),
 		ClinicID:      r.ClinicID,
 		TemplateID:    r.TemplateID,
 		Name:          r.Name,

@@ -1,6 +1,8 @@
 package contact
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 )
@@ -18,12 +20,14 @@ type RqContact struct {
 }
 
 func (r *RqContact) ToContact() Contact {
+
 	addresses := make([]*Address, 0, len(r.Address))
+
 	for _, addr := range r.Address {
 		addresses = append(addresses, lo.ToPtr(addr.ToAddress()))
 	}
+
 	return Contact{
-		ID:       uuid.New(),
 		ClinicId: r.ClinicID,
 		Fname:    r.Fname,
 		Lname:    r.Lname,
@@ -37,18 +41,26 @@ func (r *RqContact) ToContact() Contact {
 }
 
 type RqAddress struct {
-	IsPrimary    bool    `json:"primary" validate:"omitempty"`
-	AddressLine1 string  `json:"address1" validate:"omitempty"`
-	AddressLine2 *string `json:"address2" validate:"omitempty"`
-	City         string  `json:"city" validate:"omitempty"`
-	State        string  `json:"state" validate:"omitempty"`
-	Postcode     string  `json:"postcode" validate:"omitempty"`
-	Country      string  `json:"country" validate:"omitempty"`
+	Id           *uuid.UUID `json:"id,omitempty"`
+	IsPrimary    bool       `json:"primary"`
+	AddressLine1 string     `json:"address1" validate:"required"`
+	AddressLine2 *string    `json:"address2"`
+	City         string     `json:"city" validate:"required"`
+	State        string     `json:"state" validate:"required"`
+	Postcode     string     `json:"postcode" validate:"required"`
+	Country      string     `json:"country" validate:"required"`
 }
 
 func (r *RqAddress) ToAddress() Address {
+
+	var id uuid.UUID
+
+	if r.Id != nil {
+		id = *r.Id
+	}
+
 	return Address{
-		Id:           uuid.New(),
+		Id:           id,
 		AddressLine1: r.AddressLine1,
 		AddressLine2: r.AddressLine2,
 		City:         r.City,
@@ -73,10 +85,13 @@ type RqUpdateContact struct {
 }
 
 func (r *RqUpdateContact) ToContact() Contact {
+
 	addresses := make([]*Address, 0, len(r.Address))
+
 	for _, addr := range r.Address {
-		addresses = append(addresses, new(addr.ToAddress()))
+		addresses = append(addresses, lo.ToPtr(addr.ToAddress()))
 	}
+
 	return Contact{
 		ID:       r.ID,
 		ClinicId: r.ClinicID,
@@ -92,63 +107,78 @@ func (r *RqUpdateContact) ToContact() Contact {
 }
 
 type Contact struct {
-	ID       uuid.UUID  `db:"id"`
-	ClinicId uuid.UUID  `db:"clinic_id"`
-	Fname    string     `db:"fname"`
-	Lname    string     `db:"lname"`
-	Phone    string     `db:"phone"`
-	Email    string     `db:"email"`
-	Website  string     `db:"website"`
-	ABN      string     `db:"abn"`
-	Note     string     `db:"note"`
-	Address  []*Address `db:"address"`
+	ID        uuid.UUID  `db:"id"`
+	ClinicId  uuid.UUID  `db:"clinic_id"`
+	Fname     string     `db:"fname"`
+	Lname     string     `db:"lname"`
+	Phone     string     `db:"phone"`
+	Email     string     `db:"email"`
+	Website   string     `db:"website"`
+	ABN       string     `db:"abn"`
+	Note      string     `db:"note"`
+	Address   []*Address `db:"address"`
+	CreatedAt time.Time  `db:"created_at"`
+	UpdatedAt time.Time  `db:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at"`
 }
 
 type Address struct {
-	Id           uuid.UUID `db:"id"`
-	AddressLine1 string    `db:"address_line1"`
-	AddressLine2 *string   `db:"address_line2"`
-	City         string    `db:"city"`
-	State        string    `db:"state"`
-	PostalCode   string    `db:"postal_code"`
-	Country      string    `db:"country"`
-	IsPrimary    bool      `db:"is_primary"`
+	Id           uuid.UUID  `db:"id"`
+	ContactID    uuid.UUID  `db:"contact_id"`
+	AddressLine1 string     `db:"address_line1"`
+	AddressLine2 *string    `db:"address_line2"`
+	City         string     `db:"city"`
+	State        string     `db:"state"`
+	PostalCode   string     `db:"postal_code"`
+	Country      string     `db:"country"`
+	IsPrimary    bool       `db:"is_primary"`
+	CreatedAt    time.Time  `db:"created_at"`
+	UpdatedAt    time.Time  `db:"updated_at"`
+	DeletedAt    *time.Time `db:"deleted_at"`
 }
 
 type RsContact struct {
-	ID       uuid.UUID    `json:"id"`
-	ClinicId uuid.UUID    `json:"clinic_id"`
-	Fname    string       `json:"fname"`
-	Lname    string       `json:"lname"`
-	Phone    string       `json:"phone"`
-	Email    string       `json:"email"`
-	Website  string       `json:"website"`
-	ABN      string       `json:"abn"`
-	Note     string       `json:"note"`
-	Address  []*RsAddress `json:"address"`
+	ID        uuid.UUID    `json:"id"`
+	ClinicId  uuid.UUID    `json:"clinic_id"`
+	Fname     string       `json:"fname"`
+	Lname     string       `json:"lname"`
+	Phone     string       `json:"phone"`
+	Email     string       `json:"email"`
+	Website   string       `json:"website"`
+	ABN       string       `json:"abn"`
+	Note      string       `json:"note"`
+	Address   []*RsAddress `json:"address"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 func (c *Contact) ToRsContact() RsContact {
+
 	addresses := make([]*RsAddress, 0, len(c.Address))
+
 	for _, addr := range c.Address {
 		addresses = append(addresses, lo.ToPtr(addr.ToRsAddress()))
 	}
+
 	return RsContact{
-		ID:       c.ID,
-		ClinicId: c.ClinicId,
-		Fname:    c.Fname,
-		Lname:    c.Lname,
-		Phone:    c.Phone,
-		Email:    c.Email,
-		Website:  c.Website,
-		ABN:      c.ABN,
-		Note:     c.Note,
-		Address:  addresses,
+		ID:        c.ID,
+		ClinicId:  c.ClinicId,
+		Fname:     c.Fname,
+		Lname:     c.Lname,
+		Phone:     c.Phone,
+		Email:     c.Email,
+		Website:   c.Website,
+		ABN:       c.ABN,
+		Note:      c.Note,
+		Address:   addresses,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
 	}
 }
 
 type RsAddress struct {
 	Id           uuid.UUID `json:"id"`
+	IsPrimary    bool      `json:"primary"`
 	AddressLine1 string    `json:"street"`
 	AddressLine2 *string   `json:"street2"`
 	City         string    `json:"city"`
@@ -158,8 +188,10 @@ type RsAddress struct {
 }
 
 func (c *Address) ToRsAddress() RsAddress {
+
 	return RsAddress{
 		Id:           c.Id,
+		IsPrimary:    c.IsPrimary,
 		AddressLine1: c.AddressLine1,
 		AddressLine2: c.AddressLine2,
 		City:         c.City,
