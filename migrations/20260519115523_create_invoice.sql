@@ -18,9 +18,7 @@ CREATE TABLE IF NOT EXISTS tbl_invoice (
                 CHECK (status IN ('draft', 'sent', 'paid', 'overdue', 'void')),
     created_at  timestamptz NOT NULL DEFAULT NOW(),
     updated_at  timestamptz NOT NULL DEFAULT NOW(),
-    deleted_at  timestamptz,
-
-    CONSTRAINT fk_invoice_clinic    FOREIGN KEY (clinic_id)   REFERENCES tbl_clinic(id)
+    deleted_at  timestamptz
 );
 
 CREATE TABLE IF NOT EXISTS tbl_invoice_item (
