@@ -2343,7 +2343,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqForgotPassword"
+                            "$ref": "#/definitions/internal_modules_auth.RqForgotPassword"
                         }
                     }
                 ],
@@ -2548,7 +2548,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqResetPassword"
+                            "$ref": "#/definitions/internal_modules_auth.RqResetPassword"
                         }
                     }
                 ],
@@ -2624,7 +2624,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqChangePassword"
+                            "$ref": "#/definitions/internal_modules_auth.RqChangePassword"
                         }
                     }
                 ],
@@ -3922,6 +3922,41 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Soft delete the currently authenticated clinic's account",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Delete clinic account",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
             }
         },
         "/clinic/bulk-delete": {
@@ -4039,13 +4074,22 @@ const docTemplate = `{
                 }
             }
         },
+<<<<<<< HEAD
         "/clinic/contact": {
             "get": {
+=======
+        "/clinic/change-password": {
+            "put": {
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
+<<<<<<< HEAD
+=======
+                "description": "Updates the password for the authenticated clinic",
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4053,6 +4097,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
+<<<<<<< HEAD
                     "clinic"
                 ],
                 "summary": "List all contacts for a clinic",
@@ -4111,11 +4156,23 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Contact Data",
+=======
+                    "invoice"
+                ],
+                "summary": "Change clinic password",
+                "parameters": [
+                    {
+                        "description": "Password Change Data",
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
+<<<<<<< HEAD
                             "$ref": "#/definitions/contact.RqContact"
+=======
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqChangePassword"
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     }
                 ],
@@ -4123,6 +4180,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
+<<<<<<< HEAD
                             "allOf": [
                                 {
                                     "$ref": "#/definitions/response.RsBase"
@@ -4183,6 +4241,8 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
+=======
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                             "$ref": "#/definitions/response.RsBase"
                         }
                     },
@@ -4192,6 +4252,15 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+<<<<<<< HEAD
+=======
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -4201,6 +4270,7 @@ const docTemplate = `{
                 }
             }
         },
+<<<<<<< HEAD
         "/clinic/contact/{id}": {
             "get": {
                 "security": [
@@ -4208,6 +4278,11 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+=======
+        "/clinic/forgot-password": {
+            "post": {
+                "description": "Sends a reset link to the clinic's email if it exists",
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4215,6 +4290,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
+<<<<<<< HEAD
                     "clinic"
                 ],
                 "summary": "Get a contact by ID",
@@ -4225,12 +4301,27 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+=======
+                    "invoice"
+                ],
+                "summary": "Initiate clinic password reset",
+                "parameters": [
+                    {
+                        "description": "Email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqForgotPassword"
+                        }
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
+<<<<<<< HEAD
                             "allOf": [
                                 {
                                     "$ref": "#/definitions/response.RsBase"
@@ -4244,6 +4335,9 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+=======
+                            "$ref": "#/definitions/response.RsBase"
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     },
                     "400": {
@@ -4251,6 +4345,149 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
+<<<<<<< HEAD
+=======
+                    }
+                }
+            }
+        },
+        "/clinic/login": {
+            "post": {
+                "description": "authenticates an invoice clinic profile and issues access tokens",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Login an invoice clinic",
+                "parameters": [
+                    {
+                        "description": "Clinic Login Credentials",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqLoginClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "411": {
+                        "description": "Length Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/logout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Invalidates a provided refresh token and tears down the tracking database session state",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Logout current invoice clinic session",
+                "parameters": [
+                    {
+                        "description": "Clinic Session Logout Payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqLogoutClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the profile details of the authenticated clinic",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Get current invoice clinic profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     },
                     "500": {
                         "description": "Internal Server Error",
@@ -4266,6 +4503,10 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+<<<<<<< HEAD
+=======
+                "description": "Update the profile details of the authenticated clinic",
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4273,6 +4514,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
+<<<<<<< HEAD
                     "clinic"
                 ],
                 "summary": "Update a contact by ID",
@@ -4286,11 +4528,23 @@ const docTemplate = `{
                     },
                     {
                         "description": "Updated Contact Data",
+=======
+                    "invoice"
+                ],
+                "summary": "Update clinic profile",
+                "parameters": [
+                    {
+                        "description": "Update Data",
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
+<<<<<<< HEAD
                             "$ref": "#/definitions/contact.RqUpdateContact"
+=======
+                            "$ref": "#/definitions/auth.RqUpdateClinic"
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     }
                 ],
@@ -4298,11 +4552,98 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
+<<<<<<< HEAD
+                            "$ref": "#/definitions/response.RsBase"
+=======
+                            "$ref": "#/definitions/auth.RsClinicDetail"
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+<<<<<<< HEAD
+=======
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+<<<<<<< HEAD
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+=======
+            }
+        },
+        "/clinic/register": {
+            "post": {
+                "description": "registers an isolated invoice clinic with its primary address and contacts",
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+<<<<<<< HEAD
+                    "clinic"
+                ],
+                "summary": "Delete a contact by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contact ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+=======
+                    "invoice"
+                ],
+                "summary": "Register a new invoice clinic",
+                "parameters": [
+                    {
+                        "description": "Clinic Registration Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqRegisterClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
                             "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -4314,13 +4655,11 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
+            }
+        },
+        "/clinic/reset-password": {
+            "post": {
+                "description": "Updates the clinic's password using the token received via email",
                 "consumes": [
                     "application/json"
                 ],
@@ -4328,16 +4667,19 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "invoice"
                 ],
-                "summary": "Delete a contact by ID",
+                "summary": "Reset clinic password using token",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Contact ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
+                        "description": "Token and New Password",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqResetPassword"
+                        }
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     }
                 ],
                 "responses": {
@@ -4362,6 +4704,50 @@ const docTemplate = `{
                 }
             }
         },
+<<<<<<< HEAD
+=======
+        "/clinic/verify": {
+            "get": {
+                "description": "Validates the UUID token sent via email. If valid, marks the clinic as verified and the token as used.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Verify clinic email address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Verification Token (UUID)",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email verified successfully",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid token format or token already used",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
         "/clinic/{id}": {
             "get": {
                 "security": [
@@ -9874,30 +10260,111 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqChangePassword": {
+        "auth.RqAddressChangeset": {
             "type": "object",
-            "required": [
-                "new_password"
-            ],
             "properties": {
-                "new_password": {
-                    "type": "string",
-                    "minLength": 8
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicAddress"
+                    }
+                },
+                "delete": {
+                    "description": "address IDs (UUID strings)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqUpdateClinicAddress"
+                    }
                 }
             }
         },
-        "auth.RqForgotPassword": {
+        "auth.RqClinicAddress": {
             "type": "object",
-            "required": [
-                "email"
-            ],
             "properties": {
-                "email": {
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "postcode": {
+                    "type": "string"
+                },
+                "state": {
                     "type": "string"
                 }
             }
         },
+        "auth.RqClinicContact": {
+            "type": "object",
+            "properties": {
+                "contact_type": {
+                    "type": "string",
+                    "enum": [
+                        "PHONE",
+                        "WEBSITE"
+                    ]
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqContactChangeset": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicContact"
+                    }
+                },
+                "delete": {
+                    "description": "contact IDs (UUID strings)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqUpdateClinicContact"
+                    }
+                }
+            }
+        },
         "auth.RqLogin": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqLoginClinic": {
             "type": "object",
             "required": [
                 "email",
@@ -9923,18 +10390,150 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqResetPassword": {
+        "auth.RqLogoutClinic": {
             "type": "object",
             "required": [
-                "new_password",
-                "token"
+                "refresh_token"
             ],
             "properties": {
-                "new_password": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqRegisterClinic": {
+            "type": "object",
+            "required": [
+                "abn",
+                "clinic_name",
+                "email",
+                "password",
+                "role"
+            ],
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicAddress"
+                    }
+                },
+                "clinic_name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 2
+                },
+                "contacts": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicContact"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "password": {
                     "type": "string",
                     "minLength": 8
                 },
-                "token": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "CLINIC"
+                    ]
+                }
+            }
+        },
+        "auth.RqUpdateClinic": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "$ref": "#/definitions/auth.RqAddressChangeset"
+                },
+                "clinic_name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 2
+                },
+                "contacts": {
+                    "$ref": "#/definitions/auth.RqContactChangeset"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqUpdateClinicAddress": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "postcode": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqUpdateClinicContact": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "contact_type": {
+                    "type": "string",
+                    "enum": [
+                        "PHONE",
+                        "WEBSITE"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
                     "type": "string"
                 }
             }
@@ -10050,6 +10649,99 @@ const docTemplate = `{
                 "tax_agent_number": {
                     "description": "Optional",
                     "type": "string"
+                }
+            }
+        },
+        "auth.RsClinicAddress": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "postcode": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RsClinicContact": {
+            "type": "object",
+            "properties": {
+                "contact_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RsClinicDetail": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RsClinicAddress"
+                    }
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RsClinicContact"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "verified": {
+                    "type": "boolean"
                 }
             }
         },
@@ -12169,6 +12861,84 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "start_date": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth.RqChangePassword": {
+            "type": "object",
+            "required": [
+                "new_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                }
+            }
+        },
+        "internal_modules_auth.RqForgotPassword": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth.RqResetPassword": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqChangePassword": {
+            "type": "object",
+            "required": [
+                "new_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqForgotPassword": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqResetPassword": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "token": {
                     "type": "string"
                 }
             }

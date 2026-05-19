@@ -247,6 +247,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))
 	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
+	// ============ INVOICE MODULE ============
+	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc)
 
 	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc, notificationConsumer
 
