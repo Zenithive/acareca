@@ -2,6 +2,7 @@ package contact
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 )
@@ -26,7 +27,12 @@ func NewService(repo Repository) IService {
 
 // Create implements [Service].
 func (s *service) Create(ctx context.Context, rq RqContact) (RsContact, error) {
-	contact, err := s.repo.Create(ctx, rq.ToContact())
+	contact := rq.ToContact()
+	if err := validatePrimaryAddress(contact.Address); err != nil {
+		return RsContact{}, err
+	}
+
+	contact, err := s.repo.Create(ctx, contact)
 	if err != nil {
 		return RsContact{}, err
 	}
@@ -64,10 +70,33 @@ func (s *service) List(ctx context.Context) ([]RsContact, error) {
 
 // Update implements [Service].
 func (s *service) Update(ctx context.Context, contact RqUpdateContact) error {
-	return s.repo.Update(ctx, contact.ToContact())
+	existing, err := s.repo.Get(ctx, contact.ID)
+	if err != nil {
+		return err
+	}
+
+	updated := contact.ApplyToContact(existing)
+	if err := validatePrimaryAddress(updated.Address); err != nil {
+		return err
+	}
+
+	return s.repo.Update(ctx, updated)
 }
 
 // DeleteAddressByID implements [IService].
 func (s *service) DeleteAddressByID(ctx context.Context, Id uuid.UUID) error {
 	return s.repo.DeleteAddressByID(ctx, Id)
+}
+
+func validatePrimaryAddress(addresses []*Address) error {
+	primaryCount := 0
+	for _, addr := range addresses {
+		if addr.IsPrimary {
+			primaryCount++
+		}
+	}
+	if primaryCount > 1 {
+		return errors.New("only one primary address is allowed")
+	}
+	return nil
 }

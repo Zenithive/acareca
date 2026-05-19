@@ -73,7 +73,10 @@ func (h *handler) Delete(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	h.svc.Delete(c, uuid)
+	if err := h.svc.Delete(c, uuid); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
 	response.JSON(c, http.StatusOK, nil, "contact deleted")
 }
 

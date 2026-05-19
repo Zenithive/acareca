@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE TABLE IF NOT EXISTS tbl_clinic_contact (
+CREATE TABLE IF NOT EXISTS tbl_clinic_contact_person (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id  UUID NOT NULL,
     fname      VARCHAR(255) NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS tbl_clinic_contact (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS tbl_clinic_contact_address (
+CREATE TABLE IF NOT EXISTS tbl_clinic_contact_person_address (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contact_id    UUID NOT NULL,
     address_line1 VARCHAR(255) NOT NULL,
@@ -31,21 +31,21 @@ CREATE TABLE IF NOT EXISTS tbl_clinic_contact_address (
     deleted_at    TIMESTAMPTZ,
 
     CONSTRAINT fk_address_contact
-        FOREIGN KEY (contact_id) REFERENCES tbl_clinic_contact(id)
+        FOREIGN KEY (contact_id) REFERENCES tbl_clinic_contact_person(id)
 );
 
 -- Only one primary address allowed per contact
-CREATE UNIQUE INDEX uq_contact_primary_address
-    ON tbl_clinic_contact_address (contact_id)
+CREATE UNIQUE INDEX uq_contact_person_primary_address
+    ON tbl_clinic_contact_person_address (contact_id)
     WHERE is_primary = TRUE AND deleted_at IS NULL;
 
 -- Common query indexes
-CREATE INDEX idx_contact_clinic_id
-    ON tbl_clinic_contact (clinic_id)
+CREATE INDEX idx_contact_person_clinic_id
+    ON tbl_clinic_contact_person (clinic_id)
     WHERE deleted_at IS NULL;
 
-CREATE INDEX idx_contact_address_contact_id
-    ON tbl_clinic_contact_address (contact_id)
+CREATE INDEX idx_contact_person_address_contact_id
+    ON tbl_clinic_contact_person_address (contact_id)
     WHERE deleted_at IS NULL;
 
 -- +goose StatementEnd
@@ -53,6 +53,6 @@ CREATE INDEX idx_contact_address_contact_id
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS tbl_clinic_contact_address;  -- child first
-DROP TABLE IF EXISTS tbl_clinic_contact;
+DROP TABLE IF EXISTS tbl_clinic_contact_person_address;  -- child first
+DROP TABLE IF EXISTS tbl_clinic_contact_person;
 -- +goose StatementEnd

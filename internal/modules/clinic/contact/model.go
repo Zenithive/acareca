@@ -73,37 +73,53 @@ func (r *RqAddress) ToAddress() Address {
 
 type RqUpdateContact struct {
 	ID       uuid.UUID    `json:"id" validate:"-"`
-	ClinicID uuid.UUID    `json:"clinic_id" validate:"required"`
-	Fname    *string      `json:"fname" validate:"required"`
-	Lname    *string      `json:"lname" validate:"required"`
-	Phone    *string      `json:"phone" validate:"required"`
-	Email    *string      `json:"email" validate:"required,email"`
+	ClinicID *uuid.UUID   `json:"clinic_id,omitempty"`
+	Fname    *string      `json:"fname,omitempty"`
+	Lname    *string      `json:"lname,omitempty"`
+	Phone    *string      `json:"phone,omitempty"`
+	Email    *string      `json:"email,omitempty" validate:"omitempty,email"`
 	Website  *string      `json:"website" validate:"omitempty,url"`
 	ABN      *string      `json:"abn" validate:"omitempty"`
 	Note     *string      `json:"note" validate:"omitempty"`
 	Address  []*RqAddress `json:"address" validate:"omitempty,dive"`
 }
 
-func (r *RqUpdateContact) ToContact() Contact {
-
-	addresses := make([]*Address, 0, len(r.Address))
-
-	for _, addr := range r.Address {
-		addresses = append(addresses, lo.ToPtr(addr.ToAddress()))
+func (r *RqUpdateContact) ApplyToContact(contact Contact) Contact {
+	contact.ID = r.ID
+	if r.ClinicID != nil {
+		contact.ClinicId = *r.ClinicID
+	}
+	if r.Fname != nil {
+		contact.Fname = *r.Fname
+	}
+	if r.Lname != nil {
+		contact.Lname = *r.Lname
+	}
+	if r.Phone != nil {
+		contact.Phone = *r.Phone
+	}
+	if r.Email != nil {
+		contact.Email = *r.Email
+	}
+	if r.Website != nil {
+		contact.Website = *r.Website
+	}
+	if r.ABN != nil {
+		contact.ABN = *r.ABN
+	}
+	if r.Note != nil {
+		contact.Note = *r.Note
 	}
 
-	return Contact{
-		ID:       r.ID,
-		ClinicId: r.ClinicID,
-		Fname:    lo.FromPtr(r.Fname),
-		Lname:    lo.FromPtr(r.Lname),
-		Phone:    lo.FromPtr(r.Phone),
-		Email:    lo.FromPtr(r.Email),
-		Website:  lo.FromPtr(r.Website),
-		ABN:      lo.FromPtr(r.ABN),
-		Note:     lo.FromPtr(r.Note),
-		Address:  addresses,
+	if r.Address != nil {
+		addresses := make([]*Address, 0, len(r.Address))
+		for _, addr := range r.Address {
+			addresses = append(addresses, lo.ToPtr(addr.ToAddress()))
+		}
+		contact.Address = addresses
 	}
+
+	return contact
 }
 
 type Contact struct {

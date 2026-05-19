@@ -5,11 +5,12 @@ CREATE TABLE IF NOT EXISTS tbl_invoice (
     clinic_id   uuid NOT NULL,
     template_id uuid NOT NULL,
     name        varchar(255) NOT NULL,
+    invoice_number varchar(100) NOT NULL,
     issue_date  date NOT NULL,
-    due_date    date NOT NULL,
-    reference_number  varchar(100) NOT NULL,
-    payment_method    varchar(50) NOT NULL,   -- fixed typo: "paymenent"
-    tax_method        varchar(50) NOT NULL,
+    due_date    date,
+    reference  varchar(100),
+    payment_method    varchar(50),
+    tax_method        varchar(50),
     subtotal    numeric(12, 2) NOT NULL DEFAULT 0,  -- store computed totals
     tax_total   numeric(12, 2) NOT NULL DEFAULT 0,
     grand_total numeric(12, 2) NOT NULL DEFAULT 0,
@@ -19,21 +20,21 @@ CREATE TABLE IF NOT EXISTS tbl_invoice (
     updated_at  timestamptz NOT NULL DEFAULT NOW(),
     deleted_at  timestamptz,
 
-    CONSTRAINT fk_invoice_clinic    FOREIGN KEY (clinic_id)   REFERENCES tbl_clinic(id),
-    CONSTRAINT fk_invoice_template  FOREIGN KEY (template_id) REFERENCES tbl_template(id)
+    CONSTRAINT fk_invoice_clinic    FOREIGN KEY (clinic_id)   REFERENCES tbl_clinic(id)
 );
 
 CREATE TABLE IF NOT EXISTS tbl_invoice_item (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id  uuid NOT NULL,
-    description text NOT NULL,
-    quantity    numeric(10, 3) NOT NULL DEFAULT 1,  -- numeric > int (handles 0.5 units)
+    name        varchar(255) NOT NULL,
+    description text,
+    quantity    int NOT NULL DEFAULT 1,
     unit_price  numeric(12, 2) NOT NULL,
-    discount    numeric(5, 2) NOT NULL DEFAULT 0,   -- treat NULL as 0
-    tax_rate    numeric(5, 2) NOT NULL DEFAULT 0,
-    tax_amount  numeric(12, 2) NOT NULL DEFAULT 0,
-    total       numeric(12, 2) NOT NULL,
-    sort_order  int NOT NULL DEFAULT 0,              -- control line item display order
+    discount    numeric(12, 2),
+    tax_rate    numeric(5, 2),
+    tax_amount  numeric(12, 2),
+    total_amount numeric(12, 2) NOT NULL,
+    sort_order  int NOT NULL DEFAULT 0,
     created_at  timestamptz NOT NULL DEFAULT NOW(),
     updated_at  timestamptz NOT NULL DEFAULT NOW(),
     deleted_at  timestamptz,

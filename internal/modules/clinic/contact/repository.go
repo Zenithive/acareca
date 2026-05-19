@@ -36,7 +36,7 @@ func (r *repository) Create(ctx context.Context, contact Contact) (Contact, erro
 
 		_, err := tx.ExecContext(ctx,
 			`
-			INSERT INTO tbl_clinic_contact (
+			INSERT INTO tbl_clinic_contact_person (
 				id,
 				clinic_id,
 				fname,
@@ -87,7 +87,7 @@ func (r *repository) insertAddressesTx(
 ) error {
 
 	query := `
-	INSERT INTO tbl_clinic_contact_address (
+	INSERT INTO tbl_clinic_contact_person_address (
 		id,
 		contact_id,
 		address_line1,
@@ -132,9 +132,9 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 
 	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		_, err := tx.ExecContext(ctx,
+		result, err := tx.ExecContext(ctx,
 			`
-			UPDATE tbl_clinic_contact
+			UPDATE tbl_clinic_contact_person
 			SET
 				deleted_at = NOW(),
 				updated_at = NOW()
@@ -146,10 +146,17 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected == 0 {
+			return errors.New("contact not found")
+		}
 
 		_, err = tx.ExecContext(ctx,
 			`
-			UPDATE tbl_clinic_contact_address
+			UPDATE tbl_clinic_contact_person_address
 			SET
 				deleted_at = NOW(),
 				updated_at = NOW()
@@ -174,12 +181,14 @@ func (r *repository) Get(ctx context.Context, id uuid.UUID) (Contact, error) {
 			clinic_id,
 			fname,
 			lname,
-			phone,
+			COALESCE(phone, ''),
 			email,
-			website,
-			abn,
-			note
-		FROM tbl_clinic_contact
+			COALESCE(website, ''),
+			COALESCE(abn, ''),
+			COALESCE(note, ''),
+			created_at,
+			updated_at
+		FROM tbl_clinic_contact_person
 		WHERE id = $1
 		AND deleted_at IS NULL
 		`,
@@ -194,6 +203,8 @@ func (r *repository) Get(ctx context.Context, id uuid.UUID) (Contact, error) {
 		&contact.Website,
 		&contact.ABN,
 		&contact.Note,
+		&contact.CreatedAt,
+		&contact.UpdatedAt,
 	)
 	if err != nil {
 		return Contact{}, err
@@ -222,7 +233,7 @@ func (r *repository) getAddressesByContactID(ctx context.Context, contactID uuid
 			postal_code,
 			country,
 			is_primary
-		FROM tbl_clinic_contact_address
+		FROM tbl_clinic_contact_person_address
 		WHERE contact_id = $1
 		AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
@@ -269,12 +280,14 @@ func (r *repository) List(ctx context.Context) ([]Contact, error) {
 			clinic_id,
 			fname,
 			lname,
-			phone,
+			COALESCE(phone, ''),
 			email,
-			website,
-			abn,
-			note
-		FROM tbl_clinic_contact
+			COALESCE(website, ''),
+			COALESCE(abn, ''),
+			COALESCE(note, ''),
+			created_at,
+			updated_at
+		FROM tbl_clinic_contact_person
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC
 		`,
@@ -300,6 +313,8 @@ func (r *repository) List(ctx context.Context) ([]Contact, error) {
 			&contact.Website,
 			&contact.ABN,
 			&contact.Note,
+			&contact.CreatedAt,
+			&contact.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -321,9 +336,9 @@ func (r *repository) List(ctx context.Context) ([]Contact, error) {
 func (r *repository) Update(ctx context.Context, contact Contact) error {
 	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		_, err := tx.ExecContext(ctx,
+		result, err := tx.ExecContext(ctx,
 			`
-			UPDATE tbl_clinic_contact
+			UPDATE tbl_clinic_contact_person
 			SET
 				clinic_id = $1,
 				fname = $2,
@@ -350,11 +365,18 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 		if err != nil {
 			return err
 		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected == 0 {
+			return errors.New("contact not found")
+		}
 
 		rows, err := tx.QueryContext(ctx,
 			`
 			SELECT id
-			FROM tbl_clinic_contact_address
+			FROM tbl_clinic_contact_person_address
 			WHERE contact_id = $1
 			AND deleted_at IS NULL
 			`,
@@ -378,9 +400,53 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 			existingIDs[id] = true
 		}
 
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
 		rows.Close()
 
 		updatedIDs := make(map[uuid.UUID]bool)
+
+		for _, addr := range contact.Address {
+			if addr.Id != uuid.Nil {
+				updatedIDs[addr.Id] = true
+			}
+		}
+
+		for existingID := range existingIDs {
+			if !updatedIDs[existingID] {
+				_, err := tx.ExecContext(ctx,
+					`
+					UPDATE tbl_clinic_contact_person_address
+					SET
+						deleted_at = NOW(),
+						updated_at = NOW()
+					WHERE id = $1
+					AND deleted_at IS NULL
+					`,
+					existingID,
+				)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		_, err = tx.ExecContext(ctx,
+			`
+			UPDATE tbl_clinic_contact_person_address
+			SET
+				is_primary = FALSE,
+				updated_at = NOW()
+			WHERE contact_id = $1
+			AND deleted_at IS NULL
+			`,
+			contact.ID,
+		)
+		if err != nil {
+			return err
+		}
 
 		for _, addr := range contact.Address {
 
@@ -394,7 +460,7 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 
 				_, err := tx.ExecContext(ctx,
 					`
-					UPDATE tbl_clinic_contact_address
+					UPDATE tbl_clinic_contact_person_address
 					SET
 						address_line1 = $1,
 						address_line2 = $2,
@@ -424,7 +490,7 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 
 				_, err := tx.ExecContext(ctx,
 					`
-					INSERT INTO tbl_clinic_contact_address (
+					INSERT INTO tbl_clinic_contact_person_address (
 						id,
 						contact_id,
 						address_line1,
@@ -453,27 +519,6 @@ func (r *repository) Update(ctx context.Context, contact Contact) error {
 			}
 		}
 
-		for existingID := range existingIDs {
-
-			if !updatedIDs[existingID] {
-
-				_, err := tx.ExecContext(ctx,
-					`
-					UPDATE tbl_clinic_contact_address
-					SET
-						deleted_at = NOW(),
-						updated_at = NOW()
-					WHERE id = $1
-					AND deleted_at IS NULL
-					`,
-					existingID,
-				)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
 		return nil
 	})
 }
@@ -482,7 +527,7 @@ func (r *repository) DeleteAddressByID(ctx context.Context, id uuid.UUID) error 
 
 	result, err := r.db.ExecContext(ctx,
 		`
-		UPDATE tbl_clinic_contact_address
+		UPDATE tbl_clinic_contact_person_address
 		SET
 			deleted_at = NOW(),
 			updated_at = NOW()
