@@ -145,3 +145,23 @@ const (
 	ActitionTransactionsGenerated    = "transactions.generated"
 	ActitionBalanceSheetGenerated    = "balance_sheet.generated"
 )
+
+// Invoice Module constants
+const (
+	// Modules
+	ModuleInvoice = "invoice"
+
+	// Actions
+	ActionClinicRegistered     = "invoice.clinic_registered"
+	ActionClinicLoggedIn       = "invoice.clinic_logged_in"
+	ActionClinicLoggedOut      = "invoice.clinic_logged_out"
+	ActionClinicSessionCreated = "clinic.session_created"
+	ActionClinicSessionRevoked = "clinic.session_revoked"
+
+	// Entitites
+	EntityInvoiceClinic         = "tbl_invoice_clinic"
+	EntityInvoiceClinicAddress  = "tbl_invoice_clinic_address"
+	EntityInvoiceClinicContacts = "tbl_invoice_clinic_contacts"
+	EntityClinicSession         = "tbl_clinic_session"
+	EntityClinicVerification    = "tbl_clinic_verification_token"
+)

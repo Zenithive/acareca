@@ -533,22 +533,76 @@ definitions:
       total_users:
         type: integer
     type: object
-  auth.RqChangePassword:
+  auth.RqAddressChangeset:
     properties:
-      new_password:
-        minLength: 8
-        type: string
-    required:
-    - new_password
+      create:
+        items:
+          $ref: '#/definitions/auth.RqClinicAddress'
+        type: array
+      delete:
+        description: address IDs (UUID strings)
+        items:
+          type: string
+        type: array
+      update:
+        items:
+          $ref: '#/definitions/auth.RqUpdateClinicAddress'
+        type: array
     type: object
-  auth.RqForgotPassword:
+  auth.RqClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  auth.RqClinicContact:
+    properties:
+      contact_type:
+        enum:
+        - PHONE
+        - WEBSITE
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  auth.RqContactChangeset:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/auth.RqClinicContact'
+        type: array
+      delete:
+        description: contact IDs (UUID strings)
+        items:
+          type: string
+        type: array
+      update:
+        items:
+          $ref: '#/definitions/auth.RqUpdateClinicContact'
+        type: array
+    type: object
+  auth.RqLogin:
     properties:
       email:
         type: string
+      password:
+        type: string
     required:
     - email
+    - password
     type: object
-  auth.RqLogin:
+  auth.RqLoginClinic:
     properties:
       email:
         type: string
@@ -565,16 +619,106 @@ definitions:
     required:
     - refresh_token
     type: object
-  auth.RqResetPassword:
+  auth.RqLogoutClinic:
     properties:
-      new_password:
-        minLength: 8
-        type: string
-      token:
+      refresh_token:
         type: string
     required:
-    - new_password
-    - token
+    - refresh_token
+    type: object
+  auth.RqRegisterClinic:
+    properties:
+      abn:
+        type: string
+      acn:
+        type: string
+      addresses:
+        items:
+          $ref: '#/definitions/auth.RqClinicAddress'
+        minItems: 1
+        type: array
+      clinic_name:
+        maxLength: 255
+        minLength: 2
+        type: string
+      contacts:
+        items:
+          $ref: '#/definitions/auth.RqClinicContact'
+        minItems: 1
+        type: array
+      description:
+        type: string
+      document_id:
+        type: string
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      role:
+        enum:
+        - CLINIC
+        type: string
+    required:
+    - abn
+    - clinic_name
+    - email
+    - password
+    - role
+    type: object
+  auth.RqUpdateClinic:
+    properties:
+      abn:
+        type: string
+      acn:
+        type: string
+      addresses:
+        $ref: '#/definitions/auth.RqAddressChangeset'
+      clinic_name:
+        maxLength: 255
+        minLength: 2
+        type: string
+      contacts:
+        $ref: '#/definitions/auth.RqContactChangeset'
+      description:
+        type: string
+      document_id:
+        type: string
+    type: object
+  auth.RqUpdateClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    required:
+    - id
+    type: object
+  auth.RqUpdateClinicContact:
+    properties:
+      contact_type:
+        enum:
+        - PHONE
+        - WEBSITE
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    required:
+    - id
     type: object
   auth.RqUpdateUser:
     properties:
@@ -657,6 +801,67 @@ definitions:
     - first_name
     - last_name
     - password
+    type: object
+  auth.RsClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  auth.RsClinicContact:
+    properties:
+      contact_type:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  auth.RsClinicDetail:
+    properties:
+      abn:
+        type: string
+      acn:
+        type: string
+      addresses:
+        items:
+          $ref: '#/definitions/auth.RsClinicAddress'
+        type: array
+      clinic_name:
+        type: string
+      contacts:
+        items:
+          $ref: '#/definitions/auth.RsClinicContact'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      document_id:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      role:
+        type: string
+      updated_at:
+        type: string
+      verified:
+        type: boolean
     type: object
   auth.RsGoogleAuthURL:
     properties:
@@ -1682,6 +1887,10 @@ definitions:
         type: string
       description:
         type: string
+      document_ids:
+        items:
+          type: string
+        type: array
       name:
         type: string
       tax_type:
@@ -1707,6 +1916,17 @@ definitions:
         type: string
       description:
         type: string
+      documents:
+        properties:
+          create:
+            items:
+              type: string
+            type: array
+          delete:
+            items:
+              type: string
+            type: array
+        type: object
       id:
         type: string
       name:
@@ -1958,6 +2178,58 @@ definitions:
         type: string
       start_date:
         type: string
+    type: object
+  internal_modules_auth.RqChangePassword:
+    properties:
+      new_password:
+        minLength: 8
+        type: string
+    required:
+    - new_password
+    type: object
+  internal_modules_auth.RqForgotPassword:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  internal_modules_auth.RqResetPassword:
+    properties:
+      new_password:
+        minLength: 8
+        type: string
+      token:
+        type: string
+    required:
+    - new_password
+    - token
+    type: object
+  internal_modules_clinic_auth.RqChangePassword:
+    properties:
+      new_password:
+        minLength: 8
+        type: string
+    required:
+    - new_password
+    type: object
+  internal_modules_clinic_auth.RqForgotPassword:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  internal_modules_clinic_auth.RqResetPassword:
+    properties:
+      new_password:
+        minLength: 8
+        type: string
+      token:
+        type: string
+    required:
+    - new_password
+    - token
     type: object
   invitation.AccessLevel:
     properties:
@@ -3855,7 +4127,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqForgotPassword'
+          $ref: '#/definitions/internal_modules_auth.RqForgotPassword'
       responses:
         "200":
           description: OK
@@ -3989,7 +4261,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqResetPassword'
+          $ref: '#/definitions/internal_modules_auth.RqResetPassword'
       responses:
         "200":
           description: OK
@@ -4032,7 +4304,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqChangePassword'
+          $ref: '#/definitions/internal_modules_auth.RqChangePassword'
       produces:
       - application/json
       responses:
@@ -4816,6 +5088,28 @@ paths:
       tags:
       - calculation
   /clinic:
+    delete:
+      description: Soft delete the currently authenticated clinic's account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete clinic account
+      tags:
+      - invoice
     get:
       parameters:
       - description: Filter by clinic name
@@ -5080,6 +5374,290 @@ paths:
       summary: Bulk update clinics
       tags:
       - clinic
+  /clinic/change-password:
+    put:
+      consumes:
+      - application/json
+      description: Updates the password for the authenticated clinic
+      parameters:
+      - description: Password Change Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_clinic_auth.RqChangePassword'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Change clinic password
+      tags:
+      - invoice
+  /clinic/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Sends a reset link to the clinic's email if it exists
+      parameters:
+      - description: Email
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_clinic_auth.RqForgotPassword'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Initiate clinic password reset
+      tags:
+      - invoice
+  /clinic/login:
+    post:
+      consumes:
+      - application/json
+      description: authenticates an invoice clinic profile and issues access tokens
+      parameters:
+      - description: Clinic Login Credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqLoginClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "411":
+          description: Length Required
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Login an invoice clinic
+      tags:
+      - invoice
+  /clinic/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidates a provided refresh token and tears down the tracking
+        database session state
+      parameters:
+      - description: Clinic Session Logout Payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqLogoutClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Logout current invoice clinic session
+      tags:
+      - invoice
+  /clinic/profile:
+    get:
+      description: Returns the profile details of the authenticated clinic
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get current invoice clinic profile
+      tags:
+      - invoice
+    put:
+      consumes:
+      - application/json
+      description: Update the profile details of the authenticated clinic
+      parameters:
+      - description: Update Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqUpdateClinic'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RsClinicDetail'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update clinic profile
+      tags:
+      - invoice
+  /clinic/register:
+    post:
+      consumes:
+      - application/json
+      description: registers an isolated invoice clinic with its primary address and
+        contacts
+      parameters:
+      - description: Clinic Registration Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RqRegisterClinic'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Register a new invoice clinic
+      tags:
+      - invoice
+  /clinic/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Updates the clinic's password using the token received via email
+      parameters:
+      - description: Token and New Password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_clinic_auth.RqResetPassword'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Reset clinic password using token
+      tags:
+      - invoice
+  /clinic/verify:
+    get:
+      description: Validates the UUID token sent via email. If valid, marks the clinic
+        as verified and the token as used.
+      parameters:
+      - description: Verification Token (UUID)
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email verified successfully
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Invalid token format or token already used
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      summary: Verify clinic email address
+      tags:
+      - invoice
   /coa/account-taxes:
     get:
       parameters:
