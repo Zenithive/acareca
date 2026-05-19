@@ -40,6 +40,60 @@ type RqLogoutClinic struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
+type RqChangePassword struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+type RqUpdateClinic struct {
+	ClinicName  *string                    `json:"clinic_name" validate:"omitempty,min=2,max=255"`
+	Description *string                    `json:"description,omitempty"`
+	DocumentID  *string                    `json:"document_id,omitempty"`
+	ABN         *string                    `json:"abn,omitempty"`
+	ACN         *string                    `json:"acn,omitempty"`
+	Addresses   *RqAddressChangeset        `json:"addresses,omitempty"`
+	Contacts    *RqContactChangeset        `json:"contacts,omitempty"`
+}
+
+// RqAddressChangeset holds the three address operation buckets.
+type RqAddressChangeset struct {
+	Create []RqClinicAddress       `json:"create" validate:"omitempty,dive"`
+	Update []RqUpdateClinicAddress `json:"update" validate:"omitempty,dive"`
+	Delete []string                `json:"delete"` // address IDs (UUID strings)
+}
+
+// RqContactChangeset holds the three contact operation buckets.
+type RqContactChangeset struct {
+	Create []RqClinicContact       `json:"create" validate:"omitempty,dive"`
+	Update []RqUpdateClinicContact `json:"update" validate:"omitempty,dive"`
+	Delete []string                `json:"delete"` // contact IDs (UUID strings)
+}
+
+type RqUpdateClinicAddress struct {
+	ID        string `json:"id" validate:"required,uuid"`
+	Address   string `json:"address"`
+	City      string `json:"city"`
+	State     string `json:"state"`
+	Postcode  string `json:"postcode"`
+	IsPrimary bool   `json:"is_primary"`
+}
+
+type RqUpdateClinicContact struct {
+	ID          string  `json:"id" validate:"required,uuid"`
+	ContactType string  `json:"contact_type" validate:"oneof=PHONE WEBSITE"`
+	Value       string  `json:"value"`
+	Label       *string `json:"label,omitempty"`
+	IsPrimary   bool    `json:"is_primary"`
+}
+
+type RqForgotPassword struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type RqResetPassword struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
 type RqClinicAddress struct {
 	Address   string `json:"address"`
 	City      string `json:"city"`

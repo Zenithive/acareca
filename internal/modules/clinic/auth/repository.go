@@ -16,14 +16,23 @@ type Repository interface {
 	CreateClinic(ctx context.Context, clinic *Clinic, tx *sqlx.Tx) (*Clinic, error)
 	FindByEmail(ctx context.Context, email string) (*Clinic, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*Clinic, error)
+	UpdateClinic(ctx context.Context, clinic *Clinic, tx *sqlx.Tx) (*Clinic, error)
+	DeleteClinic(ctx context.Context, id uuid.UUID) error
+	UpdatePassword(ctx context.Context, clinicID uuid.UUID, hashedPassword string) error
 
 	// Clinic Addresses
 	CreateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error)
 	ListAddressesByClinicID(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error)
+	UpdateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error)
+	DeleteAddressByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
+	CountActiveAddresses(ctx context.Context, clinicID uuid.UUID, tx *sqlx.Tx) (int, error)
 
 	// Clinic Contacts
 	CreateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error)
 	ListContactsByClinicID(ctx context.Context, clinicID uuid.UUID) ([]ClinicContact, error)
+	UpdateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error)
+	DeleteContactByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
+	CountActiveContacts(ctx context.Context, clinicID uuid.UUID, tx *sqlx.Tx) (int, error)
 
 	// Session
 	CreateSession(ctx context.Context, s *Session) (*Session, error)
@@ -35,6 +44,10 @@ type Repository interface {
 	DeactivateOldTokens(ctx context.Context, clinicID uuid.UUID) error
 	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)
 	MarkUserVerified(ctx context.Context, token *VerificationToken) error
+
+	// password reset
+	SaveResetToken(ctx context.Context, clinicID string, tokenHash string, expiresAt time.Time) error
+	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 }
 
 type repository struct {
@@ -194,6 +207,92 @@ func (r *repository) ListContactsByClinicID(ctx context.Context, clinicID uuid.U
 	return dest, nil
 }
 
+func (r *repository) UpdateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error) {
+	const query = `
+		UPDATE tbl_invoice_clinic_address
+		SET address = $2, city = $3, state = $4, postcode = $5, is_primary = $6, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
+	`
+	var dest ClinicAddress
+	var err error
+	if tx != nil {
+		err = tx.QueryRowxContext(ctx, query, addr.ID, addr.Address, addr.City, addr.State, addr.Postcode, addr.IsPrimary).StructScan(&dest)
+	} else {
+		err = r.db.QueryRowxContext(ctx, query, addr.ID, addr.Address, addr.City, addr.State, addr.Postcode, addr.IsPrimary).StructScan(&dest)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update address: %w", err)
+	}
+	return &dest, nil
+}
+
+func (r *repository) DeleteAddressByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error {
+	query := `UPDATE tbl_invoice_clinic_address SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, id)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, id)
+	}
+	return err
+}
+
+func (r *repository) CountActiveAddresses(ctx context.Context, clinicID uuid.UUID, tx *sqlx.Tx) (int, error) {
+	query := `SELECT COUNT(*) FROM tbl_invoice_clinic_address WHERE clinic_id = $1 AND deleted_at IS NULL`
+	var count int
+	var err error
+	if tx != nil {
+		err = tx.QueryRowContext(ctx, query, clinicID).Scan(&count)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, clinicID).Scan(&count)
+	}
+	return count, err
+}
+
+func (r *repository) UpdateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error) {
+	const query = `
+		UPDATE tbl_invoice_clinic_contacts
+		SET contact_type = $2, value = $3, label = $4, is_primary = $5, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
+	`
+	var dest ClinicContact
+	var err error
+	if tx != nil {
+		err = tx.QueryRowxContext(ctx, query, contact.ID, contact.ContactType, contact.Value, contact.Label, contact.IsPrimary).StructScan(&dest)
+	} else {
+		err = r.db.QueryRowxContext(ctx, query, contact.ID, contact.ContactType, contact.Value, contact.Label, contact.IsPrimary).StructScan(&dest)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update contact: %w", err)
+	}
+	return &dest, nil
+}
+
+func (r *repository) DeleteContactByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error {
+	query := `UPDATE tbl_invoice_clinic_contacts SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, id)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, id)
+	}
+	return err
+}
+
+func (r *repository) CountActiveContacts(ctx context.Context, clinicID uuid.UUID, tx *sqlx.Tx) (int, error) {
+	query := `SELECT COUNT(*) FROM tbl_invoice_clinic_contacts WHERE clinic_id = $1 AND deleted_at IS NULL`
+	var count int
+	var err error
+	if tx != nil {
+		err = tx.QueryRowContext(ctx, query, clinicID).Scan(&count)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, clinicID).Scan(&count)
+	}
+	return count, err
+}
+
 // =========================================================================
 // SESSION
 // =========================================================================
@@ -289,4 +388,90 @@ func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationTo
 	}
 	return nil
 
+}
+
+
+func (r *repository) UpdateClinic(ctx context.Context, clinic *Clinic, tx *sqlx.Tx) (*Clinic, error) {
+	const query = `
+		UPDATE tbl_invoice_clinic
+		SET clinic_name = $2, description = $3, document_id = $4, abn = $5, acn = $6, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id, document_id, clinic_name, description, email, password, role, abn, acn, verified, created_at, updated_at
+	`
+	var dest Clinic
+	var err error
+	if tx != nil {
+		err = tx.QueryRowxContext(ctx, query,
+			clinic.ID, clinic.ClinicName, clinic.Description, clinic.DocumentID, clinic.ABN, clinic.ACN,
+		).StructScan(&dest)
+	} else {
+		err = r.db.QueryRowxContext(ctx, query,
+			clinic.ID, clinic.ClinicName, clinic.Description, clinic.DocumentID, clinic.ABN, clinic.ACN,
+		).StructScan(&dest)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update clinic: %w", err)
+	}
+	return &dest, nil
+}
+
+func (r *repository) DeleteClinic(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE tbl_invoice_clinic SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("delete clinic: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *repository) UpdatePassword(ctx context.Context, clinicID uuid.UUID, hashedPassword string) error {
+	query := `UPDATE tbl_invoice_clinic SET password = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`
+	result, err := r.db.ExecContext(ctx, query, hashedPassword, clinicID)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *repository) SaveResetToken(ctx context.Context, clinicID string, tokenHash string, expiresAt time.Time) error {
+	query := `INSERT INTO tbl_clinic_password_resets (clinic_id, token_hash, expires_at) VALUES ($1, $2, $3)`
+	_, err := r.db.ExecContext(ctx, query, clinicID, tokenHash, expiresAt)
+	return err
+}
+
+func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error {
+	query := `
+	WITH updated_token AS (
+		UPDATE tbl_clinic_password_resets
+		SET status = CASE
+			WHEN expires_at < NOW() THEN 'EXPIRED'
+			ELSE 'USED'
+		END
+		WHERE token_hash = $1
+		  AND status = 'PENDING'
+		RETURNING clinic_id, status
+	)
+	UPDATE tbl_invoice_clinic
+	SET password = $2, updated_at = NOW()
+	FROM updated_token
+	WHERE tbl_invoice_clinic.id = updated_token.clinic_id
+	  AND updated_token.status = 'USED'`
+
+	result, err := r.db.ExecContext(ctx, query, tokenHash, newPasswordHash)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return errors.New("invalid or expired reset link")
+	}
+	return nil
 }
