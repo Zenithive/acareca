@@ -59,14 +59,14 @@ func DefaultChartOfAccounts() []DefaultChartRow {
 		{Code: 620, Name: "Prepayments", AccountTypeID: 1, AccountTaxID: 4, IsSystem: false},
 		{Code: 630, Name: "Inventory", AccountTypeID: 1, AccountTaxID: 4, IsSystem: false},
 		{Code: 710, Name: "Office Equipment", AccountTypeID: 1, AccountTaxID: 2, IsSystem: false},
-		{Code: 711, Name: "Accumulated Depreciation – Office Equipment", AccountTypeID: 1, AccountTaxID: 4, IsSystem: false},
+		{Code: 711, Name: "Accumulated Depreciation - Office Equipment", AccountTypeID: 1, AccountTaxID: 4, IsSystem: false},
 		{Code: 720, Name: "Computer Equipment", AccountTypeID: 1, AccountTaxID: 2, IsSystem: false},
-		{Code: 721, Name: "Accumulated Depreciation – Computer Equipment", AccountTypeID: 1, AccountTaxID: 4, IsSystem: false},
+		{Code: 721, Name: "Accumulated Depreciation - Computer Equipment", AccountTypeID: 1, AccountTaxID: 4, IsSystem: false},
 
 		// Liability accounts
 		{Code: 800, Name: "Accounts Payable", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 		{Code: 801, Name: "Unpaid Expense Claims", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
-		{Code: 804, Name: "Wages Payable – Payroll", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
+		{Code: 804, Name: "Wages Payable - Payroll", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 		{Code: 820, Name: "GST", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 		{Code: 825, Name: "PAYG Withholdings Payable", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},
 		{Code: 826, Name: "Superannuation Payable", AccountTypeID: 2, AccountTaxID: 4, IsSystem: false},

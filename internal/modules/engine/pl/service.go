@@ -385,6 +385,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
 
+	var entityName string
 	var practitionerABN string
 	// If a practitioner is filtered, resolve that specific profile for the ABN.
 	// Otherwise, fallback to the actor context.
@@ -397,14 +398,39 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	if targetID != "" {
 		prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
-		if err == nil && prac.ABN != nil {
-			practitionerABN = *prac.ABN
+		if err == nil {
+			if prac.EntityName != nil {
+				entityName = *prac.EntityName
+			} else {
+				entityName = fullName
+			}
+			if prac.ABN != nil {
+				practitionerABN = *prac.ABN
+			}
 		}
-	} else if len(notifIDs) > 0 {
-		// Fallback for accountants with no specific filter
-		prac, err := s.practitionerSvc.GetPractitioner(ctx, notifIDs[0])
-		if err == nil && prac.ABN != nil {
-			practitionerABN = *prac.ABN
+	} else {
+		if role == util.RolePractitioner {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+			entityName = fullName
+			if err == nil {
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		} else {
+			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+			{
+				if err == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
+			}
 		}
 	}
 
@@ -497,7 +523,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	currentRow := 2 // Default start if no date
 
-	setMetaRow(fmt.Sprintf("A%d", currentRow), "Exported by:", fullName)
+	setMetaRow(fmt.Sprintf("A%d", currentRow), "Exported by:", entityName)
 	currentRow++
 
 	// ABN Row (Only if exists)
@@ -511,6 +537,10 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		setMetaRow(fmt.Sprintf("A%d", currentRow), "Period:", fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
 		currentRow++
 	}
+
+	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
+	setMetaRow(fmt.Sprintf("A%d", currentRow), "Generated:", currentTimeStr)
+	currentRow++
 
 	currentRow++ // Spacer row
 

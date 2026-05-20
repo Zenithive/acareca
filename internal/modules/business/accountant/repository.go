@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/jmoiron/sqlx"
 )
@@ -11,6 +12,7 @@ import (
 type Repository interface {
 	CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error)
 	GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error)
+	UpdateAccountantProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateAccountant) error
 
 	GetAllUsers(ctx context.Context, userID string) ([]RsAccountantUser, error)
 	GetClinicsForAccountant(ctx context.Context, accountantID string) ([]ClinicDetail, error)
@@ -33,12 +35,12 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error) {
 	query := `
-		INSERT INTO tbl_accountant (user_id)
-		VALUES ($1)
-		RETURNING id, user_id, verified
+		INSERT INTO tbl_accountant (user_id, entity_type, entity_name, abn, acn, address, tax_agent_number, profession)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, user_id, verified, entity_type, entity_name, abn, acn, tax_agent_number, address, profession
 	`
 	var a Accountant
-	if err := tx.QueryRowxContext(ctx, query, req.UserID).StructScan(&a); err != nil {
+	if err := tx.QueryRowxContext(ctx, query, req.UserID, req.EntityType, req.EntityName, req.ABN, req.ACN, req.Address, req.TaxAgentNumber, req.Profession).StructScan(&a); err != nil {
 		return nil, err
 	}
 
@@ -51,19 +53,65 @@ func (r *repository) CreateAccountant(ctx context.Context, req *RqCreateAccounta
 	}
 
 	return &RsAccountant{
-		ID:       a.ID,
-		UserID:   a.UserID.String(),
-		Verified: a.Verified,
+		ID:             a.ID,
+		UserID:         a.UserID.String(),
+		Verified:       a.Verified,
+		EntityType:     a.EntityType,
+		EntityName:     a.EntityName,
+		ABN:            a.ABN,
+		ACN:            a.ACN,
+		Address:        a.Address,
+		Profession:     a.Profession,
+		TaxAgentNumber: a.TaxAgentNumber,
 	}, nil
 }
 
 func (r *repository) GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error) {
-	query := `SELECT id, user_id, verified FROM tbl_accountant WHERE user_id = $1 AND deleted_at IS NULL`
+	query := `SELECT id, user_id, verified, entity_type, entity_name, address, abn,acn, profession, tax_agent_number FROM tbl_accountant WHERE user_id = $1 AND deleted_at IS NULL`
 	var a Accountant
 	if err := r.db.GetContext(ctx, &a, query, userID); err != nil {
 		return nil, err
 	}
-	return &RsAccountant{ID: a.ID, UserID: a.UserID.String(), Verified: a.Verified}, nil
+	return &RsAccountant{
+		ID:             a.ID,
+		UserID:         a.UserID.String(),
+		Verified:       a.Verified,
+		EntityType:     a.EntityType,
+		EntityName:     a.EntityName,
+		ABN:            a.ABN,
+		ACN:            a.ACN,
+		Address:        a.Address,
+		Profession:     a.Profession,
+		TaxAgentNumber: a.TaxAgentNumber,
+	}, nil
+}
+
+func (r *repository) UpdateAccountantProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateAccountant) error {
+	query := `
+		UPDATE tbl_accountant 
+		SET 
+			abn = COALESCE($1, abn),
+			-- Explicitly cast $2 to text for the check, then to the enum for the update
+			entity_type = CASE 
+                            WHEN $2::text = '' THEN entity_type 
+                            ELSE $2::business_entity_type 
+                          END,
+			entity_name = CASE 
+                            WHEN $3 = '' THEN entity_name 
+                            ELSE $3 
+                          END,
+			acn = COALESCE($4, acn),
+			address = COALESCE($5, address),
+			profession = COALESCE($6, profession),
+			tax_agent_number = COALESCE($7, tax_agent_number),
+			updated_at = NOW()
+		WHERE user_id = $8 AND deleted_at IS NULL`
+
+	_, err := r.db.ExecContext(ctx, query,
+		req.ABN, req.EntityType, req.EntityName,
+		req.ACN, req.Address, req.Profession,
+		req.TaxAgentNumber, userID)
+	return err
 }
 
 func (r *repository) GetAllUsers(ctx context.Context, userID string) ([]RsAccountantUser, error) {

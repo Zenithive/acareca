@@ -12,6 +12,7 @@ import (
 type IService interface {
 	CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error)
 	GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error)
+	UpdateAccountantProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateAccountant) error
 	ListUsers(ctx context.Context) ([]RsAccountantUser, error)
 	ListClinics(ctx context.Context) ([]ClinicDetail, error)
 	ListForms(ctx context.Context) ([]RsAccountantForm, error)
@@ -51,6 +52,10 @@ func (s *service) GetAccountantByUserID(ctx context.Context, userID string) (*Rs
 	}
 
 	return nil, fmt.Errorf("accountant not found for user ID: %s", userID)
+}
+
+func (s *service) UpdateAccountantProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateAccountant) error {
+	return s.repo.UpdateAccountantProfile(ctx, userID, req)
 }
 
 func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {

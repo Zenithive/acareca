@@ -20,13 +20,11 @@ type BSRow struct {
 // BSFilter defines query parameters for balance sheet
 type BSFilter struct {
 	PractitionerID *string `form:"practitioner_id"`
-	StartDate      *string `form:"start_date"`
 	EndDate        *string `form:"end_date"`
 }
 
 // RsBalanceSheet is the complete balance sheet response
 type RsBalanceSheet struct {
-	StartDate                 string      `json:"start_date,omitempty"`
 	EndDate                   string      `json:"end_date,omitempty"`
 	Assets                    []RsAccount `json:"assets"`
 	TotalAssets               float64     `json:"total_assets"`

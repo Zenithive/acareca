@@ -10,14 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 )
 
-func PublishNotification[T any](
-	ctx context.Context,
-	notificationSvc notification.Service,
-	recipientID *uuid.UUID,
-	practitionerID uuid.UUID,
-	data T,
-	mapper func(T) NotificationMeta,
-) {
+func PublishNotification[T any](ctx context.Context, notificationSvc notification.Service, recipientID *uuid.UUID, practitionerID uuid.UUID, data T, mapper func(T) NotificationMeta) {
 	if notificationSvc == nil {
 		return
 	}

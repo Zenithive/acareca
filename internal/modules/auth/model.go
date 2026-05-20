@@ -20,6 +20,15 @@ type User struct {
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
+
+	// Role-specific fields (populated based on role)
+	ABN            *string `json:"abn,omitempty"`
+	TaxAgentNumber *string `json:"tax_agent_number,omitempty"`
+	EntityType     string  `json:"entity_type"`
+	EntityName     *string `json:"entity_name"`
+	ACN            *string `json:"acn,omitempty"`
+	Address        *string `json:"address,omitempty"`
+	Profession     *string `json:"profession,omitempty"`
 }
 
 type AuthProvider struct {
@@ -62,15 +71,30 @@ type RqUser struct {
 	LastName   string  `json:"last_name"   validate:"required"`
 	Phone      *string `json:"phone"       validate:"omitempty,e164"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
+
+	// New Onboarding Fields
+	EntityType     string  `json:"entity_type" validate:"required,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName     *string `json:"entity_name" validate:"required"`
+	ABN            *string `json:"abn" validate:"required"`
+	ACN            *string `json:"acn"`              // Optional
+	Address        *string `json:"address"`          // Optional
+	Profession     *string `json:"profession"`       // Optional
+	TaxAgentNumber *string `json:"tax_agent_number"` // Optional
 }
 
 type RqUpdateUser struct {
-	Email      *string `json:"email"       validate:"omitempty,email"`
-	FirstName  *string `json:"first_name"  validate:"omitempty"`
-	LastName   *string `json:"last_name"   validate:"omitempty"`
-	Phone      *string `json:"phone"       validate:"omitempty,e164"`
-	ABN        *string `json:"abn"         validate:"omitempty"`
-	DocumentId *string `json:"document_id" validate:"omitempty"`
+	Email          *string `json:"email"       validate:"omitempty,email"`
+	FirstName      *string `json:"first_name"  validate:"omitempty"`
+	LastName       *string `json:"last_name"   validate:"omitempty"`
+	Phone          *string `json:"phone"       validate:"omitempty,e164"`
+	ABN            *string `json:"abn"         validate:"omitempty"`
+	DocumentId     *string `json:"document_id" validate:"omitempty"`
+	EntityType     string  `json:"entity_type" validate:"omitempty,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName     string  `json:"entity_name" validate:"omitempty"`
+	ACN            *string `json:"acn" validate:"omitempty"`              // Optional
+	Address        *string `json:"address" validate:"omitempty"`          // Optional
+	Profession     *string `json:"profession" validate:"omitempty"`       // Optional
+	TaxAgentNumber *string `json:"tax_agent_number" validate:"omitempty"` // Optional
 }
 
 type RqLogin struct {
@@ -102,39 +126,23 @@ type RsToken struct {
 }
 
 type RsUser struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Phone     *string   `json:"phone,omitempty"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-
-	Document *file.RsDocument `json:"document"`
-
-	// Role-specific fields
-	ABN       *string `json:"abn,omitempty"`
-	LicenseNo *string `json:"license_no,omitempty"`
+	ID             uuid.UUID        `json:"id"`
+	Email          string           `json:"email"`
+	FirstName      string           `json:"first_name"`
+	LastName       string           `json:"last_name"`
+	Phone          *string          `json:"phone,omitempty"`
+	Role           string           `json:"role"`
+	ABN            *string          `json:"abn,omitempty"`
+	TaxAgentNumber *string          `json:"tax_agent_number,omitempty"`
+	EntityType     string           `json:"entity_type"`
+	EntityName     *string          `json:"entity_name"`
+	ACN            *string          `json:"acn,omitempty"`
+	Address        *string          `json:"address,omitempty"`
+	Profession     *string          `json:"profession,omitempty"`
+	Document       *file.RsDocument `json:"document"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
-
-type RsGoogleAuthURL struct {
-	URL string `json:"url"`
-}
-
-type GoogleUserInfo struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	FirstName string `json:"given_name"`
-	LastName  string `json:"family_name"`
-}
-
-const (
-	TokenStatusPending = "PENDING"
-	TokenStatusUsed    = "USED"
-	TokenStatusExpired = "EXPIRED"
-	TokenStatusResent  = "RESENT"
-)
 
 func (r *RqUser) ToDBModel() *User {
 	return &User{
@@ -166,5 +174,25 @@ func (u *User) ToRsUser() *RsUser {
 		Document:  doc,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
+		ABN:       u.ABN,
 	}
 }
+
+type RsGoogleAuthURL struct {
+	URL string `json:"url"`
+}
+
+type GoogleUserInfo struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	FirstName string `json:"given_name"`
+	LastName  string `json:"family_name"`
+}
+
+// For email verification token operations
+const (
+	TokenStatusPending = "PENDING"
+	TokenStatusUsed    = "USED"
+	TokenStatusExpired = "EXPIRED"
+	TokenStatusResent  = "RESENT"
+)
