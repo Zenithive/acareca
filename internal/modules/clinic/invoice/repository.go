@@ -19,12 +19,14 @@ type IRepository interface {
 }
 
 type Repository struct {
-	db *sqlx.DB
+	db       *sqlx.DB
+	itemRepo item.IRepository
 }
 
 func NewRepository(db *sqlx.DB) IRepository {
 	return &Repository{
-		db: db,
+		db:       db,
+		itemRepo: item.NewRepository(db),
 	}
 }
 
@@ -73,7 +75,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		return r.insertItemsTx(ctx, tx, invoice.ID, invoice.Items)
+		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)
 	})
 }
 
@@ -147,7 +149,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		return nil, err
 	}
 
-	items, err := r.getItemsByInvoiceID(ctx, invoice.ID)
+	items, err := r.itemRepo.GetByInvoiceID(ctx, nil, invoice.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +203,7 @@ func (r *Repository) List(ctx context.Context) ([]*Invoice, error) {
 			return nil, err
 		}
 
-		invoice.Items, err = r.getItemsByInvoiceID(ctx, invoice.ID)
+		invoice.Items, err = r.itemRepo.GetByInvoiceID(ctx, r.db, invoice.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -270,94 +272,12 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		return r.insertItemsTx(ctx, tx, invoice.ID, invoice.Items)
-	})
-}
-
-func (r *Repository) insertItemsTx(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*item.Item) error {
-	for idx, invoiceItem := range items {
-		if invoiceItem.ID == uuid.Nil {
+		for _, invoiceItem := range invoice.Items {
 			invoiceItem.ID = uuid.New()
 		}
 
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO tbl_invoice_item (
-				id,
-				invoice_id,
-				name,
-				description,
-				quantity,
-				unit_price,
-				discount,
-				tax_rate,
-				tax_amount,
-				total_amount,
-				sort_order
-			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		`,
-			invoiceItem.ID,
-			invoiceID,
-			invoiceItem.Name,
-			invoiceItem.Description,
-			invoiceItem.Quantity,
-			invoiceItem.UnitPrice,
-			invoiceItem.Discount,
-			invoiceItem.TaxRate,
-			invoiceItem.TaxAmount,
-			invoiceItem.TotalAmount,
-			idx,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (r *Repository) getItemsByInvoiceID(ctx context.Context, invoiceID uuid.UUID) ([]*item.Item, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT
-			id,
-			name,
-			description,
-			quantity,
-			unit_price,
-			discount,
-			tax_rate,
-			tax_amount,
-			total_amount
-		FROM tbl_invoice_item
-		WHERE invoice_id = $1
-		AND deleted_at IS NULL
-		ORDER BY sort_order ASC, created_at ASC
-	`, invoiceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	items := make([]*item.Item, 0)
-	for rows.Next() {
-		var invoiceItem item.Item
-		if err := rows.Scan(
-			&invoiceItem.ID,
-			&invoiceItem.Name,
-			&invoiceItem.Description,
-			&invoiceItem.Quantity,
-			&invoiceItem.UnitPrice,
-			&invoiceItem.Discount,
-			&invoiceItem.TaxRate,
-			&invoiceItem.TaxAmount,
-			&invoiceItem.TotalAmount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, &invoiceItem)
-	}
-
-	return items, rows.Err()
+		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)
+	})
 }
 
 func calculateTotals(items []*item.Item) (float64, float64, float64) {
