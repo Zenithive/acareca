@@ -19,7 +19,6 @@ type IHandler interface {
 	Logout(c *gin.Context)
 	GoogleAuthURL(c *gin.Context)
 	GoogleCallback(c *gin.Context)
-
 	VerifyEmail(c *gin.Context)
 	ChangePassword(c *gin.Context)
 	GetProfile(c *gin.Context)
@@ -150,7 +149,6 @@ func (h *handler) GetProfile(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /auth/user/profile [put]
 func (h *handler) UpdateProfile(c *gin.Context) {
-
 	userIDPtr := auditctx.GetUserID(c.Request.Context())
 
 	if userIDPtr == nil {
@@ -196,10 +194,9 @@ func (h *handler) UpdateProfile(c *gin.Context) {
 // @Security BearerToken
 // @Router /auth/user/logout [post]
 func (h *handler) Logout(c *gin.Context) {
-	// Get UserID from context (set by middleware)
 	userID, ok := util.GetUserID(c)
 	if !ok {
-		return // GetUserID handles the error response
+		return
 	}
 
 	var req RqLogout
@@ -315,10 +312,8 @@ func (h *handler) ChangePassword(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /auth/user [delete]
 func (h *handler) DeleteUser(c *gin.Context) {
-
 	userIDPtr := auditctx.GetUserID(c.Request.Context())
 
-	// 2. Check if the pointer is nil (Unauthorized)
 	if userIDPtr == nil {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
 		return
@@ -330,7 +325,6 @@ func (h *handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 4. Call service layer to perform the soft delete
 	if err := h.svc.DeleteUser(c.Request.Context(), userID); err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -370,6 +364,7 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 // @Tags         auth
 // @Param        request  body      RqForgotPassword  true  "Email"
 // @Success      200      {object}  response.RsBase
+// @Failure      400      {object}  response.RsError
 // @Router       /auth/forgot-password [post]
 func (h *handler) ForgotPassword(c *gin.Context) {
 	var req RqForgotPassword
@@ -378,12 +373,9 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Call service (Service will handle token gen and Resend email)
 	err := h.svc.ForgotPassword(c.Request.Context(), &req)
 	if err != nil {
-		// We log the error but return success to avoid "User Enumeration"
-		// log.Printf("Forgot password error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -396,6 +388,8 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 // @Tags         auth
 // @Param        request  body      RqResetPassword  true  "Token and New Password"
 // @Success      200      {object}  response.RsBase
+// @Failure      400      {object}  response.RsError
+// @Failure      500      {object}  response.RsError
 // @Router       /auth/reset-password [post]
 func (h *handler) ResetPassword(c *gin.Context) {
 	var req RqResetPassword

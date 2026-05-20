@@ -45,14 +45,11 @@ type Service interface {
 	Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error
 	GoogleAuthURL(state string) *RsGoogleAuthURL
 	GoogleCallback(ctx context.Context, code string) (*RsToken, error)
-
 	VerifyEmail(ctx context.Context, tokenStr string) error
 	ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error
-
 	GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
-
 	ForgotPassword(ctx context.Context, req *RqForgotPassword) error
 	ResetPassword(ctx context.Context, req *RqResetPassword) error
 }
@@ -439,148 +436,6 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) issueTokens(ctx context.Context, user *User, entityID string) (*RsToken, error) {
-	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
-	if err != nil {
-		return nil, err
-	}
-
-	ua := middleware.UserAgentFromCtx(ctx)
-	ip := middleware.IPFromCtx(ctx)
-
-	sess := &Session{
-		ID:           uuid.New(),
-		UserID:       user.ID,
-		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
-	}
-	if ua != "" {
-		sess.UserAgent = &ua
-	}
-	if ip != "" {
-		sess.IPAddress = &ip
-	}
-
-	if _, err := s.repo.CreateSession(ctx, sess); err != nil {
-		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.create_session",
-			err, user.ID.String(), user.ID.String(), auditctx.EntitySession, auditctx.ModuleAuth,
-		)
-		return nil, err
-	}
-
-	// Audit log : Session Created
-	meta := auditctx.GetMetadata(ctx)
-	sessIDStr := sess.ID.String()
-	userIDStr := user.ID.String()
-
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: &entityID,
-		UserID:     &userIDStr,
-		Action:     auditctx.ActionSessionCreated,
-		Module:     auditctx.ModuleAuth,
-		EntityType: strPtr(auditctx.EntitySession),
-		EntityID:   &sessIDStr,
-		AfterState: map[string]interface{}{
-			"session_id": sessIDStr,
-			"expires_at": sess.ExpiresAt,
-		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
-	})
-
-	return &RsToken{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		Role:         &user.Role,
-	}, nil
-}
-
-// Helper functions for audit logging
-
-func strPtr(s string) *string {
-	return &s
-}
-
-func sanitizeUser(u *User) map[string]interface{} {
-	return map[string]interface{}{
-		"id":         u.ID.String(),
-		"email":      u.Email,
-		"first_name": u.FirstName,
-		"last_name":  u.LastName,
-		"phone":      u.Phone,
-	}
-}
-
-// Helper function for sending verification email via Resend API
-func (s *service) sendVerificationEmail(to string, firstName string, tokenID uuid.UUID) error {
-	url := "https://api.resend.com/emails"
-	apikey := s.cfg.ResendAPIKey
-
-	baseUrl, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return err
-	}
-
-	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
-	expiryTime := "10 minutes"
-
-	payload := map[string]interface{}{
-		"from":    "Acareca <hardik@zenithive.digital>",
-		"to":      []string{to},
-		"subject": "Verify your Acareca account",
-		"html": fmt.Sprintf(`
-			<div style="font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
-				<h2 style="color: #1a73e8;">Verify your email</h2>
-				<p>Hi %s,</p>
-				<p>Thank you for signing up with Acareca! To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
-				<div style="text-align: center; margin: 30px 0;">
-					<a href="%s" style="background-color: #1a73e8; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
-						Verify My Account
-					</a>
-				</div>
-				<p style="font-size: 14px; color: #666;">If the button above doesn’t work, you can also copy and paste the following link into your browser:</p>
-				<p style="font-size: 12px; word-break: break-all; color: #1a73e8;">%s</p>
-				<p style="font-size: 14px; color: #666;">This verification link will expire in <strong>%s</strong>.</p>
-				<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-				<p style="font-size: 12px; color: #888;">If you did not create this account, you can safely ignore this email.</p>
-				<p style="font-size: 12px; color: #888;">Best regards,<br>The Acareca Team</p>
-			</div>
-		`, firstName, verificationLink, verificationLink, expiryTime),
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+apikey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("resend error: %s", string(body))
-	}
-
-	return nil
-}
-
 func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	tokenID, err := uuid.Parse(tokenStr)
 	if err != nil {
@@ -817,32 +672,211 @@ func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
 
-// Helper to resolve PractitionerID or AccountantID based on role
-func (s *service) resolveEntityID(ctx context.Context, user *User) (string, error) {
-	switch user.Role {
-	case util.RolePractitioner:
-		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
-		if err != nil {
-			return "", err
-		}
-		return p.ID.String(), nil
-	case util.RoleAccountant:
-		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, user.ID.String())
-		if err != nil {
-			return "", err
-		}
-		return acc.ID.String(), nil
-	case util.RoleAdmin:
-		a, err := s.adminSvc.GetAdminByUserID(ctx, user.ID.String())
-		if err != nil {
-			return "", err
-		}
-		return a.ID.String(), nil
-	default:
-		return user.ID.String(), nil
+func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) error {
+	// Find user and their role
+	user, err := s.repo.FindByEmail(ctx, req.Email)
+	if err != nil {
+		return nil
 	}
+
+	// Invitation Status Guard for Accountants
+	if user.Role == util.RoleAccountant {
+		inv, err := s.inviteRepo.GetByEmail(ctx, req.Email)
+		if err != nil || inv == nil {
+			return errors.New("no active account found")
+		}
+
+		// Block if the invitation isn't finished yet
+		if inv.Status != "COMPLETED" {
+			return errors.New("Please complete your account setup via the invitation link first")
+		}
+	}
+
+	// Generate Raw Token and Hash it
+	rawToken := uuid.New().String()
+
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	// Save to DB (expires in 15 mins)
+	expiresAt := time.Now().Add(15 * time.Minute)
+	err = s.repo.SaveResetToken(ctx, user.ID.String(), tokenHash, expiresAt)
+	if err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.save_reset_token",
+			err, user.ID.String(), user.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+		)
+		return err
+	}
+
+	// Send Email via Resend helper
+	return s.SendForgotPasswordEmail(user.Email, user.FirstName, rawToken, user.Role)
 }
 
+func (s *service) ResetPassword(ctx context.Context, req *RqResetPassword) error {
+
+	// This must match the SHA-256 hash we saved in ForgotPassword
+	hash := sha256.Sum256([]byte(req.Token))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	// 2. Hash the NEW password using Argon2id
+	newPasswordHash, err := util.GenerateHash(req.NewPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	return s.repo.CompletePasswordReset(ctx, tokenHash, newPasswordHash)
+}
+
+// ── HELPER FUNCTIONS ───────────────────────────────────────────────────────
+
+// Helper to check if user is verified
+func (s *service) isUserVerified(ctx context.Context, user *User) (bool, error) {
+	var verified bool
+	var err error
+
+	switch user.Role {
+	case util.RolePractitioner:
+		err = s.db.GetContext(ctx, &verified, "SELECT verified FROM tbl_practitioner WHERE user_id = $1", user.ID)
+	case util.RoleAccountant:
+		err = s.db.GetContext(ctx, &verified, "SELECT verified FROM tbl_accountant WHERE user_id = $1", user.ID)
+	default:
+		return false, fmt.Errorf("verification check failed: '%s %s'", user.ID, user.Role)
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("could not verify account status: %w", err)
+	}
+	return verified, nil
+}
+
+// Helper to issue access and refresh tokens
+func (s *service) issueTokens(ctx context.Context, user *User, entityID string) (*RsToken, error) {
+	accessToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 15*time.Hour, s.cfg.JWTSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	ua := middleware.UserAgentFromCtx(ctx)
+	ip := middleware.IPFromCtx(ctx)
+
+	sess := &Session{
+		ID:           uuid.New(),
+		UserID:       user.ID,
+		RefreshToken: refreshToken,
+		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+	}
+	if ua != "" {
+		sess.UserAgent = &ua
+	}
+	if ip != "" {
+		sess.IPAddress = &ip
+	}
+
+	if _, err := s.repo.CreateSession(ctx, sess); err != nil {
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.create_session",
+			err, user.ID.String(), user.ID.String(), auditctx.EntitySession, auditctx.ModuleAuth,
+		)
+		return nil, err
+	}
+
+	// Audit log : Session Created
+	meta := auditctx.GetMetadata(ctx)
+	sessIDStr := sess.ID.String()
+	userIDStr := user.ID.String()
+
+	s.auditSvc.LogAsync(&audit.LogEntry{
+		PracticeID: &entityID,
+		UserID:     &userIDStr,
+		Action:     auditctx.ActionSessionCreated,
+		Module:     auditctx.ModuleAuth,
+		EntityType: strPtr(auditctx.EntitySession),
+		EntityID:   &sessIDStr,
+		AfterState: map[string]interface{}{
+			"session_id": sessIDStr,
+			"expires_at": sess.ExpiresAt,
+		},
+		IPAddress: meta.IPAddress,
+		UserAgent: meta.UserAgent,
+	})
+
+	return &RsToken{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		Role:         &user.Role,
+	}, nil
+}
+
+// Helper to send verification email via Resend API
+func (s *service) sendVerificationEmail(to string, firstName string, tokenID uuid.UUID) error {
+	url := "https://api.resend.com/emails"
+	apikey := s.cfg.ResendAPIKey
+
+	baseUrl, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return err
+	}
+
+	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
+	expiryTime := "10 minutes"
+
+	payload := map[string]interface{}{
+		"from":    "Acareca <hardik@zenithive.digital>",
+		"to":      []string{to},
+		"subject": "Verify your Acareca account",
+		"html": fmt.Sprintf(`
+			<div style="font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
+				<h2 style="color: #1a73e8;">Verify your email</h2>
+				<p>Hi %s,</p>
+				<p>Thank you for signing up with Acareca! To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+				<div style="text-align: center; margin: 30px 0;">
+					<a href="%s" style="background-color: #1a73e8; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
+						Verify My Account
+					</a>
+				</div>
+				<p style="font-size: 14px; color: #666;">If the button above doesn’t work, you can also copy and paste the following link into your browser:</p>
+				<p style="font-size: 12px; word-break: break-all; color: #1a73e8;">%s</p>
+				<p style="font-size: 14px; color: #666;">This verification link will expire in <strong>%s</strong>.</p>
+				<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+				<p style="font-size: 12px; color: #888;">If you did not create this account, you can safely ignore this email.</p>
+				<p style="font-size: 12px; color: #888;">Best regards,<br>The Acareca Team</p>
+			</div>
+		`, firstName, verificationLink, verificationLink, expiryTime),
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apikey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("resend error: %s", string(body))
+	}
+
+	return nil
+}
+
+// Helper to send forgot password email
 func (s *service) SendForgotPasswordEmail(to string, firstName string, token string, role string) error {
 	url := "https://api.resend.com/emails"
 	apikey := s.cfg.ResendAPIKey
@@ -900,78 +934,41 @@ func (s *service) SendForgotPasswordEmail(to string, firstName string, token str
 	return nil
 }
 
-func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) error {
-	// 1. Find user and their role
-	user, err := s.repo.FindByEmail(ctx, req.Email)
-	if err != nil {
-		return nil
-	}
-
-	// 2. NEW: Invitation Status Guard for Accountants
-	if user.Role == util.RoleAccountant {
-		// You likely have a method to get the invitation by email
-		inv, err := s.inviteRepo.GetByEmail(ctx, req.Email)
-		if err != nil || inv == nil {
-			return errors.New("no active account found")
-		}
-
-		// Block if the invitation isn't finished yet
-		if inv.Status != "COMPLETED" {
-			return errors.New("Please complete your account setup via the invitation link first")
-		}
-	}
-
-	// 2. Generate Raw Token and Hash it
-	rawToken := uuid.New().String()
-
-	hash := sha256.Sum256([]byte(rawToken))
-	tokenHash := hex.EncodeToString(hash[:])
-
-	// 3. Save to DB (expires in 15 mins)
-	expiresAt := time.Now().Add(15 * time.Minute)
-	err = s.repo.SaveResetToken(ctx, user.ID.String(), tokenHash, expiresAt)
-	if err != nil {
-		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "auth.save_reset_token",
-			err, user.ID.String(), user.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
-		)
-		return err
-	}
-
-	// 4. Send Email via Resend helper
-	return s.SendForgotPasswordEmail(user.Email, user.FirstName, rawToken, user.Role)
-}
-
-func (s *service) ResetPassword(ctx context.Context, req *RqResetPassword) error {
-
-	// This must match the SHA-256 hash we saved in ForgotPassword
-	hash := sha256.Sum256([]byte(req.Token))
-	tokenHash := hex.EncodeToString(hash[:])
-
-	// 2. Hash the NEW password using Argon2id
-	newPasswordHash, err := util.GenerateHash(req.NewPassword)
-	if err != nil {
-		return fmt.Errorf("failed to hash new password: %w", err)
-	}
-
-	return s.repo.CompletePasswordReset(ctx, tokenHash, newPasswordHash)
-}
-
-// Helper to check if user is verified
-func (s *service) isUserVerified(ctx context.Context, user *User) (bool, error) {
-	var verified bool
-	var err error
-
+// Helper to resolve PractitionerID or AccountantID based on role
+func (s *service) resolveEntityID(ctx context.Context, user *User) (string, error) {
 	switch user.Role {
 	case util.RolePractitioner:
-		err = s.db.GetContext(ctx, &verified, "SELECT verified FROM tbl_practitioner WHERE user_id = $1", user.ID)
+		p, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return p.ID.String(), nil
 	case util.RoleAccountant:
-		err = s.db.GetContext(ctx, &verified, "SELECT verified FROM tbl_accountant WHERE user_id = $1", user.ID)
+		acc, err := s.accountantSvc.GetAccountantByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return acc.ID.String(), nil
+	case util.RoleAdmin:
+		a, err := s.adminSvc.GetAdminByUserID(ctx, user.ID.String())
+		if err != nil {
+			return "", err
+		}
+		return a.ID.String(), nil
 	default:
-		return false, fmt.Errorf("verification check failed: '%s %s'", user.ID, user.Role)
+		return user.ID.String(), nil
 	}
+}
 
-	if err != nil {
-		return false, fmt.Errorf("could not verify account status: %w", err)
+// Helper functions for audit logging
+func strPtr(s string) *string { return &s }
+
+func sanitizeUser(u *User) map[string]interface{} {
+	return map[string]interface{}{
+		"id":         u.ID.String(),
+		"email":      u.Email,
+		"first_name": u.FirstName,
+		"last_name":  u.LastName,
+		"phone":      u.Phone,
 	}
-	return verified, nil
 }

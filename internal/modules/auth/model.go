@@ -7,6 +7,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 )
 
+// ── Database Schema Models ───────────────────────────────────────────────────
+
 type User struct {
 	ID        uuid.UUID `db:"id"`
 	Email     string    `db:"email"`
@@ -46,6 +48,17 @@ type Session struct {
 	DeletedAt    *time.Time `db:"deleted_at"`
 }
 
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
+}
+
+// ── Request Models ────────────────────────────────────────────────────
+
 type RqUser struct {
 	Email      string  `json:"email"      validate:"required,email"`
 	Password   string  `json:"password"   validate:"required,min=8"`
@@ -64,15 +77,6 @@ type RqUpdateUser struct {
 	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
-func (r *RqUser) ToDBModel() *User {
-	return &User{
-		Email:     r.Email,
-		FirstName: r.FirstName,
-		LastName:  r.LastName,
-		Phone:     r.Phone,
-	}
-}
-
 type RqLogin struct {
 	Email    string `json:"email"         validate:"required,email"`
 	Password string `json:"password"      validate:"required"`
@@ -86,7 +90,16 @@ type RqChangePassword struct {
 	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 
-// ── Response models ───────────────────────────────────────────────────────────
+type RqForgotPassword struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type RqResetPassword struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
+// ── Response Models ───────────────────────────────────────────────────────────
 
 type RsToken struct {
 	AccessToken  string  `json:"access_token"`
@@ -109,6 +122,28 @@ type RsUser struct {
 	// Role-specific fields (populated based on role)
 	ABN       *string `json:"abn,omitempty"`
 	LicenseNo *string `json:"license_no,omitempty"`
+}
+
+type RsGoogleAuthURL struct {
+	URL string `json:"url"`
+}
+
+type GoogleUserInfo struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	FirstName string `json:"given_name"`
+	LastName  string `json:"family_name"`
+}
+
+// ── Mappings ──────────────────────────────────────────────────
+
+func (r *RqUser) ToDBModel() *User {
+	return &User{
+		Email:     r.Email,
+		FirstName: r.FirstName,
+		LastName:  r.LastName,
+		Phone:     r.Phone,
+	}
 }
 
 func (u *User) ToRsUser() *RsUser {
@@ -135,39 +170,12 @@ func (u *User) ToRsUser() *RsUser {
 	}
 }
 
-type RsGoogleAuthURL struct {
-	URL string `json:"url"`
-}
+// ── Constants and Enums ───────────────────────────────────────────────────────
 
-type GoogleUserInfo struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	FirstName string `json:"given_name"`
-	LastName  string `json:"family_name"`
-}
-
-// For email verification token operations
 const (
+	// For email verification token operations
 	TokenStatusPending = "PENDING"
 	TokenStatusUsed    = "USED"
 	TokenStatusExpired = "EXPIRED"
 	TokenStatusResent  = "RESENT"
 )
-
-type VerificationToken struct {
-	ID        uuid.UUID `db:"id"`
-	EntityID  uuid.UUID `db:"entity_id"`
-	Role      *string   `db:"role"`
-	Status    string    `db:"status"`
-	CreatedAt time.Time `db:"created_at"`
-	ExpiresAt time.Time `db:"expires_at"`
-}
-
-type RqForgotPassword struct {
-	Email string `json:"email" binding:"required,email"`
-}
-
-type RqResetPassword struct {
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=8"`
-}

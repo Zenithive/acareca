@@ -3916,6 +3916,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
       summary: Initiate password reset
       tags:
       - auth
@@ -4050,6 +4054,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
       summary: Reset password using token
       tags:
       - auth
