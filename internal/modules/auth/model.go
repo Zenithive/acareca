@@ -46,36 +46,36 @@ type Session struct {
 	DeletedAt    *time.Time `db:"deleted_at"`
 }
 
-type VerificationToken struct {
-	ID        uuid.UUID `db:"id"`
-	EntityID  uuid.UUID `db:"entity_id"`
-	Role      *string   `db:"role"`
-	Status    string    `db:"status"`
-	CreatedAt time.Time `db:"created_at"`
-	ExpiresAt time.Time `db:"expires_at"`
-}
-
 type RqUser struct {
-	Email      string  `json:"email"       validate:"required,email"`
-	Password   string  `json:"password"    validate:"required,min=8"`
-	FirstName  string  `json:"first_name"  validate:"required"`
-	LastName   string  `json:"last_name"   validate:"required"`
-	Phone      *string `json:"phone"       validate:"omitempty,e164"`
+	Email      string  `json:"email"      validate:"required,email"`
+	Password   string  `json:"password"   validate:"required,min=8"`
+	FirstName  string  `json:"first_name" validate:"required"`
+	LastName   string  `json:"last_name"  validate:"required"`
+	Phone      *string `json:"phone"      validate:"omitempty,e164"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
 type RqUpdateUser struct {
-	Email      *string `json:"email"       validate:"omitempty,email"`
-	FirstName  *string `json:"first_name"  validate:"omitempty"`
-	LastName   *string `json:"last_name"   validate:"omitempty"`
-	Phone      *string `json:"phone"       validate:"omitempty,e164"`
-	ABN        *string `json:"abn"         validate:"omitempty"`
+	Email      *string `json:"email"      validate:"omitempty,email"`
+	FirstName  *string `json:"first_name" validate:"omitempty"`
+	LastName   *string `json:"last_name"  validate:"omitempty"`
+	Phone      *string `json:"phone"      validate:"omitempty,e164"`
+	ABN        *string `json:"abn"        validate:"omitempty"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
+func (r *RqUser) ToDBModel() *User {
+	return &User{
+		Email:     r.Email,
+		FirstName: r.FirstName,
+		LastName:  r.LastName,
+		Phone:     r.Phone,
+	}
+}
+
 type RqLogin struct {
-	Email    string `json:"email"    validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	Email    string `json:"email"         validate:"required,email"`
+	Password string `json:"password"      validate:"required"`
 }
 
 type RqLogout struct {
@@ -86,14 +86,7 @@ type RqChangePassword struct {
 	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 
-type RqForgotPassword struct {
-	Email string `json:"email" validate:"required,email"`
-}
-
-type RqResetPassword struct {
-	Token       string `json:"token"        validate:"required"`
-	NewPassword string `json:"new_password" validate:"required,min=8"`
-}
+// ── Response models ───────────────────────────────────────────────────────────
 
 type RsToken struct {
 	AccessToken  string  `json:"access_token"`
@@ -113,36 +106,9 @@ type RsUser struct {
 
 	Document *file.RsDocument `json:"document"`
 
-	// Role-specific fields
+	// Role-specific fields (populated based on role)
 	ABN       *string `json:"abn,omitempty"`
 	LicenseNo *string `json:"license_no,omitempty"`
-}
-
-type RsGoogleAuthURL struct {
-	URL string `json:"url"`
-}
-
-type GoogleUserInfo struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	FirstName string `json:"given_name"`
-	LastName  string `json:"family_name"`
-}
-
-const (
-	TokenStatusPending = "PENDING"
-	TokenStatusUsed    = "USED"
-	TokenStatusExpired = "EXPIRED"
-	TokenStatusResent  = "RESENT"
-)
-
-func (r *RqUser) ToDBModel() *User {
-	return &User{
-		Email:     r.Email,
-		FirstName: r.FirstName,
-		LastName:  r.LastName,
-		Phone:     r.Phone,
-	}
 }
 
 func (u *User) ToRsUser() *RsUser {
@@ -167,4 +133,41 @@ func (u *User) ToRsUser() *RsUser {
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
 	}
+}
+
+type RsGoogleAuthURL struct {
+	URL string `json:"url"`
+}
+
+type GoogleUserInfo struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	FirstName string `json:"given_name"`
+	LastName  string `json:"family_name"`
+}
+
+// For email verification token operations
+const (
+	TokenStatusPending = "PENDING"
+	TokenStatusUsed    = "USED"
+	TokenStatusExpired = "EXPIRED"
+	TokenStatusResent  = "RESENT"
+)
+
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
+}
+
+type RqForgotPassword struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type RqResetPassword struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
