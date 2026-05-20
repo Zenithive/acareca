@@ -24,7 +24,7 @@ type Repository interface {
 	CountPractitionersForAccountant(ctx context.Context, accountantID uuid.UUID, f common.Filter) (int, error)
 
 	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
-	UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error
+	UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error
 	UpdateStripeCustomerID(ctx context.Context, practitionerID uuid.UUID, customerID string) error
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
 
@@ -42,12 +42,12 @@ func NewRepository(db *sqlx.DB) Repository {
 // CreatePractitioner implements [Repository].
 func (r *repository) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error) {
 	query := `
-		INSERT INTO tbl_practitioner (user_id)
-		VALUES ($1)
-		RETURNING id, user_id, abn, verified, stripe_customer_id, created_at, updated_at, deleted_at
+		INSERT INTO tbl_practitioner (user_id, entity_type, entity_name, abn, acn, address, profession)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, user_id, abn, verified, stripe_customer_id, entity_type, entity_name, acn, address, profession, created_at, updated_at, deleted_at
 	`
 	var p Practitioner
-	if err := tx.QueryRowxContext(ctx, query, req.UserID).StructScan(&p); err != nil {
+	if err := tx.QueryRowxContext(ctx, query, req.UserID, req.EntityType, req.EntityName, req.ABN, req.ACN, req.Address, req.Profession).StructScan(&p); err != nil {
 		return nil, err
 	}
 	return p.ToRs(), nil
@@ -70,7 +70,7 @@ func (r *repository) DeletePractitioner(ctx context.Context, id uuid.UUID) error
 // GetPractitioner implements [Repository].
 func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
 	query := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.entity_type, p.entity_name, p.address, p.acn, p.profession, p.created_at, p.updated_at, p.deleted_at,
 		       u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
@@ -86,7 +86,7 @@ func (r *repository) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPrac
 // GetPractitionerByUserID implements [Repository].
 func (r *repository) GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error) {
 	query := `
-	SELECT id, user_id, abn, verified, stripe_customer_id, created_at, updated_at, deleted_at FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL
+	SELECT id, user_id, abn, verified, stripe_customer_id, entity_type, entity_name, address, acn, profession, created_at, updated_at, deleted_at FROM tbl_practitioner WHERE user_id = $1 AND deleted_at IS NULL
 	`
 	var p Practitioner
 	if err := r.db.QueryRowxContext(ctx, query, userID).StructScan(&p); err != nil {
@@ -96,21 +96,28 @@ func (r *repository) GetPractitionerByUserID(ctx context.Context, userID string)
 }
 
 var practitionerColumns = map[string]string{
-	"id":         "p.id",
-	"first_name": "u.first_name",
-	"last_name":  "u.last_name",
-	"email":      "u.email",
-	"phone":      "u.phone",
-	"abn":        "p.abn",
+	"id":          "p.id",
+	"first_name":  "u.first_name",
+	"last_name":   "u.last_name",
+	"email":       "u.email",
+	"phone":       "u.phone",
+	"abn":         "p.abn",
+	"acn":         "p.acn",
+	"entity_name": "p.entity_name",
+	"entity_type": "p.entity_type",
+	"profession":  "p.profession",
 }
 
-var practitionerSearchCols = []string{"u.first_name", "u.last_name", "u.email", "u.phone"}
+var practitionerSearchCols = []string{"u.first_name", "u.last_name", "u.email", "u.phone", "p.entity_name", "p.profession"}
 
 // ListPractitioners implements [Repository].
 func (r *repository) ListPractitioners(ctx context.Context, f common.Filter) ([]*PractitionerWithUser, error) {
 	base := `
-		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id, p.created_at, p.updated_at, p.deleted_at,
-		       u.email, u.first_name, u.last_name, u.phone
+		SELECT p.id, p.user_id, p.abn, p.verified, p.stripe_customer_id,
+		COALESCE(p.entity_type, 'SOLE_TRADER') as entity_type, 
+		COALESCE(p.entity_name, '') as entity_name,
+		p.acn, p.address, p.profession, p.created_at, p.updated_at, p.deleted_at,
+		u.email, u.first_name, u.last_name, u.phone
 		FROM tbl_practitioner p
 		JOIN tbl_user u ON u.id = p.user_id AND u.deleted_at IS NULL
 		WHERE p.deleted_at IS NULL
@@ -187,9 +194,26 @@ func (r *repository) CountPractitionersForAccountant(ctx context.Context, accoun
 	return count, nil
 }
 
-func (r *repository) UpdateABN(ctx context.Context, userID uuid.UUID, abn *string) error {
-	query := `UPDATE tbl_practitioner SET abn = $1, updated_at = NOW() WHERE user_id = $2 AND deleted_at IS NULL`
-	_, err := r.db.ExecContext(ctx, query, abn, userID)
+func (r *repository) UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error {
+	query := `UPDATE tbl_practitioner 
+		SET 
+			abn = COALESCE($1, abn),
+			entity_type = CASE 
+                            WHEN $2::text = '' THEN entity_type 
+                            ELSE $2::business_entity_type 
+                          END,
+			entity_name = CASE 
+                            WHEN $3 = '' THEN entity_name 
+                            ELSE $3 
+                          END,
+			acn = COALESCE($4, acn),
+			address = COALESCE($5, address),
+			profession = COALESCE($6, profession),
+			updated_at = NOW()
+		WHERE user_id = $7 AND deleted_at IS NULL`
+	_, err := r.db.ExecContext(ctx, query,
+		req.ABN, req.EntityType, req.EntityName,
+		req.ACN, req.Address, req.Profession, userID)
 	return err
 }
 
@@ -198,14 +222,6 @@ func (r *repository) UpdateStripeCustomerID(ctx context.Context, practitionerID 
 	_, err := r.db.ExecContext(ctx, query, practitionerID, customerID)
 	return err
 }
-
-/*
-func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
-	query := `UPDATE tbl_practitioner SET deleted_at = now() WHERE user_id = $1 AND deleted_at IS NULL`
-	_, err := r.db.ExecContext(ctx, query, userID)
-	return err
-}
-*/
 
 func (r *repository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
 	// 1. Soft Delete the Practitioner Profile

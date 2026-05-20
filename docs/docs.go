@@ -2343,7 +2343,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqForgotPassword"
+                            "$ref": "#/definitions/internal_modules_auth.RqForgotPassword"
                         }
                     }
                 ],
@@ -2548,7 +2548,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqResetPassword"
+                            "$ref": "#/definitions/internal_modules_auth.RqResetPassword"
                         }
                     }
                 ],
@@ -2624,7 +2624,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RqChangePassword"
+                            "$ref": "#/definitions/internal_modules_auth.RqChangePassword"
                         }
                     }
                 ],
@@ -3922,6 +3922,41 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Soft delete the currently authenticated clinic's account",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Delete clinic account",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
             }
         },
         "/clinic/bulk-delete": {
@@ -4032,6 +4067,443 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/change-password": {
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Updates the password for the authenticated clinic",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Change clinic password",
+                "parameters": [
+                    {
+                        "description": "Password Change Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqChangePassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/forgot-password": {
+            "post": {
+                "description": "Sends a reset link to the clinic's email if it exists",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Initiate clinic password reset",
+                "parameters": [
+                    {
+                        "description": "Email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqForgotPassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/login": {
+            "post": {
+                "description": "authenticates an invoice clinic profile and issues access tokens",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Login an invoice clinic",
+                "parameters": [
+                    {
+                        "description": "Clinic Login Credentials",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqLoginClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "411": {
+                        "description": "Length Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/logout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Invalidates a provided refresh token and tears down the tracking database session state",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Logout current invoice clinic session",
+                "parameters": [
+                    {
+                        "description": "Clinic Session Logout Payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqLogoutClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the profile details of the authenticated clinic",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Get current invoice clinic profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Update the profile details of the authenticated clinic",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Update clinic profile",
+                "parameters": [
+                    {
+                        "description": "Update Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqUpdateClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.RsClinicDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/register": {
+            "post": {
+                "description": "registers an isolated invoice clinic with its primary address and contacts",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Register a new invoice clinic",
+                "parameters": [
+                    {
+                        "description": "Clinic Registration Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RqRegisterClinic"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/reset-password": {
+            "post": {
+                "description": "Updates the clinic's password using the token received via email",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Reset clinic password using token",
+                "parameters": [
+                    {
+                        "description": "Token and New Password",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqResetPassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/verify": {
+            "get": {
+                "description": "Validates the UUID token sent via email. If valid, marks the clinic as verified and the token as used.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Verify clinic email address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Verification Token (UUID)",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email verified successfully",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid token format or token already used",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6993,7 +7465,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/notification.RsListNotification"
+                                            "$ref": "#/definitions/util.RsList"
                                         }
                                     }
                                 }
@@ -7185,6 +7657,56 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification/{id}/dismiss": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Dismisses a specific notification by its UUID for the authenticated clinic/practitioner entity context.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Mark a notification as dismissed",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Notification UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9501,30 +10023,111 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqChangePassword": {
+        "auth.RqAddressChangeset": {
             "type": "object",
-            "required": [
-                "new_password"
-            ],
             "properties": {
-                "new_password": {
-                    "type": "string",
-                    "minLength": 8
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicAddress"
+                    }
+                },
+                "delete": {
+                    "description": "address IDs (UUID strings)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqUpdateClinicAddress"
+                    }
                 }
             }
         },
-        "auth.RqForgotPassword": {
+        "auth.RqClinicAddress": {
             "type": "object",
-            "required": [
-                "email"
-            ],
             "properties": {
-                "email": {
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "postcode": {
+                    "type": "string"
+                },
+                "state": {
                     "type": "string"
                 }
             }
         },
+        "auth.RqClinicContact": {
+            "type": "object",
+            "properties": {
+                "contact_type": {
+                    "type": "string",
+                    "enum": [
+                        "PHONE",
+                        "WEBSITE"
+                    ]
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqContactChangeset": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicContact"
+                    }
+                },
+                "delete": {
+                    "description": "contact IDs (UUID strings)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "update": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RqUpdateClinicContact"
+                    }
+                }
+            }
+        },
         "auth.RqLogin": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqLoginClinic": {
             "type": "object",
             "required": [
                 "email",
@@ -9550,18 +10153,150 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RqResetPassword": {
+        "auth.RqLogoutClinic": {
             "type": "object",
             "required": [
-                "new_password",
-                "token"
+                "refresh_token"
             ],
             "properties": {
-                "new_password": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqRegisterClinic": {
+            "type": "object",
+            "required": [
+                "abn",
+                "clinic_name",
+                "email",
+                "password",
+                "role"
+            ],
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicAddress"
+                    }
+                },
+                "clinic_name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 2
+                },
+                "contacts": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/auth.RqClinicContact"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "password": {
                     "type": "string",
                     "minLength": 8
                 },
-                "token": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "CLINIC"
+                    ]
+                }
+            }
+        },
+        "auth.RqUpdateClinic": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "$ref": "#/definitions/auth.RqAddressChangeset"
+                },
+                "clinic_name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 2
+                },
+                "contacts": {
+                    "$ref": "#/definitions/auth.RqContactChangeset"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqUpdateClinicAddress": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "postcode": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RqUpdateClinicContact": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "contact_type": {
+                    "type": "string",
+                    "enum": [
+                        "PHONE",
+                        "WEBSITE"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
                     "type": "string"
                 }
             }
@@ -9572,11 +10307,30 @@ const docTemplate = `{
                 "abn": {
                     "type": "string"
                 },
+                "acn": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "address": {
+                    "description": "Optional",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "SOLE_TRADER",
+                        "COMPANY",
+                        "TRUST"
+                    ]
                 },
                 "first_name": {
                     "type": "string"
@@ -9586,23 +10340,57 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "profession": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "tax_agent_number": {
+                    "description": "Optional",
+                    "type": "string"
                 }
             }
         },
         "auth.RqUser": {
             "type": "object",
             "required": [
+                "abn",
                 "email",
+                "entity_name",
+                "entity_type",
                 "first_name",
                 "last_name",
                 "password"
             ],
             "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "address": {
+                    "description": "Optional",
+                    "type": "string"
+                },
                 "document_id": {
                     "type": "string"
                 },
                 "email": {
                     "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "description": "New Onboarding Fields",
+                    "type": "string",
+                    "enum": [
+                        "SOLE_TRADER",
+                        "COMPANY",
+                        "TRUST"
+                    ]
                 },
                 "first_name": {
                     "type": "string"
@@ -9616,6 +10404,107 @@ const docTemplate = `{
                 },
                 "phone": {
                     "type": "string"
+                },
+                "profession": {
+                    "description": "Optional",
+                    "type": "string"
+                },
+                "tax_agent_number": {
+                    "description": "Optional",
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RsClinicAddress": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "postcode": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RsClinicContact": {
+            "type": "object",
+            "properties": {
+                "contact_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_primary": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RsClinicDetail": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "acn": {
+                    "type": "string"
+                },
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RsClinicAddress"
+                    }
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.RsClinicContact"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "verified": {
+                    "type": "boolean"
                 }
             }
         },
@@ -9634,6 +10523,12 @@ const docTemplate = `{
                     "description": "Role-specific fields (populated based on role)",
                     "type": "string"
                 },
+                "acn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -9641,6 +10536,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/file.RsDocument"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "entity_name": {
+                    "type": "string"
+                },
+                "entity_type": {
                     "type": "string"
                 },
                 "first_name": {
@@ -9652,13 +10553,16 @@ const docTemplate = `{
                 "last_name": {
                     "type": "string"
                 },
-                "license_no": {
-                    "type": "string"
-                },
                 "phone": {
                     "type": "string"
                 },
+                "profession": {
+                    "type": "string"
+                },
                 "role": {
+                    "type": "string"
+                },
+                "tax_agent_number": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -10011,9 +10915,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/bs.RsAccount"
                     }
-                },
-                "start_date": {
-                    "type": "string"
                 },
                 "total_assets": {
                     "type": "number"
@@ -11132,6 +12033,12 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "document_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "name": {
                     "type": "string"
                 },
@@ -11162,6 +12069,23 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "documents": {
+                    "type": "object",
+                    "properties": {
+                        "create": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "delete": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
                 },
                 "id": {
                     "type": "string"
@@ -11527,6 +12451,84 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_auth.RqChangePassword": {
+            "type": "object",
+            "required": [
+                "new_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                }
+            }
+        },
+        "internal_modules_auth.RqForgotPassword": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth.RqResetPassword": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqChangePassword": {
+            "type": "object",
+            "required": [
+                "new_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqForgotPassword": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_clinic_auth.RqResetPassword": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "invitation.AccessLevel": {
             "type": "object",
             "properties": {
@@ -11596,114 +12598,6 @@ const docTemplate = `{
                 }
             }
         },
-        "notification.ActorType": {
-            "type": "string",
-            "enum": [
-                "PRACTITIONER",
-                "ACCOUNTANT",
-                "ADMIN",
-                "SYSTEM"
-            ],
-            "x-enum-varnames": [
-                "ActorPractitioner",
-                "ActorAccountant",
-                "ActorAdmin",
-                "ActorSystem"
-            ]
-        },
-        "notification.EntityType": {
-            "type": "string",
-            "enum": [
-                "clinic",
-                "form",
-                "transaction",
-                "document",
-                "invite",
-                "audit_log",
-                "system"
-            ],
-            "x-enum-varnames": [
-                "EntityClinic",
-                "EntityForm",
-                "EntityTransaction",
-                "EntityDocument",
-                "EntityInvite",
-                "EntityAuditLog",
-                "EntitySystem"
-            ]
-        },
-        "notification.EventType": {
-            "type": "string",
-            "enum": [
-                "invite.sent",
-                "invite.accepted",
-                "invite.declined",
-                "clinic.updated",
-                "form.submitted",
-                "form.updated",
-                "transaction.created",
-                "transaction.status_changed",
-                "document.uploaded",
-                "audit_log.created",
-                "system.error",
-                "system.warning"
-            ],
-            "x-enum-varnames": [
-                "EventInviteSent",
-                "EventInviteAccepted",
-                "EventInviteDeclined",
-                "EventClinicUpdated",
-                "EventFormSubmitted",
-                "EventFormUpdated",
-                "EventTransactionCreated",
-                "EventTransactionUpdated",
-                "EventDocumentUploaded",
-                "EventAuditLogCreated",
-                "EventSystemError",
-                "EventSystemWarning"
-            ]
-        },
-        "notification.Notification": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "entityID": {
-                    "type": "string"
-                },
-                "entityType": {
-                    "$ref": "#/definitions/notification.EntityType"
-                },
-                "eventType": {
-                    "$ref": "#/definitions/notification.EventType"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "payload": {
-                    "type": "object"
-                },
-                "readedAt": {
-                    "type": "string"
-                },
-                "recipientID": {
-                    "type": "string"
-                },
-                "recipientType": {
-                    "$ref": "#/definitions/notification.ActorType"
-                },
-                "senderID": {
-                    "type": "string"
-                },
-                "senderType": {
-                    "$ref": "#/definitions/notification.ActorType"
-                },
-                "status": {
-                    "$ref": "#/definitions/notification.Status"
-                }
-            }
-        },
         "notification.NotificationChannels": {
             "type": "object",
             "additionalProperties": {
@@ -11713,9 +12607,9 @@ const docTemplate = `{
         "notification.NotificationEventType": {
             "type": "string",
             "enum": [
-                "NEW_TRANSACTION",
-                "ACCOUNTANT_ACTIVITY_ALERT",
-                "SYSTEM_ACTIVITY_ALERT"
+                "new.transaction",
+                "accountant.activity.alert",
+                "system.activity.alert"
             ],
             "x-enum-varnames": [
                 "EventNewTransaction",
@@ -11749,45 +12643,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/notification.NotificationChannels"
                 },
                 "event_type": {
-                    "$ref": "#/definitions/notification.NotificationEventType"
-                }
-            }
-        },
-        "notification.RsListNotification": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer"
-                },
-                "notifications": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/notification.Notification"
+                        "$ref": "#/definitions/notification.NotificationEventType"
                     }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "unread_count": {
-                    "type": "integer"
                 }
             }
-        },
-        "notification.Status": {
-            "type": "string",
-            "enum": [
-                "UNREAD",
-                "READ",
-                "DISMISSED"
-            ],
-            "x-enum-varnames": [
-                "StatusUnread",
-                "StatusRead",
-                "StatusDismissed"
-            ]
         },
         "pl.RsPLAccount": {
             "type": "object",
@@ -12253,8 +13114,8 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0.0",
 	Host:             "",
-	BasePath:         "/api/v1",
-	Schemes:          []string{"http", "https"},
+	BasePath:         "",
+	Schemes:          []string{},
 	Title:            "Backend API",
 	Description:      "Backend API for acareca",
 	InfoInstanceName: "swagger",

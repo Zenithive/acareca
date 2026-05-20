@@ -134,6 +134,7 @@ type ExpenseItem struct {
 	Date        string    `json:"date" validate:"required"`
 	Description *string   `json:"description,omitempty"`
 	TaxType     *string   `json:"tax_type" validate:"omitempty"`
+	DocumentIDs []string  `json:"document_ids"`
 }
 
 type RqUpdateExpense struct {
@@ -152,16 +153,29 @@ type ExpenseItemUpdate struct {
 	Date        *string    `json:"date,omitempty"`
 	Description *string    `json:"description,omitempty"`
 	TaxType     *string    `json:"tax_type,omitempty" validate:"omitempty"`
+	DocumentIDs *struct {
+		Create []string `json:"create"`
+		Delete []string `json:"delete"`
+	} `json:"documents,omitempty"`
 }
 
 type RsExpense struct {
-	ID             uuid.UUID       `json:"id"`
-	Name           string          `json:"name"`
-	TaxType        string          `json:"tax_type"`
-	PractitionerID uuid.UUID       `json:"practitioner_id"`
-	Items          []RsExpenseItem `json:"items"`
-	CreatedAt      string          `json:"created_at"`
-	UpdatedAt      *string         `json:"updated_at,omitempty"`
+	ID             uuid.UUID           `json:"id"`
+	Name           string              `json:"name"`
+	TaxType        string              `json:"tax_type"`
+	PractitionerID uuid.UUID           `json:"practitioner_id"`
+	Items          []RsExpenseItem     `json:"items"`
+	Documents      []RsExpenseDocument `json:"documents"`
+	CreatedAt      string              `json:"created_at"`
+	UpdatedAt      *string             `json:"updated_at,omitempty"`
+}
+
+type RsExpenseDocument struct {
+	ID           uuid.UUID `json:"id"`
+	OriginalName string    `json:"original_name"`
+	FileKey      string    `json:"file_key"`
+	UploadedAt   *string   `json:"uploaded_at,omitempty"`
+	CreatedAt    string    `json:"created_at"`
 }
 
 type RsExpenseItem struct {

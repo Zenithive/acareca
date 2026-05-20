@@ -4,4 +4,5 @@ const (
 	RoleAdmin        = "ADMIN"
 	RolePractitioner = "PRACTITIONER"
 	RoleAccountant   = "ACCOUNTANT"
+	RoleClinic       = "CLINIC"
 )

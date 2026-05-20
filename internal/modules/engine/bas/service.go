@@ -34,7 +34,7 @@ type Service interface {
 	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, fullName string, practitionerABN string) (*bytes.Buffer, error)
+	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, entityName string, practitionerABN string) (*bytes.Buffer, error)
 	generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error)
 	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 	GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error)
@@ -580,6 +580,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
 
+	var entityName string
 	var practitionerABN string
 	targetID := ""
 	// Use the practitioner ID in filter
@@ -594,11 +595,43 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		pracUUID, err := uuid.Parse(targetID)
 		if err == nil {
 			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
-			if err == nil && prac.ABN != nil {
-				practitionerABN = *prac.ABN
+			if err == nil {
+				if prac.EntityName != nil {
+					entityName = *prac.EntityName
+				} else {
+					entityName = fullName
+				}
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		}
+	} else {
+		if role == util.RolePractitioner {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+			entityName = fullName
+			if err == nil {
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		} else {
+			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+			{
+				if err == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
 			}
 		}
 	}
+
 	var result interface{}
 	var contentType string
 
@@ -615,7 +648,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		contentType = "text/html"
 	} else {
 		// 2. Default to Excel logic
-		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates, fullName, practitionerABN)
+		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates, entityName, practitionerABN)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
 		}
@@ -664,7 +697,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	return result, contentType, nil
 }
 
-func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, fullName string, practitionerABN string) (*bytes.Buffer, error) {
+func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, entityName string, practitionerABN string) (*bytes.Buffer, error) {
 
 	xl := excelize.NewFile()
 	defer xl.Close()
@@ -739,7 +772,7 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 
 	// --- Metadata Rows ---
 	rowOffset := 2
-	setRichMeta(fmt.Sprintf("A%d", rowOffset), "Exported by:", fullName)
+	setRichMeta(fmt.Sprintf("A%d", rowOffset), "Exported by:", entityName)
 	rowOffset++
 
 	if practitionerABN != "" {
@@ -756,6 +789,10 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 		setRichMeta(fmt.Sprintf("A%d", rowOffset), "Period:", periodRange)
 		rowOffset++
 	}
+
+	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
+	setRichMeta(fmt.Sprintf("A%d", rowOffset), "Generated:", currentTimeStr)
+	rowOffset++
 
 	rowOffset++ // Spacer
 
@@ -1101,6 +1138,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
 
+	var entityName string
 	var practitionerABN string
 	targetID := filterPractitionerID
 	if targetID == "" && role == util.RolePractitioner {
@@ -1111,8 +1149,39 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		pracUUID, err := uuid.Parse(targetID)
 		if err == nil {
 			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
-			if err == nil && prac.ABN != nil {
-				practitionerABN = *prac.ABN
+			if err == nil {
+				if prac.EntityName != nil {
+					entityName = *prac.EntityName
+				} else {
+					entityName = fullName
+				}
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		}
+	} else {
+		if role == util.RolePractitioner {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+			entityName = fullName
+			if err == nil {
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		} else {
+			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+			{
+				if err == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
 			}
 		}
 	}
@@ -1201,14 +1270,18 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	// 2. Metadata Rows (Rows 3-4)
 	// We merge these so the background/borders look consistent if you add them later
 	f.MergeCell(sheet, "A3", fmt.Sprintf("%s3", lastColName))
-	setRichMeta("A3", "Exported by:", fullName)
+	setRichMeta("A3", "Exported by:", entityName)
 
 	f.MergeCell(sheet, "A4", fmt.Sprintf("%s4", lastColName))
 	if practitionerABN != "" {
 		setRichMeta("A4", "ABN:", practitionerABN)
 	}
 
-	f.MergeCell(sheet, "A5", fmt.Sprintf("%s5", lastColName)) // Spacer Row
+	f.MergeCell(sheet, "A5", fmt.Sprintf("%s5", lastColName))
+	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
+	setRichMeta("A5", "Generated:", currentTimeStr)
+
+	f.MergeCell(sheet, "A6", fmt.Sprintf("%s6", lastColName)) // Spacer Row
 
 	for i := range allCols {
 		cIdx := 1 + (i * 4)
@@ -1237,15 +1310,15 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		}
 
 		// Top Quarter Header
-		f.MergeCell(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol))
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), headerValue)
-		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
+		f.MergeCell(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol))
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", startCol), headerValue)
+		f.SetCellStyle(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol), styleHeaderBlue)
 
 		// Sub Headers
-		f.SetCellValue(sheet, fmt.Sprintf("%s7", startCol), "Gross")
-		f.SetCellValue(sheet, fmt.Sprintf("%s7", midCol), "GST")
-		f.SetCellValue(sheet, fmt.Sprintf("%s7", endCol), "Net")
-		f.SetCellStyle(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol), styleHeaderBlue)
+		f.SetCellValue(sheet, fmt.Sprintf("%s8", startCol), "Gross")
+		f.SetCellValue(sheet, fmt.Sprintf("%s8", midCol), "GST")
+		f.SetCellValue(sheet, fmt.Sprintf("%s8", endCol), "Net")
+		f.SetCellStyle(sheet, fmt.Sprintf("%s8", startCol), fmt.Sprintf("%s8", endCol), styleHeaderBlue)
 	}
 
 	// Helper to track range for dynamic calculations
@@ -1256,7 +1329,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	var incomeMeta, expenseMeta SectionMeta
 
 	// --- INCOME SECTION ---
-	currentRow := 8
+	currentRow := 9
 	incomeHeaderRow := currentRow
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
@@ -1890,14 +1963,6 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 			tv = append(tv, expenseTotalsByDate[d])
 		}
 		resp.Expense = append(resp.Expense, BASAccountGroup{Name: "total", Values: tv})
-	}
-
-	if (strings.Contains(secStr, "netProfitLoss") || secStr == "") && len(dateSet) > 0 {
-		resp.NetProfitLoss = &BASAccountGroup{Name: "netProfitLoss"}
-		for _, d := range sortedDates {
-			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
-			resp.NetProfitLoss.Values = append(resp.NetProfitLoss.Values, BASValue{Date: d, Net: roundToTwo(inc.Net - exp.Net)})
-		}
 	}
 
 	if (strings.Contains(secStr, "gstPayable") || secStr == "") && len(dateSet) > 0 {

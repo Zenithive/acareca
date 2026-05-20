@@ -40,6 +40,9 @@ type Config struct {
 	R2SecretAccessKey string
 	R2BucketName      string
 	R2PublicURL       string
+
+	// NATS Configuration
+	NATSUrl string
 }
 
 func getEnv(key, fallback string) string {
@@ -98,6 +101,9 @@ func NewConfig() *Config {
 		R2SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
 		R2BucketName:      getEnv("R2_BUCKET_NAME", ""),
 		R2PublicURL:       getEnv("R2_PUBLIC_URL", ""),
+
+		// NATS Configuration
+		NATSUrl: getEnv("NATS_URL", "nats://localhost:4222"),
 	}
 }
 

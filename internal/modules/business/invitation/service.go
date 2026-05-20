@@ -303,6 +303,10 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		return nil, ErrInvitationInvalidated
 	}
 
+	if inv.Status == StatusRevoked {
+		return nil, ErrInvitatationRevoked
+	}
+
 	res := &RsInviteProcess{InvitationID: inv.ID, PractitionerID: inv.PractitionerID, Email: inv.Email}
 
 	if inv.Status == StatusRejected || inv.Status == StatusCompleted {

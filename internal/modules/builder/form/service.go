@@ -2,6 +2,7 @@ package form
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -833,6 +834,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		}
 
 		var entryValues []*entry.FormEntryValue
+		var allDocIDs []uuid.UUID
 
 		for idx, item := range rq.Items {
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, OwnerID)
@@ -893,11 +895,28 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			}
 
 			entryValues = append(entryValues, entryValue)
+
+			// Collect document IDs for the current expense item
+			if len(item.DocumentIDs) > 0 {
+				parsedIDs, parseErr := util.ParseUUIDs(item.DocumentIDs)
+				if parseErr != nil {
+					return fmt.Errorf("item %d: invalid document id structure: %w", idx, parseErr)
+				}
+				allDocIDs = append(allDocIDs, parsedIDs...)
+			}
 		}
 
 		// Create the entry with all values
 		if err := s.entryRepo.CreateTx(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
+		}
+
+		// Link collected unique document links to this entry ID
+		if len(allDocIDs) > 0 {
+			allDocIDs = lo.Uniq(allDocIDs) // De-duplicate entries across elements
+			if linkErr := s.entryRepo.LinkDocuments(ctx, tx, entryID, allDocIDs); linkErr != nil {
+				return fmt.Errorf("failed to link batch documents for expense: %w", linkErr)
+			}
 		}
 
 		return nil
@@ -1078,7 +1097,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		}
 
 		// Handle updates
-		for _, item := range rq.Update {
+		for idx, item := range rq.Update {
 			// Get existing field
 			existingField, err := s.fieldSvc.GetByID(ctx, item.ID)
 			if err != nil {
@@ -1211,6 +1230,28 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
 			}
+
+			// Document additions/removals specified on this individual updated item
+			if item.DocumentIDs != nil {
+				if len(item.DocumentIDs.Create) > 0 {
+					docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs.Create)
+					if parseErr != nil {
+						return fmt.Errorf("update item %d: invalid document link targets: %w", idx, parseErr)
+					}
+					if linkErr := s.entryRepo.LinkDocuments(ctx, tx, existingEntry.ID, docIDs); linkErr != nil {
+						return fmt.Errorf("failed to process update link document ops: %w", linkErr)
+					}
+				}
+				if len(item.DocumentIDs.Delete) > 0 {
+					docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs.Delete)
+					if parseErr != nil {
+						return fmt.Errorf("update item %d: invalid document unlink targets: %w", idx, parseErr)
+					}
+					if unlinkErr := s.entryRepo.UnlinkDocuments(ctx, tx, existingEntry.ID, docIDs); unlinkErr != nil {
+						return fmt.Errorf("failed to process update unlink document ops: %w", unlinkErr)
+					}
+				}
+			}
 		}
 
 		// Update the entry-level date from the first updated/created item (for filtering)
@@ -1291,6 +1332,17 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
+			}
+
+			// Handle attachments supplied directly within the freshly appended item elements
+			if len(item.DocumentIDs) > 0 {
+				docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs)
+				if parseErr != nil {
+					return fmt.Errorf("create item %d: invalid document link configuration: %w", idx, parseErr)
+				}
+				if linkErr := s.entryRepo.LinkDocuments(ctx, tx, existingEntry.ID, docIDs); linkErr != nil {
+					return fmt.Errorf("failed to process creation document links: %w", linkErr)
+				}
 			}
 		}
 
@@ -1373,7 +1425,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Get entry and entry values
-	_, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
+	existingEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entry values: %w", err)
 	}
@@ -1384,6 +1436,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		Name:           formDetail.Name,
 		PractitionerID: practitionerID,
 		Items:          []RsExpenseItem{},
+		Documents:      []RsExpenseDocument{},
 		CreatedAt:      formDetail.CreatedAt,
 	}
 
@@ -1460,6 +1513,26 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		}
 
 		response.Items = append(response.Items, item)
+	}
+
+	// Fetching Documents
+	if existingEntry != nil {
+		docs, docErr := s.entryRepo.GetDocumentsByEntryID(ctx, existingEntry.ID)
+		if docErr == nil && docs != nil {
+			response.Documents = make([]RsExpenseDocument, 0, len(docs))
+			for _, d := range docs {
+				if d != nil {
+					// Use JSON marshaling to safely translate types across package boundaries via common tags
+					var targetDoc RsExpenseDocument
+					bytes, err := json.Marshal(d)
+					if err == nil {
+						if err := json.Unmarshal(bytes, &targetDoc); err == nil {
+							response.Documents = append(response.Documents, targetDoc)
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return response, nil

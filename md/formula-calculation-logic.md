@@ -77,19 +77,21 @@ Net = Gross - GST
 ```
 
 ### 3. MANUAL
-**User manually enters both NET and GST amounts**
+**User manually enters both GROSS and GST amounts**
 
 ```
-Example: User enters Net=$1000, GST=$150
-- Net Amount: $1000.00
-- GST Amount: $150.00
+Example: User enters Gross=$1150, GST=$150
 - Gross Amount: $1150.00
+- GST Amount: $150.00 (user-provided)
+- Net Amount: $1000.00
 ```
 
 **Formula:**
 ```
-Gross = Net + GST (user-provided)
+Net = Gross - GST (user-provided)
 ```
+
+**Important Note:** For MANUAL tax type, formulas use the GROSS amount directly in calculations, not the NET amount.
 
 ### 4. ZERO (GST-Free)
 **No GST applies**
@@ -267,10 +269,12 @@ When a computed field has a tax type:
 
 - **EXCLUSIVE**: Formula result is NET, GST is added (result × 1.1 = GROSS)
 - **INCLUSIVE**: Formula result is GROSS, GST is extracted
-- **MANUAL**: Formula result is NET, user-provided GST is added
+- **MANUAL**: Formula result is GROSS, NET is calculated by subtracting user-provided GST (GROSS - GST = NET)
 - **ZERO**: No GST applied
 
-**Important**: Downstream formulas receive the GROSS amount for tax-enabled fields.
+**Important**: 
+- For EXCLUSIVE, INCLUSIVE, and ZERO tax types: Downstream formulas receive the NET amount
+- For MANUAL tax type: Downstream formulas receive the GROSS amount directly
 
 ---
 
@@ -281,14 +285,18 @@ Live calculation provides real-time updates as users enter data in forms.
 ### Process Flow
 
 1. **Receive Entry Data**: Frontend sends field values with tax information
-2. **Normalize Amounts**: Convert entered values to NET amounts based on tax type
-   - INCLUSIVE: Extract NET from entered GROSS
+2. **Normalize Amounts**: Convert entered values based on tax type
+   - INCLUSIVE: Extract NET from entered GROSS (GROSS ÷ 1.1 = NET)
    - EXCLUSIVE: Use entered NET as-is
-   - MANUAL: Use entered NET, store GST separately
-3. **Compute Section Totals**: Aggregate NET amounts by section type
-4. **Evaluate Formulas**: Calculate all computed fields in dependency order
-5. **Apply Tax Treatment**: Convert computed NET to NET/GST/GROSS breakdown
-6. **Return Results**: Send computed field values back to frontend
+   - MANUAL: Use entered GROSS and GST, calculate NET (GROSS - GST = NET)
+   - ZERO: Use entered amount as both NET and GROSS
+3. **Prepare Formula Values**: Set values for formula evaluation
+   - For MANUAL tax type: Use GROSS amount in formulas
+   - For all other tax types: Use NET amount in formulas
+4. **Compute Section Totals**: Aggregate amounts by section type
+5. **Evaluate Formulas**: Calculate all computed fields in dependency order
+6. **Apply Tax Treatment**: Convert computed values to NET/GST/GROSS breakdown
+7. **Return Results**: Send computed field values back to frontend
 
 ### Tax Normalization Example
 
@@ -309,11 +317,21 @@ System interprets:
   - GST = $100 (calculated)
   - GROSS = $1100
   - Use NET ($1000) in formulas
+
+Field with MANUAL tax:
+User enters: Gross=$1150, GST=$150
+System interprets:
+  - Entered GROSS = $1150
+  - Entered GST = $150
+  - NET = $1150 - $150 = $1000
+  - Use GROSS ($1150) in formulas
 ```
 
-### Special Handling: OTHER_COST Section
+### Special Handling: MANUAL Tax Type
 
-For OTHER_COST fields, the system uses GROSS amounts in calculations to ensure proper deduction accounting.
+For MANUAL tax type fields, the system uses GROSS amounts in formula calculations instead of NET amounts. This is different from other tax types (EXCLUSIVE, INCLUSIVE, ZERO) which use NET amounts in formulas.
+
+**Rationale**: MANUAL tax allows users to specify custom GST amounts that may not follow the standard 10% rate. Using GROSS ensures the full entered amount flows through calculations correctly.
 
 ---
 
@@ -479,13 +497,17 @@ Real-time calculation as user enters data.
 
 ## Best Practices
 
-1. **Always use NET amounts** in formula calculations
+1. **Formula Value Usage**:
+   - Use NET amounts for EXCLUSIVE, INCLUSIVE, and ZERO tax types
+   - Use GROSS amounts for MANUAL tax type
 2. **Apply tax treatment** only at the final step
 3. **Validate dependencies** before formula evaluation
 4. **Round only final results**, not intermediate calculations
 5. **Handle NULL values** gracefully (treat as zero)
 6. **Use topological sort** to ensure correct evaluation order
-7. **Feedback GROSS amounts** from tax-enabled computed fields
+7. **Feedback amounts correctly**:
+   - MANUAL tax: Feed GROSS to dependent formulas
+   - Other tax types: Feed NET to dependent formulas
 
 ---
 
@@ -502,4 +524,3 @@ Real-time calculation as user enters data.
 
 ---
 
-*Last Updated: 2026-04-08*

@@ -2,121 +2,92 @@ package notification
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/google/uuid"
-	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
+	// Core notification operations
 	Publish(ctx context.Context, rq RqNotification) error
-	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error)
+	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
+
+	// Preference operations
 	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
+	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error
 }
 
 type service struct {
-	repo     Repository
-	notifier *sharednotification.Hub
+	repo      Repository
+	publisher *Publisher
 }
 
-func NewService(repo Repository, notifier *sharednotification.Hub) Service {
-	return &service{repo: repo, notifier: notifier}
+func NewService(repo Repository, events sharedEvents.IEvent) Service {
+	return &service{
+		repo:      repo,
+		publisher: NewPublisher(events),
+	}
 }
 
+// Publish publishes notification asynchronously via NATS
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
-	// Determine which preference bucket this belongs to
-	prefCategory := s.getPreferenceCategory(rq)
-	if prefCategory == "" {
-		return nil
+	event := NotificationEvent{
+		ID:            rq.ID,
+		RecipientID:   rq.RecipientID,
+		RecipientType: rq.RecipientType,
+		SenderID:      rq.SenderID,
+		SenderType:    rq.SenderType,
+		EventType:     rq.EventType,
+		EntityType:    rq.EntityType,
+		EntityID:      rq.EntityID,
+		Payload:       rq.Payload,
+		Channels:      rq.Channels,
+		CreatedAt:     rq.CreatedAt,
 	}
 
-	// Fetch preferences for the recipient
-	prefs, err := s.repo.GetPreference(ctx, rq.RecipientID, rq.RecipientType, prefCategory)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			fmt.Printf("Err in fetching preferences: %s\n", err)
-		}
-	}
-
-	var allowedChannels []Channel
-	if err != nil {
-		// If no preference record exists, default to sending on all requested channels
-		allowedChannels = rq.Channels
-	} else {
-		for _, ch := range rq.Channels {
-			// If the user explicitly set channel to false, skip it
-			if enabled, exists := prefs.Channels[string(ch)]; exists && !enabled {
-				continue
-			}
-			allowedChannels = append(allowedChannels, ch)
-		}
-	}
-
-	if len(allowedChannels) == 0 {
-		return nil // User has muted all requested channels for this category
-	}
-
-	notificationID, err := s.repo.CreateNotification(ctx, rq.MapToDB())
-	if err != nil {
-		return err
-	}
-
-	if err := s.repo.CreateDeliveries(ctx, notificationID, allowedChannels); err != nil {
-		return err
-	}
-
-	// Attempt in_app delivery via WebSocket and update delivery status
-	for _, ch := range allowedChannels {
-		if ch == ChannelInApp && s.notifier != nil {
-			push := map[string]any{
-				"id":           notificationID,
-				"recipient_id": rq.RecipientID,
-				"sender_id":    rq.SenderID,
-				"event_type":   rq.EventType,
-				"entity_type":  rq.EntityType,
-				"entity_id":    rq.EntityID,
-				"status":       rq.Status,
-				"payload":      json.RawMessage(rq.Payload),
-				"created_at":   rq.CreatedAt,
-			}
-			if s.notifier.Push(rq.RecipientID, push) {
-				_ = s.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp)
-			} else {
-				_ = s.repo.MarkDeliveryFailed(ctx, notificationID, ChannelInApp, "no active WebSocket clients")
-			}
-		}
-		// push / email channels: delivery workers handle those separately
-	}
-	return nil
+	return s.publisher.PublishNotification(ctx, event)
 }
 
-func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (RsListNotification, error) {
-	notifications, total, page, limit, err := s.repo.ListByRecipient(ctx, recipientID, filter)
+func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error) {
+	notifications, total, err := s.repo.ListByRecipient(ctx, recipientID, filter)
 	if err != nil {
-		return RsListNotification{}, err
+		return nil, err
 	}
 
 	// Get the GLOBAL unread count
-	unread := 0
-	unread, err = s.repo.GetUnreadCount(ctx, recipientID)
+	unreadCount := 0
+	unreadCount, err = s.repo.GetUnreadCount(ctx, recipientID)
 	if err != nil {
-		fmt.Printf("Error in count notifications: %s", err)
+		log.Printf("Error in count notifications: %s", err)
 	}
 
-	return RsListNotification{
-		Notifications: notifications,
-		UnreadCount:   unread,
-		Total:         total,
-		Page:          page,
-		Limit:         limit,
-	}, nil
+	// Set pagination defaults
+	limit := 10
+	if filter.Limit != nil && *filter.Limit > 0 {
+		limit = *filter.Limit
+	}
+
+	offset := 0
+	if filter.Offset != nil && *filter.Offset >= 0 {
+		offset = *filter.Offset
+	}
+
+	// Create response with unread count in metadata
+	result := &util.RsList{}
+	result.MapToList(map[string]interface{}{
+		"notifications": notifications,
+		"unread_count":  unreadCount,
+	}, total, offset, limit)
+
+	return result, nil
 }
 
 func (s *service) MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
@@ -150,22 +121,31 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 		EventType:  rq.EventType,
 		Channels:   rq.Channels,
 	}
-	return s.repo.UpsertPreference(ctx, pref)
+	return s.repo.CreatePreference(ctx, pref)
 }
 
-func (s *service) getPreferenceCategory(rq RqNotification) NotificationEventType {
-	// Parse the payload title
-	var payload NotificationPayload
-	if err := json.Unmarshal(rq.Payload, &payload); err == nil {
-		if payload.Title == "Accountant Activity Alert" {
-			return EventAccountantActivityAlert
-		}
-		if payload.Title == "System Activity Alert" {
-			return EventSystemActivityAlert
-		}
-		if rq.EventType == EventType(EventTransactionCreated) {
-			return EventNewTransaction
-		}
+// PreferenceSetting creates default notification preferences for a new user
+func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error {
+	pref := NotificationPreference{
+		UserID:     userID,
+		EntityID:   entityID,
+		EntityType: entityType,
+		Channels: NotificationChannels{
+			string(ChannelInApp): true,
+			string(ChannelEmail): false,
+			string(ChannelPush):  false,
+		},
+		EventType: NotificationEventTypes{
+			EventNewTransaction,
+			EventAccountantActivityAlert,
+			EventSystemActivityAlert,
+		},
+		CreatedAt: time.Now(),
 	}
-	return ""
+
+	if err := s.repo.CreatePreference(ctx, pref); err != nil {
+		return fmt.Errorf("failed to create preference: %w", err)
+	}
+
+	return nil
 }
