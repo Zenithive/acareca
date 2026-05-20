@@ -1613,6 +1613,125 @@ definitions:
       is_unique:
         type: boolean
     type: object
+  contact.RqAddress:
+    properties:
+      address1:
+        type: string
+      address2:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      postcode:
+        type: string
+      primary:
+        type: boolean
+      state:
+        type: string
+    type: object
+  contact.RqContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          $ref: '#/definitions/contact.RqAddress'
+        type: array
+      clinic_id:
+        type: string
+      email:
+        type: string
+      fname:
+        type: string
+      lname:
+        type: string
+      note:
+        type: string
+      phone:
+        type: string
+      website:
+        type: string
+    required:
+    - clinic_id
+    - email
+    - fname
+    - lname
+    - phone
+    type: object
+  contact.RqUpdateContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          $ref: '#/definitions/contact.RqAddress'
+        type: array
+      clinic_id:
+        type: string
+      email:
+        type: string
+      fname:
+        type: string
+      id:
+        type: string
+      lname:
+        type: string
+      note:
+        type: string
+      phone:
+        type: string
+      website:
+        type: string
+    required:
+    - clinic_id
+    - email
+    - fname
+    - lname
+    - phone
+    type: object
+  contact.RsAddress:
+    properties:
+      city:
+        type: string
+      country:
+        type: string
+      id:
+        type: string
+      postcode:
+        type: string
+      state:
+        type: string
+      street:
+        type: string
+      street2:
+        type: string
+    type: object
+  contact.RsContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          $ref: '#/definitions/contact.RsAddress'
+        type: array
+      clinic_id:
+        type: string
+      email:
+        type: string
+      fname:
+        type: string
+      id:
+        type: string
+      lname:
+        type: string
+      note:
+        type: string
+      phone:
+        type: string
+      website:
+        type: string
+    type: object
   entry.RqDocument:
     properties:
       create:
@@ -5401,6 +5520,148 @@ paths:
       summary: Bulk update clinics
       tags:
       - clinic
+<<<<<<< HEAD
+  /clinic/contact:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/contact.RsContact'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all contacts for a clinic
+      tags:
+      - clinic
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/contact.RqContact'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/contact.RsContact'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new contact for a clinic
+      tags:
+      - clinic
+  /clinic/contact/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a contact by ID
+      tags:
+      - clinic
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/contact.RsContact'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get a contact by ID
+      tags:
+      - clinic
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated Contact Data
+=======
   /clinic/change-password:
     put:
       consumes:
@@ -5408,10 +5669,14 @@ paths:
       description: Updates the password for the authenticated clinic
       parameters:
       - description: Password Change Data
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
         in: body
         name: request
         required: true
         schema:
+<<<<<<< HEAD
+          $ref: '#/definitions/contact.RqUpdateContact'
+=======
           $ref: '#/definitions/internal_modules_clinic_auth.RqChangePassword'
       produces:
       - application/json
@@ -5639,6 +5904,7 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/internal_modules_clinic_auth.RqResetPassword'
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
       produces:
       - application/json
       responses:
@@ -5654,6 +5920,21 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
+<<<<<<< HEAD
+      security:
+      - BearerToken: []
+      summary: Update a contact by ID
+      tags:
+      - clinic
+  /clinic/contact/address/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact Address ID
+        in: path
+        name: id
+=======
       summary: Reset clinic password using token
       tags:
       - invoice
@@ -5665,12 +5946,31 @@ paths:
       - description: Verification Token (UUID)
         in: query
         name: token
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
         required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
+<<<<<<< HEAD
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a contact address by ID
+      tags:
+      - clinic
+=======
           description: Email verified successfully
           schema:
             $ref: '#/definitions/response.RsBase'
@@ -5685,6 +5985,7 @@ paths:
       summary: Verify clinic email address
       tags:
       - invoice
+>>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
   /coa/account-taxes:
     get:
       parameters:
