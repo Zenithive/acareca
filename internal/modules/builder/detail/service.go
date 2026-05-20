@@ -2,7 +2,6 @@ package detail
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -18,7 +17,6 @@ import (
 
 type IService interface {
 	Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
-	CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
 	GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormDetail, error)
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
@@ -50,19 +48,14 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 
 		clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
 		if err != nil {
-
 			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
 		}
 
-		// Overwrite the ID so we check the OWNER'S subscription, not the accountant's
 		practitionerID = clinic.PractitionerID
 
 	}
 
-	// 3. Now the limit check runs against the correct person (The Subscriber)
-
 	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
-
 		return nil, err
 	}
 
@@ -70,7 +63,7 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 	var result *RsFormDetail
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
+		if err := s.repo.Create(ctx, tx, formDetail); err != nil {
 
 			return err
 		}
@@ -93,87 +86,16 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 	return result, nil
 }
 
-func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
-	// Only try to resolve the ID if we don't have a valid Practitioner ID yet
-	if practitionerID == uuid.Nil {
-		if clinicID != nil && *clinicID != uuid.Nil {
-			clinic, err := s.clinicRepo.GetClinicByID(ctx, *clinicID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
-			}
-			practitionerID = clinic.PractitionerID
-		} else {
-			return nil, errors.New("practitionerID is required (directly or via clinicID)")
-		}
-	}
-
-	// Subscription limit check
-	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
-		return nil, err
-	}
-
-	// Handle nil clinicID for expense forms
-	var actualClinicID uuid.UUID
-	if clinicID != nil {
-		actualClinicID = *clinicID
-	} else {
-		actualClinicID = uuid.Nil
-	}
-
-	formDetail := d.ToDB(actualClinicID)
-
-	// Internal function to execute logic
-	execLogic := func(ctx context.Context, tx *sqlx.Tx) error {
-		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
-			return err
-		}
-
-		createdVersion, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, actualClinicID, &version.RqFormVersion{
-			Version:  1,
-			IsActive: true,
-		}, practitionerID)
-		if err != nil {
-			return err
-		}
-
-		// Set the active version ID on the form detail in-memory struct
-		formDetail.ActiveVersionID = &createdVersion.Id
-
-		return nil
-	}
-
-	// If tx is provided by the caller (CreateWithFields), use it.
-	// Otherwise, start a new one (original Create behavior).
-	if tx != nil {
-		if err := execLogic(ctx, tx); err != nil {
-			return nil, err
-		}
-	} else {
-		err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-			return execLogic(ctx, tx)
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return formDetail.ToRs(), nil
-}
-
 // Delete implements [IService].
 func (s *Service) Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error {
-	return s.repo.DeleteTx(ctx, tx, formID)
+	return s.repo.Delete(ctx, tx, formID)
 }
 
 // ListForm implements [IService].
 func (s *Service) List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	ft := filter.MapToFilter()
-	formDetails, err := s.repo.ListForm(ctx, ft, actorID, role)
-	if err != nil {
-		return nil, err
-	}
 
-	total, err := s.repo.CountForm(ctx, ft, actorID, role)
+	formDetails, total, err := s.repo.ListForm(ctx, ft, actorID, role, true)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +127,7 @@ func applyFormUpdatePatch(existing *FormDetail, d *RqUpdateFormDetail) error {
 	if d.SuperComponent != nil {
 		existing.SuperComponent = d.SuperComponent
 	}
-	if existing.Status != StatusPublished {
+	if existing.Status != util.StatusPublished {
 		if d.Status != nil {
 			existing.Status = *d.Status
 		}
@@ -237,7 +159,7 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 	}
 	var updated *RsFormDetail
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		upd, err := s.repo.UpdateTx(ctx, tx, existing)
+		upd, err := s.repo.Update(ctx, tx, existing)
 		if err != nil {
 			return err
 		}
@@ -259,14 +181,22 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 
 // UpdateMetadata updates only the form row; no version creation. Used by update-with-fields flow.
 func (s *Service) UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error) {
-	existing, err := s.repo.GetByID(ctx, d.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := applyFormUpdatePatch(existing, d); err != nil {
-		return nil, err
-	}
-	updated, err := s.repo.Update(ctx, existing)
+	var updated *FormDetail
+	var err error
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, err := s.repo.GetByID(ctx, d.ID)
+		if err != nil {
+			return err
+		}
+		if err := applyFormUpdatePatch(existing, d); err != nil {
+			return err
+		}
+		updated, err = s.repo.Update(ctx, tx, existing)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -298,6 +228,6 @@ func (s *Service) UpdateFormStatus(ctx context.Context, d *RqUpdateFormStatus) e
 
 	// Execute update in a transaction
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		return s.repo.UpdateFormStatusTx(ctx, tx, d.ID, d.Status)
+		return s.repo.UpdateFormStatus(ctx, tx, d.ID, d.Status)
 	})
 }

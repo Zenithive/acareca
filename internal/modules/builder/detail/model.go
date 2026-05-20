@@ -1,64 +1,10 @@
 package detail
 
 import (
-	"strings"
-
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/samber/lo"
 )
-
-const (
-	StatusDraft     = "DRAFT"
-	StatusPublished = "PUBLISHED"
-)
-
-type Filter struct {
-	PractitionerID *string `form:"practitioner_id"`
-	ClinicIDs      *string `form:"clinic_ids"`
-	FormName       *string `form:"name"`
-	Method         *string `form:"method"`
-	Status         *string `form:"status"`
-	common.Filter
-}
-
-func (filter *Filter) MapToFilter() common.Filter {
-	filters := map[string]interface{}{}
-	if filter.PractitionerID != nil {
-		id, err := uuid.Parse(*filter.PractitionerID)
-		if err == nil {
-			filters["practitioner_id"] = id // Pass as uuid.UUID type to common.Filter
-		}
-	}
-	if filter.ClinicIDs != nil && *filter.ClinicIDs != "" {
-		// Split the string by commas
-		rawIDs := strings.Split(*filter.ClinicIDs, ",")
-		parsedIDs := make([]uuid.UUID, 0, len(rawIDs))
-
-		for _, idStr := range rawIDs {
-			// Trim whitespace and parse each UUID
-			if id, err := uuid.Parse(strings.TrimSpace(idStr)); err == nil {
-				parsedIDs = append(parsedIDs, id)
-			}
-		}
-
-		if len(parsedIDs) > 0 {
-			// Use "clinic_ids" as the key to match the repository's allowedColumns
-			filters["clinic_ids"] = parsedIDs
-		}
-	}
-	if filter.Status != nil {
-		filters["status"] = *filter.Status
-	}
-	if filter.Method != nil {
-		filters["method"] = *filter.Method
-	}
-	if filter.FormName != nil {
-		filters["form_name"] = *filter.FormName
-	}
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
-
-	return f
-}
 
 type RqFormDetail struct {
 	Name           string   `json:"name" validate:"required"`
@@ -98,6 +44,7 @@ type FormDetail struct {
 }
 
 func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
+
 	return &FormDetail{
 		ID:             uuid.New(),
 		ClinicID:       clinicID,
@@ -112,29 +59,30 @@ func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
 }
 
 func (r *RqUpdateFormDetail) Update() *FormDetail {
-	d := &FormDetail{ID: r.ID}
+	var fdetail FormDetail
+	fdetail.ID = r.ID
 	if r.Name != nil {
-		d.Name = *r.Name
+		fdetail.Name = *r.Name
 	}
 	if r.Description != nil {
-		d.Description = r.Description
+		fdetail.Description = r.Description
 	}
 	if r.Status != nil {
-		d.Status = *r.Status
+		fdetail.Status = *r.Status
 	}
 	if r.Method != nil {
-		d.Method = *r.Method
+		fdetail.Method = *r.Method
 	}
 	if r.OwnerShare != nil {
-		d.OwnerShare = *r.OwnerShare
+		fdetail.OwnerShare = *r.OwnerShare
 	}
 	if r.ClinicShare != nil {
-		d.ClinicShare = *r.ClinicShare
+		fdetail.ClinicShare = *r.ClinicShare
 	}
 	if r.SuperComponent != nil {
-		d.SuperComponent = r.SuperComponent
+		fdetail.SuperComponent = r.SuperComponent
 	}
-	return d
+	return &fdetail
 }
 
 func (d *FormDetail) ToRs() *RsFormDetail {
@@ -150,7 +98,6 @@ func (d *FormDetail) ToRs() *RsFormDetail {
 		UpdatedAt:       d.UpdatedAt,
 	}
 
-	// Only include clinic_id, owner_share, and clinic_share for non-expense forms
 	if d.Method != "EXPENSE_ENTRY" {
 		rs.ClinicID = &d.ClinicID
 		rs.OwnerShare = &d.OwnerShare
@@ -178,4 +125,42 @@ type RsFormDetail struct {
 type RqUpdateFormStatus struct {
 	ID     uuid.UUID `json:"id" validate:"required"`
 	Status string    `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
+}
+
+type Filter struct {
+	PractitionerID *uuid.UUID  `form:"practitioner_id"`
+	ClinicIDs      []uuid.UUID `form:"clinic_ids"`
+	FormName       *string     `form:"name"`
+	Method         *string     `form:"method"`
+	Status         *string     `form:"status"`
+	common.Filter
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	if filter.PractitionerID != nil {
+		filters["practitioner_id"] = filter.PractitionerID
+	}
+	if filter.ClinicIDs != nil {
+		Ids := make([]uuid.UUID, 0, len(filter.ClinicIDs))
+		for _, id := range filter.ClinicIDs {
+			Ids = append(Ids, id)
+		}
+
+		if len(Ids) > 0 {
+			filters["clinic_ids"] = Ids
+		}
+	}
+	if filter.Status != nil {
+		filters["status"] = lo.ToPtr(filter.Status)
+	}
+	if filter.Method != nil {
+		filters["method"] = lo.ToPtr(filter.Method)
+	}
+	if filter.FormName != nil {
+		filters["form_name"] = lo.ToPtr(*filter.FormName)
+	}
+	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
+
+	return f
 }

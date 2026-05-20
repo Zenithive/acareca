@@ -5,3 +5,8 @@ const (
 	RolePractitioner = "PRACTITIONER"
 	RoleAccountant   = "ACCOUNTANT"
 )
+
+const (
+	StatusDraft     = "DRAFT"
+	StatusPublished = "PUBLISHED"
+)
