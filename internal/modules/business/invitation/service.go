@@ -600,27 +600,20 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return ErrInvitationAlreadyUsed
 	}
 
-	if inv.Status != StatusAccepted && inv.Status != StatusCompleted {
-		return ErrCannotRevokeStatus
-	}
-
 	accountantID := *inv.AccountantID
-	tx, err := s.repo.(*repository).db.BeginTxx(ctx, nil)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.AccountantID); err != nil {
+			return fmt.Errorf("revoke invitation status update: %w", err)
+		}
+
+		if err := s.repo.DeleteAllPermissionsForAccountantTx(ctx, tx, practitionerID, accountantID); err != nil {
+			return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.AccountantID); err != nil {
-		return fmt.Errorf("revoke invitation status update: %w", err)
-	}
-
-	if err := s.repo.DeleteAllPermissionsForAccountantTx(ctx, tx, practitionerID, accountantID); err != nil {
-		return fmt.Errorf("revoke invitation permissions cleanup: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit revocation: %w", err)
+		return fmt.Errorf("failed to revoke invitation: %w", err)
 	}
 
 	s.logInvitationAction(ctx, inv, auditctx.ActionInviteRevoked, inv)
