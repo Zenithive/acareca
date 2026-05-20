@@ -600,7 +600,10 @@ func (s *service) RevokeInvite(ctx context.Context, practitionerID uuid.UUID, in
 		return ErrInvitationAlreadyUsed
 	}
 
-	accountantID := *inv.AccountantID
+	var accountantID uuid.UUID
+	if inv.AccountantID != nil {
+		accountantID = *inv.AccountantID
+	}
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if err := s.repo.UpdateStatusTx(ctx, tx, inviteID, StatusRevoked, inv.AccountantID); err != nil {
 			return fmt.Errorf("revoke invitation status update: %w", err)
