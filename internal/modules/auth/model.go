@@ -7,8 +7,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 )
 
-// ── Database Schema Models ───────────────────────────────────────────────────
-
 type User struct {
 	ID        uuid.UUID `db:"id"`
 	Email     string    `db:"email"`
@@ -57,29 +55,27 @@ type VerificationToken struct {
 	ExpiresAt time.Time `db:"expires_at"`
 }
 
-// ── Request Models ────────────────────────────────────────────────────
-
 type RqUser struct {
-	Email      string  `json:"email"      validate:"required,email"`
-	Password   string  `json:"password"   validate:"required,min=8"`
-	FirstName  string  `json:"first_name" validate:"required"`
-	LastName   string  `json:"last_name"  validate:"required"`
-	Phone      *string `json:"phone"      validate:"omitempty,e164"`
+	Email      string  `json:"email"       validate:"required,email"`
+	Password   string  `json:"password"    validate:"required,min=8"`
+	FirstName  string  `json:"first_name"  validate:"required"`
+	LastName   string  `json:"last_name"   validate:"required"`
+	Phone      *string `json:"phone"       validate:"omitempty,e164"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
 type RqUpdateUser struct {
-	Email      *string `json:"email"      validate:"omitempty,email"`
-	FirstName  *string `json:"first_name" validate:"omitempty"`
-	LastName   *string `json:"last_name"  validate:"omitempty"`
-	Phone      *string `json:"phone"      validate:"omitempty,e164"`
-	ABN        *string `json:"abn"        validate:"omitempty"`
+	Email      *string `json:"email"       validate:"omitempty,email"`
+	FirstName  *string `json:"first_name"  validate:"omitempty"`
+	LastName   *string `json:"last_name"   validate:"omitempty"`
+	Phone      *string `json:"phone"       validate:"omitempty,e164"`
+	ABN        *string `json:"abn"         validate:"omitempty"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
 }
 
 type RqLogin struct {
-	Email    string `json:"email"         validate:"required,email"`
-	Password string `json:"password"      validate:"required"`
+	Email    string `json:"email"    validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 type RqLogout struct {
@@ -91,15 +87,13 @@ type RqChangePassword struct {
 }
 
 type RqForgotPassword struct {
-	Email string `json:"email" binding:"required,email"`
+	Email string `json:"email" validate:"required,email"`
 }
 
 type RqResetPassword struct {
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=8"`
+	Token       string `json:"token"        validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
-
-// ── Response Models ───────────────────────────────────────────────────────────
 
 type RsToken struct {
 	AccessToken  string  `json:"access_token"`
@@ -119,7 +113,7 @@ type RsUser struct {
 
 	Document *file.RsDocument `json:"document"`
 
-	// Role-specific fields (populated based on role)
+	// Role-specific fields
 	ABN       *string `json:"abn,omitempty"`
 	LicenseNo *string `json:"license_no,omitempty"`
 }
@@ -135,7 +129,12 @@ type GoogleUserInfo struct {
 	LastName  string `json:"family_name"`
 }
 
-// ── Mappings ──────────────────────────────────────────────────
+const (
+	TokenStatusPending = "PENDING"
+	TokenStatusUsed    = "USED"
+	TokenStatusExpired = "EXPIRED"
+	TokenStatusResent  = "RESENT"
+)
 
 func (r *RqUser) ToDBModel() *User {
 	return &User{
@@ -169,13 +168,3 @@ func (u *User) ToRsUser() *RsUser {
 		UpdatedAt: u.UpdatedAt,
 	}
 }
-
-// ── Constants and Enums ───────────────────────────────────────────────────────
-
-const (
-	// For email verification token operations
-	TokenStatusPending = "PENDING"
-	TokenStatusUsed    = "USED"
-	TokenStatusExpired = "EXPIRED"
-	TokenStatusResent  = "RESENT"
-)

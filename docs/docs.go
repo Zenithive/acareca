@@ -2331,7 +2331,13 @@ const docTemplate = `{
         },
         "/auth/forgot-password": {
             "post": {
-                "description": "Sends a reset link to the user's email if they exist.",
+                "description": "Sends a reset link to the user's email if the account exists",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "auth"
                 ],
@@ -2359,13 +2365,19 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
                     }
                 }
             }
         },
         "/auth/google": {
             "get": {
-                "description": "get Google OAuth consent-screen URL",
+                "description": "Returns the URL to redirect the user to for Google OAuth",
                 "produces": [
                     "application/json"
                 ],
@@ -2380,12 +2392,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/auth.RsGoogleAuthURL"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -2397,7 +2403,7 @@ const docTemplate = `{
         },
         "/auth/google/callback": {
             "get": {
-                "description": "handle Google OAuth callback and redirect to frontend with tokens",
+                "description": "Handles the OAuth callback and redirects to the frontend with tokens",
                 "produces": [
                     "application/json"
                 ],
@@ -2438,7 +2444,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "login a user",
+                "description": "Authenticate with email and password",
                 "consumes": [
                     "application/json"
                 ],
@@ -2464,7 +2470,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/auth.RsToken"
                         }
                     },
                     "400": {
@@ -2490,7 +2496,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "register a new user",
+                "description": "Register a new user account",
                 "consumes": [
                     "application/json"
                 ],
@@ -2542,7 +2548,13 @@ const docTemplate = `{
         },
         "/auth/reset-password": {
             "post": {
-                "description": "Updates the user's password using the token received via email.",
+                "description": "Updates the user's password using the token received via email",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "auth"
                 ],
@@ -2587,7 +2599,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Soft delete the currently authenticated user's account",
+                "description": "Soft-deletes the currently authenticated user's account",
                 "produces": [
                     "application/json"
                 ],
@@ -2624,7 +2636,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "updates the password for the authenticated user",
+                "description": "Updates the password for the authenticated user",
                 "consumes": [
                     "application/json"
                 ],
@@ -2681,7 +2693,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "revoke the current session using the refresh token",
+                "description": "Revoke the current session using the refresh token",
                 "consumes": [
                     "application/json"
                 ],
@@ -2767,7 +2779,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Update the profile details of the user (email, names, phone)",
+                "description": "Update the profile details of the authenticated user",
                 "consumes": [
                     "application/json"
                 ],
@@ -2825,7 +2837,7 @@ const docTemplate = `{
         },
         "/auth/verify": {
             "get": {
-                "description": "Validates the UUID token sent via email. If valid, marks the user as verified and the token as used.",
+                "description": "Validates the UUID token sent via email and marks the user as verified",
                 "produces": [
                     "application/json"
                 ],
@@ -2844,25 +2856,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Email verified successfully",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
                         }
                     },
                     "400": {
-                        "description": "Invalid token format or token already used",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "410": {
-                        "description": "Token has expired",
+                        "description": "Gone",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9645,11 +9657,25 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.RsToken": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.RsUser": {
             "type": "object",
             "properties": {
                 "abn": {
-                    "description": "Role-specific fields (populated based on role)",
+                    "description": "Role-specific fields",
                     "type": "string"
                 },
                 "created_at": {
