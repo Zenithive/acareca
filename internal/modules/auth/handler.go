@@ -19,7 +19,6 @@ type IHandler interface {
 	Logout(c *gin.Context)
 	GoogleAuthURL(c *gin.Context)
 	GoogleCallback(c *gin.Context)
-
 	VerifyEmail(c *gin.Context)
 	ChangePassword(c *gin.Context)
 	GetProfile(c *gin.Context)
@@ -39,9 +38,24 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc, cfg: *cfg}
 }
 
+// resolveUserID extracts and parses the authenticated user's UUID from context.
+func (h *handler) resolveUserID(c *gin.Context) (uuid.UUID, bool) {
+	ptr := auditctx.GetUserID(c.Request.Context())
+	if ptr == nil {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(*ptr)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
 // Register godoc
 // @Summary Register a new user
-// @Description register a new user
+// @Description Register a new user account
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -73,12 +87,12 @@ func (h *handler) Register(c *gin.Context) {
 
 // Login godoc
 // @Summary Login a user
-// @Description login a user
+// @Description Authenticate with email and password
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param        request  body      RqLogin  true  "Login Credentials"
-// @Success 200 {object} response.RsBase
+// @Param request body RqLogin true "Login Credentials"
+// @Success 200 {object} RsToken
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -114,15 +128,8 @@ func (h *handler) Login(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /auth/user/profile [get]
 func (h *handler) GetProfile(c *gin.Context) {
-	userIDPtr := auditctx.GetUserID(c.Request.Context())
-	if userIDPtr == nil {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
-		return
-	}
-
-	userID, err := uuid.Parse(*userIDPtr)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+	userID, ok := h.resolveUserID(c)
+	if !ok {
 		return
 	}
 
@@ -137,7 +144,7 @@ func (h *handler) GetProfile(c *gin.Context) {
 
 // UpdateProfile godoc
 // @Summary Update user profile
-// @Description Update the profile details of the user (email, names, phone)
+// @Description Update the profile details of the authenticated user
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -150,17 +157,8 @@ func (h *handler) GetProfile(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /auth/user/profile [put]
 func (h *handler) UpdateProfile(c *gin.Context) {
-
-	userIDPtr := auditctx.GetUserID(c.Request.Context())
-
-	if userIDPtr == nil {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
-		return
-	}
-
-	userID, err := uuid.Parse(*userIDPtr)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
+	userID, ok := h.resolveUserID(c)
+	if !ok {
 		return
 	}
 
@@ -185,21 +183,20 @@ func (h *handler) UpdateProfile(c *gin.Context) {
 
 // Logout godoc
 // @Summary Logout a user
-// @Description revoke the current session using the refresh token
+// @Description Revoke the current session using the refresh token
 // @Tags auth
 // @Accept json
 // @Produce json
+// @Security BearerToken
 // @Param request body RqLogout true "Logout Data"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
-// @Security BearerToken
 // @Router /auth/user/logout [post]
 func (h *handler) Logout(c *gin.Context) {
-	// Get UserID from context (set by middleware)
 	userID, ok := util.GetUserID(c)
 	if !ok {
-		return // GetUserID handles the error response
+		return
 	}
 
 	var req RqLogout
@@ -207,20 +204,21 @@ func (h *handler) Logout(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	if err := h.svc.Logout(c.Request.Context(), userID, req.RefreshToken); err != nil {
 		response.Error(c, http.StatusUnauthorized, err)
 		return
 	}
+
 	response.JSON(c, http.StatusOK, nil, "Logged out successfully")
 }
 
 // GoogleAuthURL godoc
 // @Summary Get Google OAuth consent-screen URL
-// @Description get Google OAuth consent-screen URL
+// @Description Returns the URL to redirect the user to for Google OAuth
 // @Tags auth
 // @Produce json
 // @Success 200 {object} RsGoogleAuthURL
-// @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /auth/google [get]
 func (h *handler) GoogleAuthURL(c *gin.Context) {
@@ -231,7 +229,7 @@ func (h *handler) GoogleAuthURL(c *gin.Context) {
 
 // GoogleCallback godoc
 // @Summary Handle Google OAuth callback
-// @Description handle Google OAuth callback and redirect to frontend with tokens
+// @Description Handles the OAuth callback and redirects to the frontend with tokens
 // @Tags auth
 // @Produce json
 // @Param code query string true "OAuth authorization code"
@@ -252,33 +250,29 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	var frontendURL string
+	frontendURL := h.cfg.FrontendURL
 	if h.cfg.Env == "local" {
 		frontendURL = h.cfg.LocalUrl
-	} else {
-		frontendURL = h.cfg.FrontendURL
 	}
 
 	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s",
-		frontendURL,
-		token.AccessToken,
-		token.RefreshToken)
+		frontendURL, token.AccessToken, token.RefreshToken)
 
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
 // ChangePassword godoc
 // @Summary Change user password
-// @Description updates the password for the authenticated user
+// @Description Updates the password for the authenticated user
 // @Tags auth
 // @Accept json
 // @Produce json
+// @Security BearerToken
 // @Param request body RqChangePassword true "Password Change Data"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 403 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /auth/user/change-password [put]
 func (h *handler) ChangePassword(c *gin.Context) {
 	pracID, ok := util.GetPractitionerID(c)
@@ -306,7 +300,7 @@ func (h *handler) ChangePassword(c *gin.Context) {
 
 // DeleteUser godoc
 // @Summary Delete user account
-// @Description Soft delete the currently authenticated user's account
+// @Description Soft-deletes the currently authenticated user's account
 // @Tags auth
 // @Produce json
 // @Security BearerToken
@@ -315,22 +309,11 @@ func (h *handler) ChangePassword(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /auth/user [delete]
 func (h *handler) DeleteUser(c *gin.Context) {
-
-	userIDPtr := auditctx.GetUserID(c.Request.Context())
-
-	// 2. Check if the pointer is nil (Unauthorized)
-	if userIDPtr == nil {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized: user not found in context"))
+	userID, ok := h.resolveUserID(c)
+	if !ok {
 		return
 	}
 
-	userID, err := uuid.Parse(*userIDPtr)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid user id format"))
-		return
-	}
-
-	// 4. Call service layer to perform the soft delete
 	if err := h.svc.DeleteUser(c.Request.Context(), userID); err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -339,15 +322,16 @@ func (h *handler) DeleteUser(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "User account deleted successfully")
 }
 
+// VerifyEmail godoc
 // @Summary Verify user email address
-// @Description Validates the UUID token sent via email. If valid, marks the user as verified and the token as used.
+// @Description Validates the UUID token sent via email and marks the user as verified
 // @Tags auth
 // @Produce json
 // @Param token query string true "Verification Token (UUID)"
-// @Success 200 {object} response.RsBase "Email verified successfully"
-// @Failure 400 {object} response.RsError "Invalid token format or token already used"
-// @Failure 410 {object} response.RsError "Token has expired"
-// @Failure 500 {object} response.RsError "Internal server error"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 410 {object} response.RsError
+// @Failure 500 {object} response.RsError
 // @Router /auth/verify [get]
 func (h *handler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
@@ -365,25 +349,25 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 }
 
 // ForgotPassword godoc
-// @Summary      Initiate password reset
-// @Description  Sends a reset link to the user's email if they exist.
-// @Tags         auth
-// @Param        request  body      RqForgotPassword  true  "Email"
-// @Success      200      {object}  response.RsBase
-// @Router       /auth/forgot-password [post]
+// @Summary Initiate password reset
+// @Description Sends a reset link to the user's email if the account exists
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body RqForgotPassword true "Email"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/forgot-password [post]
 func (h *handler) ForgotPassword(c *gin.Context) {
 	var req RqForgotPassword
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// Call service (Service will handle token gen and Resend email)
-	err := h.svc.ForgotPassword(c.Request.Context(), &req)
-	if err != nil {
-		// We log the error but return success to avoid "User Enumeration"
-		// log.Printf("Forgot password error: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.svc.ForgotPassword(c.Request.Context(), &req); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -391,21 +375,24 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 }
 
 // ResetPassword godoc
-// @Summary      Reset password using token
-// @Description  Updates the user's password using the token received via email.
-// @Tags         auth
-// @Param        request  body      RqResetPassword  true  "Token and New Password"
-// @Success      200      {object}  response.RsBase
-// @Router       /auth/reset-password [post]
+// @Summary Reset password using token
+// @Description Updates the user's password using the token received via email
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body RqResetPassword true "Token and New Password"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Router /auth/reset-password [post]
 func (h *handler) ResetPassword(c *gin.Context) {
 	var req RqResetPassword
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	err := h.svc.ResetPassword(c.Request.Context(), &req)
-	if err != nil {
+	if err := h.svc.ResetPassword(c.Request.Context(), &req); err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

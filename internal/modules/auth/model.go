@@ -55,12 +55,21 @@ type Session struct {
 	DeletedAt    *time.Time `db:"deleted_at"`
 }
 
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
+}
+
 type RqUser struct {
-	Email      string  `json:"email"      validate:"required,email"`
-	Password   string  `json:"password"   validate:"required,min=8"`
-	FirstName  string  `json:"first_name" validate:"required"`
-	LastName   string  `json:"last_name"  validate:"required"`
-	Phone      *string `json:"phone"      validate:"omitempty,e164"`
+	Email      string  `json:"email"       validate:"required,email"`
+	Password   string  `json:"password"    validate:"required,min=8"`
+	FirstName  string  `json:"first_name"  validate:"required"`
+	LastName   string  `json:"last_name"   validate:"required"`
+	Phone      *string `json:"phone"       validate:"omitempty,e164"`
 	DocumentId *string `json:"document_id" validate:"omitempty"`
 
 	// New Onboarding Fields
@@ -74,11 +83,11 @@ type RqUser struct {
 }
 
 type RqUpdateUser struct {
-	Email          *string `json:"email"      validate:"omitempty,email"`
-	FirstName      *string `json:"first_name" validate:"omitempty"`
-	LastName       *string `json:"last_name"  validate:"omitempty"`
-	Phone          *string `json:"phone"      validate:"omitempty,e164"`
-	ABN            *string `json:"abn"        validate:"omitempty"`
+	Email          *string `json:"email"       validate:"omitempty,email"`
+	FirstName      *string `json:"first_name"  validate:"omitempty"`
+	LastName       *string `json:"last_name"   validate:"omitempty"`
+	Phone          *string `json:"phone"       validate:"omitempty,e164"`
+	ABN            *string `json:"abn"         validate:"omitempty"`
 	DocumentId     *string `json:"document_id" validate:"omitempty"`
 	EntityType     string  `json:"entity_type" validate:"omitempty,oneof=SOLE_TRADER COMPANY TRUST"`
 	EntityName     string  `json:"entity_name" validate:"omitempty"`
@@ -88,25 +97,9 @@ type RqUpdateUser struct {
 	TaxAgentNumber *string `json:"tax_agent_number" validate:"omitempty"` // Optional
 }
 
-func (r *RqUser) ToDBModel() *User {
-	return &User{
-		Email:          r.Email,
-		FirstName:      r.FirstName,
-		LastName:       r.LastName,
-		Phone:          r.Phone,
-		ABN:            r.ABN,
-		TaxAgentNumber: r.TaxAgentNumber,
-		EntityType:     r.EntityType,
-		EntityName:     r.EntityName,
-		ACN:            r.ACN,
-		Address:        r.Address,
-		Profession:     r.Profession,
-	}
-}
-
 type RqLogin struct {
-	Email    string `json:"email"         validate:"required,email"`
-	Password string `json:"password"      validate:"required"`
+	Email    string `json:"email"    validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 type RqLogout struct {
@@ -117,7 +110,14 @@ type RqChangePassword struct {
 	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 
-// ── Response models ───────────────────────────────────────────────────────────
+type RqForgotPassword struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type RqResetPassword struct {
+	Token       string `json:"token"        validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
 
 type RsToken struct {
 	AccessToken  string  `json:"access_token"`
@@ -126,25 +126,31 @@ type RsToken struct {
 }
 
 type RsUser struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Phone     *string   `json:"phone,omitempty"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID             uuid.UUID        `json:"id"`
+	Email          string           `json:"email"`
+	FirstName      string           `json:"first_name"`
+	LastName       string           `json:"last_name"`
+	Phone          *string          `json:"phone,omitempty"`
+	Role           string           `json:"role"`
+	ABN            *string          `json:"abn,omitempty"`
+	TaxAgentNumber *string          `json:"tax_agent_number,omitempty"`
+	EntityType     string           `json:"entity_type"`
+	EntityName     *string          `json:"entity_name"`
+	ACN            *string          `json:"acn,omitempty"`
+	Address        *string          `json:"address,omitempty"`
+	Profession     *string          `json:"profession,omitempty"`
+	Document       *file.RsDocument `json:"document"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
+}
 
-	Document *file.RsDocument `json:"document"`
-
-	// Role-specific fields (populated based on role)
-	ABN            *string `json:"abn"`
-	TaxAgentNumber *string `json:"tax_agent_number"`
-	EntityType     string  `json:"entity_type"`
-	EntityName     *string `json:"entity_name"`
-	ACN            *string `json:"acn"`
-	Address        *string `json:"address"`
-	Profession     *string `json:"profession"`
+func (r *RqUser) ToDBModel() *User {
+	return &User{
+		Email:     r.Email,
+		FirstName: r.FirstName,
+		LastName:  r.LastName,
+		Phone:     r.Phone,
+	}
 }
 
 func (u *User) ToRsUser() *RsUser {
@@ -159,22 +165,16 @@ func (u *User) ToRsUser() *RsUser {
 		}
 	}
 	return &RsUser{
-		ID:             u.ID,
-		Email:          u.Email,
-		FirstName:      u.FirstName,
-		LastName:       u.LastName,
-		Phone:          u.Phone,
-		Role:           u.Role,
-		Document:       doc,
-		CreatedAt:      u.CreatedAt,
-		UpdatedAt:      u.UpdatedAt,
-		ABN:            u.ABN,
-		TaxAgentNumber: u.TaxAgentNumber,
-		EntityType:     u.EntityType,
-		EntityName:     u.EntityName,
-		ACN:            u.ACN,
-		Address:        u.Address,
-		Profession:     u.Profession,
+		ID:        u.ID,
+		Email:     u.Email,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
+		Phone:     u.Phone,
+		Role:      u.Role,
+		Document:  doc,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
+		ABN:       u.ABN,
 	}
 }
 
@@ -196,21 +196,3 @@ const (
 	TokenStatusExpired = "EXPIRED"
 	TokenStatusResent  = "RESENT"
 )
-
-type VerificationToken struct {
-	ID        uuid.UUID `db:"id"`
-	EntityID  uuid.UUID `db:"entity_id"`
-	Role      *string   `db:"role"`
-	Status    string    `db:"status"`
-	CreatedAt time.Time `db:"created_at"`
-	ExpiresAt time.Time `db:"expires_at"`
-}
-
-type RqForgotPassword struct {
-	Email string `json:"email" binding:"required,email"`
-}
-
-type RqResetPassword struct {
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=8"`
-}
