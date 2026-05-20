@@ -839,7 +839,7 @@ func (s *service) sendForgotPasswordEmail(to string, clinicName string, token st
 		return err
 	}
 
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseUrl, token)
+	resetLink := fmt.Sprintf("%s/clinic/reset-password?token=%s", baseUrl, token)
 	expiryTime := "15 minutes"
 
 	payload := map[string]interface{}{
@@ -848,16 +848,16 @@ func (s *service) sendForgotPasswordEmail(to string, clinicName string, token st
 		"subject": "Reset your Acareca password",
 		"html": fmt.Sprintf(`
 			<div style="font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
-				<h2 style="color: #d93025;">Password Reset Request</h2>
+				<h2 style="color: #1a73e8;">Password Reset Request</h2>
 				<p>Hi %s,</p>
 				<p>We received a request to reset your password for your Acareca account. Click the button below to choose a new password:</p>
 				<div style="text-align: center; margin: 30px 0;">
-					<a href="%s" style="background-color: #d93025; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
+					<a href="%s" style="background-color: #1a73e8; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
 						Reset My Password
 					</a>
 				</div>
 				<p style="font-size: 14px; color: #666;">If the button above doesn't work, copy and paste this link into your browser:</p>
-				<p style="font-size: 12px; word-break: break-all; color: #d93025;">%s</p>
+				<p style="font-size: 12px; word-break: break-all; color: #1a73e8;">%s</p>
 				<p style="font-size: 14px; color: #666;">This link will expire in <strong>%s</strong> for security reasons.</p>
 				<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
 				<p style="font-size: 12px; color: #888;">If you did not request a password reset, you can safely ignore this email.</p>

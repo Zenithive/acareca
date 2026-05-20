@@ -390,7 +390,6 @@ func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationTo
 
 }
 
-
 func (r *repository) UpdateClinic(ctx context.Context, clinic *Clinic, tx *sqlx.Tx) (*Clinic, error) {
 	const query = `
 		UPDATE tbl_invoice_clinic
@@ -452,18 +451,18 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 	WITH updated_token AS (
 		UPDATE tbl_clinic_password_resets
 		SET status = CASE
-			WHEN expires_at < NOW() THEN 'EXPIRED'
-			ELSE 'USED'
+			WHEN expires_at < NOW() THEN 'EXPIRED'::token_status
+			ELSE 'USED'::token_status
 		END
 		WHERE token_hash = $1
-		  AND status = 'PENDING'
+		  AND status = 'PENDING'::token_status
 		RETURNING clinic_id, status
 	)
 	UPDATE tbl_invoice_clinic
 	SET password = $2, updated_at = NOW()
 	FROM updated_token
 	WHERE tbl_invoice_clinic.id = updated_token.clinic_id
-	  AND updated_token.status = 'USED'`
+	  AND updated_token.status = 'USED'::token_status`
 
 	result, err := r.db.ExecContext(ctx, query, tokenHash, newPasswordHash)
 	if err != nil {
