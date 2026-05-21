@@ -56,7 +56,9 @@ func (s *service) Get(ctx context.Context, Id uuid.UUID) (RsContact, error) {
 }
 
 // List implements [Service].
-func (s *service) List(ctx context.Context, ft *Filter) (*util.RsList, error) {
+func (s *service) List(ctx context.Context, filter *Filter) (*util.RsList, error) {
+	ft := filter.MapToFilter()
+
 	contacts, err := s.repo.List(ctx)
 	if err != nil {
 		return nil, err

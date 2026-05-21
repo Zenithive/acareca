@@ -46,8 +46,10 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error) {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, ft *Filter) (*util.RsList, error) {
-	invoices, err := s.repo.List(ctx, ft.MapToFilter())
+func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error) {
+	ft := filter.MapToFilter()
+
+	invoices, err := s.repo.List(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
