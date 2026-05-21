@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS tbl_invoice_item (
 );
 
 -- Indexes for common query patterns
-CREATE INDEX idx_invoice_clinic_id   ON tbl_invoice(clinic_id)  WHERE deleted_at IS NULL;
-CREATE INDEX idx_invoice_status      ON tbl_invoice(status)     WHERE deleted_at IS NULL;
-CREATE INDEX idx_invoice_item_invoice ON tbl_invoice_item(invoice_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoice_clinic_id   ON tbl_invoice(clinic_id)  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoice_status      ON tbl_invoice(status)     WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoice_item_invoice ON tbl_invoice_item(invoice_id) WHERE deleted_at IS NULL;
 
 -- +goose StatementEnd
 

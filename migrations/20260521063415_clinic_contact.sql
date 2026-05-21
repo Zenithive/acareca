@@ -35,16 +35,16 @@ CREATE TABLE IF NOT EXISTS tbl_clinic_contact_person_address (
 );
 
 -- Only one primary address allowed per contact
-CREATE UNIQUE INDEX uq_contact_person_primary_address
+CREATE UNIQUE IF NOT EXISTS INDEX uq_contact_person_primary_address
     ON tbl_clinic_contact_person_address (contact_id)
     WHERE is_primary = TRUE AND deleted_at IS NULL;
 
 -- Common query indexes
-CREATE INDEX idx_contact_person_clinic_id
+CREATE INDEX IF NOT EXISTS idx_contact_person_clinic_id
     ON tbl_clinic_contact_person (clinic_id)
     WHERE deleted_at IS NULL;
 
-CREATE INDEX idx_contact_person_address_contact_id
+CREATE INDEX IF NOT EXISTS idx_contact_person_address_contact_id
     ON tbl_clinic_contact_person_address (contact_id)
     WHERE deleted_at IS NULL;
 
