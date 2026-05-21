@@ -2,8 +2,8 @@ package contact
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
-	contact := rg.Group("/contact")
+func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerFunc, roleMiddleware gin.HandlerFunc) {
+	contact := rg.Group("/contact", authMiddleware, roleMiddleware)
 
 	contact.POST("/", h.Create)
 	contact.GET("/", h.List)
