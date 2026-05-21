@@ -25,17 +25,18 @@ CREATE TABLE IF NOT EXISTS tbl_clinic_contact_person_address (
     state         VARCHAR(100) NOT NULL,
     postal_code   VARCHAR(20)  NOT NULL,
     country       VARCHAR(100) NOT NULL,
-    is_primary    BOOLEAN      NOT NULL DEFAULT FALSE,  -- avoid NULL on boolean
+    is_primary    BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at    TIMESTAMPTZ,
 
     CONSTRAINT fk_address_contact
-        FOREIGN KEY (contact_id) REFERENCES tbl_clinic_contact_person(id)
+        FOREIGN KEY (contact_id)
+        REFERENCES tbl_clinic_contact_person(id)
 );
 
 -- Only one primary address allowed per contact
-CREATE UNIQUE IF NOT EXISTS INDEX uq_contact_person_primary_address
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contact_person_primary_address
     ON tbl_clinic_contact_person_address (contact_id)
     WHERE is_primary = TRUE AND deleted_at IS NULL;
 
@@ -53,6 +54,8 @@ CREATE INDEX IF NOT EXISTS idx_contact_person_address_contact_id
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS tbl_clinic_contact_person_address;  -- child first
+
+DROP TABLE IF EXISTS tbl_clinic_contact_person_address;
 DROP TABLE IF EXISTS tbl_clinic_contact_person;
+
 -- +goose StatementEnd
