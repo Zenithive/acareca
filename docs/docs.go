@@ -4104,22 +4104,14 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
-        "/clinic/contact": {
-            "get": {
-=======
         "/clinic/change-password": {
             "put": {
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-<<<<<<< HEAD
-=======
                 "description": "Updates the password for the authenticated clinic",
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4127,7 +4119,62 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-<<<<<<< HEAD
+                    "invoice"
+                ],
+                "summary": "Change clinic password",
+                "parameters": [
+                    {
+                        "description": "Password Change Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqChangePassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/contact": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
                     "clinic"
                 ],
                 "summary": "List all contacts for a clinic",
@@ -4186,23 +4233,11 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Contact Data",
-=======
-                    "invoice"
-                ],
-                "summary": "Change clinic password",
-                "parameters": [
-                    {
-                        "description": "Password Change Data",
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-<<<<<<< HEAD
                             "$ref": "#/definitions/contact.RqContact"
-=======
-                            "$ref": "#/definitions/internal_modules_clinic_auth.RqChangePassword"
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     }
                 ],
@@ -4210,7 +4245,6 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-<<<<<<< HEAD
                             "allOf": [
                                 {
                                     "$ref": "#/definitions/response.RsBase"
@@ -4271,8 +4305,6 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-=======
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                             "$ref": "#/definitions/response.RsBase"
                         }
                     },
@@ -4282,15 +4314,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
-<<<<<<< HEAD
-=======
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -4300,7 +4323,6 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
         "/clinic/contact/{id}": {
             "get": {
                 "security": [
@@ -4308,11 +4330,6 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-=======
-        "/clinic/forgot-password": {
-            "post": {
-                "description": "Sends a reset link to the clinic's email if it exists",
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4320,7 +4337,6 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-<<<<<<< HEAD
                     "clinic"
                 ],
                 "summary": "Get a contact by ID",
@@ -4331,27 +4347,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-=======
-                    "invoice"
-                ],
-                "summary": "Initiate clinic password reset",
-                "parameters": [
-                    {
-                        "description": "Email",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_modules_clinic_auth.RqForgotPassword"
-                        }
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-<<<<<<< HEAD
                             "allOf": [
                                 {
                                     "$ref": "#/definitions/response.RsBase"
@@ -4365,9 +4366,6 @@ const docTemplate = `{
                                     }
                                 }
                             ]
-=======
-                            "$ref": "#/definitions/response.RsBase"
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     },
                     "400": {
@@ -4375,8 +4373,153 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
-<<<<<<< HEAD
-=======
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clinic"
+                ],
+                "summary": "Update a contact by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contact ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated Contact Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/contact.RqUpdateContact"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clinic"
+                ],
+                "summary": "Delete a contact by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contact ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/forgot-password": {
+            "post": {
+                "description": "Sends a reset link to the clinic's email if it exists",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Initiate clinic password reset",
+                "parameters": [
+                    {
+                        "description": "Email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_clinic_auth.RqForgotPassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
                     }
                 }
             }
@@ -4517,7 +4660,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     },
                     "500": {
                         "description": "Internal Server Error",
@@ -4533,10 +4675,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-<<<<<<< HEAD
-=======
                 "description": "Update the profile details of the authenticated clinic",
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4544,37 +4683,17 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-<<<<<<< HEAD
-                    "clinic"
-                ],
-                "summary": "Update a contact by ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contact ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Updated Contact Data",
-=======
                     "invoice"
                 ],
                 "summary": "Update clinic profile",
                 "parameters": [
                     {
                         "description": "Update Data",
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-<<<<<<< HEAD
-                            "$ref": "#/definitions/contact.RqUpdateContact"
-=======
                             "$ref": "#/definitions/auth.RqUpdateClinic"
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     }
                 ],
@@ -4582,11 +4701,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-<<<<<<< HEAD
-                            "$ref": "#/definitions/response.RsBase"
-=======
                             "$ref": "#/definitions/auth.RsClinicDetail"
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                         }
                     },
                     "400": {
@@ -4595,15 +4710,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
-<<<<<<< HEAD
-=======
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -4611,21 +4723,11 @@ const docTemplate = `{
                         }
                     }
                 }
-<<<<<<< HEAD
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-=======
             }
         },
         "/clinic/register": {
             "post": {
                 "description": "registers an isolated invoice clinic with its primary address and contacts",
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                 "consumes": [
                     "application/json"
                 ],
@@ -4633,18 +4735,6 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-<<<<<<< HEAD
-                    "clinic"
-                ],
-                "summary": "Delete a contact by ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contact ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-=======
                     "invoice"
                 ],
                 "summary": "Register a new invoice clinic",
@@ -4709,7 +4799,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/internal_modules_clinic_auth.RqResetPassword"
                         }
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
                     }
                 ],
                 "responses": {
@@ -4734,8 +4823,6 @@ const docTemplate = `{
                 }
             }
         },
-<<<<<<< HEAD
-=======
         "/clinic/verify": {
             "get": {
                 "description": "Validates the UUID token sent via email. If valid, marks the clinic as verified and the token as used.",
@@ -4777,7 +4864,6 @@ const docTemplate = `{
                 }
             }
         },
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
         "/clinic/{id}": {
             "get": {
                 "security": [
@@ -11897,6 +11983,13 @@ const docTemplate = `{
         },
         "contact.RqAddress": {
             "type": "object",
+            "required": [
+                "address1",
+                "city",
+                "country",
+                "postcode",
+                "state"
+            ],
             "properties": {
                 "address1": {
                     "type": "string"
@@ -11908,6 +12001,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "country": {
+                    "type": "string"
+                },
+                "id": {
                     "type": "string"
                 },
                 "postcode": {
@@ -11965,13 +12061,6 @@ const docTemplate = `{
         },
         "contact.RqUpdateContact": {
             "type": "object",
-            "required": [
-                "clinic_id",
-                "email",
-                "fname",
-                "lname",
-                "phone"
-            ],
             "properties": {
                 "abn": {
                     "type": "string"
@@ -12023,6 +12112,9 @@ const docTemplate = `{
                 "postcode": {
                     "type": "string"
                 },
+                "primary": {
+                    "type": "boolean"
+                },
                 "state": {
                     "type": "string"
                 },
@@ -12049,6 +12141,9 @@ const docTemplate = `{
                 "clinic_id": {
                     "type": "string"
                 },
+                "created_at": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -12065,6 +12160,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 },
                 "website": {

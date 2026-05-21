@@ -1623,12 +1623,20 @@ definitions:
         type: string
       country:
         type: string
+      id:
+        type: string
       postcode:
         type: string
       primary:
         type: boolean
       state:
         type: string
+    required:
+    - address1
+    - city
+    - country
+    - postcode
+    - state
     type: object
   contact.RqContact:
     properties:
@@ -1683,12 +1691,6 @@ definitions:
         type: string
       website:
         type: string
-    required:
-    - clinic_id
-    - email
-    - fname
-    - lname
-    - phone
     type: object
   contact.RsAddress:
     properties:
@@ -1700,6 +1702,8 @@ definitions:
         type: string
       postcode:
         type: string
+      primary:
+        type: boolean
       state:
         type: string
       street:
@@ -1717,6 +1721,8 @@ definitions:
         type: array
       clinic_id:
         type: string
+      created_at:
+        type: string
       email:
         type: string
       fname:
@@ -1728,6 +1734,8 @@ definitions:
       note:
         type: string
       phone:
+        type: string
+      updated_at:
         type: string
       website:
         type: string
@@ -5520,7 +5528,42 @@ paths:
       summary: Bulk update clinics
       tags:
       - clinic
-<<<<<<< HEAD
+  /clinic/change-password:
+    put:
+      consumes:
+      - application/json
+      description: Updates the password for the authenticated clinic
+      parameters:
+      - description: Password Change Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_clinic_auth.RqChangePassword'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Change clinic password
+      tags:
+      - invoice
   /clinic/contact:
     get:
       consumes:
@@ -5661,23 +5704,11 @@ paths:
         required: true
         type: string
       - description: Updated Contact Data
-=======
-  /clinic/change-password:
-    put:
-      consumes:
-      - application/json
-      description: Updates the password for the authenticated clinic
-      parameters:
-      - description: Password Change Data
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
         in: body
         name: request
         required: true
         schema:
-<<<<<<< HEAD
           $ref: '#/definitions/contact.RqUpdateContact'
-=======
-          $ref: '#/definitions/internal_modules_clinic_auth.RqChangePassword'
       produces:
       - application/json
       responses:
@@ -5689,8 +5720,34 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update a contact by ID
+      tags:
+      - clinic
+  /clinic/contact/address/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact Address ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -5699,9 +5756,9 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Change clinic password
+      summary: Delete a contact address by ID
       tags:
-      - invoice
+      - clinic
   /clinic/forgot-password:
     post:
       consumes:
@@ -5904,7 +5961,6 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/internal_modules_clinic_auth.RqResetPassword'
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
       produces:
       - application/json
       responses:
@@ -5920,21 +5976,6 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
-<<<<<<< HEAD
-      security:
-      - BearerToken: []
-      summary: Update a contact by ID
-      tags:
-      - clinic
-  /clinic/contact/address/{id}:
-    delete:
-      consumes:
-      - application/json
-      parameters:
-      - description: Contact Address ID
-        in: path
-        name: id
-=======
       summary: Reset clinic password using token
       tags:
       - invoice
@@ -5946,31 +5987,12 @@ paths:
       - description: Verification Token (UUID)
         in: query
         name: token
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
         required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-<<<<<<< HEAD
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Delete a contact address by ID
-      tags:
-      - clinic
-=======
           description: Email verified successfully
           schema:
             $ref: '#/definitions/response.RsBase'
@@ -5985,7 +6007,6 @@ paths:
       summary: Verify clinic email address
       tags:
       - invoice
->>>>>>> 8a84fc06bc463e9b1751a430bd1deb8a3527e811
   /coa/account-taxes:
     get:
       parameters:
