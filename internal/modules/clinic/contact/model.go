@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/samber/lo"
 )
 
@@ -215,4 +216,23 @@ func (c *Address) ToRsAddress() RsAddress {
 		PostalCode:   c.PostalCode,
 		Country:      c.Country,
 	}
+}
+
+type Filter struct {
+	ClinicID *uuid.UUID `form:"clinic_id"`
+	Fname    *string    `form:"fname"`
+	common.Filter
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	operators := map[string]common.Operator{}
+
+	// Name filter - partial match on full name
+	if filter.Fname != nil && *filter.Fname != "" {
+		filters["name"] = "%" + *filter.Fname + "%"
+		operators["name"] = common.OpLike
+	}
+
+	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }

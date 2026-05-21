@@ -5752,14 +5752,7 @@ paths:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/response.RsBase'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/contact.RsContact'
-                  type: array
-              type: object
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
           schema:
@@ -5973,14 +5966,7 @@ paths:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/response.RsBase'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/invoice.RsInvoice'
-                  type: array
-              type: object
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
           schema:

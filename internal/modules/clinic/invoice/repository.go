@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -15,7 +16,7 @@ type IRepository interface {
 	Update(ctx context.Context, invoice *Invoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*Invoice, error)
-	List(ctx context.Context) ([]*Invoice, error)
+	List(ctx context.Context, filter common.Filter) ([]*Invoice, error)
 }
 
 type Repository struct {
@@ -159,7 +160,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 }
 
 // List implements [IRepository].
-func (r *Repository) List(ctx context.Context) ([]*Invoice, error) {
+func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			id,

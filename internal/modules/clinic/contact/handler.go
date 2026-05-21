@@ -112,13 +112,18 @@ func (h *handler) Get(c *gin.Context) {
 // @Tags clinic
 // @Accept json
 // @Produce json
-// @Success 200 {object} response.RsBase{data=[]RsContact}
+// @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /clinic/contact [get]
 func (h *handler) List(c *gin.Context) {
-	contacts, err := h.svc.List(c)
+	var ft Filter
+	if err := util.BindAndValidate(c, &ft); err != nil {
+		response.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	contacts, err := h.svc.List(c, &ft)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

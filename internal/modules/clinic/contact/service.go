@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type IService interface {
@@ -12,7 +13,7 @@ type IService interface {
 	Update(ctx context.Context, contact RqUpdateContact) error
 	Delete(ctx context.Context, Id uuid.UUID) error
 	Get(ctx context.Context, Id uuid.UUID) (RsContact, error)
-	List(ctx context.Context) ([]RsContact, error)
+	List(ctx context.Context, filter *Filter) (*util.RsList, error)
 
 	DeleteAddressByID(ctx context.Context, Id uuid.UUID) error
 }
@@ -55,7 +56,7 @@ func (s *service) Get(ctx context.Context, Id uuid.UUID) (RsContact, error) {
 }
 
 // List implements [Service].
-func (s *service) List(ctx context.Context) ([]RsContact, error) {
+func (s *service) List(ctx context.Context, ft *Filter) (*util.RsList, error) {
 	contacts, err := s.repo.List(ctx)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,11 @@ func (s *service) List(ctx context.Context) ([]RsContact, error) {
 	for _, contact := range contacts {
 		rsContacts = append(rsContacts, contact.ToRsContact())
 	}
-	return rsContacts, nil
+
+	var rsList util.RsList
+
+	rsList.MapToList(rsContacts, len(rsContacts), *ft.Offset, *ft.Limit)
+	return &rsList, nil
 }
 
 // Update implements [Service].

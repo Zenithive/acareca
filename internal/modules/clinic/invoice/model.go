@@ -3,6 +3,7 @@ package invoice
 import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 type RqInvoice struct {
@@ -140,4 +141,22 @@ type RsInvoice struct {
 	Items         []*item.RsItem `json:"items,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 	UpdatedAt     string         `json:"updated_at"`
+}
+
+type Filter struct {
+	Name *string `form:"name,omitempty"`
+	common.Filter
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	operators := map[string]common.Operator{}
+
+	// Name filter - partial match on full name
+	if filter.Name != nil && *filter.Name != "" {
+		filters["name"] = "%" + *filter.Name + "%"
+		operators["name"] = common.OpLike
+	}
+
+	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }

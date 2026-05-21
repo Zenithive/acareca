@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type IService interface {
@@ -11,7 +12,7 @@ type IService interface {
 	Update(ctx context.Context, invoice *RqUpdateInvoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error)
-	List(ctx context.Context) ([]*RsInvoice, error)
+	List(ctx context.Context, ft *Filter) (*util.RsList, error)
 }
 
 type Service struct {
@@ -45,8 +46,8 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error) {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context) ([]*RsInvoice, error) {
-	invoices, err := s.repo.List(ctx)
+func (s *Service) List(ctx context.Context, ft *Filter) (*util.RsList, error) {
+	invoices, err := s.repo.List(ctx, ft.MapToFilter())
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +57,9 @@ func (s *Service) List(ctx context.Context) ([]*RsInvoice, error) {
 		rsInvoices = append(rsInvoices, invoice.ToRsInvoice())
 	}
 
-	return rsInvoices, nil
+	var rsList util.RsList
+	rsList.MapToList(rsInvoices, len(rsInvoices), *ft.Offset, *ft.Limit)
+	return &rsList, nil
 }
 
 // Update implements [IService].
