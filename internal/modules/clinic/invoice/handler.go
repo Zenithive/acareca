@@ -28,6 +28,16 @@ func NewHandler(svc IService) IHandler {
 }
 
 // Create implements [IHandler].
+// @Summary Create a new invoice for a clinic
+// @Tags invoice
+// @Accept json
+// @Produce json
+// @Param request body RqInvoice true "Invoice Data"
+// @Success 201 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/invoice [post]
 func (h *Handler) Create(c *gin.Context) {
 	var rq RqInvoice
 	if err := util.BindAndValidate(c, &rq); err != nil {
@@ -44,6 +54,16 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // Delete implements [IHandler].
+// @Summary Delete an invoice by ID
+// @Tags invoice
+// @Accept json
+// @Produce json
+// @Param id path string true "Invoice ID"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/invoice/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -60,6 +80,16 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 // Get implements [IHandler].
+// @Summary Get an invoice by ID
+// @Tags invoice
+// @Accept json
+// @Produce json
+// @Param id path string true "Invoice ID"
+// @Success 200 {object} response.RsBase{data=RsInvoice}
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/invoice/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -77,6 +107,15 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // List implements [IHandler].
+// @Summary List all invoices for a clinic
+// @Tags invoice
+// @Accept json
+// @Produce json
+// @Success 200 {object} response.RsBase{data=[]RsInvoice}
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/invoice [get]
 func (h *Handler) List(c *gin.Context) {
 	invoices, err := h.svc.List(c.Request.Context())
 	if err != nil {
@@ -88,6 +127,17 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Update implements [IHandler].
+// @Summary Update an invoice by ID
+// @Tags invoice
+// @Accept json
+// @Produce json
+// @Param id path string true "Invoice ID"
+// @Param request body RqUpdateInvoice true "Updated Invoice Data"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /clinic/invoice/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
 	var rq RqUpdateInvoice
 	if err := util.BindAndValidate(c, &rq); err != nil {
