@@ -83,6 +83,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		DocumentID:  req.DocumentID,
 		ABN:         req.ABN,
 		ACN:         req.ACN,
+		Verified:    false, // Explicitly set to false until email is verified
 	}
 
 	var createdClinic *Clinic
@@ -136,7 +137,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 			ClinicID:  createdClinic.ID,
 			Role:      createdClinic.Role,
 			Status:    TokenStatusPending,
-			ExpiresAt: time.Now().Add(10 * time.Hour),
+			ExpiresAt: time.Now().Add(24 * time.Hour), // 24 hours expiry
 		}
 
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
@@ -187,6 +188,11 @@ func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, erro
 
 	if err := util.CompareHash(req.Password, *clinic.Password); err != nil {
 		return nil, ErrInvalidPassword
+	}
+
+	// Check if email is verified
+	if !clinic.Verified {
+		return nil, errors.New("email not verified. Please check your email for the verification link")
 	}
 
 	meta := auditctx.GetMetadata(ctx)
@@ -450,7 +456,7 @@ func (s *service) sendVerificationEmail(to string, clinicName string, tokenID uu
 	}
 
 	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
-	expiryTime := "10 minutes"
+	expiryTime := "24 hours"
 
 	payload := map[string]interface{}{
 		"from":    "Acareca <hardik@zenithive.digital>",

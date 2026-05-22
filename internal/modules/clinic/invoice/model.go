@@ -3,6 +3,7 @@ package invoice
 import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
 type RqInvoice struct {
@@ -24,7 +25,6 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		items = append(items, rqItem.ToItem())
 	}
 	return &Invoice{
-		ID:            uuid.New(),
 		ClinicID:      r.ClinicID,
 		TemplateID:    r.TemplateID,
 		Name:          r.Name,
@@ -39,7 +39,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 }
 
 type RqUpdateInvoice struct {
-	ID            uuid.UUID            `json:"id" validate:"required"`
+	ID            uuid.UUID            `json:"id" validate:"-"`
 	TemplateID    *uuid.UUID           `json:"template_id,omitempty"`
 	Name          *string              `json:"name,omitempty"`
 	InvoiceNumber *string              `json:"invoice_number,omitempty"`
@@ -52,6 +52,7 @@ type RqUpdateInvoice struct {
 }
 
 func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
+	inv.ID = r.ID
 	if r.TemplateID != nil {
 		inv.TemplateID = *r.TemplateID
 	}
@@ -79,8 +80,8 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	if r.Items != nil {
 		items := make([]*item.Item, 0, len(r.Items))
 		for _, rqItem := range r.Items {
-			var item item.RqItem
-			items = append(items, rqItem.ApplyToItem(item.ToItem()))
+			invoiceItem := &item.Item{ID: rqItem.ID}
+			items = append(items, rqItem.ApplyToItem(invoiceItem))
 		}
 		inv.Items = items
 	}
@@ -140,4 +141,22 @@ type RsInvoice struct {
 	Items         []*item.RsItem `json:"items,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 	UpdatedAt     string         `json:"updated_at"`
+}
+
+type Filter struct {
+	Name *string `form:"name,omitempty"`
+	common.Filter
+}
+
+func (filter *Filter) MapToFilter() common.Filter {
+	filters := map[string]interface{}{}
+	operators := map[string]common.Operator{}
+
+	// Name filter - partial match on full name
+	if filter.Name != nil && *filter.Name != "" {
+		filters["name"] = "%" + *filter.Name + "%"
+		operators["name"] = common.OpLike
+	}
+
+	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }

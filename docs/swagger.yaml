@@ -1613,6 +1613,133 @@ definitions:
       is_unique:
         type: boolean
     type: object
+  contact.RqAddress:
+    properties:
+      address1:
+        type: string
+      address2:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      id:
+        type: string
+      postcode:
+        type: string
+      primary:
+        type: boolean
+      state:
+        type: string
+    required:
+    - address1
+    - city
+    - country
+    - postcode
+    - state
+    type: object
+  contact.RqContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          $ref: '#/definitions/contact.RqAddress'
+        type: array
+      clinic_id:
+        type: string
+      email:
+        type: string
+      fname:
+        type: string
+      lname:
+        type: string
+      note:
+        type: string
+      phone:
+        type: string
+      website:
+        type: string
+    required:
+    - clinic_id
+    - email
+    - fname
+    - lname
+    - phone
+    type: object
+  contact.RqUpdateContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          $ref: '#/definitions/contact.RqAddress'
+        type: array
+      clinic_id:
+        type: string
+      email:
+        type: string
+      fname:
+        type: string
+      id:
+        type: string
+      lname:
+        type: string
+      note:
+        type: string
+      phone:
+        type: string
+      website:
+        type: string
+    type: object
+  contact.RsAddress:
+    properties:
+      city:
+        type: string
+      country:
+        type: string
+      id:
+        type: string
+      postcode:
+        type: string
+      primary:
+        type: boolean
+      state:
+        type: string
+      street:
+        type: string
+      street2:
+        type: string
+    type: object
+  contact.RsContact:
+    properties:
+      abn:
+        type: string
+      address:
+        items:
+          $ref: '#/definitions/contact.RsAddress'
+        type: array
+      clinic_id:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      fname:
+        type: string
+      id:
+        type: string
+      lname:
+        type: string
+      note:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        type: string
+      website:
+        type: string
+    type: object
   entry.RqDocument:
     properties:
       create:
@@ -2284,6 +2411,184 @@ definitions:
     required:
     - email
     - permissions
+    type: object
+  invoice.RqInvoice:
+    properties:
+      clinic_id:
+        type: string
+      due_date:
+        type: string
+      invoice_number:
+        type: string
+      issue_date:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/item.RqItem'
+        type: array
+      name:
+        type: string
+      payment_method:
+        enum:
+        - CASH
+        - CARD
+        - ONLINE
+        type: string
+      reference:
+        type: string
+      tax_method:
+        enum:
+        - EXCLUSIVE
+        - INCLUSIVE
+        type: string
+      template_id:
+        type: string
+    required:
+    - clinic_id
+    - invoice_number
+    - issue_date
+    - items
+    - name
+    - template_id
+    type: object
+  invoice.RqUpdateInvoice:
+    properties:
+      due_date:
+        type: string
+      id:
+        type: string
+      invoice_number:
+        type: string
+      issue_date:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/item.RqUpdateItem'
+        type: array
+      name:
+        type: string
+      payment_method:
+        enum:
+        - CASH
+        - CARD
+        - ONLINE
+        type: string
+      reference:
+        type: string
+      tax_method:
+        enum:
+        - EXCLUSIVE
+        - INCLUSIVE
+        type: string
+      template_id:
+        type: string
+    type: object
+  invoice.RsInvoice:
+    properties:
+      clinic_id:
+        type: string
+      created_at:
+        type: string
+      due_date:
+        type: string
+      id:
+        type: string
+      invoice_number:
+        type: string
+      issue_date:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/item.RsItem'
+        type: array
+      name:
+        type: string
+      payment_method:
+        type: string
+      reference:
+        type: string
+      tax_method:
+        type: string
+      template_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  item.RqItem:
+    properties:
+      description:
+        type: string
+      discount:
+        minimum: 0
+        type: number
+      name:
+        type: string
+      quantity:
+        type: integer
+      tax_amount:
+        minimum: 0
+        type: number
+      tax_rate:
+        minimum: 0
+        type: number
+      total_amount:
+        type: number
+      unit_price:
+        type: number
+    required:
+    - name
+    - quantity
+    - total_amount
+    - unit_price
+    type: object
+  item.RqUpdateItem:
+    properties:
+      description:
+        type: string
+      discount:
+        minimum: 0
+        type: number
+      id:
+        type: string
+      name:
+        type: string
+      quantity:
+        type: integer
+      tax_amount:
+        minimum: 0
+        type: number
+      tax_rate:
+        minimum: 0
+        type: number
+      total_amount:
+        type: number
+      unit_price:
+        type: number
+    required:
+    - id
+    type: object
+  item.RsItem:
+    properties:
+      description:
+        type: string
+      discount:
+        type: number
+      id:
+        type: string
+      invoice_id:
+        type: string
+      name:
+        type: string
+      quantity:
+        type: integer
+      tax_amount:
+        type: number
+      tax_rate:
+        type: number
+      total_amount:
+        type: number
+      unit_price:
+        type: number
     type: object
   notification.NotificationChannels:
     additionalProperties:
@@ -5437,6 +5742,194 @@ paths:
       summary: Change clinic password
       tags:
       - invoice
+  /clinic/contact:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all contacts for a clinic
+      tags:
+      - clinic
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/contact.RqContact'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/contact.RsContact'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new contact for a clinic
+      tags:
+      - clinic
+  /clinic/contact/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a contact by ID
+      tags:
+      - clinic
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/contact.RsContact'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get a contact by ID
+      tags:
+      - clinic
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated Contact Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/contact.RqUpdateContact'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update a contact by ID
+      tags:
+      - clinic
+  /clinic/contact/address/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contact Address ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a contact address by ID
+      tags:
+      - clinic
   /clinic/forgot-password:
     post:
       consumes:
@@ -5461,6 +5954,159 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Initiate clinic password reset
+      tags:
+      - invoice
+  /clinic/invoice:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: List all invoices for a clinic
+      tags:
+      - invoice
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invoice.RqInvoice'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new invoice for a clinic
+      tags:
+      - invoice
+  /clinic/invoice/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete an invoice by ID
+      tags:
+      - invoice
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/invoice.RsInvoice'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get an invoice by ID
+      tags:
+      - invoice
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated Invoice Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invoice.RqUpdateInvoice'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update an invoice by ID
       tags:
       - invoice
   /clinic/login:
