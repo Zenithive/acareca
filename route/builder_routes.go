@@ -65,7 +65,7 @@ func RegisterBuilderRoutes(
 	// Initialize services
 	versionSvc := version.NewService(dbConn, versionRepo, clinicSvc)
 	detailSvc := detail.NewService(dbConn, detailRepo, versionSvc, clinicRepo, invitationSvc)
-	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, versionSvc)
+	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, versionSvc, dbConn)
 	formulaSvc := formula.NewService(formulaRepo)
 	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc, invitationSvc, practitionerSvc, fyRepo)
 	formHandler := form.NewHandler(formSvc)

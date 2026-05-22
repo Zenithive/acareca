@@ -381,3 +381,33 @@ type CoaDetail struct {
 	GrossAmount   *float64  `json:"gross_amount"`
 	CreatedAt     time.Time `json:"created_at"`
 }
+
+type detailRow struct {
+	ID            uuid.UUID `db:"id"`
+	EntryID       uuid.UUID `db:"entry_id"`
+	FormFieldID   uuid.UUID `db:"form_field_id"`
+	CoaID         uuid.UUID `db:"coa_id"`
+	TaxTypeID     *int16    `db:"tax_type_id"`
+	FormID        uuid.UUID `db:"form_id"`
+	ClinicID      uuid.UUID `db:"clinic_id"`
+	VersionID     uuid.UUID `db:"version_id"`
+	FormFieldName string    `db:"form_field_name"`
+	CoaName       string    `db:"coa_name"`
+	TaxTypeName   *string   `db:"tax_type_name"`
+	FormName      string    `db:"form_name"`
+	FormMethod    string    `db:"form_method"`
+	ClinicName    string    `db:"clinic_name"`
+	NetAmount     *float64  `db:"net_amount"`
+	GstAmount     *float64  `db:"gst_amount"`
+	GrossAmount   *float64  `db:"gross_amount"`
+	CreatedAt     string    `db:"created_at"`
+	UpdatedAt     *string   `db:"updated_at"`
+}
+
+type row struct {
+	ID           uuid.UUID `db:"id"`
+	OriginalName string    `db:"original_name"`
+	FileKey      string    `db:"file_key"`
+	UploadedAt   *string   `db:"uploaded_at"`
+	CreatedAt    string    `db:"created_at"`
+}

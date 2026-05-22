@@ -396,7 +396,6 @@ func (h *handler) HandleExport(c *gin.Context) {
 		return
 	}
 
-	// Bind filters
 	var filter TransactionFilter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
