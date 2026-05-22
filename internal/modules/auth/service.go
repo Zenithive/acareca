@@ -88,7 +88,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		cfg:              cfg,
 		oauthConfig:      oauthCfg,
 		db:               db,
-		mailer:           mail.NewClient(cfg.ResendAPIKey, "Acareca <hardik@zenithive.digital>"),
+		mailer:           mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
 		practitionerSvc:  practitionerSvc,
 		auditSvc:         auditSvc,
 		invitationSvc:    invitationSvc,

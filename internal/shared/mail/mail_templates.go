@@ -17,17 +17,19 @@ const resendURL = "https://api.resend.com/emails"
 
 // Client sends transactional emails via the Resend API.
 type Client struct {
-	apiKey string
-	from   string
+	apiKey    string
+	fromEmail string
 }
 
-func NewClient(apiKey, from string) *Client {
-	return &Client{apiKey: apiKey, from: from}
+func NewClient(apiKey, fromEmail string) *Client {
+	return &Client{apiKey: apiKey, fromEmail: fromEmail}
 }
 
 func (c *Client) send(to, subject, html string) error {
+	from := fmt.Sprintf("Acareca <%s>", c.fromEmail)
+
 	payload := map[string]interface{}{
-		"from":    c.from,
+		"from":    from,
 		"to":      []string{to},
 		"subject": subject,
 		"html":    html,

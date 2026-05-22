@@ -64,7 +64,7 @@ func NewService(repo Repository, cfg *config.Config, notification notification.S
 		notification: notification,
 		auditSvc:     auditSvc,
 		db:           db,
-		mailer:       mail.NewClient(cfg.ResendAPIKey, "Acareca <hardik@zenithive.digital>"),
+		mailer:       mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
 	}
 }
 
