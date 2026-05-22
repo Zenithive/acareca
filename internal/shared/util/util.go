@@ -351,3 +351,19 @@ func ParseFlexibleDate(dateStr string) (time.Time, error) {
 
 	return tm, nil
 }
+
+func FormatDate(dateStr string) string {
+	if dateStr == "" || dateStr == "<nil>" {
+		return "-"
+	}
+	// Extract YYYY-MM-DD
+	input := dateStr
+	if len(dateStr) >= 10 {
+		input = dateStr[:10]
+	}
+	t, err := time.Parse("2006-01-02", input)
+	if err != nil {
+		return dateStr
+	}
+	return t.Format("02-01-2006")
+}

@@ -2,7 +2,7 @@ package entry
 
 import (
 	"errors"
-	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
@@ -210,80 +210,6 @@ type RsTransaction struct {
 	EntryDetail   []RsTransactionDetail `json:"entry_detail"`
 }
 
-type TransactionFilter struct {
-	ClinicID  *string `form:"clinic_id"`
-	FormID    *string `form:"form_id"`
-	CoaID     *string `form:"coa_id"`
-	TaxTypeID *int16  `form:"tax_type_id"`
-	StartDate *string `form:"start_date"`
-	EndDate   *string `form:"end_date"`
-	VersionID *string `form:"version_id"`
-	Status    *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Role      string  `form:"-"`
-	common.Filter
-}
-
-func (f *TransactionFilter) ToCommonFilter() common.Filter {
-	filters := map[string]interface{}{}
-	operators := map[string]common.Operator{}
-
-	if f.PractitionerID != nil {
-		filters["practitioner_id"] = *f.PractitionerID
-	}
-	if f.ClinicID != nil && *f.ClinicID != "" {
-		if id, err := uuid.Parse(*f.ClinicID); err == nil {
-			filters["clinic_id"] = id
-		}
-	}
-	if f.FormID != nil && *f.FormID != "" {
-		if id, err := uuid.Parse(*f.FormID); err == nil {
-			filters["form_id"] = id
-		}
-	}
-	if f.CoaID != nil && *f.CoaID != "" {
-		if id, err := uuid.Parse(*f.CoaID); err == nil {
-			filters["coa_id"] = id
-		}
-	}
-	if f.TaxTypeID != nil {
-		filters["tax_type_id"] = *f.TaxTypeID
-	}
-	if f.VersionID != nil && *f.VersionID != "" {
-		if id, err := uuid.Parse(*f.VersionID); err == nil {
-			filters["version_id"] = id
-		}
-	}
-	if f.Status != nil && *f.Status != "" {
-		filters["status"] = *f.Status
-	}
-
-	if f.StartDate != nil && *f.StartDate != "" {
-		filters["start_date"] = *f.StartDate
-		operators["start_date"] = common.OpGte
-	}
-	if f.EndDate != nil && *f.EndDate != "" {
-		filters["end_date"] = *f.EndDate
-		operators["end_date"] = common.OpLte
-	}
-
-	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset, f.SortBy, f.OrderBy)
-}
-
-func (f *Filter) MapToFilter() common.Filter {
-	filters := map[string]interface{}{}
-	if f.ClinicID != nil {
-		id, err := uuid.Parse(*f.ClinicID)
-		if err != nil {
-			log.Printf("failed to parse clinic id: %v", err)
-		}
-		filters["clinic_id"] = id
-	}
-
-	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset, f.SortBy, f.OrderBy)
-
-	return cf
-}
-
 type transactionFlatRow struct {
 	ID            uuid.UUID `db:"id"`
 	EntryID       uuid.UUID `db:"entry_id"`
@@ -367,4 +293,91 @@ type RsCoaExportItem struct {
 	TotalGrossAmount float64             `json:"total_gross_amount"`
 	EntryCount       int                 `json:"entry_count"`
 	Entries          []*RsCoaEntryDetail `json:"entries"`
+}
+
+type TransactionFilter struct {
+	PractitionerIds []uuid.UUID `form:"practitioner_ids"`
+	ClinicIDs       []uuid.UUID `form:"clinic_id"`
+	FormID          *string     `form:"form_id"`
+	CoaID           *string     `form:"coa_id"`
+	TaxTypeID       *int16      `form:"tax_type_id"`
+	StartDate       *string     `form:"start_date"`
+	EndDate         *string     `form:"end_date"`
+	VersionID       *string     `form:"version_id"`
+	Status          *string     `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Role            string      `form:"-"`
+	common.Filter
+}
+
+func (f *TransactionFilter) ToCommonFilter() common.Filter {
+	filters := map[string]interface{}{}
+	operators := map[string]common.Operator{}
+
+	if len(f.PractitionerIds) > 0 {
+		filters["practitioner_id"] = f.PractitionerIds
+		operators["practitioner_id"] = common.OpIn
+	}
+
+	if len(f.ClinicIDs) > 0 {
+		filters["clinic_id"] = f.ClinicIDs
+		operators["clinic_id"] = common.OpIn
+	}
+
+	if f.FormID != nil && *f.FormID != "" {
+		if id, err := uuid.Parse(*f.FormID); err == nil {
+			filters["form_id"] = id
+		}
+	}
+
+	if f.CoaID != nil && *f.CoaID != "" {
+		if id, err := uuid.Parse(*f.CoaID); err == nil {
+			filters["coa_id"] = id
+		}
+	}
+
+	if f.TaxTypeID != nil {
+		filters["tax_type_id"] = *f.TaxTypeID
+	}
+
+	if f.VersionID != nil && *f.VersionID != "" {
+		if id, err := uuid.Parse(*f.VersionID); err == nil {
+			filters["version_id"] = id
+		}
+	}
+
+	if f.Status != nil && *f.Status != "" {
+		filters["status"] = *f.Status
+	}
+
+	if f.StartDate != nil && *f.StartDate != "" {
+		filters["start_date"] = *f.StartDate
+		operators["start_date"] = common.OpGte
+	}
+
+	if f.EndDate != nil && *f.EndDate != "" {
+		filters["end_date"] = *f.EndDate
+		operators["end_date"] = common.OpLte
+	}
+
+	return common.NewFilter(f.Search, filters, operators, f.Limit, f.Offset, f.SortBy, f.OrderBy)
+}
+
+type CoaGroup struct {
+	CoaID            string       `json:"coa_id"`
+	CoaName          string       `json:"coa_name"`
+	TotalNetAmount   float64      `json:"total_net_amount"`
+	TotalGrossAmount float64      `json:"total_gross_amount"`
+	Details          []*CoaDetail `json:"details"`
+}
+
+// CoaDetail represents the individual transaction lines
+type CoaDetail struct {
+	FormFieldName string    `json:"form_field_name"`
+	TaxTypeName   *string   `json:"tax_type_name"`
+	FormName      string    `json:"form_name"`
+	ClinicName    string    `json:"clinic_name"`
+	NetAmount     *float64  `json:"net_amount"`
+	GstAmount     *float64  `json:"gst_amount"`
+	GrossAmount   *float64  `json:"gross_amount"`
+	CreatedAt     time.Time `json:"created_at"`
 }

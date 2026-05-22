@@ -134,19 +134,19 @@ func (f *Filter) MapToFilter() (common.Filter, error) {
 	}
 
 	if f.FormName != nil {
-
+		filters["form_name"] = f.FormName
 	}
 
-	if f.FormName != nil {
-
+	if f.PractitionerID != nil {
+		filters["practitioner_id"] = f.PractitionerID
 	}
 
 	if f.Method != nil {
-
+		filters["method"] = f.Method
 	}
 
 	if f.Status != nil {
-
+		filters["status"] = f.Status
 	}
 
 	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset, f.SortBy, f.OrderBy)

@@ -94,7 +94,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 			if v.NetAmount != nil {
 				incomeSum += *v.NetAmount
 			}
-			if f.TaxType != nil && *f.TaxType == field.TaxTypeManual && v.GstAmount != nil {
+			if f.TaxType != nil && *f.TaxType == util.TaxTypeManual && v.GstAmount != nil {
 				incomeGST += *v.GstAmount
 			}
 
@@ -1051,8 +1051,8 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 			if err != nil {
 				return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
 			}
-			netVal := taxResult.Amount       // derived: Gross - GST
-			gstVal := taxResult.GstAmount    // as entered
+			netVal := taxResult.Amount        // derived: Gross - GST
+			gstVal := taxResult.GstAmount     // as entered
 			grossVal := taxResult.TotalAmount // as entered (Gross)
 
 			payload.displaynet = netVal

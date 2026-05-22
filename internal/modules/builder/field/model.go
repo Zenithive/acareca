@@ -230,3 +230,64 @@ type RsFormField struct {
 	CreatedAt             string       `json:"created_at"`
 	UpdatedAt             string       `json:"updated_at"`
 }
+
+// fieldRow is used to scan field + coa join results.
+type fieldRow struct {
+	ID                    uuid.UUID  `db:"id"`
+	FormVersionID         uuid.UUID  `db:"form_version_id"`
+	FieldKey              string     `db:"field_key"`
+	Slug                  *string    `db:"slug"`
+	Label                 string     `db:"label"`
+	IsComputed            bool       `db:"is_computed"`
+	SectionType           *string    `db:"section_type"`
+	PaymentResponsibility *string    `db:"payment_responsibility"`
+	TaxType               *string    `db:"tax_type"`
+	CoaID                 *uuid.UUID `db:"coa_id"`
+	SortOrder             int        `db:"sort_order"`
+	CreatedAt             string     `db:"created_at"`
+	UpdatedAt             string     `db:"updated_at"`
+	IsFormula             bool       `db:"is_formula"`
+	IsHighlighted         bool       `db:"is_highlighted"`
+	BusinessUse           *float64   `db:"business_use"`
+	Amount                *float64   `db:"amount"`
+	CoaCode               *int16     `db:"coa_code"`
+	CoaName               *string    `db:"coa_name"`
+	CoaAccountTypeID      *int16     `db:"coa_account_type_id"`
+	CoaAccountTaxID       *int16     `db:"coa_account_tax_id"`
+}
+
+func (r *fieldRow) toFormField() *FormField {
+	return &FormField{
+		ID:                    r.ID,
+		FormVersionID:         r.FormVersionID,
+		FieldKey:              r.FieldKey,
+		Slug:                  r.Slug,
+		Label:                 r.Label,
+		IsComputed:            r.IsComputed,
+		SectionType:           r.SectionType,
+		PaymentResponsibility: r.PaymentResponsibility,
+		IsHighlighted:         r.IsHighlighted,
+		TaxType:               r.TaxType,
+		CoaID:                 r.CoaID,
+		SortOrder:             r.SortOrder,
+		CreatedAt:             r.CreatedAt,
+		UpdatedAt:             r.UpdatedAt,
+		IsFormula:             r.IsFormula,
+		BusinessUse:           r.BusinessUse,
+		Amount:                r.Amount,
+	}
+}
+
+func (r *fieldRow) toRs() *RsFormField {
+	rs := r.toFormField().ToRs()
+	if r.CoaCode != nil && r.CoaName != nil && r.CoaID != nil {
+		rs.Coa = &RsCoaDetail{
+			ID:            *r.CoaID,
+			Code:          *r.CoaCode,
+			Name:          *r.CoaName,
+			AccountTypeID: *r.CoaAccountTypeID,
+			AccountTaxID:  *r.CoaAccountTaxID,
+		}
+	}
+	return rs
+}

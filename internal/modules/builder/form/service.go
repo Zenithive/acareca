@@ -451,7 +451,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			if err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, practitionerID, formField)
+			created, err := s.fieldSvc.Create(ctx, activeVersionID, &req.ClinicID, &practitionerID, formField)
 			if err != nil {
 				return err
 			}
@@ -822,7 +822,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId *uuid
 			entryValues = append(entryValues, entryValue)
 		}
 
-		if err := s.entryRepo.Create(ctx, formEntry, entryValues); err != nil {
+		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
 		}
 
@@ -998,7 +998,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 		// Handle deletions
 		for _, fieldID := range rq.Delete {
-			if err := s.fieldSvc.DeleteTx(ctx, tx, fieldID); err != nil {
+			if err := s.fieldSvc.Delete(ctx, fieldID); err != nil {
 				return fmt.Errorf("failed to delete field %s: %w", fieldID, err)
 			}
 		}
@@ -1097,7 +1097,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Amount:      &amount,
 			}
 
-			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
+			if _, err := s.fieldSvc.Update(ctx, item.ID, uuid.Nil, &practitionerID, &updateFieldReq); err != nil {
 				return fmt.Errorf("failed to update field: %w", err)
 			}
 
@@ -1197,7 +1197,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Amount:      &item.Amount,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, practitionerID, formFields)
+			rsField, err := s.fieldSvc.Create(ctx, activeVersionID, nil, &practitionerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create new field: %w", err)
 			}

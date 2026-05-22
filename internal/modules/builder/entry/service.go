@@ -38,7 +38,7 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
+	List(ctx context.Context, formVersionID uuid.UUID, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
@@ -55,6 +55,7 @@ type IService interface {
 }
 
 type Service struct {
+	db              *sqlx.DB
 	repo            IRepository
 	fieldRepo       field.IRepository
 	methodSvc       method.IService
@@ -76,15 +77,13 @@ type Service struct {
 }
 
 func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
+	return &Service{db: db, repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
 }
 
 // Create implements [IService].
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
-	// Permission checks are handled by middleware
 
-	// Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 	if err != nil {
 		return nil, err
@@ -96,20 +95,18 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		return nil, err
 	}
 
-	// Financial Year Validation
 	if req.Date != nil && *req.Date != "" {
-		parsedDate, err := time.Parse("2006-01-02", *req.Date)
+		date, err := util.ParseFlexibleDate(*req.Date)
 		if err != nil {
 			return nil, fmt.Errorf("invalid date format: %w", err)
 		}
 
-		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		_, err = s.financialRepo.GetFinancialYearByDate(ctx, date)
 		if err != nil {
-			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+			return nil, fmt.Errorf("the date %s does not fall within an active financial year", date.Format("02-01-2006"))
 		}
 	}
 
-	// Validate lock date before creating entry
 	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
 		return nil, err
 	}
@@ -136,34 +133,43 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.Create(ctx, e, values); err != nil {
+
+	var formEntry *FormEntry
+	var entryValues []*FormEntryValue
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.Create(ctx, tx, e, values); err != nil {
+			return err
+		}
+
+		// Link documents if provided
+		if req.Documents != nil && len(req.Documents.Create) > 0 {
+			docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+			if parseErr != nil {
+				return fmt.Errorf("invalid document id: %w", parseErr)
+			}
+
+			if linkErr := s.repo.LinkDocuments(ctx, tx, e.ID, docIDs); linkErr != nil {
+				return fmt.Errorf("link documents: %w", linkErr)
+			}
+
+		}
+		formEntry, entryValues, err = s.repo.GetByID(ctx, e.ID)
+		if err != nil {
+			return fmt.Errorf("fetch entry after create: %w", err)
+		}
+
+		formEntry, entryValues, err = s.repo.GetByID(ctx, e.ID)
+		if err != nil {
+			return fmt.Errorf("fetch entry after create: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	// Link documents if provided
-	if req.Documents != nil && len(req.Documents.Create) > 0 {
-		docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
-		if parseErr != nil {
-			return nil, fmt.Errorf("invalid document id: %w", parseErr)
-		}
-		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
-		if txErr != nil {
-			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
-		}
-		if linkErr := s.repo.LinkDocuments(ctx, tx, e.ID, docIDs); linkErr != nil {
-			_ = tx.Rollback()
-			return nil, fmt.Errorf("link documents: %w", linkErr)
-		}
-		if txErr = tx.Commit(); txErr != nil {
-			return nil, fmt.Errorf("commit document links: %w", txErr)
-		}
-	}
-	created, vals, err := s.repo.GetByID(ctx, e.ID)
-	if err != nil {
-		return nil, fmt.Errorf("fetch entry after create: %w", err)
-	}
-
-	result := created.ToRs(vals)
+	result := formEntry.ToRs(entryValues)
 	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
 
@@ -190,7 +196,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	)
 
 	// Audit log: entry created
-	idStr := created.ID.String()
+	idStr := formEntry.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
 		UserID:     meta.UserID,
@@ -232,15 +238,12 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 
 // Update implements [IService].
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
-	// Permission checks are handled by middleware
-
 	existing, values, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	beforeState := existing.ToRs(values)
 
-	// Validate lock date - check both existing date and new date if provided
 	dateToCheck := existing.Date
 	if req.Date != nil {
 		dateToCheck = req.Date
@@ -248,14 +251,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 
 	// Financial Year Validation
 	if dateToCheck != nil && *dateToCheck != "" {
-		parsedDate, err := time.Parse("2006-01-02", *dateToCheck)
+		date, err := util.ParseFlexibleDate(*dateToCheck)
 		if err != nil {
 			return nil, fmt.Errorf("invalid date format: %w", err)
 		}
 
-		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		_, err = s.financialRepo.GetFinancialYearByDate(ctx, date)
 		if err != nil {
-			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+			return nil, fmt.Errorf("the date %s does not fall within an active financial year", date.Format("02-01-2006"))
 		}
 	}
 
@@ -276,8 +279,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		existing.Date = req.Date
 	}
 
-	// Start as nil. Only calculate if the request actually contains new values.
-	var valuesToUpdate []*FormEntryValue = nil
+	var valuesToUpdate []*FormEntryValue
 	if len(req.Values) > 0 {
 		valuesToUpdate, err = s.CalculateValues(ctx, existing.ID, req.Values)
 		if err != nil {
@@ -285,47 +287,42 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		}
 	}
 
-	// If valuesToUpdate is nil, the repo only updates the status.
-	if err := s.repo.Update(ctx, existing, valuesToUpdate); err != nil {
-		return nil, err
-	}
+	var formEntry *FormEntry
+	var entryValues []*FormEntryValue
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.Update(ctx, tx, existing, valuesToUpdate); err != nil {
+			return err
+		}
 
-	// Handle document create/delete ops
-	if req.Documents != nil {
-		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
-		if txErr != nil {
-			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
+		if req.Documents != nil {
+			if len(req.Documents.Create) > 0 {
+				docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+				if parseErr != nil {
+					return fmt.Errorf("invalid document id in create: %w", parseErr)
+				}
+				if linkErr := s.repo.LinkDocuments(ctx, tx, id, docIDs); linkErr != nil {
+					return fmt.Errorf("link documents: %w", linkErr)
+				}
+			}
+			if len(req.Documents.Delete) > 0 {
+				docIDs, parseErr := util.ParseUUIDs(req.Documents.Delete)
+				if parseErr != nil {
+					return fmt.Errorf("invalid document id in delete: %w", parseErr)
+				}
+				if unlinkErr := s.repo.UnlinkDocuments(ctx, tx, id, docIDs); unlinkErr != nil {
+					return fmt.Errorf("unlink documents: %w", unlinkErr)
+				}
+			}
 		}
-		defer func() { _ = tx.Rollback() }()
+		formEntry, entryValues, err = s.repo.GetByID(ctx, id)
+		if err != nil {
+			return fmt.Errorf("fetch entry after update: %w", err)
+		}
 
-		if len(req.Documents.Create) > 0 {
-			docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
-			if parseErr != nil {
-				return nil, fmt.Errorf("invalid document id in create: %w", parseErr)
-			}
-			if linkErr := s.repo.LinkDocuments(ctx, tx, id, docIDs); linkErr != nil {
-				return nil, fmt.Errorf("link documents: %w", linkErr)
-			}
-		}
-		if len(req.Documents.Delete) > 0 {
-			docIDs, parseErr := util.ParseUUIDs(req.Documents.Delete)
-			if parseErr != nil {
-				return nil, fmt.Errorf("invalid document id in delete: %w", parseErr)
-			}
-			if unlinkErr := s.repo.UnlinkDocuments(ctx, tx, id, docIDs); unlinkErr != nil {
-				return nil, fmt.Errorf("unlink documents: %w", unlinkErr)
-			}
-		}
-		if txErr = tx.Commit(); txErr != nil {
-			return nil, fmt.Errorf("commit document ops: %w", txErr)
-		}
-	}
-	updated, vals, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("fetch entry after update: %w", err)
-	}
+		return nil
+	})
 
-	result := updated.ToRs(vals)
+	result := formEntry.ToRs(entryValues)
 	s.attachFieldMetadata(ctx, result)
 	s.attachICCalculation(ctx, result)
 
@@ -419,9 +416,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
+func (s *Service) List(ctx context.Context, formVersionID uuid.UUID, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error) {
 	// Permission checks are handled by middleware
-	f := filter.MapToFilter()
+	f := filter.ToCommonFilter()
 
 	list, err := s.repo.ListByFormVersionID(ctx, formVersionID, f, actorID, role)
 	if err != nil {
@@ -897,15 +894,15 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 			continue
 		}
 		switch *f.SectionType {
-		case field.SectionTypeCollection:
+		case util.SectionTypeCollection:
 			if v.NetAmount != nil {
 				incomeSum += *v.NetAmount
 			}
-		case field.SectionTypeCost:
+		case util.SectionTypeCost:
 			if v.NetAmount != nil {
 				expenseSum += *v.NetAmount
 			}
-		case field.SectionTypeOtherCost:
+		case util.SectionTypeOtherCost:
 			if v.NetAmount != nil {
 				otherCostSum += *v.NetAmount
 			}
@@ -1010,7 +1007,6 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 
 // ListCoaEntries implements [IService] - returns grouped COA rows for parent grid
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	// --- AUDIT LOG ---
 	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
@@ -1082,7 +1078,6 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 		return nil, fmt.Errorf("invalid coa_id: %w", err)
 	}
 
-	// Get the name so we can aggregate sibling accounts
 	coaName, err := s.repo.GetCoaNameByID(ctx, coaUUID)
 	if err != nil {
 		return nil, fmt.Errorf("find coa name: %w", err)
@@ -1105,7 +1100,6 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 }
 
 func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error) {
-	// Fetch Shared Data
 	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 	if err != nil {
 		return nil, "", err
@@ -1131,34 +1125,17 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 
 	var practitionerABN string
 	if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
-		// pracUUID, _ := uuid.Parse(*f.PractitionerID.String())
 		prac, _ := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
 		if prac != nil && prac.ABN != nil {
 			practitionerABN = *prac.ABN
 		}
 	}
 
-	formatDateHelper := func(dateStr string) string {
-		if dateStr == "" || dateStr == "<nil>" {
-			return "-"
-		}
-		// Extract YYYY-MM-DD
-		input := dateStr
-		if len(dateStr) >= 10 {
-			input = dateStr[:10]
-		}
-		t, err := time.Parse("2006-01-02", input)
-		if err != nil {
-			return dateStr
-		}
-		return t.Format("02-01-2006")
-	}
-
 	var period string
 	if f.StartDate != nil && *f.StartDate != "" && f.EndDate != nil && *f.EndDate != "" {
-		period = fmt.Sprintf("%s to %s", formatDateHelper(*f.StartDate), formatDateHelper(*f.EndDate))
+		period = fmt.Sprintf("%s to %s", util.FormatDate(*f.StartDate), util.FormatDate(*f.EndDate))
 	} else if f.EndDate != nil && *f.EndDate != "" {
-		period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
+		period = fmt.Sprintf("As of %s", util.FormatDate(*f.EndDate))
 	}
 
 	// Handle HTML Export
@@ -1175,14 +1152,13 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			Period:   period,
 		}
 
-		htmlContent, err := s.generateTransactionHTML(data, formatDateHelper)
+		htmlContent, err := s.generateTransactionHTML(data, util.FormatDate)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to generate html: %w", err)
 		}
 		result = htmlContent
 		contentType = "text/html"
 	} else {
-		// Handle Excel Export
 		buf, err := s.generateExcelReport(ctx, f, actorID, role, fullName, practitionerABN, period)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to generate excel: %w", err)
@@ -1191,23 +1167,15 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
 
-	// Resolve target practitioners for Notifications
 	targetNotifIDs := PracIDs
 
-	// If clinic_id is provided, we narrow down the notification to ONLY the owner of that clinic
-	if f.ClinicID != nil {
-		clinicUUID, err := uuid.Parse(*f.ClinicID)
+	for _, id := range f.ClinicIDs {
+		clinic, err := s.clinicRepo.GetClinicByID(ctx, id)
 		if err == nil {
-			// Get the clinic to find the practitioner_id
-			clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicUUID)
-			if err == nil {
-				// Set the notification target to just this owner
-				targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
-			}
+			targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
 		}
 	}
 
-	// --- AUDIT LOG ---
 	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
@@ -1255,19 +1223,6 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 	if err != nil {
 		return nil, err
 	}
-
-	formatDate := func(dateStr string) string {
-		if len(dateStr) < 10 {
-			return dateStr
-		}
-		t, err := time.Parse("2006-01-02", dateStr[:10])
-		if err != nil {
-			return dateStr
-		}
-		return t.Format("02-01-2006")
-	}
-
-	// --- FETCH METADATA ---
 
 	xl := excelize.NewFile()
 	defer xl.Close()
@@ -1380,7 +1335,7 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 
 		// --- 5. INDIVIDUAL TRANSACTIONS ---
 		for _, d := range details {
-			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), formatDate(d.CreatedAt))
+			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), util.FormatDate(d.CreatedAt))
 			xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), "  "+d.FormFieldName)
 			xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), getString(d.TaxTypeName))
 			xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), getString(d.FormName))
@@ -1429,37 +1384,29 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 }
 
 func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string, createdAt *string) error {
-
 	var dateString string
 	if entryDate != nil && *entryDate != "" {
 		dateString = *entryDate
 	} else if createdAt != nil && *createdAt != "" {
-
 		dateString = (*createdAt)[:10]
-	} else {
-
-		return nil
 	}
 
-	// 2. Fetch settings based on PractitionerID instead of ClinicID
 	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, practitionerID)
 	if err != nil {
 		return fmt.Errorf("failed to get practitioner financial settings: %w", err)
 	}
 
-	// 3. Check if settings or lock date exist
 	if financialSettings == nil || financialSettings.LockDate == nil {
 		return nil
 	}
 
-	// 4. Parse the entry date
-	parsedEntryDate, err := time.Parse("2006-01-02", dateString)
+	date, err := util.ParseFlexibleDate(dateString)
 	if err != nil {
 		return fmt.Errorf("invalid entry date format: %w", err)
 	}
 
 	lockDate := financialSettings.LockDate.UTC().Truncate(24 * time.Hour)
-	entryDateOnly := parsedEntryDate.UTC().Truncate(24 * time.Hour)
+	entryDateOnly := date.UTC().Truncate(24 * time.Hour)
 
 	if entryDateOnly.Before(lockDate) || entryDateOnly.Equal(lockDate) {
 		return fmt.Errorf("cannot modify entries on or before the lock date (%s)",
@@ -1590,26 +1537,6 @@ const reportTemplate = `
 </html>
 `
 
-type CoaGroup struct {
-	CoaID            string       `json:"coa_id"`
-	CoaName          string       `json:"coa_name"`
-	TotalNetAmount   float64      `json:"total_net_amount"`
-	TotalGrossAmount float64      `json:"total_gross_amount"`
-	Details          []*CoaDetail `json:"details"` // We will nest the details here
-}
-
-// CoaDetail represents the individual transaction lines
-type CoaDetail struct {
-	FormFieldName string    `json:"form_field_name"`
-	TaxTypeName   *string   `json:"tax_type_name"` // Pointer to handle nulls
-	FormName      string    `json:"form_name"`
-	ClinicName    string    `json:"clinic_name"`
-	NetAmount     *float64  `json:"net_amount"`
-	GstAmount     *float64  `json:"gst_amount"`
-	GrossAmount   *float64  `json:"gross_amount"`
-	CreatedAt     time.Time `json:"created_at"`
-}
-
 func (s *Service) generateTransactionHTML(data interface{}, dateHelper func(string) string) (string, error) {
 	tmpl, err := template.New("pdf").Funcs(template.FuncMap{
 		"getFloat": func(f *float64) float64 {
@@ -1644,9 +1571,6 @@ func (s *Service) generateTransactionHTML(data interface{}, dateHelper func(stri
 func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error) {
 	f := filter.ToCommonFilter()
 
-	// 1. Fetch the COA Summaries (The parent groups)
-	// We set limit to -1 or a large number to get all groups for export
-	f.Limit = lo.ToPtr(1000)
 	coaSummaries, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1654,10 +1578,7 @@ func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionF
 
 	exportItems := make([]*RsCoaExportItem, 0, len(coaSummaries))
 
-	// 2. For each COA group, fetch the individual entries
 	for _, summary := range coaSummaries {
-		// Use the existing Detail repo method
-		// Note: We use summary.CoaName because your repo method ListCoaEntryDetails uses Name
 		details, err := s.repo.ListCoaEntryDetails(ctx, summary.CoaName, f, actorID, role)
 		if err != nil {
 			log.Printf("Error fetching details for COA %s: %v", summary.CoaName, err)

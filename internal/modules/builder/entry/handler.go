@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -60,14 +59,10 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-
-	// Get ID based on who is logged in
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
+	var actorID *uuid.UUID
+	if actorID, _, ok = util.GetRoleBasedID(c); !ok {
+		response.Error(c, http.StatusBadRequest, nil)
+		return
 	}
 
 	var req RqFormEntry
@@ -76,7 +71,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &actorID, actorID)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, actorID, *actorID)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -136,15 +131,9 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	// Get ID based on who is logged in
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-	if !ok {
+	var actorID *uuid.UUID
+	if actorID, _, ok = util.GetRoleBasedID(c); !ok {
+		response.Error(c, http.StatusBadRequest, nil)
 		return
 	}
 
@@ -154,7 +143,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.svc.Update(c.Request.Context(), id, &req, &actorID)
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, actorID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -217,29 +206,20 @@ func (h *handler) List(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	if strings.EqualFold(role, util.RoleAccountant) {
-		id, ok := util.GetAccountantID(c)
-		if !ok {
-			return
-		}
-		actorID = id
-	} else {
-		id, ok := util.GetPractitionerID(c)
-		if !ok {
-			return
-		}
-		actorID = id
+	var actorID *uuid.UUID
+	var role string
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
+		response.Error(c, http.StatusBadRequest, nil)
+		return
 	}
 
-	var filter Filter
+	var filter TransactionFilter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	list, err := h.svc.List(c.Request.Context(), versionID, filter, actorID, role)
+	list, err := h.svc.List(c.Request.Context(), versionID, filter, *actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -251,12 +231,14 @@ func (h *handler) List(c *gin.Context) {
 // @Description Returns flat rows (one per entry value) enriched with clinic, form, COA, and tax data
 // @Tags entry
 // @Produce json
+// @Param practitioner_ids query []string false "Filter by practitioner IDs" collectionFormat(multi)
 // @Param clinic_id query string false "Filter by clinic ID"
 // @Param form_id query string false "Filter by form ID"
 // @Param coa_id query string false "Filter by COA ID"
 // @Param tax_type_id query int false "Filter by account tax ID"
-// @Param date_from query string false "Filter entries created after this date (RFC3339)"
-// @Param date_to query string false "Filter entries created before this date (RFC3339)"
+// @Param start_date query string false "Filter entries created after this date (RFC3339)"
+// @Param end_date query string false "Filter entries created before this date (RFC3339)"
+// @Param version_id query string false "Filter by version ID"
 // @Param status query string false "Filter by status (DRAFT, SUBMITTED)"
 // @Param limit query int false "Page size (default 10, max 100)"
 // @Param offset query int false "Offset"
@@ -266,20 +248,13 @@ func (h *handler) List(c *gin.Context) {
 // @Security BearerToken
 // @Router /entry/transactions [get]
 func (h *handler) ListTransactions(c *gin.Context) {
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	if strings.EqualFold(role, util.RoleAccountant) {
-		id, ok := util.GetAccountantID(c)
-		if !ok {
-			return
-		}
-		actorID = id
-	} else {
-		id, ok := util.GetPractitionerID(c)
-		if !ok {
-			return
-		}
-		actorID = id
+	var actorID *uuid.UUID
+	var role string
+	var ok bool
+
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
+		response.Error(c, http.StatusBadRequest, nil)
+		return
 	}
 
 	var filter TransactionFilter
@@ -288,58 +263,20 @@ func (h *handler) ListTransactions(c *gin.Context) {
 		return
 	}
 
-	// Handle PractitionerID with JSON array format parsing
-	if role == util.RoleAccountant {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
-			pID, err := uuid.Parse(cleanedStr)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, err)
-				return
-			}
-			filter.PractitionerID = &pID
-		}
-	} else {
-		filter.PractitionerID = &actorID
+	filter.Role = role
+
+	if role != util.RoleAccountant {
+		filter.PractitionerIds = []uuid.UUID{*actorID}
 	}
 
-	list, err := h.svc.ListTransactions(c.Request.Context(), filter, actorID, role)
+	list, err := h.svc.ListTransactions(c.Request.Context(), filter, *actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
-	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
+
+	response.JSON(c, http.StatusOK, list, "Transactions fetched successfully")
 }
-
-// // @Summary Get summed values for a specific field
-// // @Description Returns the total net, gst, and gross amounts for all active entries of a field
-// // @Tags entry
-// // @Produce json
-// // @Param field_id path string true "Form Field ID"
-// // @Success 200 {object} RsFieldSummary
-// // @Failure 400 {object} response.RsError
-// // @Failure 404 {object} response.RsError
-// // @Failure 500 {object} response.RsError
-// // @Security BearerToken
-// // @Router /entry/{field_id}/summary [get]
-// func (h *handler) GetFieldSummary(c *gin.Context) {
-// 	fieldID, ok := util.ParseUuidID(c, "field_id")
-// 	if !ok {
-// 		return
-// 	}
-
-// 	summary, err := h.svc.GetFieldSummary(c.Request.Context(), fieldID)
-// 	if err != nil {
-// 		if errors.Is(err, ErrNotFound) {
-// 			response.Error(c, http.StatusNotFound, err)
-// 			return
-// 		}
-// 		response.Error(c, http.StatusInternalServerError, err)
-// 		return
-// 	}
-
-// 	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
-// }
 
 // @Summary List grouped COA entries (parent grid)
 // @Description Returns one row per COA with aggregated amounts and entry counts
@@ -373,27 +310,11 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 		return
 	}
 
-	if role == util.RoleAccountant {
-		if filter.PractitionerID != nil {
-			pracIDStr := c.Query("practitioner_id")
-			// Handle JSON-encoded array format: ["uuid-value"]
-			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
-			pID, err := uuid.Parse(cleanedStr)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, err)
-				return
-			}
-			filter.PractitionerID = &pID
-		}
-	} else {
-		filter.PractitionerID = actorID
-	}
-	if filter.ClinicID != nil {
-		cleanID := strings.Trim(*filter.ClinicID, "[]\" ")
-		filter.ClinicID = &cleanID
-	}
-
 	filter.Role = role
+
+	if role != util.RoleAccountant {
+		filter.PractitionerIds = []uuid.UUID{*actorID}
+	}
 
 	result, err := h.svc.ListCoaEntries(c.Request.Context(), filter, *actorID, role, userID)
 	if err != nil {
@@ -485,21 +406,10 @@ func (h *handler) HandleExport(c *gin.Context) {
 
 	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
 
-	if role == util.RoleAccountant {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			cleanID := strings.Trim(pracIDStr, "[]\" ")
-			pracUUID, err := uuid.Parse(cleanID)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
-				return
-			}
-			notifIDs = []uuid.UUID{pracUUID}
-			filter.PractitionerID = &pracUUID
-		}
-	} else {
-		// Practitioner: scope to self, no shared events
-		notifIDs = nil
-		filter.PractitionerID = actorID
+	filter.Role = role
+
+	if role != util.RoleAccountant {
+		filter.PractitionerIds = []uuid.UUID{*actorID}
 	}
 
 	// Get export type from query (default to excel)
@@ -532,7 +442,6 @@ func (h *handler) HandleExport(c *gin.Context) {
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Header("Cache-Control", "no-cache")
 
-	// 7. Write Data
 	c.Data(http.StatusOK, contentType, buf.Bytes())
 }
 
@@ -558,17 +467,12 @@ func (h *handler) HandleExport(c *gin.Context) {
 func (h *handler) ExportTransactions(c *gin.Context) {
 	actorID, role, _ := util.GetRoleBasedID(c)
 
-	// Apply the "Manual Clean" logic we discussed to avoid the 400 UUID error
 	var filter TransactionFilter
-	if rawID := c.Query("practitioner_id"); rawID != "" {
-		cleanID := strings.Trim(rawID, "[]\" ")
-		if u, err := uuid.Parse(cleanID); err == nil {
-			filter.Filter.PractitionerID = &u
-		}
-		// Remove from query to prevent BindAndValidate crash
-		q := c.Request.URL.Query()
-		q.Del("practitioner_id")
-		c.Request.URL.RawQuery = q.Encode()
+
+	filter.Role = role
+
+	if role != util.RoleAccountant {
+		filter.PractitionerIds = []uuid.UUID{*actorID}
 	}
 
 	if err := util.BindAndValidate(c, &filter); err != nil {

@@ -9,6 +9,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -19,14 +20,12 @@ type IService interface {
 	Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID *uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error)
-	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error)
-	UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
-	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 }
 
 const MaxFieldsPerVersion = 200
 
 type Service struct {
+	db              *sqlx.DB
 	repo            IRepository
 	coaSvc          coa.Service
 	clinicSvc       clinic.Service
@@ -34,46 +33,58 @@ type Service struct {
 	versionSvc      version.IService
 }
 
-func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, practitionerSvc practitioner.IService, versionSvc version.IService) IService {
+func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, practitionerSvc practitioner.IService, versionSvc version.IService, db *sqlx.DB) IService {
 	return &Service{
 		repo:            repo,
 		coaSvc:          coaSvc,
 		clinicSvc:       clinicSvc,
 		practitionerSvc: practitionerSvc,
 		versionSvc:      versionSvc,
+		db:              db,
 	}
 }
 
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID *uuid.UUID, req *RqFormField) (*RsFormField, error) {
-	current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
+	var f *FormField
+	var err error
+
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
+		if err != nil {
+			return err
+		}
+		if len(current)+1 > MaxFieldsPerVersion {
+			return errors.New("too many fields")
+		}
+
+		f = req.ToDB(formVersionID)
+
+		if !req.IsComputed {
+			coaID, err := uuid.Parse(req.CoaID)
+			if err != nil {
+				return err
+			}
+			if _, err := s.clinicSvc.GetClinicByID(ctx, *practitionerID, *clinicID); err != nil {
+				return err
+			}
+			if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, *practitionerID); err != nil {
+				if errors.Is(err, coa.ErrNotFound) {
+					return errors.New("coa not found")
+				}
+				return err
+			}
+		}
+
+		if err := s.repo.Create(ctx, tx, f); err != nil {
+			return err
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(current)+1 > MaxFieldsPerVersion {
-		return nil, errors.New("too many fields")
-	}
 
-	f := req.ToDB(formVersionID)
-
-	if !req.IsComputed {
-		coaID, err := uuid.Parse(req.CoaID)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := s.clinicSvc.GetClinicByID(ctx, *practitionerID, *clinicID); err != nil {
-			return nil, err
-		}
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, *practitionerID); err != nil {
-			if errors.Is(err, coa.ErrNotFound) {
-				return nil, errors.New("coa not found")
-			}
-			return nil, err
-		}
-	}
-
-	if err := s.repo.Create(ctx, f); err != nil {
-		return nil, err
-	}
 	return f.ToRs(), nil
 }
 
@@ -86,53 +97,69 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormField, erro
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID *uuid.UUID, req *RqUpdateFormField) (*RsFormField, error) {
-	existing, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.clinicSvc.GetClinicByID(ctx, *practitionerID, clinicID); err != nil {
-		return nil, err
-	}
-	if req.CoaID != nil {
-		parsed, err := uuid.Parse(*req.CoaID)
+	var updated *FormField
+	var err error
+
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, err := s.repo.GetByID(ctx, id)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, parsed, *practitionerID); err != nil {
-			if errors.Is(err, coa.ErrNotFound) {
-				return nil, errors.New("coa not found")
+		if _, err := s.clinicSvc.GetClinicByID(ctx, *practitionerID, clinicID); err != nil {
+			return err
+		}
+		if req.CoaID != nil {
+			parsed, err := uuid.Parse(*req.CoaID)
+			if err != nil {
+				return err
 			}
-			return nil, err
+			if _, err := s.coaSvc.GetChartOfAccount(ctx, parsed, *practitionerID); err != nil {
+				if errors.Is(err, coa.ErrNotFound) {
+					return errors.New("coa not found")
+				}
+				return err
+			}
+			existing.CoaID = &parsed
 		}
-		existing.CoaID = &parsed
-	}
-	if req.Label != nil {
-		existing.Label = *req.Label
-	}
-	if req.SectionType != nil {
-		existing.SectionType = req.SectionType
-	}
-	if req.PaymentResponsibility != nil {
-		existing.PaymentResponsibility = req.PaymentResponsibility
-	}
-	if req.TaxType != nil {
-		existing.TaxType = req.TaxType
-	}
-	if req.SortOrder != nil {
-		existing.SortOrder = *req.SortOrder
-	}
-	if req.IsHighlighted != nil {
-		existing.IsHighlighted = *req.IsHighlighted
-	}
-	updated, err := s.repo.Update(ctx, existing)
+		if req.Label != nil {
+			existing.Label = *req.Label
+		}
+		if req.SectionType != nil {
+			existing.SectionType = req.SectionType
+		}
+		if req.PaymentResponsibility != nil {
+			existing.PaymentResponsibility = req.PaymentResponsibility
+		}
+		if req.TaxType != nil {
+			existing.TaxType = req.TaxType
+		}
+		if req.SortOrder != nil {
+			existing.SortOrder = *req.SortOrder
+		}
+		if req.IsHighlighted != nil {
+			existing.IsHighlighted = *req.IsHighlighted
+		}
+		updated, err = s.repo.Update(ctx, tx, existing)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
+
 	return updated.ToRs(), nil
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.Delete(ctx, tx, id); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (s *Service) ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error) {
@@ -149,98 +176,4 @@ func (s *Service) GetFieldMap(ctx context.Context, formVersionID uuid.UUID) (map
 		m[f.ID] = f
 	}
 	return m, nil
-}
-
-func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error) {
-	current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
-	if err != nil {
-		return nil, err
-	}
-	if len(current)+1 > MaxFieldsPerVersion {
-		return nil, errors.New("too many fields")
-	}
-
-	f := req.ToDB(formVersionID)
-
-	if !req.IsComputed {
-		coaID, err := uuid.Parse(req.CoaID)
-		if err != nil {
-			return nil, err
-		}
-		/*
-			if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
-				return nil, err
-			}*/
-
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
-			if errors.Is(err, coa.ErrNotFound) {
-				return nil, errors.New("coa not found")
-			}
-			return nil, err
-		}
-
-	}
-
-	if err := s.repo.CreateTx(ctx, tx, f); err != nil {
-		return nil, err
-	}
-	return f.ToRs(), nil
-}
-
-func (s *Service) UpdateTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error) {
-	existing, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	/*
-		if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
-			return nil, err
-		}*/
-
-	if req.CoaID != nil {
-		parsed, err := uuid.Parse(*req.CoaID)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, parsed, practitionerID); err != nil {
-			if errors.Is(err, coa.ErrNotFound) {
-				return nil, errors.New("coa not found")
-			}
-			return nil, err
-		}
-		existing.CoaID = &parsed
-	}
-	if req.Label != nil {
-		existing.Label = *req.Label
-	}
-	if req.SectionType != nil && *req.SectionType != "" {
-		existing.SectionType = req.SectionType
-	}
-	if req.PaymentResponsibility != nil && *req.PaymentResponsibility != "" {
-		existing.PaymentResponsibility = req.PaymentResponsibility
-	}
-	if req.TaxType != nil && *req.TaxType != "" {
-		existing.TaxType = req.TaxType
-	}
-	if req.SortOrder != nil {
-		existing.SortOrder = *req.SortOrder
-	}
-	if req.IsHighlighted != nil {
-		existing.IsHighlighted = *req.IsHighlighted
-	}
-	if req.Amount != nil {
-		existing.Amount = req.Amount
-	}
-	if req.BusinessUse != nil {
-		existing.BusinessUse = req.BusinessUse
-	}
-	updated, err := s.repo.UpdateTx(ctx, tx, existing)
-	if err != nil {
-		return nil, err
-	}
-	return updated.ToRs(), nil
-}
-
-func (s *Service) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
-	return s.repo.DeleteTx(ctx, tx, id)
 }
