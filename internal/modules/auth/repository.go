@@ -44,8 +44,7 @@ type Repository interface {
 	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
 	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 
-	GetDocumentByUserIDTx(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error)
-	GetDocumentByUserID(ctx context.Context, userID uuid.UUID) (*file.Document, error)
+	GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error)
 }
 
 type repository struct {
@@ -399,7 +398,7 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 	return nil
 }
 
-func (r *repository) GetDocumentByUserIDTx(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error) {
+func (r *repository) GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*file.Document, error) {
 	query := `
 		SELECT
 			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
@@ -418,29 +417,6 @@ func (r *repository) GetDocumentByUserIDTx(ctx context.Context, tx *sqlx.Tx, use
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get document by clinic id tx: %w", err)
-	}
-	return &doc, nil
-}
-
-func (r *repository) GetDocumentByUserID(ctx context.Context, userID uuid.UUID) (*file.Document, error) {
-	query := `
-		SELECT
-			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
-			d.original_name, d.extension, d.mime_type, d.size_bytes,
-			d.checksum, d.status, d.is_public,
-			d.upload_expires_at, d.uploaded_at,
-			d.created_at, d.updated_at, d.deleted_at
-		FROM tbl_document d
-		INNER JOIN tbl_user u ON u.document_id = d.id
-		WHERE u.id = $1 AND u.deleted_at IS NULL AND d.deleted_at IS NULL
-		LIMIT 1`
-
-	var doc file.Document
-	if err := r.db.GetContext(ctx, &doc, query, userID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get document by user id: %w", err)
 	}
 	return &doc, nil
 }
