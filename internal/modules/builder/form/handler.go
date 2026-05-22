@@ -3,18 +3,12 @@ package form
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
-)
-
-var (
-	ErrAccessDenied       = errors.New("access denied")
-	ErrInvalidExpenseType = errors.New("form is not an expense entry")
 )
 
 type IHandler interface {
@@ -80,42 +74,21 @@ func (h *handler) GetById(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [post]
 func (h *handler) CreateFormWithFields(c *gin.Context) {
-	// practitionerID, ok := util.GetPractitionerID(c)
-	// if !ok {
-	// 	return
-	// }
-
-	// Get Role and appropriate ID
-	role := c.GetString("role")
-	var actorID uuid.UUID
+	var actorID *uuid.UUID
 	var ok bool
 
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
+	if actorID, _, ok = util.GetRoleBasedID(c); !ok {
 		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
+
 	var req RqCreateFormWithFields
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	if req.Status == "" {
-		req.Status = StatusDraft
-	}
-
-	if err := req.ValidateShares(); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
 	form, syncResult, err := h.svc.CreateWithFields(c.Request.Context(), &req, actorID)
-
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -141,7 +114,9 @@ func (h *handler) CreateFormWithFields(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/{id} [patch]
 func (h *handler) UpdateFormWithFields(c *gin.Context) {
-	var actorID, formID uuid.UUID
+	var actorID *uuid.UUID
+	var formID uuid.UUID
+	var role string
 	var ok bool
 	formID, ok = util.ParseUuidID(c, "id")
 	if !ok {
@@ -153,51 +128,20 @@ func (h *handler) UpdateFormWithFields(c *gin.Context) {
 		return
 	}
 
-	// practitionerID, ok := util.GetPractitionerID(c)
-	// if !ok {
-	// 	return
-	// }
-
-	role := c.GetString("role")
-
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
 		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
 
 	var req RqUpdateFormWithFields
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
-	for i := range req.Update {
-		req.Update[i].Sanitize()
-	}
-
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
-	if err := util.ValidateStruct(&req); err != nil {
+	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
 	req.ID = &formID
 
-	if err := req.ValidateShares(); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-	form, syncResult, err := h.svc.UpdateWithFields(c.Request.Context(), &req, actorID)
+	form, syncResult, err := h.svc.UpdateWithFields(c.Request.Context(), &req, actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -252,20 +196,13 @@ func (h *handler) GetFormWithFields(c *gin.Context) {
 // @Security BearerToken
 // @Router /form [get]
 func (h *handler) List(c *gin.Context) {
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	if strings.EqualFold(role, util.RoleAccountant) {
-		id, ok := util.GetAccountantID(c)
-		if !ok {
-			return
-		}
-		actorID = id
-	} else {
-		id, ok := util.GetPractitionerID(c)
-		if !ok {
-			return
-		}
-		actorID = id
+	var actorID *uuid.UUID
+	var role string
+	var ok bool
+
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
+		response.Error(c, http.StatusBadRequest, nil)
+		return
 	}
 
 	var filter Filter
@@ -306,10 +243,6 @@ func (h *handler) Delete(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusNoContent, nil, "Form deleted successfully")
-}
-
-type RqUpdateFormStatus struct {
-	Status string `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
 }
 
 // @Summary Update form status
@@ -362,17 +295,11 @@ func (h *handler) UpdateFormStatus(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/expenses [post]
 func (h *handler) CreateExpense(c *gin.Context) {
-	role := c.GetString("role")
-	var actorID uuid.UUID
+	var actorID *uuid.UUID
+	var role string
 	var ok bool
 
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
 		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
@@ -405,20 +332,7 @@ func (h *handler) CreateExpense(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/expenses/{id} [patch]
 func (h *handler) UpdateExpense(c *gin.Context) {
-	role := c.GetString("role")
-	var actorID uuid.UUID
 	var ok bool
-
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, nil)
-		return
-	}
 
 	var formID uuid.UUID
 	formID, ok = util.ParseUuidID(c, "id")
@@ -432,7 +346,7 @@ func (h *handler) UpdateExpense(c *gin.Context) {
 		return
 	}
 
-	form, err := h.svc.UpdateExpense(c.Request.Context(), formID, rq, actorID)
+	form, err := h.svc.UpdateExpense(c.Request.Context(), formID, rq)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -454,20 +368,12 @@ func (h *handler) UpdateExpense(c *gin.Context) {
 // @Security BearerToken
 // @Router /form/expenses/{id} [get]
 func (h *handler) GetExpense(c *gin.Context) {
-	role := c.GetString("role")
-
-	var actorID uuid.UUID
+	var actorID *uuid.UUID
+	var role string
 	var ok bool
 
-	switch {
-	case strings.EqualFold(role, util.RoleAccountant):
-		actorID, ok = util.GetAccountantID(c)
-	default:
-		actorID, ok = util.GetPractitionerID(c)
-	}
-
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid actor"))
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
+		response.Error(c, http.StatusUnauthorized, nil)
 		return
 	}
 
@@ -480,9 +386,9 @@ func (h *handler) GetExpense(c *gin.Context) {
 	expense, err := h.svc.GetExpense(c.Request.Context(), formID, actorID, role)
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrAccessDenied):
+		case errors.Is(err, util.ErrAccessDenied):
 			response.Error(c, http.StatusForbidden, err)
-		case errors.Is(err, ErrInvalidExpenseType):
+		case errors.Is(err, util.ErrInvalidExpenseType):
 			response.Error(c, http.StatusBadRequest, err)
 		default:
 			response.Error(c, http.StatusInternalServerError, err)

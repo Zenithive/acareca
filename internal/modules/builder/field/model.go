@@ -6,25 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	SectionTypeCollection         = "COLLECTION"
-	SectionTypeCost               = "COST"
-	SectionTypeOtherCost          = "OTHER_COST"
-	SectionTypeEquityWithdrawal   = "EQUITY_WITHDRAWAL"   // For owner drawings
-	SectionTypeEquityContribution = "EQUITY_CONTRIBUTION" // For owner funds introduced
-)
-
-const (
-	PaymentResponsibilityOwner  = "OWNER"
-	PaymentResponsibilityClinic = "CLINIC"
-)
-
-const (
-	TaxTypeInclusive = "INCLUSIVE"
-	TaxTypeExclusive = "EXCLUSIVE"
-	TaxTypeManual    = "MANUAL"
-)
-
 // RqCreateField is the unified create request supporting both raw and computed fields.
 type RqCreateField struct {
 	FieldKey              string  `json:"key" validate:"required,max=5"`
@@ -40,32 +21,25 @@ type RqCreateField struct {
 	IsHighlighted         bool    `json:"is_highlighted"`
 }
 
-func (r *RqCreateField) Validate() error {
-	if !r.IsComputed {
-		if r.CoaID == nil || *r.CoaID == "" {
-			return errors.New("coa_id is required for non-computed fields")
-		}
-		if r.SectionType == "" {
-			return errors.New("section_type is required for non-computed fields")
-		}
+func (r *RqCreateField) ToRqFormField() (*RqFormField, error) {
+	coaID := ""
+	if r.CoaID != nil {
+		coaID = *r.CoaID
 	}
-	return nil
-}
 
-func (r *RqCreateField) Sanitize() {
 	if r.TaxType != nil && *r.TaxType == "" {
 		r.TaxType = nil
 	}
 	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
 		r.PaymentResponsibility = nil
 	}
-}
-
-// ToRqFormField converts to the legacy RqFormField for non-computed fields.
-func (r *RqCreateField) ToRqFormField() *RqFormField {
-	coaID := ""
-	if r.CoaID != nil {
-		coaID = *r.CoaID
+	if !r.IsComputed {
+		if r.CoaID == nil || *r.CoaID == "" {
+			return nil, errors.New("coa_id is required for non-computed fields")
+		}
+		if r.SectionType == "" {
+			return nil, errors.New("section_type is required for non-computed fields")
+		}
 	}
 	return &RqFormField{
 		FieldKey:              r.FieldKey,
@@ -79,7 +53,7 @@ func (r *RqCreateField) ToRqFormField() *RqFormField {
 		SortOrder:             r.SortOrder,
 		IsFormula:             r.IsFormula,
 		IsHighlighted:         r.IsHighlighted,
-	}
+	}, nil
 }
 
 type RqFormField struct {
@@ -98,19 +72,6 @@ type RqFormField struct {
 	Amount                *float64 `json:"amount"`
 }
 
-func (r *RqFormField) Sanitize() {
-	if r.TaxType != nil && *r.TaxType == "" {
-		r.TaxType = nil
-	}
-	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
-		r.PaymentResponsibility = nil
-	}
-
-	// if r.IsFormula != nil {
-	// 	r.IsFormula = nil
-	// }
-}
-
 type RqUpdateFormField struct {
 	ID                    uuid.UUID `json:"id" validate:"required,uuid"`
 	Label                 *string   `json:"label" validate:"omitempty,max=255"`
@@ -124,8 +85,7 @@ type RqUpdateFormField struct {
 	Amount                *float64  `json:"amount"`
 }
 
-// Sanitize normalizes empty string pointer fields to nil so omitempty validation works correctly.
-func (r *RqUpdateFormField) Sanitize() {
+func (r *RqUpdateFormField) ToDB() *FormField {
 	if r.SectionType != nil && *r.SectionType == "" {
 		r.SectionType = nil
 	}
@@ -138,6 +98,8 @@ func (r *RqUpdateFormField) Sanitize() {
 	if r.CoaID != nil && *r.CoaID == "" {
 		r.CoaID = nil
 	}
+
+	return &FormField{}
 
 }
 
@@ -176,6 +138,13 @@ func (r *RqFormField) ToDB(formVersionID uuid.UUID) *FormField {
 		if err == nil {
 			coaID = &id
 		}
+	}
+
+	if r.TaxType != nil && *r.TaxType == "" {
+		r.TaxType = nil
+	}
+	if r.PaymentResponsibility != nil && *r.PaymentResponsibility == "" {
+		r.PaymentResponsibility = nil
 	}
 
 	var formula bool

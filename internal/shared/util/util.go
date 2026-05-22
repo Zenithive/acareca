@@ -317,3 +317,37 @@ func ParseUUIDs(ids []string) ([]uuid.UUID, error) {
 	}
 	return result, nil
 }
+
+// parseFlexibleDate handles multiple date formats
+func ParseFlexibleDate(dateStr string) (time.Time, error) {
+	if dateStr == "" {
+		return time.Time{}, errors.New("date cannot be empty")
+	}
+
+	// Trim spaces
+	dateStr = strings.TrimSpace(dateStr)
+
+	// Try different date formats
+	formats := []string{
+		"02 Jan 2006",               // "26 Apr 2026"
+		"2 Jan 2006",                // Single digit day
+		"02-01-2006",                // DD-MM-YYYY
+		"2006-01-02",                // YYYY-MM-DD (ISO format)
+		"01/02/2006",                // MM/DD/YYYY
+		"02/01/2006",                // DD/MM/YYYY
+		"January 2, 2006",           // Full month name
+		time.RFC3339,                // RFC3339
+		"2006-01-02T15:04:05Z07:00", // ISO 8601
+	}
+
+	var tm time.Time
+	var err error
+	for _, format := range formats {
+		tm, err = time.Parse(format, dateStr)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, err)
+		}
+	}
+
+	return tm, nil
+}

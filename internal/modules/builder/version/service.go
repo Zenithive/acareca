@@ -2,7 +2,6 @@ package version
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
@@ -15,10 +14,8 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormVersion, error)
 	Update(ctx context.Context, id, clinicID uuid.UUID, req *RqUpdateFormVersion) (*RsFormVersion, error)
 	Delete(ctx context.Context, id, clinicID uuid.UUID) error
-	List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error)
-	ListTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID) ([]*RsFormVersion, error)
+	List(ctx context.Context, formID uuid.UUID) ([]*RsFormVersion, error)
 	GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsFormVersion, error)
-	CreateTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID, req *RqFormVersion, practitionerID uuid.UUID) (*RsFormVersion, error)
 }
 
 type service struct {
@@ -110,41 +107,11 @@ func (s *service) Delete(ctx context.Context, id, clinicID uuid.UUID) error {
 }
 
 // List implements [IService].
-func (s *service) List(ctx context.Context, formID, clinicID uuid.UUID) ([]*RsFormVersion, error) {
-	/*clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
-	if err != nil {
-		return nil, err
-	}
-	if clinic.ID != clinicID {
-		return nil, ErrForbidden
-	}*/
-
+func (s *service) List(ctx context.Context, formID uuid.UUID) ([]*RsFormVersion, error) {
 	list, err := s.repo.ListByFormID(ctx, formID)
 	if err != nil {
 		return nil, err
 	}
-	rs := make([]*RsFormVersion, 0, len(list))
-	for _, v := range list {
-		rs = append(rs, v.ToRs())
-	}
-	return rs, nil
-}
-
-func (s *service) ListTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID) ([]*RsFormVersion, error) {
-	var list []*FormVersion
-	var err error
-
-	// If tx is provided, query through the transaction to see uncommitted records
-	if tx != nil {
-		list, err = s.repo.ListByFormIDTx(ctx, tx, formID)
-	} else {
-		list, err = s.repo.ListByFormID(ctx, formID)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
 	rs := make([]*RsFormVersion, 0, len(list))
 	for _, v := range list {
 		rs = append(rs, v.ToRs())
@@ -159,24 +126,4 @@ func (s *service) GetVersionByFormID(ctx context.Context, formID uuid.UUID) (RsF
 		return RsFormVersion{}, err
 	}
 	return *v.ToRs(), nil
-}
-
-// CreateTx creates a form version within a transaction.
-func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, formID, clinicID uuid.UUID, req *RqFormVersion, userID uuid.UUID) (*RsFormVersion, error) {
-	fmt.Printf(">>> DEBUG [VersionSvc.CreateTx] Searching for Clinic: %s using userID: %s\n", clinicID, userID)
-	/*clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
-	if err != nil {
-		fmt.Printf(">>> DEBUG [!] GetClinicByIDInternal returned error: %v\n", err)
-		return nil, err
-	}
-	if clinic.ID != clinicID {
-		fmt.Printf(">>> DEBUG [!] ID Mismatch: Found %s, Expected %s\n", clinic.ID, clinicID)
-		return nil, ErrForbidden
-	}*/
-
-	v := req.ToDB(formID, userID)
-	if err := s.repo.CreateTx(ctx, tx, v); err != nil {
-		return nil, err
-	}
-	return v.ToRs(), nil
 }

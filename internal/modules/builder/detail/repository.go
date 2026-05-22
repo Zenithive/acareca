@@ -18,7 +18,7 @@ type IRepository interface {
 	Update(ctx context.Context, tx *sqlx.Tx, d *FormDetail) (*FormDetail, error)
 	Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error
 	GetByID(ctx context.Context, formID uuid.UUID) (*FormDetail, error)
-	ListForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string, count bool) ([]FormDetail, int, error)
+	ListForm(ctx context.Context, filter common.Filter, actorID *uuid.UUID, role string, count bool) ([]FormDetail, int, error)
 	UpdateFormStatus(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID, status string) error
 }
 
@@ -60,7 +60,7 @@ func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) 
 	return nil
 }
 
-func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID uuid.UUID, role string, withCount bool) ([]FormDetail, int, error) {
+func (r *Repository) ListForm(ctx context.Context, filter common.Filter, actorID *uuid.UUID, role string, withCount bool) ([]FormDetail, int, error) {
 
 	var permissionClause string
 

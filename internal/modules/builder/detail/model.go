@@ -1,6 +1,8 @@
 package detail
 
 import (
+	"log"
+
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/samber/lo"
@@ -43,11 +45,11 @@ type FormDetail struct {
 	UpdatedAt       string     `db:"updated_at" json:"updated_at"`
 }
 
-func (r *RqFormDetail) ToDB(clinicID uuid.UUID) *FormDetail {
+func (r *RqFormDetail) ToDB(clinicID *uuid.UUID) *FormDetail {
 
 	return &FormDetail{
 		ID:             uuid.New(),
-		ClinicID:       clinicID,
+		ClinicID:       lo.FromPtr(clinicID),
 		Name:           r.Name,
 		Description:    r.Description,
 		Status:         r.Status,
@@ -128,11 +130,11 @@ type RqUpdateFormStatus struct {
 }
 
 type Filter struct {
-	PractitionerID *uuid.UUID  `form:"practitioner_id"`
-	ClinicIDs      []uuid.UUID `form:"clinic_ids"`
-	FormName       *string     `form:"name"`
-	Method         *string     `form:"method"`
-	Status         *string     `form:"status"`
+	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	ClinicIDs      []string   `form:"clinic_ids"`
+	FormName       *string    `form:"name"`
+	Method         *string    `form:"method"`
+	Status         *string    `form:"status"`
 	common.Filter
 }
 
@@ -141,14 +143,14 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.PractitionerID != nil {
 		filters["practitioner_id"] = filter.PractitionerID
 	}
+	var clinicUUIDs []uuid.UUID
 	if filter.ClinicIDs != nil {
-		Ids := make([]uuid.UUID, 0, len(filter.ClinicIDs))
 		for _, id := range filter.ClinicIDs {
-			Ids = append(Ids, id)
-		}
-
-		if len(Ids) > 0 {
-			filters["clinic_ids"] = Ids
+			parsedID, err := uuid.Parse(id)
+			if err != nil {
+				log.Fatalf("error while parsing clinic ids.....")
+			}
+			clinicUUIDs = append(clinicUUIDs, parsedID)
 		}
 	}
 	if filter.Status != nil {

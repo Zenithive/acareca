@@ -553,7 +553,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			gstAmount = v.GstAmount
 			grossTotal = inputAmount
 			netBase = inputAmount - *v.GstAmount
-			
+
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
@@ -604,11 +604,11 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
-			
+
 			// MANUAL tax type: User enters GROSS + GST
 			// CREATE: net_amount contains GROSS, gst_amount contains GST
 			// UPDATE: gross_amount contains GROSS, net_amount contains pre-calculated NET, gst_amount contains GST
-			
+
 			if v.GrossAmount != nil {
 				// UPDATE case: explicit gross_amount provided
 				grossTotal = *v.GrossAmount
@@ -861,14 +861,12 @@ func (s *Service) attachICCalculation(ctx context.Context, rs *RsFormEntry) {
 		return
 	}
 
-	actorUserID, _ := uuid.Parse(*meta.UserID)
-
 	ver, err := s.versionSvc.GetByID(ctx, rs.FormVersionID)
 	if err != nil {
 		return
 	}
 
-	form, err := s.detailSvc.GetByID(ctx, ver.FormId, actorUserID, *meta.UserType)
+	form, err := s.detailSvc.GetByID(ctx, ver.FormId)
 	if err != nil || form.Method != "INDEPENDENT_CONTRACTOR" {
 		return
 	}

@@ -16,12 +16,12 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
-	GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormDetail, error)
+	Create(ctx context.Context, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error)
+	GetByID(ctx context.Context, formID uuid.UUID) (*RsFormDetail, error)
 	Update(ctx context.Context, d *RqUpdateFormDetail, practitionerID uuid.UUID) (*RsFormDetail, error)
 	UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*RsFormDetail, error)
-	Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error
-	List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
+	Delete(ctx context.Context, formID uuid.UUID) error
+	List(ctx context.Context, filter Filter, actorID *uuid.UUID, role string) (*util.RsList, error)
 	UpdateFormStatus(ctx context.Context, d *RqUpdateFormStatus) error
 }
 
@@ -39,19 +39,20 @@ func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService, clin
 }
 
 // Create implements [IService].
-func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
+func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 
 	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
 
 	if isAccountant || practitionerID == uuid.Nil {
+		if clinicID != nil {
+			clinic, err := s.clinicRepo.GetClinicByID(ctx, *clinicID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+			}
 
-		clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+			practitionerID = clinic.PractitionerID
 		}
-
-		practitionerID = clinic.PractitionerID
 
 	}
 
@@ -68,7 +69,7 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 			return err
 		}
 
-		_, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
+		_, err := s.versionSvc.Create(ctx, formDetail.ID, *clinicID, &version.RqFormVersion{
 			Version:  1,
 			IsActive: true,
 		}, practitionerID)
@@ -87,12 +88,18 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUI
 }
 
 // Delete implements [IService].
-func (s *Service) Delete(ctx context.Context, tx *sqlx.Tx, formID uuid.UUID) error {
-	return s.repo.Delete(ctx, tx, formID)
+func (s *Service) Delete(ctx context.Context, formID uuid.UUID) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.Delete(ctx, tx, formID); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // ListForm implements [IService].
-func (s *Service) List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error) {
+func (s *Service) List(ctx context.Context, filter Filter, actorID *uuid.UUID, role string) (*util.RsList, error) {
 	ft := filter.MapToFilter()
 
 	formDetails, total, err := s.repo.ListForm(ctx, ft, actorID, role, true)
@@ -147,7 +154,7 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 	if err := applyFormUpdatePatch(existing, d); err != nil {
 		return nil, err
 	}
-	allVersions, err := s.versionSvc.List(ctx, existing.ID, existing.ClinicID)
+	allVersions, err := s.versionSvc.List(ctx, existing.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +170,7 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 		if err != nil {
 			return err
 		}
-		_, err = s.versionSvc.CreateTx(ctx, tx, existing.ID, existing.ClinicID, &version.RqFormVersion{
+		_, err = s.versionSvc.Create(ctx, existing.ID, existing.ClinicID, &version.RqFormVersion{
 			Version:  versionNum,
 			IsActive: true,
 		}, practitionerID)
@@ -204,7 +211,7 @@ func (s *Service) UpdateMetadata(ctx context.Context, d *RqUpdateFormDetail) (*R
 }
 
 // GetByID implements [IService].
-func (s *Service) GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, role string) (*RsFormDetail, error) {
+func (s *Service) GetByID(ctx context.Context, formID uuid.UUID) (*RsFormDetail, error) {
 	formDetail, err := s.repo.GetByID(ctx, formID)
 	if err != nil {
 		return nil, err

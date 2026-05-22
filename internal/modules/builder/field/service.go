@@ -13,10 +13,10 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID *uuid.UUID, req *RqFormField) (*RsFormField, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormField, error)
 	GetFieldMap(ctx context.Context, formVersionID uuid.UUID) (map[uuid.UUID]*RsFormField, error)
-	Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
+	Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID *uuid.UUID, req *RqUpdateFormField) (*RsFormField, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID) ([]*RsFormField, error)
 	CreateTx(ctx context.Context, tx *sqlx.Tx, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error)
@@ -44,7 +44,7 @@ func NewService(repo IRepository, coaSvc coa.Service, clinicSvc clinic.Service, 
 	}
 }
 
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqFormField) (*RsFormField, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, clinicID *uuid.UUID, practitionerID *uuid.UUID, req *RqFormField) (*RsFormField, error) {
 	current, err := s.repo.ListByFormVersionID(ctx, formVersionID)
 	if err != nil {
 		return nil, err
@@ -60,10 +60,10 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, clinicID 
 		if err != nil {
 			return nil, err
 		}
-		if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
+		if _, err := s.clinicSvc.GetClinicByID(ctx, *practitionerID, *clinicID); err != nil {
 			return nil, err
 		}
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, practitionerID); err != nil {
+		if _, err := s.coaSvc.GetChartOfAccount(ctx, coaID, *practitionerID); err != nil {
 			if errors.Is(err, coa.ErrNotFound) {
 				return nil, errors.New("coa not found")
 			}
@@ -85,12 +85,12 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormField, erro
 	return f.ToRs(), nil
 }
 
-func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID uuid.UUID, req *RqUpdateFormField) (*RsFormField, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, practitionerID *uuid.UUID, req *RqUpdateFormField) (*RsFormField, error) {
 	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.clinicSvc.GetClinicByID(ctx, practitionerID, clinicID); err != nil {
+	if _, err := s.clinicSvc.GetClinicByID(ctx, *practitionerID, clinicID); err != nil {
 		return nil, err
 	}
 	if req.CoaID != nil {
@@ -98,7 +98,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, clinicID uuid.UUID, 
 		if err != nil {
 			return nil, err
 		}
-		if _, err := s.coaSvc.GetChartOfAccount(ctx, parsed, practitionerID); err != nil {
+		if _, err := s.coaSvc.GetChartOfAccount(ctx, parsed, *practitionerID); err != nil {
 			if errors.Is(err, coa.ErrNotFound) {
 				return nil, errors.New("coa not found")
 			}

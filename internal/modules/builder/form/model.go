@@ -113,12 +113,45 @@ type RsFormWithFields struct {
 }
 
 type Filter struct {
-	PractitionerID *string `form:"practitioner_id"`
-	ClinicIDs      *string `form:"clinic_ids"`
-	FormName       *string `form:"form_name"`
-	Method         *string `form:"method"`
-	Status         *string `form:"status"`
+	PractitionerID *string  `form:"practitioner_id"`
+	ClinicIDs      []string `form:"clinic_ids"`
+	FormName       *string  `form:"form_name"`
+	Method         *string  `form:"method"`
+	Status         *string  `form:"status"`
 	common.Filter
+}
+
+func (f *Filter) MapToFilter() (common.Filter, error) {
+	filters := map[string]interface{}{}
+	var clinicUUIDs []uuid.UUID
+
+	for _, id := range f.ClinicIDs {
+		parsedID, err := uuid.Parse(id)
+		if err != nil {
+			return common.Filter{}, err
+		}
+		clinicUUIDs = append(clinicUUIDs, parsedID)
+	}
+
+	if f.FormName != nil {
+
+	}
+
+	if f.FormName != nil {
+
+	}
+
+	if f.Method != nil {
+
+	}
+
+	if f.Status != nil {
+
+	}
+
+	cf := common.NewFilter(f.Search, filters, nil, f.Limit, f.Offset, f.SortBy, f.OrderBy)
+
+	return cf, nil
 }
 
 type RqExpense struct {
@@ -176,4 +209,8 @@ type RsExpenseItem struct {
 	GrossAmount float64   `json:"gross_amount"`
 	Date        string    `json:"date"`
 	Description *string   `json:"description,omitempty"`
+}
+
+type RqUpdateFormStatus struct {
+	Status string `json:"status" validate:"required,oneof=DRAFT PUBLISHED"`
 }
