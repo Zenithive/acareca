@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -156,82 +157,126 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
 	var targetPracIDs []uuid.UUID
+	var rows []*PLReportRow
+	var summary *PLSummaryRow
 
-	if isAccountant {
+	err := util.RunInTransaction(ctx, s.repo.(*repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var innerErr error
 
-		// 1. Determine Scope: Specific Clinic, Specific Practitioner, or All Linked
-		if f.ClinicID != nil && *f.ClinicID != "" {
-			// Scenario: Specific Clinic
-			clinicUUID, err := uuid.Parse(*f.ClinicID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid clinic_id format")
+		if isAccountant {
+			// Determine Scope: Specific Clinic, Specific Practitioner, or All Linked
+			if f.ClinicID != nil && *f.ClinicID != "" {
+				// Scenario: Specific Clinic
+				clinicUUID, innerErr := uuid.Parse(*f.ClinicID)
+				if innerErr != nil {
+					return fmt.Errorf("invalid clinic_id format")
+				}
+				permission, innerErr := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicUUID)
+				if innerErr != nil {
+					return fmt.Errorf("permission denied: not associated with this clinic")
+				}
+				targetPracIDs = []uuid.UUID{permission.PractitionerID}
+			} else if f.PractitionerID != "" {
+				// Scenario: Specific Practitioner (Accountant picked one from a dropdown)
+				pracUUID, innerErr := uuid.Parse(f.PractitionerID)
+				if innerErr != nil {
+					return fmt.Errorf("invalid practitioner_id format")
+				}
+				isLinked, innerErr := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, actorID, pracUUID)
+				if innerErr != nil || !isLinked {
+					return fmt.Errorf("permission denied: no association with this practitioner")
+				}
+				targetPracIDs = []uuid.UUID{pracUUID}
+			} else {
+				// Scenario: Aggregation (Accountant viewing ALL linked practitioners)
+				if len(targetNotifIDs) == 0 {
+					return fmt.Errorf("no linked practitioners found for aggregation")
+				}
+				targetPracIDs = targetNotifIDs
 			}
-			permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicUUID)
-			if err != nil {
-				return nil, fmt.Errorf("permission denied: not associated with this clinic")
-			}
-			targetPracIDs = []uuid.UUID{permission.PractitionerID}
-		} else if f.PractitionerID != "" {
-			// Scenario: Specific Practitioner (Accountant picked one from a dropdown)
-			pracUUID, err := uuid.Parse(f.PractitionerID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid practitioner_id format")
-			}
-			isLinked, err := s.clinicRepo.IsAccountantInvitedByPractitioner(ctx, actorID, pracUUID)
-			if err != nil || !isLinked {
-				return nil, fmt.Errorf("permission denied: no association with this practitioner")
-			}
-			targetPracIDs = []uuid.UUID{pracUUID}
 		} else {
-			// Scenario: Aggregation (Accountant viewing ALL linked practitioners)
-			// targetNotifIDs was already populated in the handler via GetPractitionersLinkedToAccountant
-			if len(targetNotifIDs) == 0 {
-				return nil, fmt.Errorf("no linked practitioners found for aggregation")
+			// Scenario: User is the Practitioner
+			// If practitioner selects a clinic, verify ownership
+			if f.ClinicID != nil && *f.ClinicID != "" {
+				clinicUUID, innerErr := uuid.Parse(*f.ClinicID)
+				if innerErr == nil {
+					_, innerErr = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, tx, clinicUUID, actorID)
+					if innerErr != nil {
+						return fmt.Errorf("access denied: clinic mismatch")
+					}
+				}
 			}
-			targetPracIDs = targetNotifIDs
+			targetPracIDs = []uuid.UUID{actorID}
 		}
-	} else {
-		// Scenario: User is the Practitioner
-		// If practitioner selects a clinic, verify ownership
-		if f.ClinicID != nil && *f.ClinicID != "" {
-			clinicUUID, err := uuid.Parse(*f.ClinicID)
-			if err == nil {
-				_, err = s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicUUID, actorID)
-				if err != nil {
-					return nil, fmt.Errorf("access denied: clinic mismatch")
+
+		// Sync Filter state for Repo/Audit (use the first ID as a representative if aggregating)
+		if len(targetPracIDs) > 0 {
+			f.PractitionerID = targetPracIDs[0].String()
+		}
+
+		var from, to time.Time
+		if f.DateFrom != nil {
+			if from, innerErr = time.Parse(dateLayout, *f.DateFrom); innerErr != nil {
+				return fmt.Errorf("invalid date_from: use YYYY-MM-DD format")
+			}
+		}
+		if f.DateUntil != nil {
+			if to, innerErr = time.Parse(dateLayout, *f.DateUntil); innerErr != nil {
+				return fmt.Errorf("invalid date_until: use YYYY-MM-DD format")
+			}
+		}
+		if f.DateFrom != nil && f.DateUntil != nil && from.After(to) {
+			return fmt.Errorf("date_from must not be after date_until")
+		}
+
+		rows, innerErr = s.repo.GetReport(ctx, targetPracIDs, f)
+		if innerErr != nil {
+			return innerErr
+		}
+
+		// Record the Shared Event within the safe transaction timeline
+		if isAccountant && len(targetNotifIDs) > 0 {
+			var fullName string
+			user, innerErr := s.authRepo.FindByID(ctx, userID) // Fallback using transactional version if authRepo supports it
+			if innerErr == nil {
+				fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+			}
+
+			fmt.Printf("\nName: %s\n", fullName)
+
+			for _, pID := range targetNotifIDs {
+				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: pID,
+					AccountantID:   actorID,
+					ActorID:        userID,
+					ActorName:      &fullName,
+					ActorType:      role,
+					EventType:      "pl_report.generated",
+					EntityType:     "REPORT",
+					Description:    fmt.Sprintf("Accountant %s generated Profit and Loss Report", fullName),
+					CreatedAt:      time.Now(),
+					Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report"},
+				})
+				if innerErr != nil {
+					return fmt.Errorf("failed to write shared audit transaction record: %w", innerErr)
 				}
 			}
 		}
-		targetPracIDs = []uuid.UUID{actorID}
-	}
 
-	// 2. Sync Filter state for Repo/Audit (use the first ID as a representative if aggregating)
-	if len(targetPracIDs) > 0 {
-		f.PractitionerID = targetPracIDs[0].String()
-	}
-
-	var from, to time.Time
-	var err error
-	if f.DateFrom != nil {
-		if from, err = time.Parse(dateLayout, *f.DateFrom); err != nil {
-			return nil, fmt.Errorf("invalid date_from: use YYYY-MM-DD format")
+		summary, innerErr = s.repo.GetPLSummary(ctx, targetPracIDs, f)
+		if innerErr != nil {
+			return innerErr
 		}
-	}
-	if f.DateUntil != nil {
-		if to, err = time.Parse(dateLayout, *f.DateUntil); err != nil {
-			return nil, fmt.Errorf("invalid date_until: use YYYY-MM-DD format")
-		}
-	}
-	if f.DateFrom != nil && f.DateUntil != nil && from.After(to) {
-		return nil, fmt.Errorf("date_from must not be after date_until")
-	}
 
-	rows, err := s.repo.GetReport(ctx, targetPracIDs, f)
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	// --- AUDIT LOG ---
+	// --- AUDIT LOG
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
@@ -249,40 +294,6 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
 	})
-
-	// Record the Shared Event
-	if isAccountant && len(targetNotifIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		fmt.Printf("\nName: %s\n", fullName)
-
-		for _, pID := range targetNotifIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "pl_report.generated",
-				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s generated Profit and Loss Report", fullName),
-				CreatedAt:      time.Now(),
-				Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report"},
-			})
-		}
-	}
-
-	// NEW: Fetch pre-calculated summary from the specialized view
-	summary, err := s.repo.GetPLSummary(ctx, targetPracIDs, f)
-	if err != nil {
-		// Log the error but perhaps allow a fallback or return error
-		return nil, err
-	}
 
 	return buildReport(f, rows, summary), nil
 }

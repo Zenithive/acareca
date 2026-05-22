@@ -1552,6 +1552,76 @@ definitions:
       value:
         type: string
     type: object
+  clinic.RsClinic:
+    properties:
+      abn:
+        type: string
+      address:
+        $ref: '#/definitions/clinic.RsClinicAddress'
+      contacts:
+        items:
+          $ref: '#/definitions/clinic.RsClinicContact'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      document:
+        $ref: '#/definitions/file.RsDocument'
+      financial_settings:
+        $ref: '#/definitions/clinic.RsFinancialSettings'
+      id:
+        type: string
+      image_url:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      practitioner_id:
+        type: string
+      profile_picture:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  clinic.RsClinicAddress:
+    properties:
+      address:
+        type: string
+      city:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      postcode:
+        type: string
+      state:
+        type: string
+    type: object
+  clinic.RsClinicContact:
+    properties:
+      contact_type:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  clinic.RsFinancialSettings:
+    properties:
+      financial_year_id:
+        type: string
+      id:
+        type: string
+      lock_date:
+        type: string
+    type: object
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -5487,13 +5557,21 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: Get all clinics for the logged-in user (Practitioner or Accountant)
+      summary: List clinics for the logged-in user
       tags:
       - clinic
     post:
@@ -5512,9 +5590,17 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/clinic.RsClinic'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -5534,21 +5620,23 @@ paths:
         name: id
         required: true
         type: string
-      - description: Practitioner UUID (Required for Accountants)
-        in: query
-        name: practitioner_id
-        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "404":
@@ -5577,9 +5665,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/clinic.RsClinic'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "404":
@@ -5616,9 +5712,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/clinic.RsClinic'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "404":
@@ -5651,11 +5755,17 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "404":
@@ -5688,9 +5798,17 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "404":
