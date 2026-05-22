@@ -15,4 +15,5 @@ var (
 	ErrCannotRevokeStatus      = errors.New("cannot revoke invitation with current status")
 	ErrUnauthorizedAssociation = errors.New("unauthorized association")
 	ErrConfigMissing           = errors.New("system configuration error: frontend application URL is not defined")
+	ErrInvitationAlreadyExists = errors.New("an invitation has already been created for this email address; use the resend option instead")
 )

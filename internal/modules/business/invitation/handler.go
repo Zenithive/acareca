@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -24,12 +23,11 @@ type IHandler interface {
 }
 
 type Handler struct {
-	svc            Service
-	accountantRepo accountant.Repository
+	svc Service
 }
 
-func NewHandler(svc Service, accountantRepo accountant.Repository) IHandler {
-	return &Handler{svc: svc, accountantRepo: accountantRepo}
+func NewHandler(svc Service) IHandler {
+	return &Handler{svc: svc}
 }
 
 // @Summary      Send an invitation
@@ -136,7 +134,6 @@ func (h *Handler) ProcessInvitation(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /invite [get]
 func (h *Handler) ListInvitations(c *gin.Context) {
-
 	actorId, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
@@ -235,7 +232,7 @@ func (h *Handler) RevokeInvitation(c *gin.Context) {
 
 // ListAccountantPermissions godoc
 // @Summary      List Accountant Permissions
-// @Description   Retrieve all active entity permissions (Clinics, Forms) assigned to the logged-in Accountant.
+// @Description  Retrieve all active entity permissions assigned to the logged-in Accountant.
 // @Tags         invitation
 // @Produce      json
 // @Success      200      {object}  util.RsList
@@ -255,7 +252,7 @@ func (h *Handler) ListPermissions(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	// 2. Call Service with the Accountant ID pointer
+
 	res, err := h.svc.ListPermissions(c.Request.Context(), accId, &reqFilter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -266,7 +263,7 @@ func (h *Handler) ListPermissions(c *gin.Context) {
 }
 
 // @Summary      Grant or Update permissions
-// @Description  Practitioner grants or updates specific permissions (read/write access for sales_purchases, lock_dates, manage_users, reports_view_download) to an accountant.
+// @Description  Practitioner grants or updates specific permissions to an accountant.
 // @Tags         invitation
 // @Accept       json
 // @Produce      json
@@ -290,7 +287,6 @@ func (h *Handler) UpdatePermission(c *gin.Context) {
 		return
 	}
 
-	// Update permissions
 	updatedPerms, err := h.svc.UpdatePermissions(c.Request.Context(), practID, &req)
 	if err != nil {
 		if strings.Contains(err.Error(), "not linked") {

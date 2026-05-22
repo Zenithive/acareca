@@ -7161,7 +7161,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Retrieve all active entity permissions (Clinics, Forms) assigned to the logged-in Accountant.",
+                "description": "Retrieve all active entity permissions assigned to the logged-in Accountant.",
                 "produces": [
                     "application/json"
                 ],
@@ -7204,7 +7204,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Practitioner grants or updates specific permissions (read/write access for sales_purchases, lock_dates, manage_users, reports_view_download) to an accountant.",
+                "description": "Practitioner grants or updates specific permissions to an accountant.",
                 "consumes": [
                     "application/json"
                 ],

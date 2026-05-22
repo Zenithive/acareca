@@ -9,7 +9,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
-// InvitationStatus defines the allowed states for an invitation
 type InvitationStatus string
 
 const (
@@ -21,7 +20,7 @@ const (
 	StatusRevoked   InvitationStatus = "REVOKED"
 )
 
-// Invitation represents the tbl_invitation schema
+// Invitation reflects the physical schema representation of tbl_invitation.
 type Invitation struct {
 	ID             uuid.UUID        `json:"id" db:"id"`
 	PractitionerID uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
@@ -29,16 +28,24 @@ type Invitation struct {
 	Email          string           `json:"email" db:"email"`
 	Status         InvitationStatus `json:"status" db:"status"`
 	CreatedAt      time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt      *time.Time       `json:"updated_at" db:"updated_at"`
+	DeletedAt      *time.Time       `json:"deleted_at" db:"deleted_at"`
 	ExpiresAt      time.Time        `json:"expires_at" db:"expires_at"`
 }
 
-// RqSendInvitation is the input for creating a new invitation
-type RqSendInvitation struct {
-	Email       string       `json:"email" validate:"required,email"`
-	Permissions *Permissions `json:"permissions" validate:"required"`
+// InvitationExtended handles hydrated records returned from complex target repository JOIN queries.
+type InvitationExtended struct {
+	Invitation
+	SenderFirstName string `db:"sender_first_name"`
+	SenderLastName  string `db:"sender_last_name"`
+	SenderEmail     string `db:"sender_email"`
 }
 
-// RsInvitation is the response after an invitation is created
+type RqSendInvitation struct {
+	Email       string       `json:"email" binding:"required,email"`
+	Permissions *Permissions `json:"permissions" binding:"required"`
+}
+
 type RsInvitation struct {
 	ID           uuid.UUID        `json:"id"`
 	Email        string           `json:"email"`
@@ -46,7 +53,7 @@ type RsInvitation struct {
 	InviteLink   string           `json:"invite_link"`
 	Status       InvitationStatus `json:"status"`
 	ExpiresAt    time.Time        `json:"expires_at"`
-	Permissions  *Permissions     `json:"permissions"`
+	Permissions  *Permissions     `json:"permissions,omitempty"`
 }
 
 type UserDetails struct {
@@ -64,10 +71,9 @@ type RsInviteDetails struct {
 	SenderRole   string           `json:"sender_role"`
 	AccountantID *uuid.UUID       `json:"id"`
 	Email        string           `json:"email"`
-	Permission   *Permissions     `json:"permissions"`
+	Permission   *Permissions     `json:"permissions,omitempty"`
 }
 
-// RsInviteProcess helps the frontend navigate after a link click
 type RsInviteProcess struct {
 	InvitationID   uuid.UUID        `json:"invitation_id"`
 	PractitionerID uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
@@ -76,54 +82,59 @@ type RsInviteProcess struct {
 	IsFound        bool             `json:"is_found"`
 }
 
-// RsInvitationListItem is the standardized response for ListInvitations (both practitioner and accountant)
 type RsInvitationListItem struct {
 	ID                uuid.UUID        `json:"id" db:"id"`
 	PractitionerID    uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
 	PractitionerEmail string           `json:"practitioner_email" db:"practitioner_email"`
-	AccountantID      *uuid.UUID       `json:"accountant_id" db:"accountant_id"` // Renamed from EntityID
+	AccountantID      *uuid.UUID       `json:"accountant_id" db:"accountant_id"`
 	Email             string           `json:"email" db:"email"`
 	Status            InvitationStatus `json:"status" db:"status"`
 	InviteLink        string           `json:"invite_link"`
 	CreatedAt         time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt         *time.Time       `json:"updated_at" db:"updated_at"`
+	DeletedAt         *time.Time       `json:"deleted_at" db:"deleted_at"`
 	ExpiresAt         time.Time        `json:"expires_at" db:"expires_at"`
 }
 
-// Internal struct for Repository JOIN result
-type InvitationExtended struct {
-	Invitation
-	SenderFirstName string `db:"sender_first_name"`
-	SenderLastName  string `db:"sender_last_name"`
-	SenderEmail     string `db:"sender_email"`
+type RqProcessAction struct {
+	TokenID uuid.UUID `json:"token_id" binding:"required"`
+	Action  string    `json:"action" binding:"required,oneof=ACCEPT REJECT"`
 }
 
-// InvitationWithPermissions contains invitation details with associated permissions
-type InvitationWithPermissions struct {
+type RqGrantPermission struct {
+	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
+	Email        string       `json:"email" binding:"omitempty,email"`
+	Permissions  *Permissions `json:"permissions" binding:"required"`
+}
+
+type RqUpdatePermissions struct {
+	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
+	Email        string       `json:"email" binding:"required,email"`
+	Permissions  *Permissions `json:"permissions" binding:"required"`
+}
+
+// PermissionsContext standardizes unified domain response schemas across modules.
+type PermissionsContext struct {
 	ID             uuid.UUID   `json:"id"`
 	PractitionerID uuid.UUID   `json:"practitioner_id"`
 	AccountantID   uuid.UUID   `json:"accountant_id"`
 	Permissions    Permissions `json:"permissions"`
 	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
+	UpdatedAt      *time.Time  `json:"updated_at"`
+	DeletedAt      *time.Time  `json:"deleted_at"`
 }
 
-// RqProcessAction is the input for accepting or rejecting
-type RqProcessAction struct {
-	TokenID uuid.UUID `json:"token_id" validate:"required"`
-	Action  string    `json:"action" validate:"required,oneof=ACCEPT REJECT"`
+var InvitationColumns = map[string]string{
+	"email":           "i.email",
+	"status":          "i.status::text",
+	"created_at":      "i.created_at",
+	"updated_at":      "i.updated_at",
+	"practitioner_id": "i.practitioner_id",
+	"accountant_id":   "i.accountant_id",
+	"deleted_at":      "i.deleted_at",
 }
 
-// FILTERS
-var invitationColumns = map[string]string{
-	"email":           "email",
-	"status":          "status::text",
-	"created_at":      "created_at",
-	"practitioner_id": "practitioner_id",
-	"accountant_id":   "accountant_id",
-	"deleted_at":      "deleted_at",
-}
-
-var invitationSearchCols = []string{"email"}
+var InvitationSearchCols = []string{"email"}
 
 type Filter struct {
 	Status *string `form:"status"`
@@ -132,13 +143,14 @@ type Filter struct {
 }
 
 func (filter *Filter) MapToFilter(actorID *uuid.UUID) common.Filter {
-	filters := map[string]interface{}{}
+	filters := make(map[string]interface{})
 
-	// Role-based security: Apply the correct ID based on who is asking
-	if actorID != nil && filter.Role == util.RolePractitioner {
-		filters["practitioner_id"] = *actorID
-	} else {
-		filters["accountant_id"] = *actorID
+	if actorID != nil {
+		if filter.Role == util.RolePractitioner {
+			filters["practitioner_id"] = *actorID
+		} else {
+			filters["accountant_id"] = *actorID
+		}
 	}
 
 	if filter.Status != nil {
@@ -147,7 +159,6 @@ func (filter *Filter) MapToFilter(actorID *uuid.UUID) common.Filter {
 
 	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 
-	// Only add the "Not Equal" condition if the user DID NOT provide a status filter
 	if filter.Status == nil {
 		f.Where = append(f.Where, common.Condition{
 			Field: "status", Operator: common.OpNotEq, Value: StatusResent,
@@ -157,9 +168,6 @@ func (filter *Filter) MapToFilter(actorID *uuid.UUID) common.Filter {
 	return f
 }
 
-// MapToFilterAccountant builds a filter for the accountant path.
-// The email WHERE clause is handled separately in the repo, so we only
-// apply status and pagination here.
 func (filter *Filter) MapToFilterAccountant() common.Filter {
 	f := common.NewFilter(nil, nil, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 	return f
@@ -191,21 +199,11 @@ type AccessLevel struct {
 	Write bool `json:"write" db:"can_write"`
 }
 
-type PermissionsData struct {
-	SalesPurchases      Permission
-	LockDates           Permission
-	ManageUsers         Permission
-	ReportsViewDownload Permission
+type PermissionRow struct {
+	PermissionName PermissionName `db:"permission_name"`
+	CanRead        bool           `db:"can_read"`
+	CanWrite       bool           `db:"can_write"`
 }
-
-// func (p PermissionsData) toRows() []Permission {
-// 	return []Permission{
-// 		{Name: "sales_purchases", AccessLevel: AccessLevel{Read: p.SalesPurchases.AccessLevel.Read, Write: p.SalesPurchases.AccessLevel.Write}},
-// 		{Name: "lock_dates", AccessLevel: AccessLevel{Read: p.LockDates.AccessLevel.Read, Write: p.LockDates.AccessLevel.Write}},
-// 		{Name: "manage_users", AccessLevel: AccessLevel{Read: p.ManageUsers.AccessLevel.Read, Write: p.ManageUsers.AccessLevel.Write}},
-// 		{Name: "reports_view_download", AccessLevel: AccessLevel{Read: p.ReportsViewDownload.AccessLevel.Read, Write: p.ReportsViewDownload.AccessLevel.Write}},
-// 	}
-// }
 
 type Permissions map[PermissionName]AccessLevel
 
@@ -213,34 +211,10 @@ func (p Permissions) Get(name PermissionName) AccessLevel {
 	return p[name]
 }
 
-func (p *Permissions) ToRows() []Permission {
-	rows := make([]Permission, 0, len(AllPermissions))
-	for _, name := range AllPermissions {
-		rows = append(rows, Permission{
-			Name:        name,
-			AccessLevel: p.Get(name),
-		})
-	}
-	return rows
-}
-
-// FromRows converts database rows into a Permissions map
-func (p *Permissions) FromRows(rows []PermissionRow) {
-	if *p == nil {
-		*p = make(Permissions)
-	}
-	for _, row := range rows {
-		(*p)[row.PermissionName] = AccessLevel{
-			Read:  row.CanRead,
-			Write: row.CanWrite,
-		}
-	}
-}
-
 func (p Permissions) Validate() error {
 	for _, name := range AllPermissions {
 		if _, ok := p[name]; !ok {
-			return fmt.Errorf("missing permission: %q", name)
+			return fmt.Errorf("missing verification permission context block requirement: %q", name)
 		}
 	}
 	return nil
@@ -254,56 +228,38 @@ func (p Permissions) Has(name PermissionName, write bool) bool {
 	return al.Read
 }
 
-// PermissionRow represents a single permission row from the database
-type PermissionRow struct {
-	PermissionName PermissionName `db:"permission_name"`
-	CanRead        bool           `db:"can_read"`
-	CanWrite       bool           `db:"can_write"`
+func (p *Permissions) ToRows() []Permission {
+	rows := make([]Permission, 0, len(AllPermissions))
+	for _, name := range AllPermissions {
+		rows = append(rows, Permission{
+			Name:        name,
+			AccessLevel: p.Get(name),
+		})
+	}
+	return rows
 }
 
-type RqGrantPermission struct {
-	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
-	Email        string       `json:"email" validate:"omitempty,email"`
-	Permissions  *Permissions `json:"permissions" validate:"required"`
-}
-
-type RqUpdatePermissions struct {
-	AccountantID *uuid.UUID   `json:"accountant_id,omitempty"`
-	Email        string       `json:"email" validate:"required,email"`
-	Permissions  *Permissions `json:"permissions" validate:"required"`
-}
-
-type InvitationPermission struct {
-	ID             uuid.UUID   `json:"id"`
-	PractitionerID uuid.UUID   `json:"practitioner_id"`
-	AccountantID   uuid.UUID   `json:"accountant_id"`
-	Permissions    Permissions `json:"permissions"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-}
-
-type RsPermission struct {
-	ID             uuid.UUID   `json:"id"`
-	PractitionerID uuid.UUID   `json:"practitioner_id"`
-	AccountantID   uuid.UUID   `json:"accountant_id"`
-	Permissions    Permissions `json:"permissions"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-}
-
-type RsPermissions map[PermissionName]AccessLevel
-
-func (p *Permission) ToRsPermission() *RsPermission {
-	return &RsPermission{
-		Permissions: Permissions{
-			p.Name: p.AccessLevel,
-		},
+func (p *Permissions) FromRows(rows []PermissionRow) {
+	if *p == nil {
+		*p = make(Permissions)
+	}
+	for _, row := range rows {
+		(*p)[row.PermissionName] = AccessLevel{
+			Read:  row.CanRead,
+			Write: row.CanWrite,
+		}
 	}
 }
 
 func (p Permissions) FromRow(row Permission) {
-	p[PermissionName(row.Name)] = AccessLevel{
+	p[row.Name] = AccessLevel{
 		Read:  row.AccessLevel.Read,
 		Write: row.AccessLevel.Write,
 	}
+}
+
+type PractitionerEmailPair struct {
+	PractitionerID uuid.UUID        `db:"practitioner_id"`
+	Email          string           `db:"email"`
+	Status         InvitationStatus `db:"status"`
 }
