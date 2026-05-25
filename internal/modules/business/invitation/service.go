@@ -228,12 +228,12 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 
 	res := &RsInviteProcess{InvitationID: inv.ID, PractitionerID: inv.PractitionerID, Email: inv.Email}
 
-	if req.Action == ActionReject {
+	switch req.Action {
+	case ActionReject:
 		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusRejected, inv.AccountantID, inv.ExpiresAt); err != nil {
 				return err
 			}
-
 			return nil
 		})
 		if err != nil {
@@ -243,9 +243,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		res.IsFound = false
 		s.logInvitationAction(ctx, inv, auditctx.ActionInviteRejected, beforeState)
 		return res, nil
-	}
-
-	if req.Action == ActionAccept {
+	case ActionAccept:
 		accountantID, err := s.repo.GetAccountantIDByEmail(ctx, inv.Email)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check accountant existence: %w", err)
@@ -264,7 +262,6 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, targetStatus, inv.AccountantID, inv.ExpiresAt); err != nil {
 				return err
 			}
-
 			return nil
 		})
 		if err != nil {
