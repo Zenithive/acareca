@@ -17,7 +17,7 @@ type Service interface {
 	ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 
-	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error)
+	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
@@ -87,49 +87,57 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 	return &rs, nil
 }
 
-func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error) {
+func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error) {
 	var targetTypeID int16
 	if f.AccountType != nil {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
 			return nil, err
 		}
-		typeID := int16(id)
-		f.AccountTypeID = &typeID
+		targetTypeID = int16(id)
 	}
 
-	// SAVE the original ID, then NIL it out so MapToFilter doesn't use it
-	originalID := f.AccountTypeID
-	f.AccountTypeID = nil
 	ft := f.MapToFilter()
 
-	// Restore it if needed elsewhere
-	f.AccountTypeID = originalID
-
-	// Handle the Exclusion Logic
 	if f.AccountType != nil {
-		if *f.AccountType == "Revenue" {
-			// Exclude Expense
+		switch *f.AccountType {
+		case "Revenue":
+			ft.Where = append(ft.Where,
+				common.Condition{
+					Field:    "account_type_id",
+					Operator: common.OpEq,
+					Value:    targetTypeID,
+				},
+			)
 			excludeID, err := s.repo.GetAccountTypeByName(ctx, "Expense")
-			if err == nil {
-				ft.Where = append(ft.Where, common.Condition{
-					Field:    "account_type_id",
-					Operator: common.OpNotEq,
-					Value:    int16(excludeID),
-				})
+			if err != nil {
+				return nil, err
 			}
-		} else if *f.AccountType == "Expense" {
-			// Exclude Revenue
+			ft.Where = append(ft.Where, common.Condition{
+				Field:    "account_type_id",
+				Operator: common.OpNotEq,
+				Value:    int16(excludeID),
+			})
+
+		case "Expense":
+			ft.Where = append(ft.Where,
+				common.Condition{
+					Field:    "account_type_id",
+					Operator: common.OpEq,
+					Value:    targetTypeID,
+				},
+			)
 			excludeID, err := s.repo.GetAccountTypeByName(ctx, "Revenue")
-			if err == nil {
-				ft.Where = append(ft.Where, common.Condition{
-					Field:    "account_type_id",
-					Operator: common.OpNotEq,
-					Value:    int16(excludeID), // Make sure this ID is actually 5
-				})
+			if err != nil {
+				return nil, err
 			}
-		} else {
-			// Standard Behaviour
+			ft.Where = append(ft.Where, common.Condition{
+				Field:    "account_type_id",
+				Operator: common.OpNotEq,
+				Value:    int16(excludeID),
+			})
+
+		default:
 			ft.Where = append(ft.Where, common.Condition{
 				Field:    "account_type_id",
 				Operator: common.OpEq,
@@ -138,24 +146,20 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 		}
 	}
 
-	// Logic for Practitioner vs Accountant
 	switch role {
 	case util.RolePractitioner:
-		// PRACTITIONER: Force filter to their own ID to prevent seeing other's data
 		ft.Where = append(ft.Where, common.Condition{
 			Field:    "practitioner_id",
 			Operator: common.OpEq,
 			Value:    actorID,
 		})
+
 	case util.RoleAccountant:
-		// ACCOUNTANT:
-		// If they passed a practitioner_id in the query, use it.
-		// If not, SQL will return all COAs
-		if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
+		if len(f.PractitionerID) > 0 {
 			ft.Where = append(ft.Where, common.Condition{
 				Field:    "practitioner_id",
-				Operator: common.OpEq,
-				Value:    *f.PractitionerID,
+				Operator: common.OpIn,
+				Value:    f.PractitionerID,
 			})
 		}
 	}
@@ -164,6 +168,7 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 	if err != nil {
 		return nil, err
 	}
+
 	total, err := s.repo.CountChartOfAccount(ctx, actorID, role, ft)
 	if err != nil {
 		return nil, err

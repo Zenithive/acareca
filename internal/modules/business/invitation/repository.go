@@ -546,7 +546,7 @@ func (r *repository) CountInvitationPerPractitionerAndEmail(ctx context.Context,
 		SELECT COUNT(*) 
 		FROM tbl_invitation 
 		WHERE practitioner_id = $1 
-		  AND email = $2 AND deleted_at IS NULL`
+		  AND email = $2 AND status NOT IN('REVOKED','REJECTED') AND deleted_at IS NULL`
 
 	if err := r.db.GetContext(ctx, &count, query, practitionerID, email); err != nil {
 		return 0, err

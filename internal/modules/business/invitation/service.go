@@ -230,7 +230,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 
 	if req.Action == ActionReject {
 		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusRevoked, inv.AccountantID, inv.ExpiresAt); err != nil {
+			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusRejected, inv.AccountantID, inv.ExpiresAt); err != nil {
 				return err
 			}
 
@@ -261,7 +261,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		}
 
 		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusRevoked, inv.AccountantID, inv.ExpiresAt); err != nil {
+			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, targetStatus, inv.AccountantID, inv.ExpiresAt); err != nil {
 				return err
 			}
 
