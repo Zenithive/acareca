@@ -88,7 +88,6 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 }
 
 func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error) {
-	var targetTypeID int16
 	if f.AccountType != nil {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
@@ -125,7 +124,7 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 				ft.Where = append(ft.Where, common.Condition{
 					Field:    "account_type_id",
 					Operator: common.OpNotEq,
-					Value:    int16(excludeID), // Make sure this ID is actually 5
+					Value:    int16(excludeID),
 				})
 			}
 		} else {
@@ -133,7 +132,7 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 			ft.Where = append(ft.Where, common.Condition{
 				Field:    "account_type_id",
 				Operator: common.OpEq,
-				Value:    targetTypeID,
+				Value:    originalID,
 			})
 		}
 	}
