@@ -21,6 +21,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -1131,48 +1132,53 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 
 	parsedActorID := actorID.String()
 
-	// --- FETCH METADATA ---
 	var fullName string
-	user, err := s.authRepo.FindByID(ctx, userID)
-	if err == nil {
-		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-	}
-
 	var entityName string
 	var practitionerABN string
-	targetID := filterPractitionerID
-	if targetID == "" && role == util.RolePractitioner {
-		targetID = actorID.String()
-	}
+	var FY *fy.FinancialYear
+	var targetPracIDs []uuid.UUID
 
-	if targetID != "" {
-		pracUUID, err := uuid.Parse(targetID)
-		if err == nil {
-			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
-			if err == nil {
-				if prac.EntityName != nil {
-					entityName = *prac.EntityName
-				} else {
-					entityName = fullName
-				}
-				if prac.ABN != nil {
-					practitionerABN = *prac.ABN
-				}
-			}
+	err := util.RunInTransaction(ctx, s.repo.(*repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var innerErr error
+
+		// --- FETCH METADATA ---
+		user, innerErr := s.authRepo.FindByID(ctx, userID) // Fallback to transactional find if supported by authRepo
+		if innerErr == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
-	} else {
-		if role == util.RolePractitioner {
-			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
-			entityName = fullName
-			if err == nil {
-				if prac.ABN != nil {
-					practitionerABN = *prac.ABN
+
+		targetID := filterPractitionerID
+		if targetID == "" && role == util.RolePractitioner {
+			targetID = actorID.String()
+		}
+
+		if targetID != "" {
+			pracUUID, innerErr := uuid.Parse(targetID)
+			if innerErr == nil {
+				prac, innerErr := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+				if innerErr == nil {
+					if prac.EntityName != nil {
+						entityName = *prac.EntityName
+					} else {
+						entityName = fullName
+					}
+					if prac.ABN != nil {
+						practitionerABN = *prac.ABN
+					}
 				}
 			}
 		} else {
-			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
-			{
-				if err == nil {
+			if role == util.RolePractitioner {
+				prac, innerErr := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+				entityName = fullName
+				if innerErr == nil {
+					if prac.ABN != nil {
+						practitionerABN = *prac.ABN
+					}
+				}
+			} else {
+				acc, innerErr := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+				if innerErr == nil {
 					if acc.EntityName != nil {
 						entityName = *acc.EntityName
 					} else {
@@ -1184,10 +1190,62 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 				}
 			}
 		}
+
+		// Get Financial Year
+		parsedID, innerErr := uuid.Parse(*filter.FinancialYearID)
+		if innerErr != nil {
+			return fmt.Errorf("invalid financial year id: %w", innerErr)
+		}
+
+		FY, innerErr = s.fyRepo.GetFinancialYearByID(ctx, parsedID)
+		if innerErr != nil {
+			return innerErr
+		}
+
+		if role == util.RoleAccountant && len(PracIDs) > 0 {
+			targetPracIDs = PracIDs
+			if len(filter.ParsedClinicIDs) > 0 {
+				uniqueOwners := make(map[uuid.UUID]bool)
+				for _, cID := range filter.ParsedClinicIDs {
+					clinic, innerErr := s.clinicRepo.GetClinicByID(ctx, tx, cID)
+					if innerErr == nil {
+						uniqueOwners[clinic.PractitionerID] = true
+					}
+				}
+				targetPracIDs = make([]uuid.UUID, 0, len(uniqueOwners))
+				for id := range uniqueOwners {
+					targetPracIDs = append(targetPracIDs, id)
+				}
+			}
+			for _, pID := range targetPracIDs {
+				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: pID,
+					AccountantID:   actorID,
+					ActorID:        userID,
+					ActorName:      &fullName,
+					ActorType:      role,
+					EventType:      "bas_report.exported",
+					EntityType:     "REPORT",
+					EntityID:       actorID,
+					Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
+					Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
+					CreatedAt:      time.Now(),
+				})
+				if innerErr != nil {
+					return fmt.Errorf("failed to log shared event: %w", innerErr)
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	// --- STYLES ---
-
 	// Top Headers (Q1, Q2, etc.) - Light Blue, Bold, Black Borders
 	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 11},
@@ -1240,17 +1298,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	// --- DATA PREPARATION ---
 	allCols := append(data.Columns, data.GrandTotal)
 
-	// Get Financial Year
-	parsedID, err := uuid.Parse(*filter.FinancialYearID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid financial year id: %w", err)
-	}
-
-	FY, err := s.fyRepo.GetFinancialYearByID(ctx, parsedID)
-	if err != nil {
-		return nil, err
-	}
-
 	setRichMeta := func(cell string, label string, value string) {
 		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
 			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
@@ -1268,7 +1315,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	f.SetCellStyle(sheet, "A2", fmt.Sprintf("%s2", lastColName), styleHeaderBlue)
 
 	// 2. Metadata Rows (Rows 3-4)
-	// We merge these so the background/borders look consistent if you add them later
 	f.MergeCell(sheet, "A3", fmt.Sprintf("%s3", lastColName))
 	setRichMeta("A3", "Exported by:", entityName)
 
@@ -1289,19 +1335,15 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
 		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
 
-		// --- Quarter Name FORMATTING ---
 		headerValue := allCols[i].Quarter.Name
 
-		// Only attempt to format if it's an actual quarter (skip for the "Total" column)
 		if allCols[i].Quarter.StartDate != "" {
-			// Parse the year
 			t, err := time.Parse("2006-01-02", allCols[i].Quarter.StartDate)
 			yearStr := ""
 			if err == nil {
 				yearStr = fmt.Sprintf("%d", t.Year())
 			}
 
-			// Combine to: Quarter Name (Display Range) Year
 			headerValue = fmt.Sprintf("%s (%s) %s",
 				allCols[i].Quarter.Name,
 				allCols[i].Quarter.DisplayRange,
@@ -1309,19 +1351,16 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 			)
 		}
 
-		// Top Quarter Header
 		f.MergeCell(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol))
 		f.SetCellValue(sheet, fmt.Sprintf("%s7", startCol), headerValue)
 		f.SetCellStyle(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol), styleHeaderBlue)
 
-		// Sub Headers
 		f.SetCellValue(sheet, fmt.Sprintf("%s8", startCol), "Gross")
 		f.SetCellValue(sheet, fmt.Sprintf("%s8", midCol), "GST")
 		f.SetCellValue(sheet, fmt.Sprintf("%s8", endCol), "Net")
 		f.SetCellStyle(sheet, fmt.Sprintf("%s8", startCol), fmt.Sprintf("%s8", endCol), styleHeaderBlue)
 	}
 
-	// Helper to track range for dynamic calculations
 	type SectionMeta struct {
 		StartRow int
 		EndRow   int
@@ -1347,12 +1386,10 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 			midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
 			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
 
-			// INITIALIZE WITH ZEROS (This ensures $0.00 shows if data is missing)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", midCol, currentRow), 0)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
 
-			// Always apply borders
 			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
 			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Income.Items, name, styleTableGrid)
 		}
@@ -1360,7 +1397,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	}
 	incomeMeta.EndRow = currentRow - 1
 
-	// Create Income Table for Filtering
 	if len(incomeRows) > 0 {
 		tblRange := fmt.Sprintf("A%d:A%d", incomeHeaderRow, incomeMeta.EndRow)
 		showH := true
@@ -1392,7 +1428,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 			midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
 			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
 
-			// Force $0.00 by initializing with 0
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", midCol, currentRow), 0)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
@@ -1404,9 +1439,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	}
 	expenseMeta.EndRow = currentRow - 1
 
-	// Create Expenses Table for Filtering
 	if len(expenseRows) > 0 {
-		// CHANGE: Range is now only Column A
 		tblRange := fmt.Sprintf("A%d:A%d", expenseHeaderRow, expenseMeta.EndRow)
 		showH := true
 
@@ -1424,20 +1457,17 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net GST Payable")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
 
-	// Apply Dynamic Formulas for each Quarter Column
 	for i := range allCols {
 		cIdx := 1 + (i * 4)
 		grossCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		gstCol, _ := excelize.ColumnNumberToName(cIdx + 2) // GST column
-		netCol, _ := excelize.ColumnNumberToName(cIdx + 3) // Net column
+		gstCol, _ := excelize.ColumnNumberToName(cIdx + 2)
+		netCol, _ := excelize.ColumnNumberToName(cIdx + 3)
 
 		f.MergeCell(sheet, fmt.Sprintf("%s%d", grossCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow))
 
-		// Net GST Payable Formula (GST Income - GST Expenses)
 		incomeGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, incomeMeta.StartRow, gstCol, incomeMeta.EndRow)
 		expenseGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, expenseMeta.StartRow, gstCol, expenseMeta.EndRow)
 		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s-%s", incomeGST, expenseGST))
-		// f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
 		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", grossCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
 	}
 
@@ -1452,7 +1482,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		}
 	}
 
-	// --- AUDIT LOG ---
+	// --- AUDIT LOG (Asynchronous Execution After Successful DB Operations) ---
 	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
@@ -1471,41 +1501,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
 	})
-
-	// Record the Shared Event — only for accountants, never for practitioners.
-	if role == util.RoleAccountant && len(PracIDs) > 0 {
-		// If clinics are filtered, narrow notifications to only those clinic owners.
-		targetPracIDs := PracIDs
-		if len(filter.ParsedClinicIDs) > 0 {
-			uniqueOwners := make(map[uuid.UUID]bool)
-			for _, cID := range filter.ParsedClinicIDs {
-				clinic, err := s.clinicRepo.GetClinicByID(ctx, cID)
-				if err == nil {
-					uniqueOwners[clinic.PractitionerID] = true
-				}
-			}
-			targetPracIDs = make([]uuid.UUID, 0, len(uniqueOwners))
-			for id := range uniqueOwners {
-				targetPracIDs = append(targetPracIDs, id)
-			}
-		}
-		for _, pID := range targetPracIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "bas_report.exported",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 
 	if exportType == "pdf" {
 		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label, fullName, practitionerABN)

@@ -61,7 +61,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 	var result *RsClinic
 
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		activeFinancialYearID, err := s.repo.GetActiveFinancialYearTx(ctx, tx)
+		activeFinancialYearID, err := s.repo.GetActiveFinancialYear(ctx, tx)
 		if err != nil {
 			return fmt.Errorf("get active financial year: %w", err)
 		}
@@ -95,7 +95,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			clinic.IsActive = *req.IsActive
 		}
 
-		created, err := s.repo.CreateClinicTx(ctx, tx, clinic)
+		created, err := s.repo.CreateClinic(ctx, tx, clinic)
 		if err != nil {
 			return fmt.Errorf("create clinic: %w", err)
 		}
@@ -108,7 +108,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 			LockDate:        nil,
 		}
 
-		createdFS, err := s.repo.CreateFinancialSettingsTx(ctx, tx, financialSettings)
+		createdFS, err := s.repo.CreateFinancialSettings(ctx, tx, financialSettings)
 		if err != nil {
 			return fmt.Errorf("create financial settings: %w", err)
 		}
@@ -131,7 +131,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 				IsPrimary: isPrimary,
 			}
 
-			createdAddr, err := s.repo.CreateClinicAddressTx(ctx, tx, clinicAddr)
+			createdAddr, err := s.repo.CreateClinicAddress(ctx, tx, clinicAddr)
 			if err != nil {
 				return fmt.Errorf("create address: %w", err)
 			}
@@ -162,7 +162,7 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 				IsPrimary:   isPrimary,
 			}
 
-			createdContact, err := s.repo.CreateClinicContactTx(ctx, tx, clinicContact)
+			createdContact, err := s.repo.CreateClinicContact(ctx, tx, clinicContact)
 			if err != nil {
 				return fmt.Errorf("create contact: %w", err)
 			}
@@ -266,17 +266,158 @@ func (s *service) CreateClinic(ctx context.Context, practitionerID uuid.UUID, re
 func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()
 
-	clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
+	var rsList *util.RsList
+
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		clinics, err := s.repo.ListClinicByPractitioner(ctx, practitionerID, f)
+		if err != nil {
+			return err
+		}
+
+		result := make([]RsClinic, 0, len(clinics))
+		for _, clinic := range clinics {
+			addresses, addrErr := s.repo.GetClinicAddresses(ctx, tx, clinic.ID)
+			if addrErr != nil {
+				return addrErr
+			}
+			var rsAddress *RsClinicAddress
+			if len(addresses) > 0 {
+				addr := addresses[0]
+				for _, a := range addresses {
+					if a.IsPrimary {
+						addr = a
+						break
+					}
+				}
+				rsAddress = &RsClinicAddress{
+					ID:        addr.ID,
+					Address:   addr.Address,
+					City:      addr.City,
+					State:     addr.State,
+					Postcode:  addr.Postcode,
+					IsPrimary: addr.IsPrimary,
+				}
+			}
+
+			contacts, contErr := s.repo.GetClinicContacts(ctx, tx, clinic.ID)
+			if contErr != nil {
+				return contErr
+			}
+			rsContacts := make([]RsClinicContact, len(contacts))
+			for i, cont := range contacts {
+				rsContacts[i] = RsClinicContact{
+					ID:          cont.ID,
+					ContactType: cont.ContactType,
+					Value:       cont.Value,
+					Label:       cont.Label,
+					IsPrimary:   cont.IsPrimary,
+				}
+			}
+
+			financialSettings, fsErr := s.repo.GetFinancialSettings(ctx, tx, clinic.ID)
+			if fsErr != nil {
+				return fsErr
+			}
+			var rsFinancialSettings *RsFinancialSettings
+			if financialSettings != nil {
+				rsFinancialSettings = &RsFinancialSettings{
+					ID:              financialSettings.ID,
+					FinancialYearID: financialSettings.FinancialYearID,
+					LockDate:        financialSettings.LockDate,
+				}
+			}
+
+			doc, docErr := s.repo.GetDocumentByClinicID(ctx, tx, clinic.ID)
+			if docErr != nil {
+				return docErr
+			}
+			clinic.Document = doc
+
+			result = append(result, RsClinic{
+				ID:                clinic.ID,
+				EntityID:          clinic.EntityID,
+				PractitionerID:    clinic.PractitionerID,
+				ProfilePicture:    clinic.ProfilePicture,
+				ImageURL:          clinic.ImageURL,
+				Name:              clinic.Name,
+				ABN:               clinic.ABN,
+				Description:       clinic.Description,
+				IsActive:          clinic.IsActive,
+				Address:           rsAddress,
+				Contacts:          rsContacts,
+				FinancialSettings: rsFinancialSettings,
+				Document:          ToRsDocument(clinic.Document),
+				CreatedAt:         clinic.CreatedAt,
+				UpdatedAt:         clinic.UpdatedAt,
+			})
+		}
+
+		total, err := s.repo.CountClinicByPractitioner(ctx, practitionerID, f)
+		if err != nil {
+			return err
+		}
+
+		rsList = &util.RsList{}
+		rsList.MapToList(result, total, *f.Offset, *f.Limit)
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]RsClinic, 0, len(clinics))
-	for _, clinic := range clinics {
-		addresses, addrErr := s.repo.GetClinicAddresses(ctx, clinic.ID)
-		if addrErr != nil {
-			return nil, addrErr
+	return rsList, nil
+}
+func (s *service) CountClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (int, error) {
+	f := filter.MapToFilter()
+	return s.repo.CountClinicByPractitioner(ctx, practitionerID, f)
+}
+
+func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
+	meta := auditctx.GetMetadata(ctx)
+
+	var result *RsClinic
+
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var ownerID uuid.UUID
+		var err error
+
+		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+			ownerID, err = s.CheckPermission(ctx, actorID, id)
+			if err != nil {
+				return err
+			}
+		} else {
+			ownerID = actorID
 		}
+
+		clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, tx, id, ownerID)
+		if err != nil {
+			return err
+		}
+
+		addresses, err := s.repo.GetClinicAddresses(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+
+		contacts, err := s.repo.GetClinicContacts(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+
+		financialSettings, err := s.repo.GetFinancialSettings(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+
+		doc, err := s.repo.GetDocumentByClinicID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		clinic.Document = doc
+
 		var rsAddress *RsClinicAddress
 		if len(addresses) > 0 {
 			addr := addresses[0]
@@ -296,25 +437,17 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			}
 		}
 
-		contacts, contErr := s.repo.GetClinicContacts(ctx, clinic.ID)
-		if contErr != nil {
-			return nil, contErr
-		}
-		rsContacts := make([]RsClinicContact, len(contacts))
-		for i, cont := range contacts {
-			rsContacts[i] = RsClinicContact{
+		rsContacts := make([]RsClinicContact, 0, len(contacts))
+		for _, cont := range contacts {
+			rsContacts = append(rsContacts, RsClinicContact{
 				ID:          cont.ID,
 				ContactType: cont.ContactType,
 				Value:       cont.Value,
 				Label:       cont.Label,
 				IsPrimary:   cont.IsPrimary,
-			}
+			})
 		}
 
-		financialSettings, fsErr := s.repo.GetFinancialSettings(ctx, clinic.ID)
-		if fsErr != nil {
-			return nil, fsErr
-		}
 		var rsFinancialSettings *RsFinancialSettings
 		if financialSettings != nil {
 			rsFinancialSettings = &RsFinancialSettings{
@@ -324,15 +457,8 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			}
 		}
 
-		doc, docErr := s.repo.GetDocumentByClinicID(ctx, clinic.ID)
-		if docErr != nil {
-			return nil, docErr
-		}
-		clinic.Document = doc
-
-		result = append(result, RsClinic{
+		result = &RsClinic{
 			ID:                clinic.ID,
-			EntityID:          clinic.EntityID,
 			PractitionerID:    clinic.PractitionerID,
 			ProfilePicture:    clinic.ProfilePicture,
 			ImageURL:          clinic.ImageURL,
@@ -346,121 +472,16 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 			Document:          ToRsDocument(clinic.Document),
 			CreatedAt:         clinic.CreatedAt,
 			UpdatedAt:         clinic.UpdatedAt,
-		})
-	}
-
-	total, err := s.CountClinic(ctx, practitionerID, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	rsList := &util.RsList{}
-	rsList.MapToList(result, total, *f.Offset, *f.Limit)
-
-	return rsList, nil
-}
-
-func (s *service) CountClinic(ctx context.Context, practitionerID uuid.UUID, filter Filter) (int, error) {
-	f := filter.MapToFilter()
-	return s.repo.CountClinicByPractitioner(ctx, practitionerID, f)
-}
-
-func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.UUID) (*RsClinic, error) {
-	meta := auditctx.GetMetadata(ctx)
-
-	var ownerID uuid.UUID
-	var err error
-
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) {
-		ownerID, err = s.CheckPermission(ctx, actorID, id)
-		if err != nil {
-			return nil, err
 		}
-	} else {
-		ownerID = actorID
-	}
 
-	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, id, ownerID)
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	addresses, err := s.repo.GetClinicAddresses(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	contacts, err := s.repo.GetClinicContacts(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	financialSettings, err := s.repo.GetFinancialSettings(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	doc, err := s.repo.GetDocumentByClinicID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	clinic.Document = doc
-
-	var rsAddress *RsClinicAddress
-	if len(addresses) > 0 {
-		addr := addresses[0]
-		for _, a := range addresses {
-			if a.IsPrimary {
-				addr = a
-				break
-			}
-		}
-		rsAddress = &RsClinicAddress{
-			ID:        addr.ID,
-			Address:   addr.Address,
-			City:      addr.City,
-			State:     addr.State,
-			Postcode:  addr.Postcode,
-			IsPrimary: addr.IsPrimary,
-		}
-	}
-
-	rsContacts := make([]RsClinicContact, 0, len(contacts))
-	for _, cont := range contacts {
-		rsContacts = append(rsContacts, RsClinicContact{
-			ID:          cont.ID,
-			ContactType: cont.ContactType,
-			Value:       cont.Value,
-			Label:       cont.Label,
-			IsPrimary:   cont.IsPrimary,
-		})
-	}
-
-	var rsFinancialSettings *RsFinancialSettings
-	if financialSettings != nil {
-		rsFinancialSettings = &RsFinancialSettings{
-			ID:              financialSettings.ID,
-			FinancialYearID: financialSettings.FinancialYearID,
-			LockDate:        financialSettings.LockDate,
-		}
-	}
-
-	return &RsClinic{
-		ID:                clinic.ID,
-		PractitionerID:    clinic.PractitionerID,
-		ProfilePicture:    clinic.ProfilePicture,
-		ImageURL:          clinic.ImageURL,
-		Name:              clinic.Name,
-		ABN:               clinic.ABN,
-		Description:       clinic.Description,
-		IsActive:          clinic.IsActive,
-		Address:           rsAddress,
-		Contacts:          rsContacts,
-		FinancialSettings: rsFinancialSettings,
-		Document:          ToRsDocument(clinic.Document),
-		CreatedAt:         clinic.CreatedAt,
-		UpdatedAt:         clinic.UpdatedAt,
-	}, nil
+	return result, nil
 }
 
 func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error {
@@ -472,20 +493,13 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 	}
 
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		existing, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
+		existing, err := s.repo.GetClinicByIDAndPractitioner(ctx, tx, id, ownerID)
 		if err != nil {
 			return err
 		}
 
-		if err := s.repo.DeleteClinicTx(ctx, tx, id); err != nil {
+		if err := s.repo.DeleteClinic(ctx, tx, id); err != nil {
 			return fmt.Errorf("delete clinic: %w", err)
-		}
-
-		if err := s.repo.DeletePermissionsByEntity(ctx, id, "CLINIC"); err != nil {
-			fmt.Printf("Alert: Clinic %s deleted but permissions cleanup failed: %v\n", id, err)
-			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, "clinic.delete_permissions",
-				err, "", id.String(), auditctx.EntityClinic, auditctx.ModuleClinic,
-			)
 		}
 
 		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
@@ -497,7 +511,6 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
 				if err == nil {
 					finalAccountantID = accProfile.ID
-					fmt.Printf(">>> DEBUG: Resolved Accountant Profile ID: %s\n", finalAccountantID)
 				} else {
 					finalAccountantID = actorUserID
 				}
@@ -558,12 +571,12 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 	var beforeState *RsClinic
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		beforeState, err = s.getClinicByIDInternalTx(ctx, tx, id)
+		beforeState, err = s.getClinicByIDInternal(ctx, tx, id)
 		if err != nil {
 			return fmt.Errorf("get before state: %w", err)
 		}
 
-		clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
+		clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, tx, id, ownerID)
 		if err != nil {
 			return fmt.Errorf("get clinic: %w", err)
 		}
@@ -606,14 +619,14 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 			}
 		}
 
-		_, err = s.repo.UpdateClinicTx(ctx, tx, clinic)
+		_, err = s.repo.UpdateClinic(ctx, tx, clinic)
 		if err != nil {
 			return fmt.Errorf("update clinic: %w", err)
 		}
 
 		if req.Address != nil {
 			if req.Address.ID != nil && *req.Address.ID != uuid.Nil {
-				existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *req.Address.ID)
+				existingAddr, err := s.repo.GetAddressByID(ctx, tx, *req.Address.ID)
 				if err == nil && existingAddr.ClinicID == clinic.ID {
 					if req.Address.Address != nil {
 						existingAddr.Address = req.Address.Address
@@ -629,7 +642,7 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					}
 					existingAddr.IsPrimary = true // Usually single address is primary
 
-					err = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
+					err = s.repo.UpdateClinicAddress(ctx, tx, existingAddr)
 					if err != nil {
 						return fmt.Errorf("update address: %w", err)
 					}
@@ -644,26 +657,26 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					Postcode:  req.Address.Postcode,
 					IsPrimary: true,
 				}
-				_, err = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
+				_, err = s.repo.CreateClinicAddress(ctx, tx, newAddr)
 				if err != nil {
 					return fmt.Errorf("create address: %w", err)
 				}
 			}
 		} else {
-			err = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
+			err = s.repo.DeleteClinicAddress(ctx, tx, clinic.ID)
 			if err != nil {
 				return fmt.Errorf("delete address: %w", err)
 			}
 		}
 
 		// Update contacts
-		existingContacts, _ := s.repo.GetClinicContactsTx(ctx, tx, clinic.ID)
+		existingContacts, _ := s.repo.GetClinicContacts(ctx, tx, clinic.ID)
 		incomingIDs := make(map[uuid.UUID]bool)
 
 		for _, cont := range req.Contacts {
 			if cont.ID != nil && *cont.ID != uuid.Nil {
 				incomingIDs[*cont.ID] = true
-				existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
+				existing, err := s.repo.GetContactByID(ctx, tx, *cont.ID)
 				if err == nil && existing.ClinicID == clinic.ID {
 					if cont.ContactType != nil {
 						existing.ContactType = *cont.ContactType
@@ -674,7 +687,7 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					if cont.IsPrimary != nil {
 						existing.IsPrimary = *cont.IsPrimary
 					}
-					err = s.repo.UpdateClinicContactTx(ctx, tx, existing)
+					err = s.repo.UpdateClinicContact(ctx, tx, existing)
 					if err != nil {
 						return fmt.Errorf("update contact: %w", err)
 					}
@@ -687,7 +700,7 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 					Value:       *cont.Value,
 					IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
 				}
-				_, err = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+				_, err = s.repo.CreateClinicContact(ctx, tx, newCont)
 				if err != nil {
 					return fmt.Errorf("create contact: %w", err)
 				}
@@ -696,14 +709,14 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 
 		for _, ex := range existingContacts {
 			if !incomingIDs[ex.ID] {
-				err = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
+				err = s.repo.DeleteClinicContact(ctx, tx, ex.ID, clinic.ID)
 				if err != nil {
 					return fmt.Errorf("delete contact: %w", err)
 				}
 			}
 		}
 
-		updatedClinic, err := s.getClinicByIDInternalTx(ctx, tx, id)
+		updatedClinic, err := s.getClinicByIDInternal(ctx, tx, id)
 		if err != nil {
 			return fmt.Errorf("get updated clinic: %w", err)
 		}
@@ -771,87 +784,99 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 
 // GetClinicByIDInternal is for internal service-to-service calls without user validation
 func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsClinic, error) {
-	clinic, err := s.repo.GetClinicByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
+	var result *RsClinic
 
-	addresses, err := s.repo.GetClinicAddresses(ctx, id)
-	if err != nil {
-		return nil, err
-	}
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		clinic, err := s.repo.GetClinicByID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
 
-	contacts, err := s.repo.GetClinicContacts(ctx, id)
-	if err != nil {
-		return nil, err
-	}
+		addresses, err := s.repo.GetClinicAddresses(ctx, tx, id)
+		if err != nil {
+			return err
+		}
 
-	financialSettings, err := s.repo.GetFinancialSettings(ctx, id)
-	if err != nil {
-		return nil, err
-	}
+		contacts, err := s.repo.GetClinicContacts(ctx, tx, id)
+		if err != nil {
+			return err
+		}
 
-	doc, err := s.repo.GetDocumentByClinicID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	clinic.Document = doc
+		financialSettings, err := s.repo.GetFinancialSettings(ctx, tx, id)
+		if err != nil {
+			return err
+		}
 
-	var rsAddress *RsClinicAddress
-	if len(addresses) > 0 {
-		addr := addresses[0]
-		for _, a := range addresses {
-			if a.IsPrimary {
-				addr = a
-				break
+		doc, err := s.repo.GetDocumentByClinicID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		clinic.Document = doc
+
+		var rsAddress *RsClinicAddress
+		if len(addresses) > 0 {
+			addr := addresses[0]
+			for _, a := range addresses {
+				if a.IsPrimary {
+					addr = a
+					break
+				}
+			}
+			rsAddress = &RsClinicAddress{
+				ID:        addr.ID,
+				Address:   addr.Address,
+				City:      addr.City,
+				State:     addr.State,
+				Postcode:  addr.Postcode,
+				IsPrimary: addr.IsPrimary,
 			}
 		}
-		rsAddress = &RsClinicAddress{
-			ID:        addr.ID,
-			Address:   addr.Address,
-			City:      addr.City,
-			State:     addr.State,
-			Postcode:  addr.Postcode,
-			IsPrimary: addr.IsPrimary,
+
+		rsContacts := make([]RsClinicContact, 0, len(contacts))
+		for _, cont := range contacts {
+			rsContacts = append(rsContacts, RsClinicContact{
+				ID:          cont.ID,
+				ContactType: cont.ContactType,
+				Value:       cont.Value,
+				Label:       cont.Label,
+				IsPrimary:   cont.IsPrimary,
+			})
 		}
-	}
 
-	rsContacts := make([]RsClinicContact, 0, len(contacts))
-	for _, cont := range contacts {
-		rsContacts = append(rsContacts, RsClinicContact{
-			ID:          cont.ID,
-			ContactType: cont.ContactType,
-			Value:       cont.Value,
-			Label:       cont.Label,
-			IsPrimary:   cont.IsPrimary,
-		})
-	}
-
-	var rsFinancialSettings *RsFinancialSettings
-	if financialSettings != nil {
-		rsFinancialSettings = &RsFinancialSettings{
-			ID:              financialSettings.ID,
-			FinancialYearID: financialSettings.FinancialYearID,
-			LockDate:        financialSettings.LockDate,
+		var rsFinancialSettings *RsFinancialSettings
+		if financialSettings != nil {
+			rsFinancialSettings = &RsFinancialSettings{
+				ID:              financialSettings.ID,
+				FinancialYearID: financialSettings.FinancialYearID,
+				LockDate:        financialSettings.LockDate,
+			}
 		}
+
+		result = &RsClinic{
+			ID:                clinic.ID,
+			PractitionerID:    clinic.PractitionerID,
+			ProfilePicture:    clinic.ProfilePicture,
+			ImageURL:          clinic.ImageURL,
+			Name:              clinic.Name,
+			ABN:               clinic.ABN,
+			Description:       clinic.Description,
+			IsActive:          clinic.IsActive,
+			Address:           rsAddress,
+			Contacts:          rsContacts,
+			FinancialSettings: rsFinancialSettings,
+			Document:          ToRsDocument(clinic.Document),
+			CreatedAt:         clinic.CreatedAt,
+			UpdatedAt:         clinic.UpdatedAt,
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	return &RsClinic{
-		ID:                clinic.ID,
-		PractitionerID:    clinic.PractitionerID,
-		ProfilePicture:    clinic.ProfilePicture,
-		ImageURL:          clinic.ImageURL,
-		Name:              clinic.Name,
-		ABN:               clinic.ABN,
-		Description:       clinic.Description,
-		IsActive:          clinic.IsActive,
-		Address:           rsAddress,
-		Contacts:          rsContacts,
-		FinancialSettings: rsFinancialSettings,
-		Document:          ToRsDocument(clinic.Document),
-		CreatedAt:         clinic.CreatedAt,
-		UpdatedAt:         clinic.UpdatedAt,
-	}, nil
+	return result, nil
 }
 
 func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkUpdateClinic) ([]RsClinic, error) {
@@ -864,7 +889,7 @@ func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUI
 			}
 
 			// Perform update within the same transaction
-			updatedClinic, err := s.updateClinicInTx(ctx, tx, practitionerID, *clinicReq.ID, &clinicReq)
+			updatedClinic, err := s.updateClinicIn(ctx, tx, practitionerID, *clinicReq.ID, &clinicReq)
 			if err != nil {
 				return fmt.Errorf("failed to update clinic %s: %w", clinicReq.ID.String(), err)
 			}
@@ -882,39 +907,44 @@ func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUI
 }
 
 func (s *service) BulkDeleteClinics(ctx context.Context, practitionerID uuid.UUID, req *RqBulkDeleteClinic) error {
-	for _, clinicID := range req.ClinicIDs {
-		_, err := s.repo.GetClinicByIDAndPractitioner(ctx, clinicID, practitionerID)
-		if err != nil {
-			return fmt.Errorf("clinic %s not found or access denied: %w", clinicID.String(), err)
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		for _, clinicID := range req.ClinicIDs {
+			_, err := s.repo.GetClinicByIDAndPractitioner(ctx, tx, clinicID, practitionerID)
+			if err != nil {
+				return fmt.Errorf("clinic %s not found or access denied: %w", clinicID.String(), err)
+			}
 		}
-	}
 
-	return s.repo.BulkDeleteClinics(ctx, req.ClinicIDs)
+		if err := s.repo.BulkDeleteClinics(ctx, req.ClinicIDs); err != nil {
+			return fmt.Errorf("failed during structural bulk delete sweep: %w", err)
+		}
+		return nil
+	})
 }
 
 // Helper method to get clinic details within a transaction
-func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*RsClinic, error) {
-	clinic, err := s.repo.GetClinicByIDTx(ctx, tx, id)
+func (s *service) getClinicByIDInternal(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*RsClinic, error) {
+	clinic, err := s.repo.GetClinicByID(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	addresses, err := s.repo.GetClinicAddressesTx(ctx, tx, id)
+	addresses, err := s.repo.GetClinicAddresses(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	contacts, err := s.repo.GetClinicContactsTx(ctx, tx, id)
+	contacts, err := s.repo.GetClinicContacts(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	financialSettings, err := s.repo.GetFinancialSettingsTx(ctx, tx, id)
+	financialSettings, err := s.repo.GetFinancialSettings(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	doc, err := s.repo.GetDocumentByClinicIDTx(ctx, tx, id)
+	doc, err := s.repo.GetDocumentByClinicID(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -980,13 +1010,13 @@ func (s *service) getClinicByIDInternalTx(ctx context.Context, tx *sqlx.Tx, id u
 }
 
 // Helper method to update clinic within a transaction (used by bulk update)
-func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
+func (s *service) updateClinicIn(ctx context.Context, tx *sqlx.Tx, actorID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
 	ownerID, err := s.verifyAccess(ctx, actorID, id)
 	if err != nil {
 		return nil, fmt.Errorf("access denied: %w", err)
 	}
 
-	clinic, err := s.repo.GetClinicByIDAndPractitionerTx(ctx, tx, id, ownerID)
+	clinic, err := s.repo.GetClinicByIDAndPractitioner(ctx, tx, id, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("get clinic: %w", err)
 	}
@@ -1024,7 +1054,7 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 		}
 	}
 
-	_, err = s.repo.UpdateClinicTx(ctx, tx, clinic)
+	_, err = s.repo.UpdateClinic(ctx, tx, clinic)
 	if err != nil {
 		return nil, fmt.Errorf("update clinic: %w", err)
 	}
@@ -1032,7 +1062,7 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 	// Update address
 	if req.Address != nil {
 		if req.Address.ID != nil && *req.Address.ID != uuid.Nil {
-			existingAddr, err := s.repo.GetAddressByIDTx(ctx, tx, *req.Address.ID)
+			existingAddr, err := s.repo.GetAddressByID(ctx, tx, *req.Address.ID)
 			if err == nil && existingAddr.ClinicID == clinic.ID {
 				if req.Address.Address != nil {
 					existingAddr.Address = req.Address.Address
@@ -1047,7 +1077,7 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 					existingAddr.Postcode = req.Address.Postcode
 				}
 				existingAddr.IsPrimary = true
-				_ = s.repo.UpdateClinicAddressTx(ctx, tx, existingAddr)
+				_ = s.repo.UpdateClinicAddress(ctx, tx, existingAddr)
 			}
 		} else {
 			newAddr := &ClinicAddress{
@@ -1059,20 +1089,20 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 				Postcode:  req.Address.Postcode,
 				IsPrimary: true,
 			}
-			_, _ = s.repo.CreateClinicAddressTx(ctx, tx, newAddr)
+			_, _ = s.repo.CreateClinicAddress(ctx, tx, newAddr)
 		}
 	} else {
-		_ = s.repo.DeleteClinicAddressTx(ctx, tx, clinic.ID)
+		_ = s.repo.DeleteClinicAddress(ctx, tx, clinic.ID)
 	}
 
 	// Update contacts
-	existingContacts, _ := s.repo.GetClinicContactsTx(ctx, tx, clinic.ID)
+	existingContacts, _ := s.repo.GetClinicContacts(ctx, tx, clinic.ID)
 	incomingIDs := make(map[uuid.UUID]bool)
 
 	for _, cont := range req.Contacts {
 		if cont.ID != nil && *cont.ID != uuid.Nil {
 			incomingIDs[*cont.ID] = true
-			existing, err := s.repo.GetContactByIDTx(ctx, tx, *cont.ID)
+			existing, err := s.repo.GetContactByID(ctx, tx, *cont.ID)
 			if err == nil && existing.ClinicID == clinic.ID {
 				if cont.ContactType != nil {
 					existing.ContactType = *cont.ContactType
@@ -1086,10 +1116,10 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 				if cont.IsPrimary != nil {
 					existing.IsPrimary = *cont.IsPrimary
 					if *cont.IsPrimary {
-						_ = s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, *cont.ID)
+						_ = s.repo.UnsetPrimaryContact(ctx, tx, clinic.ID, *cont.ID)
 					}
 				}
-				_ = s.repo.UpdateClinicContactTx(ctx, tx, existing)
+				_ = s.repo.UpdateClinicContact(ctx, tx, existing)
 			}
 		} else {
 			// CREATE
@@ -1102,22 +1132,22 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 				IsPrimary:   cont.IsPrimary != nil && *cont.IsPrimary,
 			}
 			if newCont.IsPrimary {
-				_ = s.repo.UnsetPrimaryContactTx(ctx, tx, clinic.ID, uuid.Nil)
+				_ = s.repo.UnsetPrimaryContact(ctx, tx, clinic.ID, uuid.Nil)
 			}
-			_, _ = s.repo.CreateClinicContactTx(ctx, tx, newCont)
+			_, _ = s.repo.CreateClinicContact(ctx, tx, newCont)
 		}
 	}
 
 	// DELETE contacts not present in request
 	for _, ex := range existingContacts {
 		if !incomingIDs[ex.ID] {
-			_ = s.repo.DeleteClinicContactTx(ctx, tx, ex.ID, clinic.ID)
+			_ = s.repo.DeleteClinicContact(ctx, tx, ex.ID, clinic.ID)
 		}
 	}
 
 	// Update financial settings if provided
 	if req.FinancialYearID != nil || req.LockDate != nil {
-		financialSettings, err := s.repo.GetFinancialSettingsTx(ctx, tx, clinic.ID)
+		financialSettings, err := s.repo.GetFinancialSettings(ctx, tx, clinic.ID)
 		if err != nil {
 			return nil, fmt.Errorf("get financial settings: %w", err)
 		}
@@ -1130,14 +1160,14 @@ func (s *service) updateClinicInTx(ctx context.Context, tx *sqlx.Tx, actorID uui
 				financialSettings.LockDate = req.LockDate
 			}
 
-			if err := s.repo.UpdateFinancialSettingsTx(ctx, tx, financialSettings); err != nil {
+			if err := s.repo.UpdateFinancialSettings(ctx, tx, financialSettings); err != nil {
 				return nil, fmt.Errorf("update financial settings: %w", err)
 			}
 		}
 	}
 
 	// Get the updated clinic with all related data
-	return s.getClinicByIDInternalTx(ctx, tx, id)
+	return s.getClinicByIDInternal(ctx, tx, id)
 }
 
 func (s *service) verifyAccess(ctx context.Context, actorID uuid.UUID, clinicID uuid.UUID) (uuid.UUID, error) {
@@ -1204,100 +1234,108 @@ func (s *service) CheckPermission(ctx context.Context, actorID uuid.UUID, clinic
 
 func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uuid.UUID, filter Filter) (*util.RsList, error) {
 	f := filter.MapToFilter()
-
 	f.PractitionerID = filter.PractitionerID
 
-	clinics, err := s.repo.ListClinicByAccountant(ctx, accountantID, f)
-	if err != nil {
-		return nil, err
-	}
+	var rsList *util.RsList
 
-	result := make([]RsClinic, 0, len(clinics))
-	for _, clinic := range clinics {
-
-		addresses, addrErr := s.repo.GetClinicAddresses(ctx, clinic.ID)
-		if addrErr != nil {
-			return nil, addrErr
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		clinics, err := s.repo.ListClinicByAccountant(ctx, accountantID, f)
+		if err != nil {
+			return err
 		}
-		var rsAddress *RsClinicAddress
-		if len(addresses) > 0 {
-			addr := addresses[0]
-			for _, a := range addresses {
-				if a.IsPrimary {
-					addr = a
-					break
+
+		result := make([]RsClinic, 0, len(clinics))
+		for _, clinic := range clinics {
+			addresses, addrErr := s.repo.GetClinicAddresses(ctx, tx, clinic.ID)
+			if addrErr != nil {
+				return addrErr
+			}
+			var rsAddress *RsClinicAddress
+			if len(addresses) > 0 {
+				addr := addresses[0]
+				for _, a := range addresses {
+					if a.IsPrimary {
+						addr = a
+						break
+					}
+				}
+				rsAddress = &RsClinicAddress{
+					ID:        addr.ID,
+					Address:   addr.Address,
+					City:      addr.City,
+					State:     addr.State,
+					Postcode:  addr.Postcode,
+					IsPrimary: addr.IsPrimary,
 				}
 			}
-			rsAddress = &RsClinicAddress{
-				ID:        addr.ID,
-				Address:   addr.Address,
-				City:      addr.City,
-				State:     addr.State,
-				Postcode:  addr.Postcode,
-				IsPrimary: addr.IsPrimary,
+
+			contacts, contErr := s.repo.GetClinicContacts(ctx, tx, clinic.ID)
+			if contErr != nil {
+				return contErr
 			}
-		}
-
-		contacts, contErr := s.repo.GetClinicContacts(ctx, clinic.ID)
-		if contErr != nil {
-			return nil, contErr
-		}
-		rsContacts := make([]RsClinicContact, len(contacts))
-		for i, cont := range contacts {
-			rsContacts[i] = RsClinicContact{
-				ID:          cont.ID,
-				ContactType: cont.ContactType,
-				Value:       cont.Value,
-				Label:       cont.Label,
-				IsPrimary:   cont.IsPrimary,
+			rsContacts := make([]RsClinicContact, len(contacts))
+			for i, cont := range contacts {
+				rsContacts[i] = RsClinicContact{
+					ID:          cont.ID,
+					ContactType: cont.ContactType,
+					Value:       cont.Value,
+					Label:       cont.Label,
+					IsPrimary:   cont.IsPrimary,
+				}
 			}
-		}
 
-		financialSettings, fsErr := s.repo.GetFinancialSettings(ctx, clinic.ID)
-		if fsErr != nil {
-			return nil, fsErr
-		}
-		var rsFinancialSettings *RsFinancialSettings
-		if financialSettings != nil {
-			rsFinancialSettings = &RsFinancialSettings{
-				ID:              financialSettings.ID,
-				FinancialYearID: financialSettings.FinancialYearID,
-				LockDate:        financialSettings.LockDate,
+			financialSettings, fsErr := s.repo.GetFinancialSettings(ctx, tx, clinic.ID)
+			if fsErr != nil {
+				return fsErr
 			}
+			var rsFinancialSettings *RsFinancialSettings
+			if financialSettings != nil {
+				rsFinancialSettings = &RsFinancialSettings{
+					ID:              financialSettings.ID,
+					FinancialYearID: financialSettings.FinancialYearID,
+					LockDate:        financialSettings.LockDate,
+				}
+			}
+
+			doc, docErr := s.repo.GetDocumentByClinicID(ctx, tx, clinic.ID)
+			if docErr != nil {
+				return docErr
+			}
+			clinic.Document = doc
+
+			result = append(result, RsClinic{
+				ID:                clinic.ID,
+				EntityID:          clinic.EntityID,
+				PractitionerID:    clinic.PractitionerID,
+				ProfilePicture:    clinic.ProfilePicture,
+				ImageURL:          clinic.ImageURL,
+				Name:              clinic.Name,
+				ABN:               clinic.ABN,
+				Description:       clinic.Description,
+				IsActive:          clinic.IsActive,
+				Address:           rsAddress,
+				Contacts:          rsContacts,
+				FinancialSettings: rsFinancialSettings,
+				Document:          ToRsDocument(clinic.Document),
+				CreatedAt:         clinic.CreatedAt,
+				UpdatedAt:         clinic.UpdatedAt,
+			})
 		}
 
-		doc, docErr := s.repo.GetDocumentByClinicID(ctx, clinic.ID)
-		if docErr != nil {
-			return nil, docErr
+		total, err := s.repo.CountClinicByAccountant(ctx, accountantID, f)
+		if err != nil {
+			return err
 		}
-		clinic.Document = doc
 
-		result = append(result, RsClinic{
-			ID:                clinic.ID,
-			EntityID:          clinic.EntityID,
-			PractitionerID:    clinic.PractitionerID,
-			ProfilePicture:    clinic.ProfilePicture,
-			ImageURL:          clinic.ImageURL,
-			Name:              clinic.Name,
-			ABN:               clinic.ABN,
-			Description:       clinic.Description,
-			IsActive:          clinic.IsActive,
-			Address:           rsAddress,
-			Contacts:          rsContacts,
-			FinancialSettings: rsFinancialSettings,
-			Document:          ToRsDocument(clinic.Document),
-			CreatedAt:         clinic.CreatedAt,
-			UpdatedAt:         clinic.UpdatedAt,
-		})
-	}
+		rsList = &util.RsList{}
+		rsList.MapToList(result, total, *f.Offset, *f.Limit)
 
-	total, err := s.repo.CountClinicByAccountant(ctx, accountantID, f)
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-
-	rsList := &util.RsList{}
-	rsList.MapToList(result, total, *f.Offset, *f.Limit)
 
 	return rsList, nil
 }

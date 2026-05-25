@@ -119,7 +119,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
-	invitationHandler := invitation.NewHandler(invitationSvc, accountant.NewRepository(dbConn))
+	invitationHandler := invitation.NewHandler(invitationSvc)
 
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface

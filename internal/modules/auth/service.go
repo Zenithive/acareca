@@ -88,7 +88,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		cfg:              cfg,
 		oauthConfig:      oauthCfg,
 		db:               db,
-		mailer:           mail.NewClient(cfg.ResendAPIKey, "Acareca <hardik@zenithive.digital>"),
+		mailer:           mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
 		practitionerSvc:  practitionerSvc,
 		auditSvc:         auditSvc,
 		invitationSvc:    invitationSvc,
@@ -534,11 +534,17 @@ func (s *service) GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, er
 		return nil, err
 	}
 
-	doc, err := s.repo.GetDocumentByUserID(ctx, userID)
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		doc, err := s.repo.GetDocumentByUserID(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		user.Document = doc
+		return nil
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load user profile image: %w", err)
 	}
-	user.Document = doc
 
 	rs := user.ToRsUser()
 

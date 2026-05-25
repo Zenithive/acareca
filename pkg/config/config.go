@@ -27,6 +27,7 @@ type Config struct {
 	AllowedOrigins     string
 	StripeSecretKey    string
 	FrontendURL        string
+	SenderEmail        string
 
 	// File Upload Configuration
 	FileUploadMaxSize         int64
@@ -88,6 +89,7 @@ func NewConfig() *Config {
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
 		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
+		SenderEmail:        getEnv("SENDER_EMAIL", ""),
 
 		// File Upload Configuration
 		FileUploadMaxSize:         getEnvInt64("FILE_UPLOAD_MAX_SIZE", 10485760), // 10MB default
