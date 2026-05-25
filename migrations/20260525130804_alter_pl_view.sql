@@ -489,42 +489,42 @@ LANGUAGE SQL STABLE AS $fn$
     ORDER BY li.pl_section, li.account_code;
 $fn$;
 
-CREATE OR REPLACE FUNCTION fn_pl_summary_date_range(
-    p_clinic_id UUID,
-    p_from_date DATE,
-    p_to_date DATE
-)
-RETURNS TABLE (
-    income_net NUMERIC,
-    income_gst NUMERIC,
-    income_gross NUMERIC,
-    cogs_net NUMERIC,
-    cogs_gst NUMERIC,
-    cogs_gross NUMERIC,
-    gross_profit_net NUMERIC,
-    other_costs_net NUMERIC,
-    net_profit_net NUMERIC,
-    net_profit_gross NUMERIC
-)
-LANGUAGE SQL STABLE AS $fn$
-    SELECT
-        COALESCE(SUM(net_amount)   FILTER (WHERE account_type = 'Revenue'), 0) AS income_net,
-        COALESCE(SUM(gst_amount)   FILTER (WHERE account_type = 'Revenue'), 0) AS income_gst,
-        COALESCE(SUM(gross_amount) FILTER (WHERE account_type = 'Revenue'), 0) AS income_gross,
-        COALESCE(SUM(net_amount)   FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS cogs_net,
-        COALESCE(SUM(gst_amount)   FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS cogs_gst,
-        COALESCE(SUM(gross_amount) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS cogs_gross,
-        COALESCE(SUM(net_amount)   FILTER (WHERE account_type = 'Revenue'), 0)
-            - COALESCE(SUM(net_amount) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS gross_profit_net,
-        COALESCE(SUM(net_amount)   FILTER (WHERE pl_section = '3. Other Costs'), 0) AS other_costs_net,
-        COALESCE(SUM(net_amount)   FILTER (WHERE account_type = 'Revenue'), 0)
-            - COALESCE(SUM(net_amount) FILTER (WHERE account_type = 'Expense'), 0) AS net_profit_net,
-        COALESCE(SUM(gross_amount) FILTER (WHERE account_type = 'Revenue'), 0)
-            - COALESCE(SUM(gross_amount) FILTER (WHERE account_type = 'Expense'), 0) AS net_profit_gross
-    FROM vw_pl_line_items
-    WHERE clinic_id = p_clinic_id
-      AND "date" BETWEEN p_from_date AND p_to_date;
-$fn$;
+-- CREATE OR REPLACE FUNCTION fn_pl_summary_date_range(
+--     p_clinic_id UUID,
+--     p_from_date DATE,
+--     p_to_date DATE
+-- )
+-- RETURNS TABLE (
+--     income_net NUMERIC,
+--     income_gst NUMERIC,
+--     income_gross NUMERIC,
+--     cogs_net NUMERIC,
+--     cogs_gst NUMERIC,
+--     cogs_gross NUMERIC,
+--     gross_profit_net NUMERIC,
+--     other_costs_net NUMERIC,
+--     net_profit_net NUMERIC,
+--     net_profit_gross NUMERIC
+-- )
+-- LANGUAGE SQL STABLE AS $fn$
+--     SELECT
+--         COALESCE(SUM(net_amount)   FILTER (WHERE account_type = 'Revenue'), 0) AS income_net,
+--         COALESCE(SUM(gst_amount)   FILTER (WHERE account_type = 'Revenue'), 0) AS income_gst,
+--         COALESCE(SUM(gross_amount) FILTER (WHERE account_type = 'Revenue'), 0) AS income_gross,
+--         COALESCE(SUM(net_amount)   FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS cogs_net,
+--         COALESCE(SUM(gst_amount)   FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS cogs_gst,
+--         COALESCE(SUM(gross_amount) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS cogs_gross,
+--         COALESCE(SUM(net_amount)   FILTER (WHERE account_type = 'Revenue'), 0)
+--             - COALESCE(SUM(net_amount) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS gross_profit_net,
+--         COALESCE(SUM(net_amount)   FILTER (WHERE pl_section = '3. Other Costs'), 0) AS other_costs_net,
+--         COALESCE(SUM(net_amount)   FILTER (WHERE account_type = 'Revenue'), 0)
+--             - COALESCE(SUM(net_amount) FILTER (WHERE account_type = 'Expense'), 0) AS net_profit_net,
+--         COALESCE(SUM(gross_amount) FILTER (WHERE account_type = 'Revenue'), 0)
+--             - COALESCE(SUM(gross_amount) FILTER (WHERE account_type = 'Expense'), 0) AS net_profit_gross
+--     FROM vw_pl_line_items
+--     WHERE clinic_id = p_clinic_id
+--       AND "date" BETWEEN p_from_date AND p_to_date;
+-- $fn$;
 
 
 -- +goose StatementEnd
