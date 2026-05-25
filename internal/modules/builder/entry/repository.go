@@ -17,7 +17,7 @@ var ErrNotFound = errors.New("form entry not found")
 
 type IRepository interface {
 	Create(ctx context.Context, e *FormEntry, values []*FormEntryValue) error
-	GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
+	GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 	Update(ctx context.Context, e *FormEntry, values []*FormEntryValue) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*FormEntry, error)
@@ -94,7 +94,7 @@ func (r *Repository) Create(ctx context.Context, e *FormEntry, values []*FormEnt
 }
 
 // GetByID implements [IRepository].
-func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
+func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
 	// consider date
 
 	query := `SELECT 
@@ -105,7 +105,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*
         INNER JOIN tbl_custom_form_version v ON e.form_version_id = v.id 
         WHERE e.id = $1 AND e.deleted_at IS NULL`
 	var e FormEntry
-	if err := r.db.QueryRowContext(ctx, query, id).Scan(
+	if err := tx.QueryRowContext(ctx, query, id).Scan(
 		&e.ID, &e.FormVersionID, &e.ClinicID, &e.SubmittedBy, &e.SubmittedAt, &e.Status, &e.Date, &e.CreatedAt, &e.UpdatedAt, &e.PractitionerID,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -119,7 +119,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*FormEntry, []*
 		WHERE entry_id = $1 AND updated_at IS NULL
 		`
 	var values []*FormEntryValue
-	if err := r.db.SelectContext(ctx, &values, valQuery, id); err != nil {
+	if err := tx.SelectContext(ctx, &values, valQuery, id); err != nil {
 		return nil, nil, fmt.Errorf("get entry values: %w", err)
 	}
 	return &e, values, nil
