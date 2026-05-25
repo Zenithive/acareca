@@ -1,7 +1,6 @@
 package pl
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -18,6 +17,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -286,7 +286,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPLReportGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityPLReport),
+		EntityType: lo.ToPtr(auditctx.EntityPLReport),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Profit and Loss Report",
@@ -654,7 +654,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPLReportExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityPLReport),
+		EntityType: lo.ToPtr(auditctx.EntityPLReport),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Profit and Loss Report",
@@ -683,91 +683,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		}
 	}
 
-	if exportType == "pdf" {
-		// Return HTML string
-		return s.generateHTMLString(data, fullName, practitionerABN)
-	}
-
 	return f, nil
-}
-
-func strPtr(s string) *string { return &s }
-
-func (s *service) generateHTMLString(data *RsReport, fullName string, practitionerABN string) (string, error) {
-	var b bytes.Buffer
-	b.WriteString("<html><head><style>")
-	b.WriteString(`
-		@page { size: A4; margin: 1cm; }
-		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 20px; color: #333; }
-		table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-		td { padding: 6px 8px; font-size: 10pt; vertical-align: middle; }
-		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; font-size: 14pt; text-align: center; border: 1px solid #000; }
-		.meta-text { font-size: 10pt; color: #555; }
-		.section-title { font-weight: bold; font-size: 12pt; padding-top: 15px; }
-		.data-left { border: 0.5pt solid #000; text-align: left; }
-		.data-grid { border: 0.5pt solid #000; text-align: right; }
-		.group-total { background-color: #DAEEF3 !important; font-weight: bold; text-align: right; border: 0.5pt solid #000; }
-		.profit-label { background-color: #c4f0ce !important; font-weight: bold; border: 1.5pt solid #000; }
-		.profit-value { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; border: 1.5pt solid #000; }
-		.spacer { height: 15px; border: none; }
-	`)
-	b.WriteString("</style></head><body>")
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`)
-
-	b.WriteString("<table><colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
-
-	// Helper to format currency
-	formatCurr := func(v float64) string {
-		return fmt.Sprintf("$%.2f", v)
-	}
-
-	// Helper to render a section
-	renderSection := func(title string, accounts []RsReportAccount, total float64) {
-		b.WriteString(fmt.Sprintf("<tr><td class='section-title'>%s</td><td></td></tr>", title))
-		for _, acc := range accounts {
-			b.WriteString(fmt.Sprintf("<tr><td class='data-left'>%s</td><td class='data-grid'>%s</td></tr>", acc.CoaName, formatCurr(acc.TotalValue)))
-		}
-		b.WriteString(fmt.Sprintf("<tr><td class='group-total'>TOTAL %s</td><td class='group-total'>%s</td></tr>", title, formatCurr(total)))
-		b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
-	}
-
-	// Header
-	b.WriteString("<tr><td colspan='2' class='header-blue'>Profit and Loss Report</td></tr>")
-
-	// Exported By
-	b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>Exported by:</b> %s</td></tr>", fullName))
-
-	// ABN of Practitioner
-	if practitionerABN != "" {
-		b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>ABN:</b> %s</td></tr>", practitionerABN))
-	}
-
-	// Period
-	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
-		b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='meta-text'><b>Period:</b> %s to %s</td></tr>", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
-	}
-	b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
-
-	// Sections
-	renderSection("INCOME", data.Income.Accounts, data.Income.GroupTotal)
-	renderSection("COST OF SALES", data.CostOfSales.Accounts, data.CostOfSales.GroupTotal)
-
-	// Gross Profit
-	b.WriteString(fmt.Sprintf("<tr><td class='profit-label'>GROSS PROFIT</td><td class='profit-value'>%s</td></tr>", formatCurr(data.GrossProfit)))
-	b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
-
-	renderSection("OTHER COSTS", data.OtherCosts.Accounts, data.OtherCosts.GroupTotal)
-
-	// Net Profit
-	b.WriteString(fmt.Sprintf("<tr><td class='profit-label'>NET PROFIT</td><td class='profit-value'>%s</td></tr>", formatCurr(data.NetProfit)))
-
-	b.WriteString("</table></body></html>")
-
-	return b.String(), nil
 }
 
 // Helper to format date strings from YYYY-MM-DD to DD-MM-YYYY

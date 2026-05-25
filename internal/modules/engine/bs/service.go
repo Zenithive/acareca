@@ -1,7 +1,6 @@
 package bs
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -522,119 +521,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	}
 	f.UpdateLinkedValue()
 
-	if exportType == "pdf" {
-		return s.generateBSHTMLString(f, sheet, data, fullName, practitionerABN)
-	}
 	return f, nil
-}
-
-func (s *service) generateBSHTMLString(f *excelize.File, sheetName string, data *RsBalanceSheet, fullName string, practitionerABN string) (string, error) {
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return "", err
-	}
-
-	var b bytes.Buffer
-	b.WriteString("<html><head><style>")
-	b.WriteString(`
-		@page { size: A4; margin: 1cm; }
-		body { font-family: 'Calibri', sans-serif; padding: 20px; color: #333; }
-		table { width: 100%; border-collapse: collapse; }
-		td { padding: 6px 8px; font-size: 10pt; border: 0.5pt solid #000; }
-		.header-blue { background-color: #DAEEF3; font-weight: bold; font-size: 14pt; text-align: center; }
-		// .section-title { font-weight: bold; font-size: 12pt; background-color: #f9f9f9; border: none; padding-top: 15px; }
-		.section-title { font-weight: bold; font-size: 12pt; padding-top: 15px; border: none; }
-		.group-total { background-color: #DAEEF3; font-weight: bold; text-align: right; }
-		.final-total-label { background-color: #c4f0ce !important; font-weight: bold; border: 1.5pt solid #000; }
-		.final-total-value { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; border: 1.5pt solid #000; }
-		.data-grid { text-align: right; }
-		.spacer { height: 10px; border: none; }
-		.meta-item { font-size: 10pt; margin-bottom: 6px; text-align: left; }
-		.meta-label { font-weight: bold; }
-	`)
-	b.WriteString("</style></head><body>")
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`)
-
-	b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Exported by:</span> %s</div>", fullName))
-	if practitionerABN != "" {
-		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>ABN:</span> %s</div>", practitionerABN))
-	}
-
-	var dateText string
-	if data.EndDate != "" {
-		dateText = fmt.Sprintf("As of %s", data.EndDate)
-	}
-
-	if dateText != "" {
-		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Period:</span> %s</div>", dateText))
-	}
-
-	b.WriteString("<div style='margin-bottom: 20px;'></div>") // Spacer after metadata
-
-	b.WriteString("<table><colgroup><col style='width: 70%;'><col style='width: 30%;'></colgroup>")
-
-	for rIdx, row := range rows {
-		if rIdx >= 1 && rIdx <= 4 {
-			continue
-		}
-
-		if len(row) == 0 {
-			b.WriteString("<tr><td colspan='2' class='spacer'></td></tr>")
-			continue
-		}
-
-		valA := row[0]
-		valB := ""
-		if len(row) > 1 {
-			valB = row[1]
-		}
-
-		formatCurr := func(v float64) string {
-			return fmt.Sprintf("$%.2f", v)
-		}
-
-		classA, classB := "data-left", "data-grid"
-
-		switch {
-		case rIdx == 0:
-			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='header-blue'>%s</td></tr>", valA))
-			continue
-
-		case valA == "ASSETS" || valA == "LIABILITIES" || valA == "EQUITY":
-			classA = "section-title"
-			b.WriteString(fmt.Sprintf("<tr><td colspan='2' class='%s'>%s</td></tr>", classA, valA))
-			continue
-
-		case valA == "TOTAL ASSETS":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(data.TotalAssets)
-
-		case valA == "TOTAL LIABILITIES":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(data.TotalLiabilities)
-
-		case valA == "TOTAL EQUITY":
-			classA, classB = "group-total", "group-total"
-			valB = formatCurr(data.TotalEquity)
-
-		case valA == "Current Year Profit":
-			classA, classB = "final-total-label", "final-total-value"
-			valB = formatCurr(data.CurrentYearProfit)
-
-		case valA == "TOTAL LIABILITIES & EQUITY":
-			classA, classB = "final-total-label", "final-total-value"
-			valB = formatCurr(data.TotalLiabilitiesAndEquity)
-		}
-
-		b.WriteString(fmt.Sprintf("<tr><td class='%s'>%s</td><td class='%s'>%s</td></tr>", classA, valA, classB, valB))
-	}
-
-	b.WriteString("</table></body></html>")
-	return b.String(), nil
 }
 
 // getCoaIDByAccountCode retrieves the coa_id for a given account code

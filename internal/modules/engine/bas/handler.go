@@ -413,14 +413,7 @@ func (h *handler) ExportBASReport(c *gin.Context) {
 		return
 	}
 
-	if contentType == "text/html" {
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.Header("Content-Disposition", "inline")
-		c.String(http.StatusOK, result.(string))
-		return
-	}
-
-	//  Default Excel handling
+	// Excel handling
 	buf := result.(*bytes.Buffer)
 	fileName := fmt.Sprintf("BAS_Statement_%s.xlsx", time.Now().Format("2006-01-02"))
 	c.Header("Content-Type", contentType)
@@ -507,12 +500,6 @@ func (h *handler) ExportBASPreparation(c *gin.Context) {
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 		c.Header("Content-Disposition", "attachment; filename="+fileName)
 		v.Write(c.Writer)
-
-	case string:
-		// HTML Response for PDF
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.Header("Content-Disposition", "inline") // opens in new tab
-		c.String(http.StatusOK, v)
 
 	default:
 		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
