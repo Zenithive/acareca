@@ -85,6 +85,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/accountant.RsAnalytics"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {

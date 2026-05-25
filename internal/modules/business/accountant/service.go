@@ -29,13 +29,11 @@ func NewService(repo Repository) IService {
 }
 
 func (s *service) CreateAccountant(ctx context.Context, req *RqCreateAccountant, tx *sqlx.Tx) (*RsAccountant, error) {
-	// Check if accountant already exists
 	existing, err := s.repo.GetAccountantByUserID(ctx, req.UserID)
 	if err == nil && existing != nil {
 		return existing, nil
 	}
 
-	// Create Accountant and Settings
 	t, err := s.repo.CreateAccountant(ctx, req, tx)
 	if err != nil {
 		return nil, err
@@ -45,7 +43,6 @@ func (s *service) CreateAccountant(ctx context.Context, req *RqCreateAccountant,
 }
 
 func (s *service) GetAccountantByUserID(ctx context.Context, userID string) (*RsAccountant, error) {
-	// Check if accountant already exists
 	existing, err := s.repo.GetAccountantByUserID(ctx, userID)
 	if err == nil && existing != nil {
 		return existing, nil
@@ -59,24 +56,14 @@ func (s *service) UpdateAccountantProfile(ctx context.Context, userID uuid.UUID,
 }
 
 func (s *service) ListUsers(ctx context.Context) ([]RsAccountantUser, error) {
-
-	userIDInterface := ctx.Value(util.EntityIDKey)
-
-	var accountantID string
-	switch v := userIDInterface.(type) {
-	case string:
-		accountantID = v
-	case uuid.UUID:
-		accountantID = v.String()
-	default:
-
-		fmt.Printf("DEBUG: Context Value is %v, Type is %T\n", userIDInterface, userIDInterface)
-		return nil, fmt.Errorf("authentication failed: accountant identity not found")
+	accountantID, err := s.GetAccountantID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
 	users, err := s.repo.GetAllUsers(ctx, accountantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch clinics: %v", err)
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
 	}
 
 	return users, nil
@@ -98,19 +85,6 @@ func (s *service) ListForms(ctx context.Context) ([]RsAccountantForm, error) {
 	return s.repo.GetFormsForAccountant(ctx, accID)
 }
 
-func (s *service) GetAccountantID(ctx context.Context) (string, error) {
-	val := ctx.Value(util.EntityIDKey)
-	switch v := val.(type) {
-	case string:
-		return v, nil
-	case uuid.UUID:
-		return v.String(), nil
-	default:
-		return "", fmt.Errorf("invalid accountant identity in context")
-	}
-}
-
-// Analytics implements [IService].
 func (s *service) Analytics(ctx context.Context, filter *FilterAnalytics) (*RsAnalytics, error) {
 	ft := filter.MapToFilter()
 	accountantID, err := s.GetAccountantID(ctx)
@@ -150,4 +124,16 @@ func (s *service) Analytics(ctx context.Context, filter *FilterAnalytics) (*RsAn
 		Clinics:            clinics,
 		Forms:              forms,
 	}, nil
+}
+
+func (s *service) GetAccountantID(ctx context.Context) (string, error) {
+	val := ctx.Value(util.EntityIDKey)
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case uuid.UUID:
+		return v.String(), nil
+	default:
+		return "", fmt.Errorf("invalid accountant identity in context")
+	}
 }
