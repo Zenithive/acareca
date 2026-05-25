@@ -26,8 +26,8 @@ type Repository interface {
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 	GetAccountTypeByName(ctx context.Context, name string) (int, error)
 
-	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error)
-	CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error)
+	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error)
+	CountChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
@@ -131,7 +131,7 @@ var chartOfAccountColumns = map[string]string{
 
 var coaSearchColumns = []string{"coa.name", "CAST(coa.code AS TEXT)"}
 
-func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error) {
+func (r *repository) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error) {
 	base := `
         SELECT 
             coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
@@ -166,7 +166,7 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, 
 	return list, nil
 }
 
-func (r *repository) CountChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f common.Filter) (int, error) {
+func (r *repository) CountChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) (int, error) {
 	// Start with the soft-delete filter immediately and JOIN with account_tax table
 	base := ` FROM tbl_chart_of_accounts coa 
 	          JOIN tbl_account_tax at ON at.id = coa.account_tax_id
