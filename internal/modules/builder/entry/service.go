@@ -146,6 +146,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 
 		if err := s.repo.CreateTx(ctx, tx, e, values); err != nil {
 			return err
+
 		}
 
 		// Link documents if provided
@@ -159,7 +160,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			}
 		}
 
-		created, vals, err := s.repo.GetByID(ctx, e.ID)
+		created, vals, err := s.repo.GetByID(ctx, tx, e.ID)
 		if err != nil {
 			return fmt.Errorf("fetch entry after create: %w", err)
 		}
@@ -220,8 +221,24 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 
 // GetByID implements [IService].
 func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error) {
-	// Permission checks are handled by middleware
-	e, values, err := s.repo.GetByID(ctx, id)
+	var e *FormEntry
+	var values []*FormEntryValue
+	var docs []*RsEntryDocument
+	var docErr error
+
+	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var err error
+
+		e, values, err = s.repo.GetByID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+
+		docs, docErr = s.repo.GetDocumentsByEntryID(ctx, id)
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -230,12 +247,13 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	s.attachFieldMetadata(ctx, rs)
 	s.attachICCalculation(ctx, rs)
 
-	// Attach documents
-	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
+	// Attach documents if found
 	if docErr == nil && docs != nil {
 		rs.Documents = make([]RsEntryDocument, 0, len(docs))
 		for _, d := range docs {
-			rs.Documents = append(rs.Documents, *d)
+			if d != nil {
+				rs.Documents = append(rs.Documents, *d)
+			}
 		}
 	}
 
@@ -252,7 +270,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
 
-		existing, values, innerErr := s.repo.GetByID(ctx, id)
+		existing, values, innerErr := s.repo.GetByID(ctx, tx, id)
 		if innerErr != nil {
 			return innerErr
 		}
@@ -334,7 +352,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			}
 		}
 
-		updated, vals, innerErr := s.repo.GetByID(ctx, id)
+		updated, vals, innerErr := s.repo.GetByID(ctx, tx, id)
 		if innerErr != nil {
 			return fmt.Errorf("fetch entry after update: %w", innerErr)
 		}
@@ -401,7 +419,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 
 		// Get entry details before deletion for audit log
-		existing, values, err := s.repo.GetByID(ctx, id)
+		existing, values, err := s.repo.GetByID(ctx, tx, id)
 		if err != nil {
 			return err
 		}
