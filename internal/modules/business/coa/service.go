@@ -10,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type Service interface {
@@ -17,7 +18,6 @@ type Service interface {
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
 	ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
-
 	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
@@ -89,7 +89,6 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 }
 
 func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error) {
-	// Exact Match
 	if f.AccountType != nil && *f.AccountType != "" {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
@@ -99,13 +98,11 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, ro
 		f.AccountTypeID = &typeID
 	}
 
-	// Dynamic Excludes
 	for _, rawExclude := range f.ExcludeType {
 		if rawExclude == "" {
 			continue
 		}
-		parts := strings.Split(rawExclude, ",")
-		for _, part := range parts {
+		for _, part := range strings.Split(rawExclude, ",") {
 			trimmedPart := strings.TrimSpace(part)
 			if trimmedPart == "" {
 				continue
@@ -120,7 +117,6 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, ro
 
 	ft := f.MapToFilter()
 
-	// Bind Inclusion Condition
 	if f.AccountTypeID != nil {
 		ft.Where = append(ft.Where, common.Condition{
 			Field:    "account_type_id",
@@ -129,7 +125,6 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, ro
 		})
 	}
 
-	// Bind Exclusion Conditions dynamically
 	for _, targetExcludeID := range f.ExcludeTypeIDs {
 		ft.Where = append(ft.Where, common.Condition{
 			Field:    "account_type_id",
@@ -145,7 +140,6 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, ro
 			Operator: common.OpEq,
 			Value:    actorID,
 		})
-
 	case util.RoleAccountant:
 		if len(f.PractitionerID) > 0 {
 			ft.Where = append(ft.Where, common.Condition{
@@ -173,7 +167,6 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, ro
 
 	var rsList util.RsList
 	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
-
 	return &rsList, nil
 }
 
@@ -188,8 +181,6 @@ func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitio
 
 func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error) {
 	targetID := actorID
-
-	// Accountants search globally by key
 	if role == util.RoleAccountant {
 		targetID = uuid.Nil
 	}
@@ -203,7 +194,6 @@ func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorI
 }
 
 func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error) {
-	// (code, practitionerID) must be unique per user
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, req.Code, practitionerID, nil)
 	if existing != nil {
 		return nil, ErrCodeExists
@@ -214,13 +204,11 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	if _, err := s.repo.GetAccountTax(ctx, req.AccountTaxID); err != nil {
 		return nil, err
 	}
+
 	isSystem := false
 	if req.IsSystem != nil {
 		isSystem = *req.IsSystem
 	}
-
-	// Auto-generate key from name
-	key := GenerateKeyFromName(req.Name)
 
 	chart := &ChartOfAccount{
 		PractitionerID: practitionerID,
@@ -228,29 +216,30 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		AccountTaxID:   req.AccountTaxID,
 		Code:           req.Code,
 		Name:           req.Name,
-		Key:            key,
+		Key:            GenerateKeyFromName(req.Name),
 		IsSystem:       isSystem,
 	}
-	var err error
-	var created *ChartOfAccount
-	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		created, err = s.repo.CreateChartOfAccount(ctx, chart, tx)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	rs := created.ToRs()
 
-	// Audit log: COA created
+	var created *ChartOfAccount
+	err := util.RunInTransaction(ctx, s.db, func(txCtx context.Context, tx *sqlx.Tx) error {
+		var txErr error
+		created, txErr = s.repo.CreateChartOfAccount(txCtx, chart, tx)
+		return txErr
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rs := created.ToRs()
 	meta := auditctx.GetMetadata(ctx)
 	idStr := created.ID.String()
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionCOACreated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityCOA),
+		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
 		AfterState: rs,
 		IPAddress:  meta.IPAddress,
@@ -292,21 +281,22 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	if req.Name != nil {
 		existing.Name = *req.Name
 	}
+
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
 	if err != nil {
 		return nil, err
 	}
-	rs := updated.ToRs()
 
-	// Audit log: COA updated
+	rs := updated.ToRs()
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionCOAUpdated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityCOA),
+		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
 		AfterState: rs,
 		IPAddress:  meta.IPAddress,
@@ -328,16 +318,16 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 		return err
 	}
 
-	// Audit log: COA deleted
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	rs := existing.ToRs()
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionCOADeleted,
 		Module:      auditctx.ModuleBusiness,
-		EntityType:  strPtr(auditctx.EntityCOA),
+		EntityType:  lo.ToPtr(auditctx.EntityCOA),
 		EntityID:    &idStr,
 		BeforeState: rs,
 		IPAddress:   meta.IPAddress,
@@ -357,9 +347,6 @@ func (s *service) GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOf
 	if err != nil {
 		return nil, err
 	}
-
 	rs := c.ToRs()
 	return &rs, nil
 }
-
-func strPtr(s string) *string { return &s }
