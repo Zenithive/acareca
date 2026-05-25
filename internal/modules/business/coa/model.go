@@ -153,7 +153,9 @@ type Filter struct {
 	Id             *string     `form:"id"`
 	Code           *int        `form:"code"`
 	AccountType    *string     `form:"account_type"`
+	ExcludeType    []string    `form:"exclude_type"`
 	AccountTypeID  *int16      `form:"-"`
+	ExcludeTypeIDs []int16     `form:"-"`
 	AccountTaxID   *int16      `form:"account_tax_id"`
 	common.Filter
 }

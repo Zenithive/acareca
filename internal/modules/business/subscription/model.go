@@ -7,7 +7,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
-// Status matches practitioner_subscription_status enum.
 type Status string
 
 const (
@@ -18,7 +17,6 @@ const (
 	StatusExpired   Status = "EXPIRED"
 )
 
-// PractitionerSubscription matches tbl_practitioner_subscription.
 type PractitionerSubscription struct {
 	ID                   int        `db:"id"`
 	PractitionerID       uuid.UUID  `db:"practitioner_id"`
@@ -33,31 +31,27 @@ type PractitionerSubscription struct {
 	DeletedAt            *time.Time `db:"deleted_at"`
 }
 
-// RqCreatePractitionerSubscription request to create a practitioner subscription.
 type RqCreatePractitionerSubscription struct {
 	SubscriptionID int    `json:"subscription_id" validate:"required,min=1"`
-	StartDate      string `json:"start_date" validate:"required"` // RFC3339
+	StartDate      string `json:"start_date" validate:"required"`
 	EndDate        string `json:"end_date" validate:"required"`
 	Status         Status `json:"status" validate:"required,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
 }
 
-// RqUpdatePractitionerSubscription request to update (e.g. status).
 type RqUpdatePractitionerSubscription struct {
 	Status *Status `json:"status" validate:"omitempty,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
 }
 
-// New struct to hold the plan details
 type SubscriptionInfo struct {
 	ID          int     `json:"id"`
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
 }
 
-// New response struct specifically for Active/History endpoints
 type RsActiveSubscription struct {
 	ID             int              `json:"id"`
 	PractitionerID uuid.UUID        `json:"practitioner_id"`
-	Subscription   SubscriptionInfo `json:"subscription"` // Nested object
+	Subscription   SubscriptionInfo `json:"subscription"`
 	StartDate      time.Time        `json:"start_date"`
 	EndDate        time.Time        `json:"end_date"`
 	Status         Status           `json:"status"`
@@ -65,7 +59,6 @@ type RsActiveSubscription struct {
 	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
-// RsPractitionerSubscription response.
 type RsPractitionerSubscription struct {
 	ID             int       `json:"id"`
 	PractitionerID uuid.UUID `json:"practitioner_id"`
@@ -90,7 +83,6 @@ func (s *PractitionerSubscription) ToRs() *RsPractitionerSubscription {
 	}
 }
 
-// WebhookUpsert carries the data needed to upsert a practitioner subscription from a webhook event.
 type WebhookUpsert struct {
 	PractitionerID       uuid.UUID
 	SubscriptionID       int
@@ -114,22 +106,20 @@ func (filter *Filter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 
 	if filter.PractitionerID != nil {
-		filters["practitioner_id"] = *filter.PractitionerID
+		filters["ps.practitioner_id"] = *filter.PractitionerID
 	}
 	if filter.SubscriptionID != nil {
-		filters["subscription_id"] = *filter.SubscriptionID
+		filters["ps.subscription_id"] = *filter.SubscriptionID
 	}
 	if filter.Status != nil {
-		filters["status"] = string(*filter.Status)
+		filters["ps.status"] = string(*filter.Status)
 	}
 	if filter.FromDate != nil {
-		filters["created_at_gte"] = *filter.FromDate
+		filters["ps.created_at_gte"] = *filter.FromDate
 	}
 	if filter.ToDate != nil {
-		filters["created_at_lte"] = *filter.ToDate
+		filters["ps.created_at_lte"] = *filter.ToDate
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
-
-	return f
+	return common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }

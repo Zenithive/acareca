@@ -93,6 +93,7 @@ func (h *Handler) ListForms(c *gin.Context) {
 // @Produce      json
 // @Security     BearerToken
 // @Success      200  {object}   RsAnalytics
+// @Failure      400  {object}  response.RsError
 // @Failure      401  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Router       /accountant/analytics [get]
@@ -102,6 +103,7 @@ func (h *Handler) Analytics(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	analytics, err := h.svc.Analytics(c, &filter)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)

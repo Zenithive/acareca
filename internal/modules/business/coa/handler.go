@@ -141,13 +141,15 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 	response.JSON(c, http.StatusOK, one, "Account tax fetched successfully")
 }
 
-// @Summary List chart of accounts for practitioner
+// @Summary List chart of accounts
 // @Tags coa
 // @Produce json
 // @Param practitioner_id query string false "Filter by practitioner ID (Accountant only)"
 // @Param name query string false "Filter by name"
 // @Param code query int false "Filter by code"
 // @Param account_type query string false "Filter by account type name"
+// @Param exclude_type query []string false "Exclude account type names"
+// @Param account_tax_id query int false "Filter by account tax ID"
 // @Param search query string false "Search keyword"
 // @Param sort_by query string false "Sort field"
 // @Param order_by query string false "Order direction (ASC/DESC)"
@@ -160,11 +162,15 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Router /coa/chart-of-account [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
 	practitionerIDs := c.QueryArray("practitioner_id")
+	excludeTypes := c.QueryArray("exclude_type")
+
 	var filter Filter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
+	filter.ExcludeType = excludeTypes
 
 	practitionerIds := make([]uuid.UUID, 0, len(practitionerIDs))
 	for _, practitionerId := range practitionerIDs {

@@ -85,6 +85,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/accountant.RsAnalytics"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
@@ -5560,7 +5566,7 @@ const docTemplate = `{
                 "tags": [
                     "coa"
                 ],
-                "summary": "List chart of accounts for practitioner",
+                "summary": "List chart of accounts",
                 "parameters": [
                     {
                         "type": "string",
@@ -5584,6 +5590,22 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by account type name",
                         "name": "account_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Exclude account type names",
+                        "name": "exclude_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by account tax ID",
+                        "name": "account_tax_id",
                         "in": "query"
                     },
                     {
@@ -8897,6 +8919,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/util.RsList"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8913,7 +8947,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).",
+                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners.",
                 "produces": [
                     "application/json"
                 ],
@@ -8943,6 +8977,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/util.RsList"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
@@ -8969,7 +9009,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Set or remove (by sending null) the financial lock date for the authenticated practitioner.",
+                "description": "Set or remove the financial lock date for the authenticated practitioner.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9082,6 +9122,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -9116,6 +9162,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9156,6 +9208,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9220,6 +9278,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -9265,6 +9329,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9315,6 +9385,18 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -9375,6 +9457,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -9418,6 +9506,18 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -14057,7 +14157,6 @@ const docTemplate = `{
             ],
             "properties": {
                 "financial_year_id": {
-                    "description": "Use *time.Time to allow null values for removing the lock date",
                     "type": "string"
                 },
                 "lock_date": {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -38,21 +39,24 @@ func NewHandler(svc Service, db *sqlx.DB) IHandler {
 // @Produce json
 // @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription [post]
 func (h *handler) Create(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
+	practitionerID, err := h.getPractitionerContext(c)
+	if err != nil {
 		return
 	}
+
 	var req RqCreatePractitionerSubscription
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	var created *RsPractitionerSubscription
-	err := util.RunInTransaction(c, h.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err = util.RunInTransaction(c, h.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		Created, err := h.svc.Create(c.Request.Context(), practitionerID, &req, tx)
 		if err != nil {
 			return err
@@ -76,14 +80,16 @@ func (h *handler) Create(c *gin.Context) {
 // @Param sub_id path int true "Subscription ID"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription/{sub_id} [get]
 func (h *handler) GetByID(c *gin.Context) {
-	id, ok := util.ParseIntID(c, "sub_id")
-	if !ok {
+	id, err := h.parseSubscriptionID(c)
+	if err != nil {
 		return
 	}
+
 	sub, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -108,19 +114,22 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Param offset query int false "Pagination offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription [get]
 func (h *handler) ListByPractitionerID(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
+	practitionerID, err := h.getPractitionerContext(c)
+	if err != nil {
 		return
 	}
+
 	var f Filter
 	if err := util.BindAndValidate(c, &f); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	list, err := h.svc.ListByPractitionerID(c.Request.Context(), practitionerID, &f)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -138,20 +147,23 @@ func (h *handler) ListByPractitionerID(c *gin.Context) {
 // @Param request body RqUpdatePractitionerSubscription true "Updated Subscription Data"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription/{sub_id} [patch]
 func (h *handler) Update(c *gin.Context) {
-	id, ok := util.ParseIntID(c, "sub_id")
-	if !ok {
+	id, err := h.parseSubscriptionID(c)
+	if err != nil {
 		return
 	}
+
 	var req RqUpdatePractitionerSubscription
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
 	updated, err := h.svc.Update(c.Request.Context(), id, &req)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -172,14 +184,17 @@ func (h *handler) Update(c *gin.Context) {
 // @Param sub_id path int true "Subscription ID"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription/{sub_id} [delete]
 func (h *handler) Delete(c *gin.Context) {
-	id, ok := util.ParseIntID(c, "sub_id")
-	if !ok {
+	id, err := h.parseSubscriptionID(c)
+	if err != nil {
 		return
 	}
+
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -198,13 +213,14 @@ func (h *handler) Delete(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} RsPractitionerSubscription
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription/active [get]
 func (h *handler) GetActiveSubscription(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
+	practitionerID, err := h.getPractitionerContext(c)
+	if err != nil {
 		return
 	}
 
@@ -230,12 +246,13 @@ func (h *handler) GetActiveSubscription(c *gin.Context) {
 // @Param offset query int false "Pagination offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /practitioner/subscription/history [get]
 func (h *handler) GetSubscriptionHistory(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
+	practitionerID, err := h.getPractitionerContext(c)
+	if err != nil {
 		return
 	}
 
@@ -252,4 +269,20 @@ func (h *handler) GetSubscriptionHistory(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, history, "Subscription history fetched successfully")
+}
+
+func (h *handler) getPractitionerContext(c *gin.Context) (uuid.UUID, error) {
+	pID, ok := util.GetPractitionerID(c)
+	if !ok {
+		return uuid.Nil, errors.New("unauthorized practitioner context")
+	}
+	return pID, nil
+}
+
+func (h *handler) parseSubscriptionID(c *gin.Context) (int, error) {
+	id, ok := util.ParseIntID(c, "sub_id")
+	if !ok {
+		return 0, errors.New("invalid signature payload data key format")
+	}
+	return id, nil
 }
