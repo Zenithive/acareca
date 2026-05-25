@@ -202,7 +202,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionEntryCreated,
 		Module:     auditctx.ModuleForms,
-		EntityType: strPtr(auditctx.EntityFormFieldEntry),
+		EntityType: lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:   &idStr,
 		AfterState: result,
 		IPAddress:  meta.IPAddress,
@@ -356,7 +356,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionEntryUpdated,
 		Module:      auditctx.ModuleForms,
-		EntityType:  strPtr(auditctx.EntityFormFieldEntry),
+		EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
@@ -405,7 +405,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionEntryDeleted,
 		Module:      auditctx.ModuleForms,
-		EntityType:  strPtr(auditctx.EntityFormFieldEntry),
+		EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		IPAddress:   meta.IPAddress,
@@ -944,8 +944,6 @@ func roundEntry(v float64) float64 {
 	return float64(int(shifted)) / 100
 }
 
-func strPtr(s string) *string { return &s }
-
 // Helper to record shared events
 func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
 	meta := auditctx.GetMetadata(ctx)
@@ -1017,7 +1015,7 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityTransactions),
+		EntityType: lo.ToPtr(auditctx.EntityTransactions),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Transaction Report",
@@ -1186,7 +1184,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityTransactions),
+		EntityType: lo.ToPtr(auditctx.EntityTransactions),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Transaction Report",

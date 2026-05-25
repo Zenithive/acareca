@@ -10,9 +10,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
+	"github.com/samber/lo"
 
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -37,16 +39,13 @@ type service struct {
 	subscription     subscription.Service
 	userSubscription userSubscription.Service
 	coaRepo          coa.Repository
-	invitationRepo   interface{}
+	invitationRepo   invitation.Repository
 	auditSvc         audit.Service
 	fyrepo           fy.Repository
 }
 
-func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo ...interface{}) IService {
-	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc, fyrepo: fyrepo}
-	if len(invitationRepo) > 0 {
-		svc.invitationRepo = invitationRepo[0]
-	}
+func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo invitation.Repository) IService {
+	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc, fyrepo: fyrepo, invitationRepo: invitationRepo}
 	return svc
 }
 
@@ -213,7 +212,7 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionLockDateUpdated,
 		Module:      auditctx.ModuleBusiness,
-		EntityType:  strPtr(auditctx.EntityFinancialSettings),
+		EntityType:  lo.ToPtr(auditctx.EntityFinancialSettings),
 		EntityID:    &fyIDStr,
 		BeforeState: beforeState,
 		AfterState:  afterState,
@@ -224,23 +223,10 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 	return nil
 }
 
-// Helper functions for audit logging
-func strPtr(s string) *string { return &s }
-
 // VerifyAccountantAccessToPractitioner verifies that an accountant has access to a practitioner
 func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
-	if s.invitationRepo == nil {
-		return errors.New("invitation repository not available")
-	}
-
-	// Cast the invitationRepo to the correct type
-	invitationRepo, ok := s.invitationRepo.(invitationPkg.Repository)
-	if !ok {
-		return errors.New("invalid invitation repository type")
-	}
-
 	// Get permissions for this accountant-practitioner relationship
-	perms, err := invitationRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
+	perms, err := s.invitationRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
 	if err != nil {
 		return fmt.Errorf("failed to get permissions: %w", err)
 	}
