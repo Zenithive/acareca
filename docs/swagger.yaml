@@ -6601,6 +6601,17 @@ paths:
         in: query
         name: account_type
         type: string
+      - collectionFormat: csv
+        description: Exclude account type names
+        in: query
+        items:
+          type: string
+        name: exclude_type
+        type: array
+      - description: Filter by account tax ID
+        in: query
+        name: account_tax_id
+        type: integer
       - description: Search keyword
         in: query
         name: search
@@ -6638,7 +6649,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
-      summary: List chart of accounts for practitioner
+      summary: List chart of accounts
       tags:
       - coa
     post:

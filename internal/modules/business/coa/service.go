@@ -2,6 +2,7 @@ package coa
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
@@ -88,62 +89,53 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 }
 
 func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error) {
-	var targetTypeID int16
-	if f.AccountType != nil {
+	// Exact Match
+	if f.AccountType != nil && *f.AccountType != "" {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
 			return nil, err
 		}
-		targetTypeID = int16(id)
+		typeID := int16(id)
+		f.AccountTypeID = &typeID
+	}
+
+	// Dynamic Excludes
+	for _, rawExclude := range f.ExcludeType {
+		if rawExclude == "" {
+			continue
+		}
+		parts := strings.Split(rawExclude, ",")
+		for _, part := range parts {
+			trimmedPart := strings.TrimSpace(part)
+			if trimmedPart == "" {
+				continue
+			}
+			excludeID, err := s.repo.GetAccountTypeByName(ctx, trimmedPart)
+			if err != nil {
+				return nil, err
+			}
+			f.ExcludeTypeIDs = append(f.ExcludeTypeIDs, int16(excludeID))
+		}
 	}
 
 	ft := f.MapToFilter()
 
-	if f.AccountType != nil {
-		switch *f.AccountType {
-		case "Revenue":
-			ft.Where = append(ft.Where,
-				common.Condition{
-					Field:    "account_type_id",
-					Operator: common.OpEq,
-					Value:    targetTypeID,
-				},
-			)
-			excludeID, err := s.repo.GetAccountTypeByName(ctx, "Expense")
-			if err != nil {
-				return nil, err
-			}
-			ft.Where = append(ft.Where, common.Condition{
-				Field:    "account_type_id",
-				Operator: common.OpNotEq,
-				Value:    int16(excludeID),
-			})
+	// Bind Inclusion Condition
+	if f.AccountTypeID != nil {
+		ft.Where = append(ft.Where, common.Condition{
+			Field:    "account_type_id",
+			Operator: common.OpEq,
+			Value:    *f.AccountTypeID,
+		})
+	}
 
-		case "Expense":
-			ft.Where = append(ft.Where,
-				common.Condition{
-					Field:    "account_type_id",
-					Operator: common.OpEq,
-					Value:    targetTypeID,
-				},
-			)
-			excludeID, err := s.repo.GetAccountTypeByName(ctx, "Revenue")
-			if err != nil {
-				return nil, err
-			}
-			ft.Where = append(ft.Where, common.Condition{
-				Field:    "account_type_id",
-				Operator: common.OpNotEq,
-				Value:    int16(excludeID),
-			})
-
-		default:
-			ft.Where = append(ft.Where, common.Condition{
-				Field:    "account_type_id",
-				Operator: common.OpEq,
-				Value:    targetTypeID,
-			})
-		}
+	// Bind Exclusion Conditions dynamically
+	for _, targetExcludeID := range f.ExcludeTypeIDs {
+		ft.Where = append(ft.Where, common.Condition{
+			Field:    "account_type_id",
+			Operator: common.OpNotEq,
+			Value:    targetExcludeID,
+		})
 	}
 
 	switch role {

@@ -5566,7 +5566,7 @@ const docTemplate = `{
                 "tags": [
                     "coa"
                 ],
-                "summary": "List chart of accounts for practitioner",
+                "summary": "List chart of accounts",
                 "parameters": [
                     {
                         "type": "string",
@@ -5590,6 +5590,22 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by account type name",
                         "name": "account_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Exclude account type names",
+                        "name": "exclude_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by account tax ID",
+                        "name": "account_tax_id",
                         "in": "query"
                     },
                     {
