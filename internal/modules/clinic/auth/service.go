@@ -1,21 +1,18 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
@@ -46,6 +43,7 @@ type service struct {
 	cfg      *config.Config
 	db       *sqlx.DB
 	auditSvc audit.Service
+	mailer   *mail.Client
 }
 
 func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service) Service {
@@ -54,6 +52,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit
 		cfg:      cfg,
 		db:       db,
 		auditSvc: auditSvc,
+		mailer:   mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
 	}
 }
 
@@ -83,6 +82,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		DocumentID:  req.DocumentID,
 		ABN:         req.ABN,
 		ACN:         req.ACN,
+		Verified:    false, // Explicitly set to false until email is verified
 	}
 
 	var createdClinic *Clinic
@@ -136,7 +136,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 			ClinicID:  createdClinic.ID,
 			Role:      createdClinic.Role,
 			Status:    TokenStatusPending,
-			ExpiresAt: time.Now().Add(10 * time.Hour),
+			ExpiresAt: time.Now().Add(24 * time.Hour), // 24 hours expiry
 		}
 
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
@@ -149,14 +149,18 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		return nil, err
 	}
 
-	go func() {
-		if err := s.sendVerificationEmail(createdClinic.Email, createdClinic.ClinicName, tokenID); err != nil {
-			fmt.Printf("[CLINIC ERROR] Failed to send verification email: %v\n", err)
-			s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "clinic.send_verification_email",
-				err, createdClinic.ID.String(), createdClinic.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
-			)
-		}
-	}()
+	baseUrl, err := s.cfg.GetBaseURL()
+	if err == nil {
+		verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
+		go func() {
+			if err := s.mailer.SendVerificationEmail(createdClinic.Email, createdClinic.ClinicName, verificationLink); err != nil {
+				fmt.Printf("[CLINIC ERROR] Failed to send verification email: %v\n", err)
+				s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "clinic.send_verification_email",
+					err, createdClinic.ID.String(), createdClinic.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+				)
+			}
+		}()
+	}
 
 	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := createdClinic.ID.String()
@@ -187,6 +191,11 @@ func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, erro
 
 	if err := util.CompareHash(req.Password, *clinic.Password); err != nil {
 		return nil, ErrInvalidPassword
+	}
+
+	// Check if email is verified
+	if !clinic.Verified {
+		return nil, errors.New("email not verified. Please check your email for the verification link")
 	}
 
 	meta := auditctx.GetMetadata(ctx)
@@ -437,71 +446,6 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 		RefreshToken: refreshToken,
 		Role:         clinic.Role,
 	}, nil
-}
-
-// Helper function for sending verification email via Resend API
-func (s *service) sendVerificationEmail(to string, clinicName string, tokenID uuid.UUID) error {
-	url := "https://api.resend.com/emails"
-	apikey := s.cfg.ResendAPIKey
-
-	baseUrl, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return err
-	}
-
-	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
-	expiryTime := "10 minutes"
-
-	payload := map[string]interface{}{
-		"from":    "Acareca <hardik@zenithive.digital>",
-		"to":      []string{to},
-		"subject": "Verify your Acareca account",
-		"html": fmt.Sprintf(`
-			<div style="font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
-				<h2 style="color: #1a73e8;">Verify your email</h2>
-				<p>Hi %s,</p>
-				<p>Thank you for signing up with Acareca! To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
-				<div style="text-align: center; margin: 30px 0;">
-					<a href="%s" style="background-color: #1a73e8; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
-						Verify My Account
-					</a>
-				</div>
-				<p style="font-size: 14px; color: #666;">If the button above doesn’t work, you can also copy and paste the following link into your browser:</p>
-				<p style="font-size: 12px; word-break: break-all; color: #1a73e8;">%s</p>
-				<p style="font-size: 14px; color: #666;">This verification link will expire in <strong>%s</strong>.</p>
-				<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-				<p style="font-size: 12px; color: #888;">If you did not create this account, you can safely ignore this email.</p>
-				<p style="font-size: 12px; color: #888;">Best regards,<br>The Acareca Team</p>
-			</div>
-		`, clinicName, verificationLink, verificationLink, expiryTime),
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+apikey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("resend error: %s", string(body))
-	}
-
-	return nil
 }
 
 func (s *service) ChangePassword(ctx context.Context, clinicID uuid.UUID, req *RqChangePassword) error {
@@ -815,7 +759,13 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 		return err
 	}
 
-	return s.sendForgotPasswordEmail(clinic.Email, clinic.ClinicName, rawToken)
+	baseUrl, err := s.cfg.GetBaseURL()
+	if err != nil {
+		return err
+	}
+
+	resetLink := fmt.Sprintf("%s/clinic/reset-password?token=%s", baseUrl, rawToken)
+	return s.mailer.SendPasswordResetEmail(clinic.Email, clinic.ClinicName, resetLink)
 }
 
 func (s *service) ResetPassword(ctx context.Context, req *RqResetPassword) error {
@@ -828,60 +778,4 @@ func (s *service) ResetPassword(ctx context.Context, req *RqResetPassword) error
 	}
 
 	return s.repo.CompletePasswordReset(ctx, tokenHash, newPasswordHash)
-}
-
-func (s *service) sendForgotPasswordEmail(to string, clinicName string, token string) error {
-	url := "https://api.resend.com/emails"
-	apikey := s.cfg.ResendAPIKey
-
-	baseUrl, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return err
-	}
-
-	resetLink := fmt.Sprintf("%s/clinic/reset-password?token=%s", baseUrl, token)
-	expiryTime := "15 minutes"
-
-	payload := map[string]interface{}{
-		"from":    "Acareca <hardik@zenithive.digital>",
-		"to":      []string{to},
-		"subject": "Reset your Acareca password",
-		"html": fmt.Sprintf(`
-			<div style="font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
-				<h2 style="color: #1a73e8;">Password Reset Request</h2>
-				<p>Hi %s,</p>
-				<p>We received a request to reset your password for your Acareca account. Click the button below to choose a new password:</p>
-				<div style="text-align: center; margin: 30px 0;">
-					<a href="%s" style="background-color: #1a73e8; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
-						Reset My Password
-					</a>
-				</div>
-				<p style="font-size: 14px; color: #666;">If the button above doesn't work, copy and paste this link into your browser:</p>
-				<p style="font-size: 12px; word-break: break-all; color: #1a73e8;">%s</p>
-				<p style="font-size: 14px; color: #666;">This link will expire in <strong>%s</strong> for security reasons.</p>
-				<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-				<p style="font-size: 12px; color: #888;">If you did not request a password reset, you can safely ignore this email.</p>
-				<p style="font-size: 12px; color: #888;">Best regards,<br>The Acareca Team</p>
-			</div>
-		`, clinicName, resetLink, resetLink, expiryTime),
-	}
-
-	jsonData, _ := json.Marshal(payload)
-	httpReq, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	httpReq.Header.Set("Authorization", "Bearer "+apikey)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("resend error: %s", string(body))
-	}
-
-	return nil
 }

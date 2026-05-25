@@ -2,7 +2,6 @@ package clinic
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -32,21 +31,51 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// parseClinicID parses the "id" path param and writes a 400 on failure.
+func parseClinicID(c *gin.Context) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// handleServiceError handles common service errors and returns appropriate status codes.
+func handleServiceError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrNotFound) {
+		response.Error(c, http.StatusNotFound, err)
+		return true
+	}
+	if errors.Is(err, limits.ErrLimitReached) {
+		response.Error(c, http.StatusForbidden, err)
+		return true
+	}
+	response.Error(c, http.StatusInternalServerError, err)
+	return true
+}
+
 // @Summary Create a new clinic
 // @Tags clinic
 // @Accept json
 // @Produce json
-// @Param request body RqCreateClinic true "Clinic Data"
-// @Success 201 {object} response.RsBase
-// @Failure 400 {object} response.RsError
-// @Failure 500 {object} response.RsError
 // @Security BearerToken
+// @Param request body RqCreateClinic true "Clinic Data"
+// @Success 201 {object} RsClinic
+// @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
+// @Failure 500 {object} response.RsError
 // @Router /clinic [post]
 func (h *handler) Create(c *gin.Context) {
 	actorID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
+
 	var req RqCreateClinic
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -54,11 +83,8 @@ func (h *handler) Create(c *gin.Context) {
 	}
 
 	targetPractitionerID := actorID
-
-	// Check role from metadata/context
 	meta := auditctx.GetMetadata(c.Request.Context())
 	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
-
 		if req.PractitionerID == uuid.Nil {
 			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required in body for accountants"))
 			return
@@ -67,22 +93,17 @@ func (h *handler) Create(c *gin.Context) {
 	}
 
 	clinic, err := h.svc.CreateClinic(c.Request.Context(), targetPractitionerID, &req)
-	if err != nil {
-		if errors.Is(err, limits.ErrLimitReached) {
-			response.Error(c, http.StatusForbidden, err)
-			return
-		}
-		fmt.Printf("CreateClinic error: %v\n", err)
-		response.Error(c, http.StatusInternalServerError, err)
+	if handleServiceError(c, err) {
 		return
 	}
 
 	response.JSON(c, http.StatusCreated, clinic, "Clinic created successfully")
 }
 
-// @Summary Get all clinics for the logged-in user (Practitioner or Accountant)
+// @Summary List clinics for the logged-in user
 // @Tags clinic
 // @Produce json
+// @Security BearerToken
 // @Param name query string false "Filter by clinic name"
 // @Param id query string false "Filter by clinic ID"
 // @Param is_active query boolean false "Filter by active status"
@@ -93,14 +114,12 @@ func (h *handler) Create(c *gin.Context) {
 // @Param offset query int false "Page offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /clinic [get]
 func (h *handler) List(c *gin.Context) {
-	// Get user ID from JWT token context
-	var actorID uuid.UUID
-	var ok bool
-	actorID, ok = util.GetPractitionerID(c)
+	actorID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -113,14 +132,17 @@ func (h *handler) List(c *gin.Context) {
 
 	meta := auditctx.GetMetadata(c.Request.Context())
 
-	var clinics interface{}
-	var err error
-
+	var (
+		clinics interface{}
+		err     error
+	)
 	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
 		actorID, ok = util.GetAccountantID(c)
+		if !ok {
+			return
+		}
 		clinics, err = h.svc.ListClinicsForAccountant(c.Request.Context(), actorID, filter)
 	} else {
-
 		clinics, err = h.svc.ListClinic(c.Request.Context(), actorID, filter)
 	}
 
@@ -132,48 +154,37 @@ func (h *handler) List(c *gin.Context) {
 	response.JSON(c, http.StatusOK, clinics, "Clinics fetched successfully")
 }
 
-// GetClinicByID
 // @Summary Get clinic by ID
 // @Tags clinic
 // @Produce json
+// @Security BearerToken
 // @Param id path string true "Clinic UUID"
-// @Success 200 {object} response.RsBase
+// @Success 200 {object} RsClinic
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /clinic/{id} [get]
 func (h *handler) GetByID(c *gin.Context) {
-
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+	id, ok := parseClinicID(c)
+	if !ok {
 		return
 	}
 
 	var actorID uuid.UUID
-	var ok bool
-	role := c.GetString("role")
-
-	if strings.EqualFold(role, util.RoleAccountant) {
+	if strings.EqualFold(c.GetString("role"), util.RoleAccountant) {
 		actorID, ok = util.GetAccountantID(c)
 	} else {
 		actorID, ok = util.GetPractitionerID(c)
 	}
-
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("profile not found"))
 		return
 	}
 
 	clinic, err := h.svc.GetClinicByID(c.Request.Context(), actorID, id)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
+	if handleServiceError(c, err) {
 		return
 	}
 
@@ -184,25 +195,24 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Tags clinic
 // @Accept json
 // @Produce json
+// @Security BearerToken
 // @Param id path string true "Clinic UUID"
 // @Param request body RqUpdateClinic true "Updated Clinic Data"
-// @Success 200 {object} response.RsBase
+// @Success 200 {object} RsClinic
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /clinic/{id} [put]
 func (h *handler) Update(c *gin.Context) {
-	// Get user ID from JWT token context
 	actorID, ok := util.GetUserID(c)
 	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+	id, ok := parseClinicID(c)
+	if !ok {
 		return
 	}
 
@@ -213,12 +223,7 @@ func (h *handler) Update(c *gin.Context) {
 	}
 
 	clinic, err := h.svc.UpdateClinic(c.Request.Context(), actorID, id, &req)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
+	if handleServiceError(c, err) {
 		return
 	}
 
@@ -228,54 +233,48 @@ func (h *handler) Update(c *gin.Context) {
 // @Summary Delete a clinic
 // @Tags clinic
 // @Produce json
+// @Security BearerToken
 // @Param id path string true "Clinic UUID"
-// @Param practitioner_id query string false "Practitioner UUID (Required for Accountants)"
-// @Success 200 {object} map[string]string
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /clinic/{id} [delete]
 func (h *handler) Delete(c *gin.Context) {
-	// 1. Get actor ID from JWT token (could be Accountant or Practitioner)
 	actorID, ok := util.GetUserID(c)
 	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid clinic id"))
+	id, ok := parseClinicID(c)
+	if !ok {
 		return
 	}
 
-	// 4. Call Service
-	if err := h.svc.DeleteClinic(c.Request.Context(), actorID, id); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
+	if handleServiceError(c, h.svc.DeleteClinic(c.Request.Context(), actorID, id)) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"message": "clinic deleted successfully"}, "Clinic deleted successfully")
+	response.JSON(c, http.StatusOK, nil, "Clinic deleted successfully")
 }
 
 // @Summary Bulk update clinics
 // @Tags clinic
 // @Accept json
 // @Produce json
+// @Security BearerToken
 // @Param request body RqBulkUpdateClinic true "Bulk Update Data"
-// @Success 200 {object} response.RsBase
+// @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /clinic/bulk-update [put]
 func (h *handler) BulkUpdate(c *gin.Context) {
-	PractID, ok := util.GetPractitionerID(c)
+	practID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -286,13 +285,8 @@ func (h *handler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
-	clinics, err := h.svc.BulkUpdateClinics(c.Request.Context(), PractID, &req)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
+	clinics, err := h.svc.BulkUpdateClinics(c.Request.Context(), practID, &req)
+	if handleServiceError(c, err) {
 		return
 	}
 
@@ -303,15 +297,17 @@ func (h *handler) BulkUpdate(c *gin.Context) {
 // @Tags clinic
 // @Accept json
 // @Produce json
+// @Security BearerToken
 // @Param request body RqBulkDeleteClinic true "Bulk Delete Data"
-// @Success 200 {object} map[string]string
+// @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Security BearerToken
 // @Router /clinic/bulk-delete [delete]
 func (h *handler) BulkDelete(c *gin.Context) {
-	PractID, ok := util.GetPractitionerID(c)
+	practID, ok := util.GetPractitionerID(c)
 	if !ok {
 		return
 	}
@@ -322,14 +318,9 @@ func (h *handler) BulkDelete(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.BulkDeleteClinics(c.Request.Context(), PractID, &req); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			response.Error(c, http.StatusNotFound, err)
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, err)
+	if handleServiceError(c, h.svc.BulkDeleteClinics(c.Request.Context(), practID, &req)) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"message": "clinics deleted successfully"}, "Clinics deleted successfully")
+	response.JSON(c, http.StatusOK, nil, "Clinics deleted successfully")
 }

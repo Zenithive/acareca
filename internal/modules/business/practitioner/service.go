@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
-
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
@@ -18,7 +17,12 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
+
+type ModelInvitationRepo struct {
+	InternalRepo invitationPkg.Repository
+}
 
 type IService interface {
 	CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error)
@@ -33,88 +37,105 @@ type IService interface {
 }
 
 type service struct {
+	db               *sqlx.DB
 	repo             Repository
 	subscription     subscription.Service
 	userSubscription userSubscription.Service
 	coaRepo          coa.Repository
-	invitationRepo   interface{}
+	invitationModel  *ModelInvitationRepo
 	auditSvc         audit.Service
 	fyrepo           fy.Repository
 }
 
-func NewService(repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo ...interface{}) IService {
-	svc := &service{repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc, fyrepo: fyrepo}
+func NewService(db *sqlx.DB, repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo ...interface{}) IService {
+	svc := &service{db: db, repo: repo, subscription: subscription, userSubscription: userSubscription, coaRepo: coaRepo, auditSvc: auditSvc, fyrepo: fyrepo}
 	if len(invitationRepo) > 0 {
-		svc.invitationRepo = invitationRepo[0]
+		if casted, ok := invitationRepo[0].(invitationPkg.Repository); ok {
+			svc.invitationModel = &ModelInvitationRepo{InternalRepo: casted}
+		}
 	}
 	return svc
 }
 
 func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitioner, tx *sqlx.Tx) (*RsPractitioner, error) {
-
 	existing, err := s.repo.GetPractitionerByUserID(ctx, req.UserID)
 	if err == nil && existing != nil {
 		return existing, nil
 	}
-	t, err := s.repo.CreatePractitioner(ctx, &RqCreatePractitioner{
-		UserID:     req.UserID,
-		EntityType: req.EntityType,
-		EntityName: req.EntityName,
-		ABN:        req.ABN,
-		ACN:        req.ACN,
-		Address:    req.Address,
-		Profession: req.Profession}, tx)
-	if err != nil {
-		return nil, err
-	}
-	trial, err := s.subscription.FindByName(ctx, "Trial")
-	if err != nil {
-		return nil, err
-	}
-	start := time.Now()
-	end := start.AddDate(0, 0, trial.DurationDays)
-	_, err = s.userSubscription.Create(ctx, t.ID, &userSubscription.RqCreatePractitionerSubscription{
-		SubscriptionID: trial.ID,
-		StartDate:      start.Format(time.RFC3339),
-		EndDate:        end.Format(time.RFC3339),
-		Status:         userSubscription.StatusActive,
-	}, tx)
-	if err != nil {
-		log.Printf("onboarding: create trial subscription for practitioner %s: %v", t.ID, err)
-		return nil, err
+
+	var t *RsPractitioner
+
+	onboardWork := func(workCtx context.Context, activeTx *sqlx.Tx) error {
+		var err error
+		t, err = s.repo.CreatePractitioner(workCtx, &RqCreatePractitioner{
+			UserID:     req.UserID,
+			EntityType: req.EntityType,
+			EntityName: req.EntityName,
+			ABN:        req.ABN,
+			ACN:        req.ACN,
+			Address:    req.Address,
+			Profession: req.Profession,
+		}, activeTx)
+		if err != nil {
+			return err
+		}
+
+		trial, err := s.subscription.FindByName(workCtx, "Trial")
+		if err != nil {
+			return err
+		}
+
+		start := time.Now()
+		end := start.AddDate(0, 0, trial.DurationDays)
+		_, err = s.userSubscription.Create(workCtx, t.ID, &userSubscription.RqCreatePractitionerSubscription{
+			SubscriptionID: trial.ID,
+			StartDate:      start.Format(time.RFC3339),
+			EndDate:        end.Format(time.RFC3339),
+			Status:         userSubscription.StatusActive,
+		}, activeTx)
+		if err != nil {
+			log.Printf("onboarding: create trial subscription for practitioner %s: %v", t.ID, err)
+			return err
+		}
+
+		if err := coa.SeedDefaultsForPractitioner(workCtx, s.coaRepo, t.ID, activeTx); err != nil {
+			log.Printf("onboarding: seed default chart of accounts for practitioner %s: %v", t.ID, err)
+			return err
+		}
+		return nil
 	}
 
-	if err := coa.SeedDefaultsForPractitioner(ctx, s.coaRepo, t.ID, tx); err != nil {
-		log.Printf("onboarding: seed default chart of accounts for practitioner %s: %v", t.ID, err)
-		return nil, err
+	if tx != nil {
+		if err := onboardWork(ctx, tx); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := util.RunInTransaction(ctx, s.db, onboardWork); err != nil {
+			return nil, err
+		}
 	}
+
 	return t, nil
 }
 
-// DeletePractitioner implements [IService].
 func (s *service) DeletePractitioner(ctx context.Context, id uuid.UUID) error {
 	return s.repo.DeletePractitioner(ctx, id)
 }
 
-// GetPractitioner implements [IService].
 func (s *service) GetPractitioner(ctx context.Context, id uuid.UUID) (*RsPractitioner, error) {
 	return s.repo.GetPractitioner(ctx, id)
 }
 
-// GetPractitionerByUserID implements [IService].
 func (s *service) GetPractitionerByUserID(ctx context.Context, userID string) (*RsPractitioner, error) {
 	return s.repo.GetPractitionerByUserID(ctx, userID)
 }
 
-// UpdateABN implements [IService].
 func (s *service) UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error {
 	return s.repo.UpdatePractitionerProfile(ctx, userID, req)
 }
 
-// ListPractitioners implements [IService].
 func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsList, error) {
 	ft := f.MapToFilter()
-
 	var (
 		list  []*PractitionerWithUser
 		total int
@@ -151,76 +172,55 @@ func (s *service) ListPractitioners(ctx context.Context, f *Filter) (*util.RsLis
 	return &rsList, nil
 }
 
-// GetLockDate retrieves the lock date for a specific practitioner and financial year
 func (s *service) GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error) {
 	settings, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
-	if err != nil {
+	if err != nil || settings == nil {
 		return nil, err
-	}
-	if settings == nil {
-		return nil, nil
 	}
 	return settings.LockDate, nil
 }
 
-// UpdateLockDate updates or clears the lock date
 func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error {
-	// Fetch Financial Year details to get the StartDate
-	fy, err := s.fyrepo.GetFinancialYearByID(ctx, fyID)
+	fyYear, err := s.fyrepo.GetFinancialYearByID(ctx, fyID)
 	if err != nil {
 		return fmt.Errorf("invalid financial year: %w", err)
 	}
 
-	// Validate the Lock Date if provided
 	if lockDate != nil && *lockDate != "" {
-		// Parse the incoming lockDate
 		parsedLockDate, err := time.Parse("2006-01-02", *lockDate)
 		if err != nil {
 			return fmt.Errorf("invalid lock date format: %w", err)
 		}
-
-		// Rule 1: Cannot be before Financial Year start date
-		if parsedLockDate.Before(fy.StartDate) {
-			return fmt.Errorf("lock date cannot be before the financial year start date: %s", fy.StartDate.Format("2006-01-02"))
+		if parsedLockDate.Before(fyYear.StartDate) {
+			return fmt.Errorf("lock date cannot be before the financial year start date: %s", fyYear.StartDate.Format("2006-01-02"))
 		}
-
-		// Rule 2: Cannot exceed today's date
-		today := time.Now().Truncate(24 * time.Hour)
-		if parsedLockDate.After(today) {
+		if parsedLockDate.After(time.Now().Truncate(24 * time.Hour)) {
 			return fmt.Errorf("lock date cannot be in the future")
 		}
 	}
 
-	// Get Metadata for the audit log
 	meta := auditctx.GetMetadata(ctx)
-
-	// Fetch the "Before" state
-	// We need to know what the lock date was before updating
 	beforeState, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
 	if err != nil {
 		return fmt.Errorf("get before state: %w", err)
 	}
 
-	// Perform the update
-	err = s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate)
-	if err != nil {
+	if err = s.repo.UpdateLockDate(ctx, practitionerID, fyID, lockDate); err != nil {
 		return err
 	}
 
-	// Fetch the "After" state
 	afterState, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
 	if err != nil {
 		return fmt.Errorf("get after state: %w", err)
 	}
 
-	// Audit Log
 	fyIDStr := fyID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionLockDateUpdated,
 		Module:      auditctx.ModuleBusiness,
-		EntityType:  strPtr(auditctx.EntityFinancialSettings),
+		EntityType:  lo.ToPtr(auditctx.EntityFinancialSettings),
 		EntityID:    &fyIDStr,
 		BeforeState: beforeState,
 		AfterState:  afterState,
@@ -231,33 +231,19 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 	return nil
 }
 
-// Helper functions for audit logging
-func strPtr(s string) *string { return &s }
-
-// VerifyAccountantAccessToPractitioner verifies that an accountant has access to a practitioner
 func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
-	if s.invitationRepo == nil {
+	if s.invitationModel == nil {
 		return errors.New("invitation repository not available")
 	}
 
-	// Cast the invitationRepo to the correct type
-	invitationRepo, ok := s.invitationRepo.(invitationPkg.Repository)
-	if !ok {
-		return errors.New("invalid invitation repository type")
-	}
-
-	// Get permissions for this accountant-practitioner relationship
-	perms, err := invitationRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
-	if err != nil {
-		return fmt.Errorf("failed to get permissions: %w", err)
-	}
-
-	// If no permissions exist, the accountant doesn't have access
-	if perms == nil {
+	perms, err := s.invitationModel.InternalRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
+	if err != nil || perms == nil {
+		if err != nil {
+			return fmt.Errorf("failed to get permissions: %w", err)
+		}
 		return errors.New("accountant does not have access to this practitioner")
 	}
 
-	// Check if accountant has read access to lock_dates
 	lockDatePerms, exists := (*perms)[invitationPkg.PermLockDates]
 	if !exists || !lockDatePerms.Read {
 		return errors.New("accountant does not have read permission for lock dates")

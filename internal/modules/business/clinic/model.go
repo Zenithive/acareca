@@ -9,7 +9,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
-// Database models
 type Clinic struct {
 	ID             uuid.UUID `db:"id"`
 	PractitionerID uuid.UUID `db:"practitioner_id"`
@@ -59,7 +58,6 @@ type FinancialSettings struct {
 	UpdatedAt       time.Time  `db:"updated_at"`
 }
 
-// Request models
 type RqCreateClinic struct {
 	PractitionerID uuid.UUID         `json:"practitioner_id"`
 	EntityID       uuid.UUID         `json:"-"`
@@ -136,7 +134,6 @@ type RqBulkDeleteClinic struct {
 	ClinicIDs []uuid.UUID `json:"clinic_ids" validate:"required,min=1"`
 }
 
-// Response models
 type RsClinic struct {
 	ID                uuid.UUID            `json:"id"`
 	PractitionerID    uuid.UUID            `json:"practitioner_id"`
@@ -193,7 +190,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		if err != nil {
 			fmt.Println("invalid clinic_id: %w", err)
 		}
-		filters["id"] = uuid.UUID(id)
+		filters["id"] = id
 	}
 	if filter.ClinicName != nil {
 		filters["name"] = *filter.ClinicName
@@ -202,9 +199,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["is_active"] = *filter.IsActive
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
-
-	return f
+	return common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }
 
 type AccountantPermission struct {

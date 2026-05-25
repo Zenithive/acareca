@@ -23,6 +23,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
 	businessEvents "github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
@@ -117,7 +119,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
-	invitationHandler := invitation.NewHandler(invitationSvc, accountant.NewRepository(dbConn))
+	invitationHandler := invitation.NewHandler(invitationSvc)
 
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
@@ -182,7 +184,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
 	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
 	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
+	practitionerSvc := practitioner.NewService(dbConn, practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
 
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo, notificationSvc)
 	authHandler := auth.NewHandler(authSvc)
@@ -242,6 +244,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
+	contactSvc := contact.NewService(contact.NewRepository(dbConn))
+	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
+	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 	// ============ INVOICE MODULE ============
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc)
 

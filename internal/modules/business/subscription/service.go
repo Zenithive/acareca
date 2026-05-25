@@ -15,7 +15,6 @@ type Service interface {
 	ListByPractitionerID(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 	Update(ctx context.Context, id int, req *RqUpdatePractitionerSubscription) (*RsPractitionerSubscription, error)
 	Delete(ctx context.Context, id int) error
-
 	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error)
 	GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error)
 }
@@ -37,6 +36,7 @@ func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqC
 	if err != nil {
 		return nil, err
 	}
+
 	sub := &PractitionerSubscription{
 		PractitionerID: practitionerID,
 		SubscriptionID: req.SubscriptionID,
@@ -44,6 +44,7 @@ func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqC
 		EndDate:        end,
 		Status:         req.Status,
 	}
+
 	created, err := s.repo.Create(ctx, sub, tx)
 	if err != nil {
 		return nil, err
@@ -89,6 +90,7 @@ func (s *service) Update(ctx context.Context, id int, req *RqUpdatePractitionerS
 		existing.Status = *req.Status
 	}
 	existing.UpdatedAt = time.Now()
+
 	updated, err := s.repo.Update(ctx, existing)
 	if err != nil {
 		return nil, err
@@ -108,40 +110,14 @@ func (s *service) GetActiveSubscription(ctx context.Context, practitionerID uuid
 	return sub, nil
 }
 
-/*
-func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
-	ft := f.MapToFilter()
-	list, err := s.repo.ListHistoryByPractitionerID(ctx, practitionerID, ft)
-	if err != nil {
-		return nil, err
-	}
-	total, err := s.repo.CountByPractitionerID(ctx, practitionerID, ft)
-	if err != nil {
-		return nil, err
-	}
-
-	data := make([]*RsPractitionerSubscription, len(list))
-	for i := range list {
-		data[i] = list[i].ToRs()
-	}
-
-	var rsList util.RsList
-	rsList.MapToList(data, total, ft.Offset, ft.Limit)
-	return &rsList, nil
-}
-*/
-
 func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uuid.UUID, f *Filter) (*util.RsList, error) {
 	ft := f.MapToFilter()
 
-	// 1. Call the new specialized repository method
-	// list is now []*RsActiveSubscription
 	list, err := s.repo.ListHistoryByPractitionerID(ctx, practitionerID, ft)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Get the total count for pagination
 	total, err := s.repo.CountByPractitionerID(ctx, practitionerID, ft)
 	if err != nil {
 		return nil, err
@@ -149,6 +125,5 @@ func (s *service) GetSubscriptionHistory(ctx context.Context, practitionerID uui
 
 	var rsList util.RsList
 	rsList.MapToList(list, total, *ft.Offset, *ft.Limit)
-
 	return &rsList, nil
 }

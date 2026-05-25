@@ -141,13 +141,15 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 	response.JSON(c, http.StatusOK, one, "Account tax fetched successfully")
 }
 
-// @Summary List chart of accounts for practitioner
+// @Summary List chart of accounts
 // @Tags coa
 // @Produce json
 // @Param practitioner_id query string false "Filter by practitioner ID (Accountant only)"
 // @Param name query string false "Filter by name"
 // @Param code query int false "Filter by code"
 // @Param account_type query string false "Filter by account type name"
+// @Param exclude_type query []string false "Exclude account type names"
+// @Param account_tax_id query int false "Filter by account tax ID"
 // @Param search query string false "Search keyword"
 // @Param sort_by query string false "Sort field"
 // @Param order_by query string false "Order direction (ASC/DESC)"
@@ -159,26 +161,8 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Security BearerToken
 // @Router /coa/chart-of-account [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
-	role := c.GetString("role")
-
-	// Manually parse practitioner_id to avoid UUID binding issues
-	practitionerIDStr := c.Query("practitioner_id")
-	var practitionerID *uuid.UUID
-	if practitionerIDStr != "" {
-		// Handle potential JSON-encoded array format
-		practitionerIDStr = strings.Trim(practitionerIDStr, "[]\"\\")
-		if id, err := uuid.Parse(practitionerIDStr); err == nil {
-			practitionerID = &id
-		} else {
-			response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner_id format"))
-			return
-		}
-	}
-
-	// Remove practitioner_id from query to prevent binding issues with common.Filter
-	query := c.Request.URL.Query()
-	query.Del("practitioner_id")
-	c.Request.URL.RawQuery = query.Encode()
+	practitionerIDs := c.QueryArray("practitioner_id")
+	excludeTypes := c.QueryArray("exclude_type")
 
 	var filter Filter
 	if err := util.BindAndValidate(c, &filter); err != nil {
@@ -186,15 +170,25 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 		return
 	}
 
-	// Set the manually parsed practitioner_id
-	filter.PractitionerID = practitionerID
-	
+	filter.ExcludeType = excludeTypes
+
+	practitionerIds := make([]uuid.UUID, 0, len(practitionerIDs))
+	for _, practitionerId := range practitionerIDs {
+		uId, err := uuid.Parse(practitionerId)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner id: %w", err))
+			return
+		}
+		practitionerIds = append(practitionerIds, uId)
+	}
+	filter.PractitionerID = practitionerIds
+
 	// Parse account_tax_id if provided
 	taxIDStr := c.Query("account_tax_id")
 	if taxIDStr != "" {
 		v, err := strconv.ParseInt(taxIDStr, 10, 16)
 		if err != nil {
-			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid account_tax_id: %w", err))
+			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid account tax id: %w", err))
 			return
 		}
 		val := int16(v)
@@ -202,26 +196,11 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 	}
 
 	// Identify actor ID based on role
-	var actorID uuid.UUID
-	if role == util.RoleAccountant {
-		var ok bool
-		actorID, ok = util.GetAccountantID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-		// For accountants, use the manually parsed practitioner_id from query params
-		// If not provided, service will return all COAs for all authorized practitioners
-	} else if role == util.RolePractitioner {
-		var ok bool
-		actorID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-		// For practitioners, hard-set filter.PractitionerID to their token ID
-		filter.PractitionerID = &actorID
-	} else {
+	var actorID *uuid.UUID
+	var role string
+	var ok bool
+
+	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
 		return
 	}
@@ -250,7 +229,8 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 
 	// Get practitioner_id based on role
 	var practitionerID uuid.UUID
-	if role == util.RolePractitioner {
+	switch role {
+	case util.RolePractitioner:
 		// For practitioners, force their token ID
 		var ok bool
 		practitionerID, ok = util.GetPractitionerID(c)
@@ -258,7 +238,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
-	} else if role == util.RoleAccountant {
+	case util.RoleAccountant:
 		// For accountants, read from query params
 		practitionerIDStr := c.Query("practitioner_id")
 		if practitionerIDStr == "" {
@@ -273,7 +253,7 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner_id format"))
 			return
 		}
-	} else {
+	default:
 		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
 		return
 	}

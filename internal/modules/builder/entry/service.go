@@ -79,118 +79,130 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
 }
 
-// Create implements [IService].
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
 	// Permission checks are handled by middleware
 
-	// Resolve the REAL owner at the start of THIS function
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
-	if err != nil {
-		return nil, err
-	}
+	var result *RsFormEntry
 
-	realOwnerID := clinic.PractitionerID
+	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-	if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
-		return nil, err
-	}
-
-	// Financial Year Validation
-	if req.Date != nil && *req.Date != "" {
-		parsedDate, err := time.Parse("2006-01-02", *req.Date)
+		// Resolve the REAL owner at the start of THIS function
+		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 		if err != nil {
-			return nil, fmt.Errorf("invalid date format: %w", err)
+			return err
+		}
+		if clinic == nil {
+			return fmt.Errorf("clinic not found: %s", req.ClinicID)
 		}
 
-		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+		realOwnerID := clinic.PractitionerID
+
+		if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
+			return err
+		}
+
+		// Financial Year Validation
+		if req.Date != nil && *req.Date != "" {
+			parsedDate, err := time.Parse("2006-01-02", *req.Date)
+			if err != nil {
+				return fmt.Errorf("invalid date format: %w", err)
+			}
+
+			_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+			if err != nil {
+				return fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+			}
+		}
+
+		// Validate lock date before creating entry
+		if err := s.validateLockDate(ctx, tx, realOwnerID, req.Date, nil); err != nil {
+			return err
+		}
+
+		status := EntryStatusDraft
+		if req.Status != "" {
+			status = req.Status
+		}
+		var submittedAt *string
+		if status == EntryStatusSubmitted {
+			now := time.Now().UTC().Format(time.RFC3339)
+			submittedAt = &now
+		}
+		e := &FormEntry{
+			ID:            uuid.New(),
+			FormVersionID: formVersionID,
+			ClinicID:      req.ClinicID,
+			SubmittedBy:   submittedBy,
+			SubmittedAt:   submittedAt,
+			Date:          req.Date,
+			Status:        status,
+		}
+
+		values, err := s.CalculateValues(ctx, e.ID, req.Values)
 		if err != nil {
-			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+			return err
 		}
-	}
 
-	// Validate lock date before creating entry
-	if err := s.validateLockDate(ctx, realOwnerID, req.Date, nil); err != nil {
-		return nil, err
-	}
+		if err := s.repo.CreateTx(ctx, tx, e, values); err != nil {
+			return err
+		}
 
-	status := EntryStatusDraft
-	if req.Status != "" {
-		status = req.Status
-	}
-	var submittedAt *string
-	if status == EntryStatusSubmitted {
-		now := time.Now().UTC().Format(time.RFC3339)
-		submittedAt = &now
-	}
-	e := &FormEntry{
-		ID:            uuid.New(),
-		FormVersionID: formVersionID,
-		ClinicID:      req.ClinicID,
-		SubmittedBy:   submittedBy,
-		SubmittedAt:   submittedAt,
-		Date:          req.Date,
-		Status:        status,
-	}
-	values, err := s.CalculateValues(ctx, e.ID, req.Values)
+		// Link documents if provided
+		if req.Documents != nil && len(req.Documents.Create) > 0 {
+			docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+			if parseErr != nil {
+				return fmt.Errorf("invalid document id: %w", parseErr)
+			}
+			if linkErr := s.repo.LinkDocuments(ctx, tx, e.ID, docIDs); linkErr != nil {
+				return fmt.Errorf("link documents: %w", linkErr)
+			}
+		}
+
+		created, vals, err := s.repo.GetByID(ctx, e.ID)
+		if err != nil {
+			return fmt.Errorf("fetch entry after create: %w", err)
+		}
+		if created == nil {
+			return fmt.Errorf("failed to retrieve newly created entry: %s", e.ID)
+		}
+
+		result = created.ToRs(vals)
+		s.attachFieldMetadata(ctx, result)
+		s.attachICCalculation(ctx, result)
+
+		// Attach documents
+		docs, docErr := s.repo.GetDocumentsByEntryID(ctx, e.ID)
+		if docErr == nil && docs != nil {
+			result.Documents = make([]RsEntryDocument, 0, len(docs))
+			for _, d := range docs {
+				if d != nil {
+					result.Documents = append(result.Documents, *d)
+				}
+			}
+		}
+
+		// Record Shared Event
+		metaMap := events.JSONBMap{
+			"entry_id":        result.ID.String(),
+			"form_version_id": formVersionID.String(),
+			"clinic_id":       req.ClinicID.String(),
+			"status":          result.Status,
+		}
+
+		s.recordSharedEvent(ctx, tx, req.ClinicID, formVersionID, auditctx.ActionEntryCreated, result.ID,
+			"Accountant %s created a new entry for form: %s",
+			metaMap,
+		)
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.Create(ctx, e, values); err != nil {
-		return nil, err
-	}
 
-	// Link documents if provided
-	if req.Documents != nil && len(req.Documents.Create) > 0 {
-		docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
-		if parseErr != nil {
-			return nil, fmt.Errorf("invalid document id: %w", parseErr)
-		}
-		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
-		if txErr != nil {
-			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
-		}
-		if linkErr := s.repo.LinkDocuments(ctx, tx, e.ID, docIDs); linkErr != nil {
-			_ = tx.Rollback()
-			return nil, fmt.Errorf("link documents: %w", linkErr)
-		}
-		if txErr = tx.Commit(); txErr != nil {
-			return nil, fmt.Errorf("commit document links: %w", txErr)
-		}
-	}
-	created, vals, err := s.repo.GetByID(ctx, e.ID)
-	if err != nil {
-		return nil, fmt.Errorf("fetch entry after create: %w", err)
-	}
-
-	result := created.ToRs(vals)
-	s.attachFieldMetadata(ctx, result)
-	s.attachICCalculation(ctx, result)
-
-	// Attach documents
-	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, e.ID)
-	if docErr == nil && docs != nil {
-		result.Documents = make([]RsEntryDocument, 0, len(docs))
-		for _, d := range docs {
-			result.Documents = append(result.Documents, *d)
-		}
-	}
-
-	// Record Shared Event
-	metaMap := events.JSONBMap{
-		"entry_id":        result.ID.String(),
-		"form_version_id": formVersionID.String(),
-		"clinic_id":       req.ClinicID.String(),
-		"status":          result.Status,
-	}
-
-	s.recordSharedEvent(ctx, req.ClinicID, formVersionID, auditctx.ActionEntryCreated, result.ID,
-		"Accountant %s created a new entry for form: %s",
-		metaMap,
-	)
-
-	// Audit log: entry created
-	idStr := created.ID.String()
+	idStr := result.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
 		UserID:     meta.UserID,
@@ -234,124 +246,137 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
 	// Permission checks are handled by middleware
 
-	existing, values, err := s.repo.GetByID(ctx, id)
+	var result *RsFormEntry
+	var beforeState interface{} // Keeps historical snapshot intact for post-commit async logging
+
+	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var innerErr error
+
+		existing, values, innerErr := s.repo.GetByID(ctx, id)
+		if innerErr != nil {
+			return innerErr
+		}
+		if existing == nil {
+			return fmt.Errorf("form entry not found: %s", id)
+		}
+
+		beforeState = existing.ToRs(values)
+
+		// Validate lock date - check both existing date and new date if provided
+		dateToCheck := existing.Date
+		if req.Date != nil {
+			dateToCheck = req.Date
+		}
+
+		// Financial Year Validation
+		if dateToCheck != nil && *dateToCheck != "" {
+			parsedDate, innerErr := time.Parse("2006-01-02", *dateToCheck)
+			if innerErr != nil {
+				return fmt.Errorf("invalid date format: %w", innerErr)
+			}
+
+			_, innerErr = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
+			if innerErr != nil {
+				return fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
+			}
+		}
+
+		// Lock Date Validation
+		if innerErr = s.validateLockDate(ctx, tx, existing.PractitionerID, dateToCheck, &existing.CreatedAt); innerErr != nil {
+			return innerErr
+		}
+
+		if req.Status != nil {
+			existing.Status = *req.Status
+			if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {
+				now := time.Now().UTC().Format(time.RFC3339)
+				existing.SubmittedAt = &now
+			}
+			existing.SubmittedBy = submittedBy
+		}
+		if req.Date != nil {
+			existing.Date = req.Date
+		}
+
+		// Start as nil. Only calculate if the request actually contains new values.
+		var valuesToUpdate []*FormEntryValue = nil
+		if len(req.Values) > 0 {
+			valuesToUpdate, innerErr = s.CalculateValues(ctx, existing.ID, req.Values)
+			if innerErr != nil {
+				return innerErr
+			}
+		}
+
+		// If valuesToUpdate is nil, the repo only updates the status.
+		if innerErr = s.repo.UpdateTx(ctx, tx, existing, valuesToUpdate); innerErr != nil {
+			return innerErr
+		}
+
+		// Handle document create/delete ops
+		if req.Documents != nil {
+			if len(req.Documents.Create) > 0 {
+				docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
+				if parseErr != nil {
+					return fmt.Errorf("invalid document id in create: %w", parseErr)
+				}
+				if linkErr := s.repo.LinkDocuments(ctx, tx, id, docIDs); linkErr != nil {
+					return fmt.Errorf("link documents: %w", linkErr)
+				}
+			}
+			if len(req.Documents.Delete) > 0 {
+				docIDs, parseErr := util.ParseUUIDs(req.Documents.Delete)
+				if parseErr != nil {
+					return fmt.Errorf("invalid document id in delete: %w", parseErr)
+				}
+				if unlinkErr := s.repo.UnlinkDocuments(ctx, tx, id, docIDs); unlinkErr != nil {
+					return fmt.Errorf("unlink documents: %w", unlinkErr)
+				}
+			}
+		}
+
+		updated, vals, innerErr := s.repo.GetByID(ctx, id)
+		if innerErr != nil {
+			return fmt.Errorf("fetch entry after update: %w", innerErr)
+		}
+		if updated == nil {
+			return fmt.Errorf("failed to retrieve updated form entry: %s", id)
+		}
+
+		result = updated.ToRs(vals)
+		s.attachFieldMetadata(ctx, result)
+		s.attachICCalculation(ctx, result)
+
+		// Attach documents
+		docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
+		if docErr == nil && docs != nil {
+			result.Documents = make([]RsEntryDocument, 0, len(docs))
+			for _, d := range docs {
+				if d != nil {
+					result.Documents = append(result.Documents, *d)
+				}
+			}
+		}
+
+		// Record Shared Event
+		metaMap := events.JSONBMap{
+			"entry_id":        result.ID.String(),
+			"form_version_id": existing.FormVersionID.String(),
+			"clinic_id":       existing.ClinicID.String(),
+			"status":          result.Status,
+		}
+
+		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryUpdated, id,
+			"Accountant %s updated entry for form: %s",
+			metaMap,
+		)
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-	beforeState := existing.ToRs(values)
 
-	// Validate lock date - check both existing date and new date if provided
-	dateToCheck := existing.Date
-	if req.Date != nil {
-		dateToCheck = req.Date
-	}
-
-	// Financial Year Validation
-	if dateToCheck != nil && *dateToCheck != "" {
-		parsedDate, err := time.Parse("2006-01-02", *dateToCheck)
-		if err != nil {
-			return nil, fmt.Errorf("invalid date format: %w", err)
-		}
-
-		_, err = s.financialRepo.GetFinancialYearByDate(ctx, parsedDate)
-		if err != nil {
-			return nil, fmt.Errorf("the date %s does not fall within an active financial year", parsedDate.Format("02-01-2006"))
-		}
-	}
-
-	//Lock Date Validation
-	if err := s.validateLockDate(ctx, existing.PractitionerID, dateToCheck, &existing.CreatedAt); err != nil {
-		return nil, err
-	}
-
-	if req.Status != nil {
-		existing.Status = *req.Status
-		if *req.Status == EntryStatusSubmitted && existing.SubmittedAt == nil {
-			now := time.Now().UTC().Format(time.RFC3339)
-			existing.SubmittedAt = &now
-		}
-		existing.SubmittedBy = submittedBy
-	}
-	if req.Date != nil {
-		existing.Date = req.Date
-	}
-
-	// Start as nil. Only calculate if the request actually contains new values.
-	var valuesToUpdate []*FormEntryValue = nil
-	if len(req.Values) > 0 {
-		valuesToUpdate, err = s.CalculateValues(ctx, existing.ID, req.Values)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// If valuesToUpdate is nil, the repo only updates the status.
-	if err := s.repo.Update(ctx, existing, valuesToUpdate); err != nil {
-		return nil, err
-	}
-
-	// Handle document create/delete ops
-	if req.Documents != nil {
-		tx, txErr := s.repo.(*Repository).db.BeginTxx(ctx, nil)
-		if txErr != nil {
-			return nil, fmt.Errorf("begin tx for documents: %w", txErr)
-		}
-		defer func() { _ = tx.Rollback() }()
-
-		if len(req.Documents.Create) > 0 {
-			docIDs, parseErr := util.ParseUUIDs(req.Documents.Create)
-			if parseErr != nil {
-				return nil, fmt.Errorf("invalid document id in create: %w", parseErr)
-			}
-			if linkErr := s.repo.LinkDocuments(ctx, tx, id, docIDs); linkErr != nil {
-				return nil, fmt.Errorf("link documents: %w", linkErr)
-			}
-		}
-		if len(req.Documents.Delete) > 0 {
-			docIDs, parseErr := util.ParseUUIDs(req.Documents.Delete)
-			if parseErr != nil {
-				return nil, fmt.Errorf("invalid document id in delete: %w", parseErr)
-			}
-			if unlinkErr := s.repo.UnlinkDocuments(ctx, tx, id, docIDs); unlinkErr != nil {
-				return nil, fmt.Errorf("unlink documents: %w", unlinkErr)
-			}
-		}
-		if txErr = tx.Commit(); txErr != nil {
-			return nil, fmt.Errorf("commit document ops: %w", txErr)
-		}
-	}
-	updated, vals, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("fetch entry after update: %w", err)
-	}
-
-	result := updated.ToRs(vals)
-	s.attachFieldMetadata(ctx, result)
-	s.attachICCalculation(ctx, result)
-
-	// Attach documents
-	docs, docErr := s.repo.GetDocumentsByEntryID(ctx, id)
-	if docErr == nil && docs != nil {
-		result.Documents = make([]RsEntryDocument, 0, len(docs))
-		for _, d := range docs {
-			result.Documents = append(result.Documents, *d)
-		}
-	}
-
-	// Record Shared Event
-	metaMap := events.JSONBMap{
-		"entry_id":        result.ID.String(),
-		"form_version_id": existing.FormVersionID.String(),
-		"clinic_id":       existing.ClinicID.String(),
-		"status":          result.Status,
-	}
-
-	s.recordSharedEvent(ctx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryUpdated, id,
-		"Accountant %s updated entry for form: %s",
-		metaMap,
-	)
-
-	// Audit log: entry updated
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -373,49 +398,55 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 // Delete implements [IService].
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 
-	// Get entry details before deletion for audit log
-	existing, values, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	beforeState := existing.ToRs(values)
+	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 
-	// Validate lock date before deleting entry
-	if err := s.validateLockDate(ctx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
-		return err
-	}
+		// Get entry details before deletion for audit log
+		existing, values, err := s.repo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return fmt.Errorf("form entry not found: %s", id)
+		}
+		beforeState := existing.ToRs(values)
 
-	// Record Shared Event
-	metaMap := events.JSONBMap{
-		"entry_id":  existing.ID.String(),
-		"clinic_id": existing.ClinicID.String(),
-	}
+		// Validate lock date before deleting entry
+		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
+			return err
+		}
 
-	s.recordSharedEvent(ctx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, id,
-		"Accountant %s deleted an entry for form: %s",
-		metaMap,
-	)
+		// Record Shared Event
+		metaMap := events.JSONBMap{
+			"entry_id":  existing.ID.String(),
+			"clinic_id": existing.ClinicID.String(),
+		}
 
-	if err := s.repo.Delete(ctx, id); err != nil {
-		return err
-	}
+		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, id,
+			"Accountant %s deleted an entry for form: %s",
+			metaMap,
+		)
 
-	// Audit log: entry deleted
-	meta := auditctx.GetMetadata(ctx)
-	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
-		Action:      auditctx.ActionEntryDeleted,
-		Module:      auditctx.ModuleForms,
-		EntityType:  strPtr(auditctx.EntityFormFieldEntry),
-		EntityID:    &idStr,
-		BeforeState: beforeState,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
+		if err := s.repo.DeleteTx(ctx, tx, id); err != nil {
+			return err
+		}
+
+		// Audit log: entry deleted
+		meta := auditctx.GetMetadata(ctx)
+		idStr := id.String()
+		s.auditSvc.LogAsync(&audit.LogEntry{
+			PracticeID:  meta.PracticeID,
+			UserID:      meta.UserID,
+			Action:      auditctx.ActionEntryDeleted,
+			Module:      auditctx.ModuleForms,
+			EntityType:  strPtr(auditctx.EntityFormFieldEntry),
+			EntityID:    &idStr,
+			BeforeState: beforeState,
+			IPAddress:   meta.IPAddress,
+			UserAgent:   meta.UserAgent,
+		})
+
+		return nil
 	})
-
-	return nil
 }
 
 // List implements [IService].
@@ -952,7 +983,7 @@ func roundEntry(v float64) float64 {
 func strPtr(s string) *string { return &s }
 
 // Helper to record shared events
-func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
+func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
 	meta := auditctx.GetMetadata(ctx)
 
 	// Only act if the user is an Accountant
@@ -960,21 +991,24 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 		return
 	}
 
-	actorUserID, _ := uuid.Parse(*meta.UserID)
+	actorUserID, err := uuid.Parse(*meta.UserID)
+	if err != nil {
+		return // Guard against invalid/empty UUID string formats in metadata
+	}
 
-	// Resolve Form Name
+	// Resolve Form Name safely
 	formName := "Form"
 	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
-	if err == nil {
+	if err == nil && ver != nil {
 		form, err := s.detailRepo.GetByID(ctx, ver.FormId)
-		if err == nil {
+		if err == nil && form != nil {
 			formName = form.Name
 		}
 	}
 
-	// Resolve PractitionerID from Clinic
-	clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
-	if err != nil {
+	// Resolve PractitionerID from Clinic inside the active transaction context
+	clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicID)
+	if err != nil || clinic == nil {
 		return
 	}
 
@@ -983,16 +1017,17 @@ func (s *Service) recordSharedEvent(ctx context.Context, clinicID uuid.UUID, for
 	var fullName string
 
 	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-	if err == nil {
+	if err == nil && accProfile != nil {
 		accountantID = accProfile.ID
 	} else {
 		accountantID = actorUserID
 	}
 
 	user, err := s.authRepo.FindByID(ctx, actorUserID)
-	if err == nil {
+	if err == nil && user != nil {
 		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 	}
+
 	// Record Event
 	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 		ID:             uuid.New(),
@@ -1107,58 +1142,62 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 }
 
 func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error) {
-	// Fetch Shared Data
-	groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
-	if err != nil {
-		return nil, "", err
-	}
-
-	for _, g := range groups {
-		details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
-		if err != nil {
-			continue
-		}
-		g.Details = details
-	}
-
 	var result interface{}
 	var contentType string
-
-	// Get Full Name
 	var fullName string
-	user, _ := s.authRepo.FindByID(ctx, userID)
-	if user != nil {
-		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-	}
+	var targetNotifIDs []uuid.UUID
 
-	var entityName string
-	var practitionerABN string
-	if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
-		// pracUUID, _ := uuid.Parse(*f.PractitionerID.String())
-		prac, err := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
-		if err == nil {
-			if prac.EntityName != nil {
-				entityName = *prac.EntityName
-			} else {
-				entityName = fullName
-			}
-			if prac.ABN != nil {
-				practitionerABN = *prac.ABN
-			}
+	// Wrap read allocations and conditional checking in an isolated transaction block
+	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// 1. Fetch Shared Data within the active transaction context
+		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
+		if err != nil {
+			return err
 		}
-	} else {
-		if role == util.RolePractitioner {
+
+		for _, g := range groups {
+			if g == nil {
+				continue
+			}
+			details, err := s.repo.ListCoaEntryDetails(ctx, g.CoaName, f.ToCommonFilter(), actorID, role)
+			if err != nil {
+				continue // Skip corrupt or missing chart lines safely
+			}
+			g.Details = details
+		}
+
+		// Get Full Name (Pass tx if authRepo queries the same database instance)
+		user, _ := s.authRepo.FindByID(ctx, userID)
+		if user != nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		var entityName string
+		var practitionerABN string
+		if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
 			prac, err := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
-			entityName = fullName
-			if err == nil {
+			if err == nil && prac != nil {
+				if prac.EntityName != nil {
+					entityName = *prac.EntityName
+				} else {
+					entityName = fullName
+				}
 				if prac.ABN != nil {
 					practitionerABN = *prac.ABN
 				}
 			}
 		} else {
-			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
-			{
-				if err == nil {
+			if role == util.RolePractitioner {
+				prac, err := s.practitionerSvc.GetPractitioner(ctx, *f.PractitionerID)
+				entityName = fullName
+				if err == nil && prac != nil {
+					if prac.ABN != nil {
+						practitionerABN = *prac.ABN
+					}
+				}
+			} else {
+				acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+				if err == nil && acc != nil {
 					if acc.EntityName != nil {
 						entityName = *acc.EntityName
 					} else {
@@ -1170,81 +1209,105 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 				}
 			}
 		}
-	}
 
-	formatDateHelper := func(dateStr string) string {
-		if dateStr == "" || dateStr == "<nil>" {
-			return "-"
-		}
-		// Extract YYYY-MM-DD
-		input := dateStr
-		if len(dateStr) >= 10 {
-			input = dateStr[:10]
-		}
-		t, err := time.Parse("2006-01-02", input)
-		if err != nil {
-			return dateStr
-		}
-		return t.Format("02-01-2006")
-	}
-
-	var period string
-	if f.StartDate != nil && *f.StartDate != "" && f.EndDate != nil && *f.EndDate != "" {
-		period = fmt.Sprintf("%s to %s", formatDateHelper(*f.StartDate), formatDateHelper(*f.EndDate))
-	} else if f.EndDate != nil && *f.EndDate != "" {
-		period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
-	}
-
-	// Handle HTML Export
-	if strings.ToLower(exportType) == "pdf" {
-		data := struct {
-			Groups   interface{}
-			FullName string
-			ABN      string
-			Period   string
-		}{
-			Groups:   groups,
-			FullName: fullName,
-			ABN:      practitionerABN,
-			Period:   period,
+		formatDateHelper := func(dateStr string) string {
+			if dateStr == "" || dateStr == "<nil>" {
+				return "-"
+			}
+			input := dateStr
+			if len(dateStr) >= 10 {
+				input = dateStr[:10]
+			}
+			t, err := time.Parse("2006-01-02", input)
+			if err != nil {
+				return dateStr
+			}
+			return t.Format("02-01-2006")
 		}
 
-		htmlContent, err := s.generateTransactionHTML(data, formatDateHelper)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to generate html: %w", err)
+		var period string
+		if f.StartDate != nil && *f.StartDate != "" && f.EndDate != nil && *f.EndDate != "" {
+			period = fmt.Sprintf("%s to %s", formatDateHelper(*f.StartDate), formatDateHelper(*f.EndDate))
+		} else if f.EndDate != nil && *f.EndDate != "" {
+			period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
 		}
-		result = htmlContent
-		contentType = "text/html"
-	} else {
-		// Handle Excel Export
-		buf, err := s.generateExcelReport(ctx, f, actorID, role, entityName, practitionerABN, period)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to generate excel: %w", err)
+
+		// Handle HTML / PDF Generation
+		if strings.ToLower(exportType) == "pdf" {
+			data := struct {
+				Groups   interface{}
+				FullName string
+				ABN      string
+				Period   string
+			}{
+				Groups:   groups,
+				FullName: fullName,
+				ABN:      practitionerABN,
+				Period:   period,
+			}
+
+			htmlContent, err := s.generateTransactionHTML(data, formatDateHelper)
+			if err != nil {
+				return fmt.Errorf("failed to generate html: %w", err)
+			}
+			result = htmlContent
+			contentType = "text/html"
+		} else {
+			// Handle Excel Export (Propagate tx down to generation helpers)
+			buf, err := s.generateExcelReport(ctx, f, actorID, role, entityName, practitionerABN, period)
+			if err != nil {
+				return fmt.Errorf("failed to generate excel: %w", err)
+			}
+			result = buf
+			contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 		}
-		result = buf
-		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-	}
 
-	// Resolve target practitioners for Notifications
-	targetNotifIDs := PracIDs
+		// Resolve target practitioners for Notifications
+		targetNotifIDs = PracIDs
 
-	// If clinic_id is provided, we narrow down the notification to ONLY the owner of that clinic
-	if f.ClinicID != nil {
-		clinicUUID, err := uuid.Parse(*f.ClinicID)
-		if err == nil {
-			// Get the clinic to find the practitioner_id
-			clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicUUID)
+		// If clinic_id is provided, look up the owner using the active transaction
+		if f.ClinicID != nil {
+			clinicUUID, err := uuid.Parse(*f.ClinicID)
 			if err == nil {
-				// Set the notification target to just this owner
-				targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
+				clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicUUID) // <-- Fixed: Pass tx down
+				if err == nil && clinic != nil {
+					targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
+				}
 			}
 		}
+
+		// Record the Shared Event within the transaction pipeline context block
+		if role == util.RoleAccountant {
+			for _, pID := range targetNotifIDs {
+				err := s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: pID,
+					AccountantID:   actorID,
+					ActorID:        userID,
+					ActorName:      &fullName,
+					ActorType:      role,
+					EventType:      "transaction_report.exported",
+					EntityType:     "REPORT",
+					Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
+					Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
+					CreatedAt:      time.Now(),
+				})
+				if err != nil {
+					return fmt.Errorf("failed to log shared transaction export event: %w", err)
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, "", err
 	}
 
-	// --- AUDIT LOG ---
+	// --- ASYNC AUDIT LOG --- (Safe to push outside transactional boundary checks)
 	meta := auditctx.GetMetadata(ctx)
-	var userIDStr string
-	userIDStr = userID.String()
+	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -1261,25 +1324,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		IPAddress: meta.IPAddress,
 		UserAgent: meta.UserAgent,
 	})
-
-	// Record the Shared Event
-	if role == util.RoleAccountant {
-		for _, pID := range targetNotifIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "transaction_report.exported",
-				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 
 	return result, contentType, nil
 }
@@ -1466,31 +1510,33 @@ func (s *Service) generateExcelReport(ctx context.Context, f TransactionFilter, 
 	return xl.WriteToBuffer()
 }
 
-func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID, entryDate *string, createdAt *string) error {
+func (s *Service) validateLockDate(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID, entryDate *string, createdAt *string) error {
 
 	var dateString string
 	if entryDate != nil && *entryDate != "" {
 		dateString = *entryDate
 	} else if createdAt != nil && *createdAt != "" {
-
+		// Guard against short string index out of range panics
+		if len(*createdAt) < 10 {
+			return fmt.Errorf("malformed createdAt timestamp format: %s", *createdAt)
+		}
 		dateString = (*createdAt)[:10]
 	} else {
-
 		return nil
 	}
 
-	// 2. Fetch settings based on PractitionerID instead of ClinicID
-	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, practitionerID)
+	// 1. Fetch settings using the active transaction pointer context (Pass tx)
+	financialSettings, err := s.clinicRepo.GetFinancialSettings(ctx, tx, practitionerID)
 	if err != nil {
 		return fmt.Errorf("failed to get practitioner financial settings: %w", err)
 	}
 
-	// 3. Check if settings or lock date exist
+	// 2. Safely check if settings or lock date exist before reading pointers
 	if financialSettings == nil || financialSettings.LockDate == nil {
 		return nil
 	}
 
-	// 4. Parse the entry date
+	// 3. Parse the entry date safely
 	parsedEntryDate, err := time.Parse("2006-01-02", dateString)
 	if err != nil {
 		return fmt.Errorf("invalid entry date format: %w", err)
@@ -1499,6 +1545,7 @@ func (s *Service) validateLockDate(ctx context.Context, practitionerID uuid.UUID
 	lockDate := financialSettings.LockDate.UTC().Truncate(24 * time.Hour)
 	entryDateOnly := parsedEntryDate.UTC().Truncate(24 * time.Hour)
 
+	// 4. Evaluate lock boundaries
 	if entryDateOnly.Before(lockDate) || entryDateOnly.Equal(lockDate) {
 		return fmt.Errorf("cannot modify entries on or before the lock date (%s)",
 			lockDate.Format("2006-01-02"))
