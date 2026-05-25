@@ -27,6 +27,8 @@ type PLReportRow struct {
 	FormFieldID string  `db:"form_field_id"`
 	FieldLabel  string  `db:"field_label"`
 	SectionType *string `db:"section_type"`
+	AccountType string  `db:"account_type"`
+	PLSection   string  `db:"pl_section"`
 	CoaID       string  `db:"coa_id"`
 	AccountName string  `db:"account_name"`
 	TaxName     string  `db:"tax_name"`

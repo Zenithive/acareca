@@ -299,23 +299,24 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 }
 
 // buildReport assembles a flat P&L report aggregated across all clinics/forms,
-// grouped by COA account within each section.
+// grouped by COA account within each P&L section.
 func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) *RsReport {
-	// coaKey → accumulated total per section
+	// coaKey → accumulated total per P&L section
 	type coaKey struct {
-		sectionType string
-		coaID       string
+		plSection string
+		coaID     string
 	}
-	coaOrder := map[string][]string{} // sectionType → ordered coaIDs
+	coaOrder := map[string][]string{} // plSection → ordered coaIDs
 	coaSeen := map[coaKey]bool{}
 	coaNames := map[coaKey]string{}
 	coaTotals := map[coaKey]float64{}
 
 	for _, r := range rows {
-		// Treat NULL section_type as 'COST' (operating expenses)
-		sectionType := "COST"
-		if r.SectionType != nil {
-			sectionType = *r.SectionType
+		// Use pl_section for proper categorization based on account type
+		plSection := r.PLSection
+		if plSection == "" {
+			// Fallback to Other Expenses if somehow empty
+			plSection = "3. Other Expenses"
 		}
 
 		// Use net_amount consistently across all sections for P&L reporting.
@@ -325,21 +326,21 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) 
 		// This aligns with standard accounting practice where GST is a pass-through.
 		val := r.NetAmount
 
-		ck := coaKey{sectionType, r.CoaID}
+		ck := coaKey{plSection, r.CoaID}
 		if !coaSeen[ck] {
 			coaSeen[ck] = true
-			coaOrder[sectionType] = append(coaOrder[sectionType], r.CoaID)
+			coaOrder[plSection] = append(coaOrder[plSection], r.CoaID)
 			coaNames[ck] = r.AccountName
 		}
 		coaTotals[ck] += val
 	}
 
-	buildGroup := func(sectionTypes ...string) RsReportGroup {
+	buildGroup := func(plSections ...string) RsReportGroup {
 		accounts := make([]RsReportAccount, 0)
 		var total float64
-		for _, st := range sectionTypes {
-			for _, cid := range coaOrder[st] {
-				ck := coaKey{st, cid}
+		for _, section := range plSections {
+			for _, cid := range coaOrder[section] {
+				ck := coaKey{section, cid}
 				total += coaTotals[ck]
 				accounts = append(accounts, RsReportAccount{
 					CoaID:      cid,
@@ -351,9 +352,9 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) 
 		return RsReportGroup{GroupTotal: round2(total), Accounts: accounts}
 	}
 
-	income := buildGroup("COLLECTION")
-	cos := buildGroup("COST")
-	other := buildGroup("OTHER_COST", "EXPENSE_ENTRY")
+	income := buildGroup("1. Income")
+	cos := buildGroup("2. Cost of Sales")
+	otherCosts := buildGroup("3. Other Costs")
 
 	grossProfit := round2(summary.GrossProfitNet)
 	netProfit := round2(summary.NetProfitNet)
@@ -379,7 +380,7 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) 
 		Income:      income,
 		CostOfSales: cos,
 		GrossProfit: grossProfit,
-		OtherCosts:  other,
+		OtherCosts:  otherCosts,
 		NetProfit:   netProfit,
 	}
 }
