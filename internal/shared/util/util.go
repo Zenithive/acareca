@@ -340,16 +340,14 @@ func ParseFlexibleDate(dateStr string) (time.Time, error) {
 		"2006-01-02T15:04:05Z07:00", // ISO 8601
 	}
 
-	var tm time.Time
-	var err error
 	for _, format := range formats {
-		tm, err = time.Parse(format, dateStr)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, err)
+		if tm, err := time.Parse(format, dateStr); err == nil {
+			return tm, nil
 		}
+		// If parsing fails, do not return an error yet. Loop continues to try the next format.
 	}
 
-	return tm, nil
+	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format", dateStr)
 }
 
 func FormatDate(dateStr string) string {
