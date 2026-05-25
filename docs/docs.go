@@ -8897,6 +8897,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/util.RsList"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8913,7 +8925,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners (for accountants).",
+                "description": "Retrieve the current financial lock date for the authenticated practitioner or associated practitioners.",
                 "produces": [
                     "application/json"
                 ],
@@ -8943,6 +8955,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/util.RsList"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
@@ -8969,7 +8987,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Set or remove (by sending null) the financial lock date for the authenticated practitioner.",
+                "description": "Set or remove the financial lock date for the authenticated practitioner.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9418,6 +9436,18 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -14057,7 +14087,6 @@ const docTemplate = `{
             ],
             "properties": {
                 "financial_year_id": {
-                    "description": "Use *time.Time to allow null values for removing the lock date",
                     "type": "string"
                 },
                 "lock_date": {

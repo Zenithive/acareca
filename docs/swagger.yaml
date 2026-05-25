@@ -2813,7 +2813,6 @@ definitions:
   practitioner.UpdateLockDateRequest:
     properties:
       financial_year_id:
-        description: Use *time.Time to allow null values for removing the lock date
         type: string
       lock_date:
         type: string
@@ -8727,6 +8726,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -8751,6 +8758,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
       summary: Get practitioner by ID
@@ -8759,7 +8774,7 @@ paths:
   /practitioner/lock-date:
     get:
       description: Retrieve the current financial lock date for the authenticated
-        practitioner or associated practitioners (for accountants).
+        practitioner or associated practitioners.
       parameters:
       - description: Practitioner ID (required for accountants)
         in: query
@@ -8777,6 +8792,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
         "401":
           description: Unauthorized
           schema:
@@ -8797,8 +8816,7 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Set or remove (by sending null) the financial lock date for the
-        authenticated practitioner.
+      description: Set or remove the financial lock date for the authenticated practitioner.
       parameters:
       - description: Lock Date Update
         in: body

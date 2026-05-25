@@ -23,7 +23,6 @@ type Practitioner struct {
 	Profession       *string    `db:"profession"`
 }
 
-// PractitionerWithUser is used for JOIN queries
 type PractitionerWithUser struct {
 	ID               uuid.UUID  `db:"id"`
 	UserID           uuid.UUID  `db:"user_id"`
@@ -38,12 +37,10 @@ type PractitionerWithUser struct {
 	ACN              *string    `db:"acn"`
 	Address          *string    `db:"address"`
 	Profession       *string    `db:"profession"`
-
-	// user fields
-	Email     string  `db:"email"`
-	FirstName string  `db:"first_name"`
-	LastName  string  `db:"last_name"`
-	Phone     *string `db:"phone"`
+	Email            string     `db:"email"`
+	FirstName        string     `db:"first_name"`
+	LastName         string     `db:"last_name"`
+	Phone            *string    `db:"phone"`
 }
 
 type RqCreatePractitioner struct {
@@ -127,7 +124,7 @@ type Filter struct {
 	LastName     *string    `form:"last_name"`
 	Phone        *string    `form:"phone"`
 	ABN          *string    `form:"abn"`
-	AccountantID *uuid.UUID `form:"-"` //internal used only
+	AccountantID *uuid.UUID `form:"-"`
 	common.Filter
 }
 
@@ -153,8 +150,7 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["p.abn"] = *filter.ABN
 	}
 
-	f := common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
-	return f
+	return common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }
 
 type FinancialSettings struct {

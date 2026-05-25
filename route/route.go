@@ -184,7 +184,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
 	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
 	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
+	practitionerSvc := practitioner.NewService(dbConn, practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
 
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo, notificationSvc)
 	authHandler := auth.NewHandler(authSvc)
