@@ -69,7 +69,7 @@ func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID *uuid.UU
 			return err
 		}
 
-		_, err := s.versionSvc.Create(ctx, formDetail.ID, *clinicID, &version.RqFormVersion{
+		_, err := s.versionSvc.Create(ctx, tx, formDetail.ID, *clinicID, &version.RqFormVersion{
 			Version:  1,
 			IsActive: true,
 		}, practitionerID)
@@ -170,7 +170,7 @@ func (s *Service) Update(ctx context.Context, d *RqUpdateFormDetail, practitione
 		if err != nil {
 			return err
 		}
-		_, err = s.versionSvc.Create(ctx, existing.ID, existing.ClinicID, &version.RqFormVersion{
+		_, err = s.versionSvc.Create(ctx, tx, existing.ID, existing.ClinicID, &version.RqFormVersion{
 			Version:  versionNum,
 			IsActive: true,
 		}, practitionerID)

@@ -153,20 +153,15 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			}
 
 		}
-		formEntry, entryValues, err = s.repo.GetByID(ctx, e.ID)
-		if err != nil {
-			return fmt.Errorf("fetch entry after create: %w", err)
-		}
-
-		formEntry, entryValues, err = s.repo.GetByID(ctx, e.ID)
-		if err != nil {
-			return fmt.Errorf("fetch entry after create: %w", err)
-		}
-
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	formEntry, entryValues, err = s.repo.GetByID(ctx, e.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch entry after create: %w", err)
 	}
 
 	result := formEntry.ToRs(entryValues)

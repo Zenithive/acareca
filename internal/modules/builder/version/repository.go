@@ -14,7 +14,7 @@ var ErrNotFound = errors.New("form version not found")
 var ErrForbidden = errors.New("form does not belong to clinic")
 
 type IRepository interface {
-	Create(ctx context.Context, v *FormVersion) error
+	Create(ctx context.Context, tx *sqlx.Tx, v *FormVersion) error
 	Get(ctx context.Context, id uuid.UUID) (*FormVersion, error)
 	Update(ctx context.Context, v *FormVersion) (*FormVersion, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -32,9 +32,9 @@ func NewRepository(db *sqlx.DB) IRepository {
 }
 
 // Create implements [IRepository].
-func (r *repository) Create(ctx context.Context, v *FormVersion) error {
+func (r *repository) Create(ctx context.Context, tx *sqlx.Tx, v *FormVersion) error {
 	if v.IsActive {
-		if _, err := r.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE tbl_custom_form_version SET is_active = false WHERE form_id = $1 AND is_active = true AND deleted_at IS NULL`,
 			v.FormId,
 		); err != nil {
@@ -46,7 +46,7 @@ func (r *repository) Create(ctx context.Context, v *FormVersion) error {
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING created_at, updated_at
 	`
-	if err := r.db.QueryRowxContext(ctx, query,
+	if err := tx.QueryRowxContext(ctx, query,
 		v.ID, v.FormId, v.Version, v.IsActive, v.PractitionerID,
 	).StructScan(v); err != nil {
 		return fmt.Errorf("create form version: %w", err)
