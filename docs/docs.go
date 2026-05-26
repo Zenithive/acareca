@@ -8299,6 +8299,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8344,6 +8350,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsBase"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -8382,6 +8400,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "404": {
@@ -8429,6 +8453,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8532,6 +8562,24 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8570,6 +8618,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "404": {
@@ -11765,19 +11819,7 @@ const docTemplate = `{
                 "g11_total_purchases_gross": {
                     "type": "number"
                 },
-                "g14_gst_free_purchases": {
-                    "type": "number"
-                },
-                "g15_taxable_purchases": {
-                    "type": "number"
-                },
                 "g1_total_sales_gross": {
-                    "type": "number"
-                },
-                "g3_gst_free_sales": {
-                    "type": "number"
-                },
-                "g8_taxable_sales": {
                     "type": "number"
                 },
                 "label_1a_gst_on_sales": {

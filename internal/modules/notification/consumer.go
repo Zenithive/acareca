@@ -14,7 +14,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-// Consumer handles consuming notification events from NATS
 type Consumer struct {
 	events        sharedEvents.IEvent
 	repo          Repository
@@ -38,19 +37,16 @@ func NewConsumer(
 		db:        db,
 		publisher: publisher,
 	}
-	
-	// Initialize stream manager with reference to this consumer
+
 	consumer.streamManager = NewStreamManager(events, consumer)
-	
+
 	return consumer
 }
 
-// GetStreamManager returns the stream manager for WebSocket integration
 func (c *Consumer) GetStreamManager() *StreamManager {
 	return c.streamManager
 }
 
-// StartNotificationCreateConsumer starts consuming notification creation events
 func (c *Consumer) StartNotificationCreateConsumer(ctx context.Context) error {
 	if c.events == nil {
 		return fmt.Errorf("events system not configured")
@@ -67,7 +63,6 @@ func (c *Consumer) StartNotificationCreateConsumer(ctx context.Context) error {
 	)
 }
 
-// StartEmailConsumer starts consuming email delivery events
 func (c *Consumer) StartEmailConsumer(ctx context.Context) error {
 	if c.events == nil {
 		return fmt.Errorf("events system not configured")
@@ -84,7 +79,6 @@ func (c *Consumer) StartEmailConsumer(ctx context.Context) error {
 	)
 }
 
-// StartPushConsumer starts consuming push notification delivery events
 func (c *Consumer) StartPushConsumer(ctx context.Context) error {
 	if c.events == nil {
 		return fmt.Errorf("events system not configured")
@@ -101,7 +95,6 @@ func (c *Consumer) StartPushConsumer(ctx context.Context) error {
 	)
 }
 
-// handleNotificationCreate processes notification creation events
 func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 	ctx := context.Background()
 
@@ -110,33 +103,27 @@ func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
 	}
 
-
-	// Check if user should be notified based on event type preferences
 	if !c.shouldNotifyUser(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType) {
 		log.Printf("User %s opted out of event type %s for entity %s", event.RecipientID, event.EventType, event.EntityID)
 		return nil
 	}
 
-	// Filter channels based on user preferences
 	allowedChannels := c.getEnabledChannels(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType, event.Channels)
 	if len(allowedChannels) == 0 {
 		log.Printf("No channels enabled for notification %s", event.ID)
 		return nil
 	}
 
-	// Create notification in database
 	notificationID, err := c.createNotification(ctx, event, allowedChannels)
 	if err != nil {
 		return err
 	}
 
-	// Deliver to each enabled channel
 	c.deliverToChannels(ctx, notificationID, event, allowedChannels)
 
 	return nil
 }
 
-// handleEmailDelivery processes email delivery events
 func (c *Consumer) handleEmailDelivery(msg jetstream.Msg) error {
 	ctx := context.Background()
 
@@ -147,9 +134,6 @@ func (c *Consumer) handleEmailDelivery(msg jetstream.Msg) error {
 
 	log.Printf("Processing email delivery for notification: %s", notificationID)
 
-	// TODO: Implement actual email sending logic here
-	// Example: err := emailService.Send(ctx, notificationID)
-
 	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelEmail); err != nil {
 		return fmt.Errorf("failed to mark email as delivered: %w", err)
 	}
@@ -157,7 +141,6 @@ func (c *Consumer) handleEmailDelivery(msg jetstream.Msg) error {
 	return nil
 }
 
-// handlePushDelivery processes push notification delivery events
 func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
 	ctx := context.Background()
 
@@ -168,9 +151,6 @@ func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
 
 	log.Printf("Processing push delivery for notification: %s", notificationID)
 
-	// TODO: Implement actual push notification logic here (FCM, APNs, etc.)
-	// Example: err := pushService.Send(ctx, notificationID)
-
 	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelPush); err != nil {
 		return fmt.Errorf("failed to mark push as delivered: %w", err)
 	}
@@ -178,7 +158,6 @@ func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
 	return nil
 }
 
-// createNotification creates notification and delivery records in a transaction
 func (c *Consumer) createNotification(ctx context.Context, event NotificationEvent, channels []Channel) (uuid.UUID, error) {
 	notification := Notification{
 		ID:            event.ID,
@@ -208,7 +187,6 @@ func (c *Consumer) createNotification(ctx context.Context, event NotificationEve
 	return notificationID, nil
 }
 
-// deliverToChannels attempts delivery to all enabled channels
 func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UUID, event NotificationEvent, channels []Channel) {
 	for _, ch := range channels {
 		switch ch {
@@ -260,7 +238,6 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 	}
 }
 
-// queueEmailDelivery publishes email delivery event to NATS
 func (c *Consumer) queueEmailDelivery(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
 	if err := c.publisher.PublishEmailDelivery(ctx, notificationID, event.RecipientID, event.EventType, event.Payload); err != nil {
 		log.Printf("Failed to queue email for notification %s: %v", notificationID, err)
@@ -270,7 +247,6 @@ func (c *Consumer) queueEmailDelivery(ctx context.Context, notificationID uuid.U
 	}
 }
 
-// queuePushDelivery publishes push delivery event to NATS
 func (c *Consumer) queuePushDelivery(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
 	if err := c.publisher.PublishPushDelivery(ctx, notificationID, event.RecipientID, event.EventType, event.Payload); err != nil {
 		log.Printf("Failed to queue push for notification %s: %v", notificationID, err)
@@ -280,7 +256,6 @@ func (c *Consumer) queuePushDelivery(ctx context.Context, notificationID uuid.UU
 	}
 }
 
-// parseDeliveryEvent extracts notification ID from delivery event
 func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 	var event map[string]interface{}
 	if err := json.Unmarshal(data, &event); err != nil {
@@ -300,17 +275,14 @@ func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 	return notificationID, nil
 }
 
-// getEnabledChannels returns channels enabled in user preferences for the specific entity and event
 func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType, requestedChannels []Channel) []Channel {
 	prefs, err := c.repo.GetAllPreferences(ctx, userID)
 	if err != nil || len(prefs) == 0 {
-		// Default: only in-app notifications
 		return []Channel{ChannelInApp}
 	}
 
 	notificationEventType := MapEventTypeToNotificationEventType(eventType)
 
-	// Find preferences for this specific entity
 	var matchingPref *NotificationPreference
 	for i := range prefs {
 		if prefs[i].EntityID == entityID && prefs[i].EntityType == string(entityType) {
@@ -319,12 +291,10 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 		}
 	}
 
-	// If no specific preference for this entity, use default
 	if matchingPref == nil {
 		return []Channel{ChannelInApp}
 	}
 
-	// Check if this event type is enabled for this entity
 	eventTypeEnabled := false
 	for _, enabledEventType := range matchingPref.EventType {
 		if enabledEventType == notificationEventType {
@@ -337,7 +307,6 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 		return []Channel{}
 	}
 
-	// Collect enabled channels for this specific preference
 	enabledChannels := make(map[Channel]bool)
 	for channelKey, enabled := range matchingPref.Channels {
 		if enabled {
@@ -348,7 +317,6 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 		}
 	}
 
-	// Filter requested channels by enabled channels
 	var allowedChannels []Channel
 	for _, ch := range requestedChannels {
 		if enabledChannels[ch] {
@@ -359,30 +327,24 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 	return allowedChannels
 }
 
-// shouldNotifyUser checks if user has enabled notifications for this event type and entity
 func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType) bool {
 	prefs, err := c.repo.GetAllPreferences(ctx, userID)
 	if err != nil || len(prefs) == 0 {
-		// No preferences = notify by default
 		return true
 	}
 
 	notificationEventType := MapEventTypeToNotificationEventType(eventType)
 
-	// Check if user has preferences for this specific entity
 	for _, pref := range prefs {
 		if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-			// Check if this event type is enabled
 			for _, enabledEventType := range pref.EventType {
 				if enabledEventType == notificationEventType {
 					return true
 				}
 			}
-			// User has preferences for this entity but event type is disabled
 			return false
 		}
 	}
 
-	// No specific preference for this entity = notify by default
 	return true
 }

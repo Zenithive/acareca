@@ -7,9 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Enums
-
-// Status is the user-facing state of a notification.
 type Status string
 
 const (
@@ -18,7 +15,6 @@ const (
 	StatusDismissed Status = "DISMISSED"
 )
 
-// DeliveryStatus tracks per-channel delivery state.
 type DeliveryStatus string
 
 const (
@@ -30,12 +26,10 @@ const (
 type EventType string
 
 const (
-	// Practitioner → Account
 	EventInviteSent     EventType = "invite.sent"
 	EventInviteAccepted EventType = "invite.accepted"
 	EventInviteDeclined EventType = "invite.declined"
 
-	// Account → Practitioner
 	EventClinicUpdated      EventType = "clinic.updated"
 	EventFormSubmitted      EventType = "form.submitted"
 	EventFormUpdated        EventType = "form.updated"
@@ -43,7 +37,6 @@ const (
 	EventTransactionUpdated EventType = "transaction.status_changed"
 	EventDocumentUploaded   EventType = "document.uploaded"
 
-	// System → Admin
 	EventAuditLogCreated EventType = "audit_log.created"
 	EventSystemError     EventType = "system.error"
 	EventSystemWarning   EventType = "system.warning"
@@ -118,7 +111,6 @@ type Notification struct {
 	ReadedAt      *time.Time      `db:"readed_at"`
 }
 
-// Delivery tracks the send state for a single channel of a notification.
 type Delivery struct {
 	ID             uuid.UUID      `db:"id"`
 	NotificationID uuid.UUID      `db:"notification_id"`
@@ -130,7 +122,6 @@ type Delivery struct {
 	ErrorMessage   *string        `db:"error_message"`
 }
 
-// FailedDelivery is used by the retry worker — joins delivery + notification data.
 type FailedDelivery struct {
 	NotificationID uuid.UUID       `db:"notification_id"`
 	RecipientID    uuid.UUID       `db:"recipient_id"`
@@ -141,8 +132,6 @@ type FailedDelivery struct {
 	Payload        json.RawMessage `db:"payload"`
 	CreatedAt      time.Time       `db:"created_at"`
 }
-
-// ─── Payload helpers (stored as jsonb) ───────────────────────────────────────
 
 type NotificationPayload struct {
 	Title      string                  `json:"title"`
@@ -169,8 +158,6 @@ func BuildNotificationPayload(title string, body json.RawMessage, senderName *st
 		ExtraData:  extraData,
 	}
 }
-
-// --- NOTIFICATION PREFERENCES ---
 
 type NotificationEventType string
 
@@ -213,7 +200,6 @@ type RqUpdatePreference struct {
 	Channels  NotificationChannels   `json:"channels"   validate:"required"`
 }
 
-// Define a custom type for the channels map
 type NotificationChannels map[string]bool
 
 type RqBulkDismiss struct {
@@ -221,12 +207,10 @@ type RqBulkDismiss struct {
 }
 
 const (
-	// Subjects
 	SubjectNotificationInApp = "notification.in_app"
 	SubjectNotificationEmail = "notification.email"
 	SubjectNotificationPush  = "notification.push"
 
-	// JetStream
 	StreamNotification = "NOTIFICATION_STREAM"
 
 	ConsumerNotificationInApp = "notification_in_app_consumer"
@@ -234,7 +218,6 @@ const (
 	ConsumerNotificationPush  = "notification_push_consumer"
 )
 
-// NotificationEvent represents the event payload published to NATS
 type NotificationEvent struct {
 	ID            uuid.UUID       `json:"id"`
 	RecipientID   uuid.UUID       `json:"recipient_id"`

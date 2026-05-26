@@ -8,7 +8,6 @@ import (
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 )
 
-// Publisher handles publishing notification events to NATS
 type Publisher struct {
 	events sharedEvents.IEvent
 }
@@ -19,7 +18,6 @@ func NewPublisher(events sharedEvents.IEvent) *Publisher {
 	}
 }
 
-// PublishNotification publishes a notification event to NATS
 func (p *Publisher) PublishNotification(ctx context.Context, event NotificationEvent) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
@@ -32,7 +30,6 @@ func (p *Publisher) PublishNotification(ctx context.Context, event NotificationE
 	return nil
 }
 
-// PublishEmailDelivery publishes an email delivery event
 func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType EventType, payload interface{}) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
@@ -52,7 +49,6 @@ func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, re
 	return nil
 }
 
-// PublishPushDelivery publishes a push notification delivery event
 func (p *Publisher) PublishPushDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType EventType, payload interface{}) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
