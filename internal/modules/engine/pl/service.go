@@ -27,7 +27,7 @@ type Service interface {
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
 	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error)
-	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
+	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error)
 }
 
 type service struct {
@@ -122,11 +122,8 @@ func (s *service) GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummar
 	return out, nil
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
 const dateLayout = "2006-01-02"
 
-// parseAndValidate parses clinic_id and validates date range from the filter.
 func parseAndValidate(f *PLFilter) (uuid.UUID, error) {
 	clinicID, err := uuid.Parse(f.ClinicID)
 	if err != nil {
@@ -164,9 +161,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		var innerErr error
 
 		if isAccountant {
-			// Determine Scope: Specific Clinic, Specific Practitioner, or All Linked
 			if f.ClinicID != nil && *f.ClinicID != "" {
-				// Scenario: Specific Clinic
 				clinicUUID, innerErr := uuid.Parse(*f.ClinicID)
 				if innerErr != nil {
 					return fmt.Errorf("invalid clinic_id format")
@@ -177,7 +172,6 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 				}
 				targetPracIDs = []uuid.UUID{permission.PractitionerID}
 			} else if f.PractitionerID != "" {
-				// Scenario: Specific Practitioner (Accountant picked one from a dropdown)
 				pracUUID, innerErr := uuid.Parse(f.PractitionerID)
 				if innerErr != nil {
 					return fmt.Errorf("invalid practitioner_id format")
@@ -188,15 +182,12 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 				}
 				targetPracIDs = []uuid.UUID{pracUUID}
 			} else {
-				// Scenario: Aggregation (Accountant viewing ALL linked practitioners)
 				if len(targetNotifIDs) == 0 {
 					return fmt.Errorf("no linked practitioners found for aggregation")
 				}
 				targetPracIDs = targetNotifIDs
 			}
 		} else {
-			// Scenario: User is the Practitioner
-			// If practitioner selects a clinic, verify ownership
 			if f.ClinicID != nil && *f.ClinicID != "" {
 				clinicUUID, innerErr := uuid.Parse(*f.ClinicID)
 				if innerErr == nil {
@@ -209,7 +200,6 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 			targetPracIDs = []uuid.UUID{actorID}
 		}
 
-		// Sync Filter state for Repo/Audit (use the first ID as a representative if aggregating)
 		if len(targetPracIDs) > 0 {
 			f.PractitionerID = targetPracIDs[0].String()
 		}
@@ -234,15 +224,12 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 			return innerErr
 		}
 
-		// Record the Shared Event within the safe transaction timeline
 		if isAccountant && len(targetNotifIDs) > 0 {
 			var fullName string
-			user, innerErr := s.authRepo.FindByID(ctx, userID) // Fallback using transactional version if authRepo supports it
+			user, innerErr := s.authRepo.FindByID(ctx, userID)
 			if innerErr == nil {
 				fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 			}
-
-			fmt.Printf("\nName: %s\n", fullName)
 
 			for _, pID := range targetNotifIDs {
 				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
@@ -276,9 +263,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		return nil, err
 	}
 
-	// --- AUDIT LOG
-	var userIDStr string
-	userIDStr = userID.String()
+	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -298,34 +283,23 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	return buildReport(f, rows, summary), nil
 }
 
-// buildReport assembles a flat P&L report aggregated across all clinics/forms,
-// grouped by COA account within each P&L section.
 func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) *RsReport {
-	// coaKey → accumulated total per P&L section
 	type coaKey struct {
 		plSection string
 		coaID     string
 	}
-	coaOrder := map[string][]string{} // plSection → ordered coaIDs
+	coaOrder := map[string][]string{}
 	coaSeen := map[coaKey]bool{}
 	coaNames := map[coaKey]string{}
 	coaTotals := map[coaKey]float64{}
 
 	for _, r := range rows {
-		// Use pl_section for proper categorization based on account type
 		plSection := r.PLSection
 		if plSection == "" {
-			// Fallback to Other Expenses if somehow empty
 			plSection = "3. Other Expenses"
 		}
 
-		// Use net_amount consistently across all sections for P&L reporting.
-		// P&L should show revenue and expenses on a GST-exclusive basis:
-		// - Income: NET (actual revenue earned, GST is collected for government)
-		// - Costs: NET (actual expenses, GST can be claimed back)
-		// This aligns with standard accounting practice where GST is a pass-through.
 		val := r.NetAmount
-
 		ck := coaKey{plSection, r.CoaID}
 		if !coaSeen[ck] {
 			coaSeen[ck] = true
@@ -359,9 +333,6 @@ func buildReport(f *PLReportFilter, rows []*PLReportRow, summary *PLSummaryRow) 
 	grossProfit := round2(summary.GrossProfitNet)
 	netProfit := round2(summary.NetProfitNet)
 
-	// grossProfit := round2(income.GroupTotal - cos.GroupTotal)
-	// netProfit := round2(grossProfit - other.GroupTotal)
-
 	dateFrom := ""
 	dateUntil := ""
 	if f.DateFrom != nil {
@@ -389,8 +360,85 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
-	// --- FETCH METADATA ---
+type reportStyles struct {
+	HeaderBlue   int
+	SectionTitle int
+	DataLeft     int
+	DataGrid     int
+	GroupTotal   int
+	Profit       int
+	ProfitGreen  int
+}
+
+func applyReportStyles(f *excelize.File) reportStyles {
+	hBlue, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+	})
+	sTitle, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
+	})
+	dLeft, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Family: "Calibri", Size: 10},
+		Alignment: &excelize.Alignment{Horizontal: "left"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+	dGrid, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Family: "Calibri", Size: 10},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+	gTotal, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
+		},
+	})
+	profit, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
+		},
+	})
+	profitGreen, _ := f.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "28a745"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
+		Alignment:    &excelize.Alignment{Horizontal: "right"},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
+			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
+		},
+	})
+
+	return reportStyles{
+		HeaderBlue:   hBlue,
+		SectionTitle: sTitle,
+		DataLeft:     dLeft,
+		DataGrid:     dGrid,
+		GroupTotal:   gTotal,
+		Profit:       profit,
+		ProfitGreen:  profitGreen,
+	}
+}
+
+func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error) {
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -399,8 +447,6 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	var entityName string
 	var practitionerABN string
-	// If a practitioner is filtered, resolve that specific profile for the ABN.
-	// Otherwise, fallback to the actor context.
 	targetID := ""
 	if filterPractitionerID != "" {
 		targetID = filterPractitionerID
@@ -431,16 +477,14 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 			}
 		} else {
 			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
-			{
-				if err == nil {
-					if acc.EntityName != nil {
-						entityName = *acc.EntityName
-					} else {
-						entityName = fullName
-					}
-					if acc.ABN != nil {
-						practitionerABN = *acc.ABN
-					}
+			if err == nil {
+				if acc.EntityName != nil {
+					entityName = *acc.EntityName
+				} else {
+					entityName = fullName
+				}
+				if acc.ABN != nil {
+					practitionerABN = *acc.ABN
 				}
 			}
 		}
@@ -451,75 +495,7 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
 
-	// --- STYLES ---
-
-	// Main Header
-	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-	})
-
-	// Section Title
-	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
-	})
-
-	// Style for Particulars/Names (Left Aligned)
-	styleDataLeft, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Family: "Calibri", Size: 10},
-		Alignment: &excelize.Alignment{Horizontal: "left"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Data Cell Grid (Currency)
-	styleDataGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Group Total Style
-	styleGroupTotal, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Final Profit Style
-	styleProfit, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
-			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
-		},
-	})
-
-	styleProfitGreen, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "28a745"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
-			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
-		},
-	})
+	styles := applyReportStyles(f)
 
 	setMetaRow := func(cell string, label string, value string) {
 		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
@@ -528,23 +504,20 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		})
 	}
 
-	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Profit and Loss Report")
 	f.MergeCell(sheet, "A1", "B1")
-	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
+	f.SetCellStyle(sheet, "A1", "B1", styles.HeaderBlue)
 
-	currentRow := 2 // Default start if no date
+	currentRow := 2
 
 	setMetaRow(fmt.Sprintf("A%d", currentRow), "Exported by:", entityName)
 	currentRow++
 
-	// ABN Row (Only if exists)
 	if practitionerABN != "" {
 		setMetaRow(fmt.Sprintf("A%d", currentRow), "ABN:", practitionerABN)
 		currentRow++
 	}
 
-	// Period Row
 	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
 		setMetaRow(fmt.Sprintf("A%d", currentRow), "Period:", fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
 		currentRow++
@@ -553,22 +526,17 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
 	setMetaRow(fmt.Sprintf("A%d", currentRow), "Generated:", currentTimeStr)
 	currentRow++
-
-	currentRow++ // Spacer row
+	currentRow++
 
 	var totalIncomeCell, totalCOSCell, totalOtherCostsCell string
 
-	// Helper closure to render sections
 	renderGroup := func(title string, group RsReportGroup) string {
-
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.SectionTitle)
 
-		// Set the table filter
 		if len(group.Accounts) > 0 {
 			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(group.Accounts))
 			tableName := strings.ReplaceAll(title, " ", "_") + fmt.Sprintf("_%d", currentRow)
-
 			showHeaders := true
 			f.AddTable(sheet, &excelize.Table{
 				Range:         tableRange,
@@ -579,16 +547,13 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		}
 
 		currentRow++
-
 		dataStartRow := currentRow
 		for _, acc := range group.Accounts {
-			// Column A: Account Name
 			f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), acc.CoaName)
-			f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataLeft)
+			f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.DataLeft)
 
-			// Column B: Total Value
 			f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), acc.TotalValue)
-			f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleDataGrid)
+			f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.DataGrid)
 			currentRow++
 		}
 		dataEndRow := currentRow - 1
@@ -603,51 +568,42 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 			f.SetCellValue(sheet, totalCell, 0)
 		}
 
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("B%d", currentRow), styleGroupTotal)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.GroupTotal)
 		currentRow += 2
 
 		return totalCell
 	}
 
-	// --- DATA SECTIONS ---
 	totalIncomeCell = renderGroup("INCOME", data.Income)
 	totalCOSCell = renderGroup("COST OF SALES", data.CostOfSales)
 
-	// --- GROSS PROFIT (Dynamic) ---
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "GROSS PROFIT")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
 
-	// Formula: Total Income - Cost of Sales
 	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("%s-%s", totalIncomeCell, totalCOSCell))
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
+	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.ProfitGreen)
 	grossProfitCell := fmt.Sprintf("B%d", currentRow)
 	currentRow += 2
 
 	totalOtherCostsCell = renderGroup("OTHER COSTS", data.OtherCosts)
 
-	// --- NET PROFIT (Dynamic) ---
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET PROFIT")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
 
-	// Formula: Gross Profit - Other Costs
 	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("%s-%s", grossProfitCell, totalOtherCostsCell))
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
+	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.ProfitGreen)
 
-	// --- FORMATTING ---
 	f.SetColWidth(sheet, "A", "A", 45)
 	f.SetColWidth(sheet, "B", "B", 20)
 	f.UpdateLinkedValue()
 
-	// --- NOTIFICATION LOGIC ---
 	finalNotifIDs := notifIDs
 	if filterPractitionerID != "" {
 		finalNotifIDs = []uuid.UUID{uuid.MustParse(filterPractitionerID)}
 	}
 
-	// --- AUDIT LOG ---
 	meta := auditctx.GetMetadata(ctx)
-	var userIDStr string
-	userIDStr = userID.String()
+	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -665,7 +621,6 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		UserAgent: meta.UserAgent,
 	})
 
-	// Record the Shared Event — only for accountants, never for practitioners.
 	if role == util.RoleAccountant && len(finalNotifIDs) > 0 {
 		for _, pID := range finalNotifIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
@@ -687,7 +642,6 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 	return f, nil
 }
 
-// Helper to format date strings from YYYY-MM-DD to DD-MM-YYYY
 func formatDateStr(dateStr string) string {
 	t, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
