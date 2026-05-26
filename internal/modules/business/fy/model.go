@@ -1,12 +1,17 @@
 package fy
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// Database models
+var (
+	ErrNotFound            = errors.New("financial year not found")
+	ErrInvalidFYYearFormat = errors.New("invalid fy_year format, expected YYYY-YYYY (e.g. 2025-2026)")
+)
+
 type FinancialYear struct {
 	ID          uuid.UUID `db:"id"`
 	Label       string    `db:"label"`
@@ -28,7 +33,6 @@ type FinancialQuarter struct {
 	UpdatedAt       time.Time `db:"updated_at"`
 }
 
-// Request models
 type RqCreateFY struct {
 	Label    string `json:"label" validate:"required"`
 	FYYear   string `json:"fy_year" validate:"required"`
@@ -41,7 +45,6 @@ type RqUpdateFY struct {
 	IsActive *bool   `json:"is_active"`
 }
 
-// Response models
 type RsFinancialYear struct {
 	ID        uuid.UUID `json:"id"`
 	Label     string    `json:"label"`
