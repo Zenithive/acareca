@@ -16,7 +16,6 @@ type IHandler interface {
 	ListSubscriptions(c *gin.Context)
 	UpdateSubscription(c *gin.Context)
 	DeleteSubscription(c *gin.Context)
-
 	// Permission management
 	ListPermissions(c *gin.Context)
 	UpdatePermission(c *gin.Context)

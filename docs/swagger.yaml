@@ -3092,6 +3092,26 @@ paths:
       tags:
       - accountant
   /admin:
+    get:
+      description: Get nested Admin and User information by Admin ID
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Admin Detail
+      tags:
+      - admin
     post:
       consumes:
       - application/json
@@ -3120,33 +3140,6 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Create admin profile and user
-      tags:
-      - admin
-  /admin/{id}:
-    get:
-      description: Get nested Admin and User information by Admin ID
-      parameters:
-      - description: Admin ID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get Admin Detail
       tags:
       - admin
   /admin/accountant:

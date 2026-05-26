@@ -20,7 +20,6 @@ type Repository interface {
 	GetActiveUsers(ctx context.Context, startDate, endDate time.Time) (*RsActiveUsers, error)
 	GetPractitionerDetails(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerDetail, error)
 	ListPractitionersWithDetails(ctx context.Context, filter *PractitionerFilter) ([]*RsPractitionerDetail, int, error)
-
 	// Dashboard APIs
 	GetPractitionerOverview(ctx context.Context) (*RsPractitionerOverview, error)
 	GetResourceAnalytics(ctx context.Context, filter *ResourceAnalyticsFilter) (*RsResourceAnalytics, error)

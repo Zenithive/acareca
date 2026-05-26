@@ -11,8 +11,8 @@ import (
 type Repository interface {
 	CreateAdmin(ctx context.Context, admin *Admin, tx *sqlx.Tx) (*Admin, error)
 	CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error)
-	FindByUserID(ctx context.Context, userID string) (*Admin, error)
-	FindByID(ctx context.Context, id uuid.UUID) (*adminUserFlat, error)
+	FindByUserID(ctx context.Context, userID uuid.UUID) (*Admin, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*RsAdminDetail, error)
 }
 
 type repository struct {
@@ -24,10 +24,9 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
-	const returning = `RETURNING id, email, password, first_name, last_name, phone, role`
+	const returning = `RETURNING id, email, password, first_name, last_name, phone, role, created_at, updated_at`
 	var u User
 
-	// Support both generated UUIDs and database-default UUIDs
 	if user.ID == uuid.Nil {
 		query := `
 			INSERT INTO tbl_user (email, password, first_name, last_name, phone, role)
@@ -56,12 +55,12 @@ func (r *repository) CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*
 }
 
 func (r *repository) CreateAdmin(ctx context.Context, a *Admin, tx *sqlx.Tx) (*Admin, error) {
-	query := `INSERT INTO tbl_admin (user_id) VALUES ($1) RETURNING id, user_id`
-	err := tx.GetContext(ctx, a, query, a.UserID)
+	query := `INSERT INTO tbl_admin (user_id) VALUES ($1) RETURNING id, user_id, created_at, updated_at`
+	err := tx.QueryRowxContext(ctx, query, a.UserID).StructScan(a)
 	return a, err
 }
 
-func (r *repository) FindByUserID(ctx context.Context, userID string) (*Admin, error) {
+func (r *repository) FindByUserID(ctx context.Context, userID uuid.UUID) (*Admin, error) {
 	var a Admin
 	query := `SELECT * FROM tbl_admin WHERE user_id = $1 AND deleted_at IS NULL`
 	if err := r.db.GetContext(ctx, &a, query, userID); err != nil {
@@ -70,32 +69,22 @@ func (r *repository) FindByUserID(ctx context.Context, userID string) (*Admin, e
 	return &a, nil
 }
 
-// Internal flat struct for SQL scanning
-type adminUserFlat struct {
-	AdminID   uuid.UUID `db:"admin_id"`
-	UserID    uuid.UUID `db:"user_id"`
-	Email     string    `db:"email"`
-	FirstName string    `db:"first_name"`
-	LastName  string    `db:"last_name"`
-	Phone     *string   `db:"phone"`
-}
-
-func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*adminUserFlat, error) {
-	var flat adminUserFlat
+func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*RsAdminDetail, error) {
+	var detail RsAdminDetail
 	query := `
 		SELECT 
-			a.id as admin_id, 
-			u.id as user_id, 
-			u.email, 
-			u.first_name, 
-			u.last_name, 
-			u.phone
+			a.id          AS "id", 
+			u.id          AS "user.id", 
+			u.email       AS "user.email", 
+			u.first_name  AS "user.first_name", 
+			u.last_name   AS "user.last_name", 
+			u.phone       AS "user.phone"
 		FROM tbl_admin a
 		JOIN tbl_user u ON a.user_id = u.id
-		WHERE a.id = $1 AND a.deleted_at IS NULL
+		WHERE a.id = $1 AND a.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
-	if err := r.db.GetContext(ctx, &flat, query, id); err != nil {
+	if err := r.db.GetContext(ctx, &detail, query, id); err != nil {
 		return nil, err
 	}
-	return &flat, nil
+	return &detail, nil
 }

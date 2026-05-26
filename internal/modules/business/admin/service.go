@@ -10,7 +10,7 @@ import (
 
 type IService interface {
 	CreateAdmin(ctx context.Context, req *RqCreateAdmin) (*RsAdmin, error)
-	GetAdminByUserID(ctx context.Context, userID string) (*RsAdmin, error)
+	GetAdminByUserID(ctx context.Context, userID uuid.UUID) (*RsAdmin, error)
 	GetAdminByID(ctx context.Context, id uuid.UUID) (*RsAdminDetail, error)
 }
 
@@ -32,7 +32,6 @@ func (s *service) CreateAdmin(ctx context.Context, req *RqCreateAdmin) (*RsAdmin
 			return err
 		}
 
-		// Create User
 		userModel := &User{
 			Email:     req.Email,
 			Password:  &hashed,
@@ -47,7 +46,6 @@ func (s *service) CreateAdmin(ctx context.Context, req *RqCreateAdmin) (*RsAdmin
 			return err
 		}
 
-		//Create Admin
 		adm := &Admin{UserID: u.ID}
 		createdAdmin, err = s.repo.CreateAdmin(ctx, adm, tx)
 		return err
@@ -60,7 +58,7 @@ func (s *service) CreateAdmin(ctx context.Context, req *RqCreateAdmin) (*RsAdmin
 	return &RsAdmin{ID: createdAdmin.ID, UserID: createdAdmin.UserID}, nil
 }
 
-func (s *service) GetAdminByUserID(ctx context.Context, userID string) (*RsAdmin, error) {
+func (s *service) GetAdminByUserID(ctx context.Context, userID uuid.UUID) (*RsAdmin, error) {
 	adm, err := s.repo.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -69,19 +67,5 @@ func (s *service) GetAdminByUserID(ctx context.Context, userID string) (*RsAdmin
 }
 
 func (s *service) GetAdminByID(ctx context.Context, id uuid.UUID) (*RsAdminDetail, error) {
-	flat, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &RsAdminDetail{
-		ID: flat.AdminID,
-		User: RsUserDetail{
-			ID:        flat.UserID,
-			Email:     flat.Email,
-			FirstName: flat.FirstName,
-			LastName:  flat.LastName,
-			Phone:     flat.Phone,
-		},
-	}, nil
+	return s.repo.FindByID(ctx, id)
 }

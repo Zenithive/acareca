@@ -11,11 +11,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-var (
-	ErrNotFound            = errors.New("financial year not found")
-	ErrInvalidFYYearFormat = errors.New("invalid fy_year format, expected YYYY-YYYY (e.g. 2025-2026)")
-)
-
 type Repository interface {
 	CreateFinancialYear(ctx context.Context, fy *FinancialYear, tx *sqlx.Tx) (*FinancialYear, error)
 	CreateFinancialQuarter(ctx context.Context, fq *FinancialQuarter, tx *sqlx.Tx) (*FinancialQuarter, error)
@@ -138,13 +133,16 @@ func (r *repository) DeactivateAllFinancialYearsExcept(ctx context.Context, tx *
 
 func (r *repository) GetFinancialYearByDate(ctx context.Context, expenseDate time.Time) (*FinancialYear, error) {
 	query := `
-        SELECT id, label, is_active, start_date, end_date, created_at, updated_at
-        FROM tbl_financial_year
-        WHERE $1 BETWEEN start_date AND end_date AND is_active = TRUE
-        LIMIT 1
-    `
+		SELECT id, label, is_active, start_date, end_date, created_at, updated_at
+		FROM tbl_financial_year
+		WHERE $1 BETWEEN start_date AND end_date AND is_active = TRUE
+		LIMIT 1
+	`
 	var fy FinancialYear
 	if err := r.db.GetContext(ctx, &fy, query, expenseDate); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &fy, nil
@@ -157,6 +155,13 @@ func (r *repository) DeleteQuartersByFYID(ctx context.Context, fyID uuid.UUID, t
 
 func (r *repository) CountActiveFY(ctx context.Context, tx *sqlx.Tx) (int, error) {
 	var count int
-	err := tx.GetContext(ctx, &count, `SELECT COUNT(*) FROM tbl_financial_year WHERE is_active = TRUE`)
+	query := `SELECT COUNT(*) FROM tbl_financial_year WHERE is_active = TRUE`
+
+	var err error
+	if tx != nil {
+		err = tx.GetContext(ctx, &count, query)
+	} else {
+		err = r.db.GetContext(ctx, &count, query)
+	}
 	return count, err
 }

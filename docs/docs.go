@@ -193,6 +193,38 @@ const docTemplate = `{
             }
         },
         "/admin": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get nested Admin and User information by Admin ID",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get Admin Detail",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Creates a new entry in tbl_user with Role=ADMIN and a corresponding entry in tbl_admin within a single transaction.",
                 "consumes": [
@@ -2098,49 +2130,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Get nested Admin and User information by Admin ID",
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Get Admin Detail",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Admin ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }

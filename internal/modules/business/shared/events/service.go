@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/samber/lo"
 
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -71,8 +72,8 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 			UserID:     &userIDStr,
 			Action:     "shared_event.recorded",
 			Module:     "shared_events",
-			EntityType: strPtr("shared_event"),
-			EntityID:   strPtr(e.ID.String()),
+			EntityType: lo.ToPtr("shared_event"),
+			EntityID:   lo.ToPtr(e.ID.String()),
 			//BeforeState: nil,
 			//AfterState: e,
 			IPAddress: meta.IPAddress,
@@ -82,10 +83,6 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 	}
 
 	return nil
-}
-
-func strPtr(s string) *string {
-	return &s
 }
 
 func (s *service) mapToNotificationRequest(e SharedEvent) notification.RqNotification {
