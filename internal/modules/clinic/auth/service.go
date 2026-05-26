@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 var (
@@ -169,7 +170,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		UserID:     &clinicIDStr, // Clinic id
 		Action:     auditctx.ActionClinicRegistered,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityInvoiceClinic),
+		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
@@ -205,7 +206,7 @@ func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, erro
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicLoggedIn,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntitySession),
+		EntityType: lo.ToPtr(auditctx.EntitySession),
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
@@ -241,7 +242,7 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicLoggedOut,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityClinicSession),
+		EntityType: lo.ToPtr(auditctx.EntityClinicSession),
 		EntityID:   &sessIDStr,
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
@@ -253,7 +254,7 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicSessionRevoked,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityClinicSession),
+		EntityType: lo.ToPtr(auditctx.EntityClinicSession),
 		EntityID:   &sessIDStr,
 		BeforeState: map[string]interface{}{
 			"session_id": sessIDStr,
@@ -319,7 +320,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionEmailVerified,
 		Module:     auditctx.ModuleAuth,
-		EntityType: strPtr(auditctx.EntityVerificationToken),
+		EntityType: lo.ToPtr(auditctx.EntityVerificationToken),
 		EntityID:   &tokenIDStr,
 		BeforeState: map[string]interface{}{
 			"status": token.Status,
@@ -378,10 +379,6 @@ func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *
 	}
 }
 
-func strPtr(s string) *string {
-	return &s
-}
-
 func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID string) (*RsToken, error) {
 	roleString := util.RoleClinic // Defult to Role CLINIC
 	if clinic.Role != nil {
@@ -431,7 +428,7 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicSessionCreated,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityClinicSession),
+		EntityType: lo.ToPtr(auditctx.EntityClinicSession),
 		EntityID:   &sessIDStr,
 		AfterState: map[string]interface{}{
 			"session_id": sessIDStr,
@@ -476,7 +473,7 @@ func (s *service) ChangePassword(ctx context.Context, clinicID uuid.UUID, req *R
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionPasswordChanged,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityInvoiceClinic),
+		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
@@ -671,7 +668,7 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicUpdated,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityInvoiceClinic),
+		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
@@ -731,7 +728,7 @@ func (s *service) DeleteClinic(ctx context.Context, clinicID uuid.UUID) error {
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicDeleted,
 		Module:     auditctx.ModuleInvoice,
-		EntityType: strPtr(auditctx.EntityInvoiceClinic),
+		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,

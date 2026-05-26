@@ -20,10 +20,8 @@ type Repository interface {
 	Count(ctx context.Context, f common.Filter) (int, error)
 	Update(ctx context.Context, s *Subscription) (*Subscription, error)
 	Delete(ctx context.Context, id int) error
-
 	// Stripe sync
 	UpdateStripeIDs(ctx context.Context, id int, productID, priceID string) error
-
 	// Permission management
 	ListPermissions(ctx context.Context, subscriptionID int) ([]*SubscriptionPermission, error)
 	UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*SubscriptionPermission, error)

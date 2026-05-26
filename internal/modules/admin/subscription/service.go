@@ -11,6 +11,7 @@ import (
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type Service interface {
@@ -20,7 +21,6 @@ type Service interface {
 	UpdateSubscription(ctx context.Context, id int, req *RqUpdateSubscription) (*RsSubscription, error)
 	DeleteSubscription(ctx context.Context, id int) error
 	FindByName(ctx context.Context, name string) (*RsSubscription, error)
-
 	// Permission management
 	ListPermissions(ctx context.Context, subscriptionID int) ([]*RsSubscriptionPermission, error)
 	UpdatePermission(ctx context.Context, subscriptionID int, key string, req *RqUpdatePermission) (*RsSubscriptionPermission, error)
@@ -101,7 +101,7 @@ func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscript
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionSubscriptionCreated,
 		Module:     auditctx.ModuleAdmin,
-		EntityType: strPtr(auditctx.EntitySubscription),
+		EntityType: lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:   &idStr,
 		AfterState: created,
 		IPAddress:  meta.IPAddress,
@@ -240,7 +240,7 @@ func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateS
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionSubscriptionUpdated,
 		Module:      auditctx.ModuleAdmin,
-		EntityType:  strPtr(auditctx.EntitySubscription),
+		EntityType:  lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updated,
@@ -302,7 +302,7 @@ func (s *service) DeleteSubscription(ctx context.Context, id int) error {
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionSubscriptionDeleted,
 		Module:      auditctx.ModuleAdmin,
-		EntityType:  strPtr(auditctx.EntitySubscription),
+		EntityType:  lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:    &idStr,
 		BeforeState: existing,
 		IPAddress:   meta.IPAddress,
@@ -321,11 +321,6 @@ func (s *service) FindByName(ctx context.Context, name string) (*RsSubscription,
 }
 
 // Helper functions for audit logging
-
-func strPtr(s string) *string {
-	return &s
-}
-
 func intToStr(i int) string {
 	return fmt.Sprintf("%d", i)
 }

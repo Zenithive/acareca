@@ -834,7 +834,7 @@ func (s *service) resolveEntityID(ctx context.Context, user *User) (string, erro
 		}
 		return acc.ID.String(), nil
 	case util.RoleAdmin:
-		a, err := s.adminSvc.GetAdminByUserID(ctx, user.ID.String())
+		a, err := s.adminSvc.GetAdminByUserID(ctx, user.ID)
 		if err != nil {
 			return "", err
 		}

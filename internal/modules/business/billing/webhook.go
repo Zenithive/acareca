@@ -13,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/samber/lo"
 	stripe "github.com/stripe/stripe-go/v82"
 )
 
@@ -111,7 +112,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		UserID:     meta.UserID,
 		Action:     "billing.payment_success",
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntitySubscription),
+		EntityType: lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:   &subscriptionIDStr,
 		AfterState: map[string]interface{}{
 			"stripe_sub_id": stripeSub.ID,
@@ -210,9 +211,4 @@ func mapStripeStatus(stripeStatus string) subscription.Status {
 	default:
 		return subscription.StatusActive
 	}
-}
-
-// strPtr is a helper that takes a string literal and returns its pointer.
-func strPtr(s string) *string {
-	return &s
 }

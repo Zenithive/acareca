@@ -101,7 +101,7 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 	entityLabel := s.repo.ResolveEntityLabel(resolveCtx, entityType, entityID)
 
 	// Build the HUMAN-READABLE message
-	detail := buildSystemIssueMessage(level, action, actorName, entityLabel, issueErr)
+	detail := buildSystemIssueMessage(action, actorName, entityLabel, issueErr)
 
 	// Determine notification event type
 	var eventType notification.EventType
@@ -145,7 +145,7 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 }
 
 // buildSystemIssueMessage produces the single human-readable string shown on the admin panel.
-func buildSystemIssueMessage(level, action, actorName, entityName string, err error) string {
+func buildSystemIssueMessage(action, actorName, entityName string, err error) string {
 	reason := err.Error()
 
 	if strings.Contains(reason, "attempted to access") {
@@ -331,7 +331,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			var data map[string]interface{}
 			json.Unmarshal(bytes, &data)
 
-			// Check for both CamelCase (your struct) and snake_case (common API)
 			val, ok := data["LockDate"]
 			if !ok {
 				val, ok = data["lock_date"]
@@ -422,7 +421,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			CreatedAt:     time.Now(),
 		}
 
-		// Using a closure to capture 'req' correctly in goroutine
 		go func(r notification.RqNotification) {
 			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer pCancel()
