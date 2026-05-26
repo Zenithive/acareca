@@ -3077,13 +3077,28 @@ const docTemplate = `{
                             "type": "file"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -3096,7 +3111,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.\nSupports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
+                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data. Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
                 "produces": [
                     "application/json"
                 ],
@@ -3227,6 +3242,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3286,6 +3307,24 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -3477,6 +3516,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3524,6 +3569,18 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -11521,27 +11578,16 @@ const docTemplate = `{
                     }
                 },
                 "gstPayable": {
-                    "description": "Use pointer for easier omitting",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/bas.BASAccountGroup"
-                        }
-                    ]
+                    "$ref": "#/definitions/bas.BASAccountGroup"
                 },
                 "income": {
-                    "description": "omitempty will hide the key if the slice is nil or empty",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/bas.BASAccountGroup"
                     }
                 },
                 "netProfitLoss": {
-                    "description": "Use pointer for easier omitting",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/bas.BASAccountGroup"
-                        }
-                    ]
+                    "$ref": "#/definitions/bas.BASAccountGroup"
                 }
             }
         },
@@ -11656,7 +11702,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "g11_total_purchases_gross": {
-                    "description": "Purchases (ATO labels)",
                     "type": "number"
                 },
                 "g14_gst_free_purchases": {
@@ -11666,7 +11711,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "g1_total_sales_gross": {
-                    "description": "Sales (ATO labels)",
                     "type": "number"
                 },
                 "g3_gst_free_sales": {
@@ -11682,15 +11726,12 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "net_gst_payable": {
-                    "description": "Net GST",
                     "type": "number"
                 },
                 "period_quarter": {
-                    "description": "Period",
                     "type": "string"
                 },
                 "period_year": {
-                    "description": "e.g. \"2026-01-01\"",
                     "type": "string"
                 },
                 "total_purchases_net": {

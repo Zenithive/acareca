@@ -3069,13 +3069,28 @@
                             "type": "file"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -3088,7 +3103,7 @@
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.\nSupports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
+                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data. Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
                 "produces": [
                     "application/json"
                 ],
@@ -3219,6 +3234,12 @@
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3278,6 +3299,24 @@
                         "description": "OK",
                         "schema": {
                             "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -3469,6 +3508,12 @@
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3516,6 +3561,18 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -11513,27 +11570,16 @@
                     }
                 },
                 "gstPayable": {
-                    "description": "Use pointer for easier omitting",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/bas.BASAccountGroup"
-                        }
-                    ]
+                    "$ref": "#/definitions/bas.BASAccountGroup"
                 },
                 "income": {
-                    "description": "omitempty will hide the key if the slice is nil or empty",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/bas.BASAccountGroup"
                     }
                 },
                 "netProfitLoss": {
-                    "description": "Use pointer for easier omitting",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/bas.BASAccountGroup"
-                        }
-                    ]
+                    "$ref": "#/definitions/bas.BASAccountGroup"
                 }
             }
         },
@@ -11648,7 +11694,6 @@
             "type": "object",
             "properties": {
                 "g11_total_purchases_gross": {
-                    "description": "Purchases (ATO labels)",
                     "type": "number"
                 },
                 "g14_gst_free_purchases": {
@@ -11658,7 +11703,6 @@
                     "type": "number"
                 },
                 "g1_total_sales_gross": {
-                    "description": "Sales (ATO labels)",
                     "type": "number"
                 },
                 "g3_gst_free_sales": {
@@ -11674,15 +11718,12 @@
                     "type": "number"
                 },
                 "net_gst_payable": {
-                    "description": "Net GST",
                     "type": "number"
                 },
                 "period_quarter": {
-                    "description": "Period",
                     "type": "string"
                 },
                 "period_year": {
-                    "description": "e.g. \"2026-01-01\"",
                     "type": "string"
                 },
                 "total_purchases_net": {

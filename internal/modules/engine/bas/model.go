@@ -20,32 +20,24 @@ const (
 	BASCategoryBASExcluded BASCategory = "BAS_EXCLUDED"
 )
 
-// BASSummaryRow maps one row of vw_bas_summary (quarterly).
 type BASSummaryRow struct {
-	ClinicID       uuid.UUID `db:"clinic_id"`
-	PractitionerID uuid.UUID `db:"practitioner_id"`
-	PeriodQuarter  time.Time `db:"period_quarter"`
-	PeriodYear     time.Time `db:"period_year"`
-
-	// Sales
-	G1TotalSalesGross float64 `db:"g1_total_sales_gross"`
-	G3GSTFreeSales    float64 `db:"g3_gst_free_sales"`
-	G8TaxableSales    float64 `db:"g8_taxable_sales"`
-	Label1AGSTOnSales float64 `db:"label_1a_gst_on_sales"`
-
-	// Purchases
-	G11TotalPurchasesGross float64 `db:"g11_total_purchases_gross"`
-	G14GSTFreePurchases    float64 `db:"g14_gst_free_purchases"`
-	G15TaxablePurchases    float64 `db:"g15_taxable_purchases"`
-	Label1BGSTOnPurchases  float64 `db:"label_1b_gst_on_purchases"`
-
-	// Net
-	NetGSTPayable     float64 `db:"net_gst_payable"`
-	TotalSalesNet     float64 `db:"total_sales_net"`
-	TotalPurchasesNet float64 `db:"total_purchases_net"`
+	ClinicID               uuid.UUID `db:"clinic_id"`
+	PractitionerID         uuid.UUID `db:"practitioner_id"`
+	PeriodQuarter          time.Time `db:"period_quarter"`
+	PeriodYear             time.Time `db:"period_year"`
+	G1TotalSalesGross      float64   `db:"g1_total_sales_gross"`
+	G3GSTFreeSales         float64   `db:"g3_gst_free_sales"`
+	G8TaxableSales         float64   `db:"g8_taxable_sales"`
+	Label1AGSTOnSales      float64   `db:"label_1a_gst_on_sales"`
+	G11TotalPurchasesGross float64   `db:"g11_total_purchases_gross"`
+	G14GSTFreePurchases    float64   `db:"g14_gst_free_purchases"`
+	G15TaxablePurchases    float64   `db:"g15_taxable_purchases"`
+	Label1BGSTOnPurchases  float64   `db:"label_1b_gst_on_purchases"`
+	NetGSTPayable          float64   `db:"net_gst_payable"`
+	TotalSalesNet          float64   `db:"total_sales_net"`
+	TotalPurchasesNet      float64   `db:"total_purchases_net"`
 }
 
-// BASByAccountRow maps one row of vw_bas_by_account.
 type BASByAccountRow struct {
 	ClinicID       uuid.UUID `db:"clinic_id"`
 	PractitionerID uuid.UUID `db:"practitioner_id"`
@@ -63,35 +55,31 @@ type BASByAccountRow struct {
 	TotalGross     float64   `db:"total_gross"`
 }
 
-// BASMonthlyRow maps one row of vw_bas_monthly.
 type BASMonthlyRow struct {
-	ClinicID       uuid.UUID `db:"clinic_id"`
-	PractitionerID uuid.UUID `db:"practitioner_id"`
-	PeriodMonth    time.Time `db:"period_month"`
-
-	G1TotalSalesGross      float64 `db:"g1_total_sales_gross"`
-	G3GSTFreeSales         float64 `db:"g3_gst_free_sales"`
-	Label1AGSTOnSales      float64 `db:"label_1a_gst_on_sales"`
-	G11TotalPurchasesGross float64 `db:"g11_total_purchases_gross"`
-	G14GSTFreePurchases    float64 `db:"g14_gst_free_purchases"`
-	Label1BGSTOnPurchases  float64 `db:"label_1b_gst_on_purchases"`
-	NetGSTPayable          float64 `db:"net_gst_payable"`
-	TotalSalesNet          float64 `db:"total_sales_net"`
-	TotalPurchasesNet      float64 `db:"total_purchases_net"`
+	ClinicID               uuid.UUID `db:"clinic_id"`
+	PractitionerID         uuid.UUID `db:"practitioner_id"`
+	PeriodMonth            time.Time `db:"period_month"`
+	G1TotalSalesGross      float64   `db:"g1_total_sales_gross"`
+	G3GSTFreeSales         float64   `db:"g3_gst_free_sales"`
+	Label1AGSTOnSales      float64   `db:"label_1a_gst_on_sales"`
+	G11TotalPurchasesGross float64   `db:"g11_total_purchases_gross"`
+	G14GSTFreePurchases    float64   `db:"g14_gst_free_purchases"`
+	Label1BGSTOnPurchases  float64   `db:"label_1b_gst_on_purchases"`
+	NetGSTPayable          float64   `db:"net_gst_payable"`
+	TotalSalesNet          float64   `db:"total_sales_net"`
+	TotalPurchasesNet      float64   `db:"total_purchases_net"`
 }
 
 type BASFilter struct {
-	ClinicIds       *string `form:"clinic_ids"`
-	FromDate        *string `form:"from_date"`         // YYYY-MM-DD
-	ToDate          *string `form:"to_date"`           // YYYY-MM-DD
-	FinancialYearID *string `form:"financial_year_id"` // UUID — maps quarter to FY
-	QuarterIDs      *string `form:"quarter_ids"`       // UUIDs of tbl_financial_quarter
-
+	ClinicIds        *string `form:"clinic_ids"`
+	FromDate         *string `form:"from_date"`
+	ToDate           *string `form:"to_date"`
+	FinancialYearID  *string `form:"financial_year_id"`
+	QuarterIDs       *string `form:"quarter_ids"`
 	ParsedQuarterIDs []uuid.UUID
 	ParsedClinicIDs  []uuid.UUID
 }
 
-// MapToFilter returns the BASFilter as a common.Filter, omitting nil values.
 func (f *BASFilter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	operators := map[string]common.Operator{}
@@ -100,12 +88,10 @@ func (f *BASFilter) MapToFilter() common.Filter {
 		f.ParsedQuarterIDs = nil
 		idStrings := strings.Split(*f.QuarterIDs, ",")
 		for _, s := range idStrings {
-			parsedID, err := uuid.Parse(strings.TrimSpace(s))
-			if err == nil {
+			if parsedID, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
 				f.ParsedQuarterIDs = append(f.ParsedQuarterIDs, parsedID)
 			}
 		}
-
 		if len(f.ParsedQuarterIDs) > 0 {
 			filters["quarter_ids"] = f.ParsedQuarterIDs
 		}
@@ -134,32 +120,22 @@ func (f *BASFilter) MapToFilter() common.Filter {
 		filters["financial_year_id"] = *f.FinancialYearID
 	}
 
-	return common.NewFilter(
-		nil,
-		filters,
-		operators,
-		nil,
-		nil,
-		nil,
-		nil,
-	)
+	return common.NewFilter(nil, filters, operators, nil, nil, nil, nil)
 }
 
-// BASReportFilter is used by the /bas/report endpoint.
 type BASReportFilter struct {
-	PractitionerID string  `form:"-"`          // set from JWT
-	QuarterID      *string `form:"quarter_id"` // UUID of tbl_financial_quarter
-	Month          *string `form:"month"`      // e.g. "January"
+	PractitionerID string  `form:"-"`
+	QuarterID      *string `form:"quarter_id"`
+	Month          *string `form:"month"`
 }
 
 type BASExportFilter struct {
-	PractitionerID  string   `form:"-"` // set from JWT
+	PractitionerID  string   `form:"-"`
 	FinancialYearID *string  `form:"financial_year_id" binding:"required"`
-	QuarterIDs      []string `form:"quarter_id" `
+	QuarterIDs      []string `form:"quarter_id"`
 	Month           *string  `form:"month"`
 }
 
-// RsBASReport is the flat totals response for /bas/report.
 type RsBASReport struct {
 	G1  float64 `json:"G1"`
 	G11 float64 `json:"G11"`
@@ -167,8 +143,6 @@ type RsBASReport struct {
 	B1  float64 `json:"1B"`
 }
 
-// BASReportRow is the DB scan target for the report query.
-// G1/G11 are net (ex-GST) amounts; 1A/1B are the GST collected/paid.
 type BASReportRow struct {
 	G1TotalSalesGross      float64 `db:"g1_total_sales_gross"`
 	Label1AGSTOnSales      float64 `db:"label_1a_gst_on_sales"`
@@ -177,26 +151,19 @@ type BASReportRow struct {
 }
 
 type RsBASSummary struct {
-	// Period
-	PeriodQuarter string `json:"period_quarter"` // e.g. "2026-01-01"
-	PeriodYear    string `json:"period_year"`    // e.g. "2026-01-01"
-
-	// Sales (ATO labels)
-	G1TotalSalesGross float64 `json:"g1_total_sales_gross"`
-	G3GSTFreeSales    float64 `json:"g3_gst_free_sales"`
-	G8TaxableSales    float64 `json:"g8_taxable_sales"`
-	Label1AGSTOnSales float64 `json:"label_1a_gst_on_sales"`
-
-	// Purchases (ATO labels)
+	PeriodQuarter          string  `json:"period_quarter"`
+	PeriodYear             string  `json:"period_year"`
+	G1TotalSalesGross      float64 `json:"g1_total_sales_gross"`
+	G3GSTFreeSales         float64 `json:"g3_gst_free_sales"`
+	G8TaxableSales         float64 `json:"g8_taxable_sales"`
+	Label1AGSTOnSales      float64 `json:"label_1a_gst_on_sales"`
 	G11TotalPurchasesGross float64 `json:"g11_total_purchases_gross"`
 	G14GSTFreePurchases    float64 `json:"g14_gst_free_purchases"`
 	G15TaxablePurchases    float64 `json:"g15_taxable_purchases"`
 	Label1BGSTOnPurchases  float64 `json:"label_1b_gst_on_purchases"`
-
-	// Net GST
-	NetGSTPayable     float64 `json:"net_gst_payable"`
-	TotalSalesNet     float64 `json:"total_sales_net"`
-	TotalPurchasesNet float64 `json:"total_purchases_net"`
+	NetGSTPayable          float64 `json:"net_gst_payable"`
+	TotalSalesNet          float64 `json:"total_sales_net"`
+	TotalPurchasesNet      float64 `json:"total_purchases_net"`
 }
 
 func (r *BASSummaryRow) ToRs() RsBASSummary {
@@ -277,30 +244,27 @@ func (r *BASMonthlyRow) ToRs() RsBASMonthly {
 	}
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
 const dateLayout = "2006-01-02"
 
 func validateDateFilter(f *BASFilter) error {
 	var from, to time.Time
 	var err error
-	if f.FromDate != nil {
+	if f.FromDate != nil && *f.FromDate != "" {
 		if from, err = time.Parse(dateLayout, *f.FromDate); err != nil {
 			return fmt.Errorf("invalid from_date: use YYYY-MM-DD format")
 		}
 	}
-	if f.ToDate != nil {
+	if f.ToDate != nil && *f.ToDate != "" {
 		if to, err = time.Parse(dateLayout, *f.ToDate); err != nil {
 			return fmt.Errorf("invalid to_date: use YYYY-MM-DD format")
 		}
 	}
-	if f.FromDate != nil && f.ToDate != nil && from.After(to) {
+	if f.FromDate != nil && f.ToDate != nil && *f.FromDate != "" && *f.ToDate != "" && from.After(to) {
 		return fmt.Errorf("from_date must not be after to_date")
 	}
 	return nil
 }
 
-// BAS Preparation
 type BASAmount struct {
 	Gross float64 `json:"gross"`
 	GST   float64 `json:"gst"`
@@ -354,7 +318,6 @@ type RsBASPreparation struct {
 	GrandTotal BASColumn   `json:"grand_total"`
 }
 
-// BAS PREPARATION ANALYTICS
 type BASValue struct {
 	Date  string  `json:"date"`
 	Gross float64 `json:"gross"`
@@ -369,29 +332,18 @@ type BASAccountGroup struct {
 }
 
 type RsBASAnalytics struct {
-	// omitempty will hide the key if the slice is nil or empty
 	Income        []BASAccountGroup `json:"income,omitempty"`
 	Expense       []BASAccountGroup `json:"expense,omitempty"`
-	NetProfitLoss *BASAccountGroup  `json:"netProfitLoss,omitempty"` // Use pointer for easier omitting
-	GSTPayable    *BASAccountGroup  `json:"gstPayable,omitempty"`    // Use pointer for easier omitting
+	NetProfitLoss *BASAccountGroup  `json:"netProfitLoss,omitempty"`
+	GSTPayable    *BASAccountGroup  `json:"gstPayable,omitempty"`
 }
 
 type BASAnalyticsFilter struct {
-	FinancialYearID string `form:"financial_year_id" binding:"required"`
-
-	// Period and QuarterIDs are independent filters; QuarterIDs takes priority when both are set.
-	QuarterIDs *string `form:"quarter_ids"` // Comma-separated UUIDs
-
-	// Period options: "today", "yesterday", "this_week", "last_month", "custom_range", etc.
-	Period string `form:"period"`
-
-	// For "custom_range" or "custom_month" (DD-MM-YYYY)
-	FromDate *string `form:"from_date"`
-	ToDate   *string `form:"to_date"`
-
-	// Sections multi-select (Comma-separated: "income,expense,net_profit,gst_payable")
-	Sections *string `form:"sections"`
-
-	// Row multi-select (Comma-separated COA IDs)
-	SelectedCoaIDs *string `form:"coa_ids"`
+	FinancialYearID string  `form:"financial_year_id" binding:"required"`
+	QuarterIDs      *string `form:"quarter_ids"`
+	Period          string  `form:"period"`
+	FromDate        *string `form:"from_date"`
+	ToDate          *string `form:"to_date"`
+	Sections        *string `form:"sections"`
+	SelectedCoaIDs  *string `form:"coa_ids"`
 }
