@@ -5392,6 +5392,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/util.RsList"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -5491,6 +5497,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/util.RsList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
@@ -5652,6 +5664,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -5700,6 +5718,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "409": {
                         "description": "Conflict",
                         "schema": {
@@ -5738,7 +5762,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Chart of Account Key (e.g., patient_fee_account)",
+                        "description": "Chart of Account Key",
                         "name": "key",
                         "in": "path",
                         "required": true
@@ -5753,6 +5777,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -5813,6 +5843,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -5861,6 +5897,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -5926,6 +5968,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -5968,7 +6016,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Practitioner UUID (required for Accountants)",
+                        "description": "Practitioner UUID",
                         "name": "practitioner_id",
                         "in": "query"
                     },
@@ -5992,6 +6040,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }

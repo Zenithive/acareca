@@ -28,12 +28,14 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLSummaryRow, error) {
 	// Query vw_pl_line_items directly and aggregate by clinic_id
+	// Now uses account_type and pl_section instead of section_type
 	query := `
 		WITH section_totals AS (
 			SELECT 
 				practitioner_id, 
 				period_month, 
-				section_type,
+				account_type,
+				pl_section,
 				SUM(net_amount) AS total_net, 
 				SUM(gst_amount) AS total_gst, 
 				SUM(gross_amount) AS total_gross,
@@ -57,20 +59,20 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 	}
 
 	query += `
-			GROUP BY practitioner_id, period_month, section_type
+			GROUP BY practitioner_id, period_month, account_type, pl_section
 		)
 		SELECT
 			practitioner_id, period_month,
-			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
-			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
-			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
-			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_net,
-			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_gst,
-			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'),        0) AS cogs_gross,
-			COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) AS gross_profit_net,
-			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_net,
-			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gst,
-			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gross,
+			COALESCE(SUM(total_net)   FILTER (WHERE account_type = 'Revenue'),  0) AS income_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE account_type = 'Revenue'),  0) AS income_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE account_type = 'Revenue'),  0) AS income_gross,
+			COALESCE(SUM(total_net)   FILTER (WHERE pl_section = '2. Cost of Sales'),  0) AS cogs_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE pl_section = '2. Cost of Sales'),  0) AS cogs_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE pl_section = '2. Cost of Sales'),  0) AS cogs_gross,
+			COALESCE(SUM(total_net) FILTER (WHERE account_type = 'Revenue'), 0) - COALESCE(SUM(total_net) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS gross_profit_net,
+			COALESCE(SUM(total_net)   FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_gross,
 			COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
 			COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
 		FROM section_totals
@@ -206,6 +208,8 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 			li.form_field_id::TEXT,
 			li.field_label,
 			li.section_type::TEXT,
+			li.account_type,
+			li.pl_section,
 			li.coa_id::TEXT,
 			li.account_name,
 			li.tax_name,
@@ -251,8 +255,9 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 		GROUP BY
 			li.clinic_id, c.name, li.form_id, li.form_name,
 			li.form_field_id, li.field_label, li.section_type,
+			li.account_type, li.pl_section,
 			li.coa_id, li.account_name, li.tax_name
-		ORDER BY li.section_type, li.account_name
+		ORDER BY li.pl_section, li.account_name
 	`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)

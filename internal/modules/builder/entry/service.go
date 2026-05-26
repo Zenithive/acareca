@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"html/template"
 	"log"
 	"maps"
 	"strconv"
@@ -47,7 +46,6 @@ type IService interface {
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 
-	//ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*bytes.Buffer, error)
 	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
 	generateExcelReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, fullName string, practitionerABN string, period string) (*bytes.Buffer, error)
 
@@ -1250,28 +1248,8 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
 		}
 
-		// Handle HTML / PDF Generation
-		if strings.ToLower(exportType) == "pdf" {
-			data := struct {
-				Groups   interface{}
-				FullName string
-				ABN      string
-				Period   string
-			}{
-				Groups:   groups,
-				FullName: fullName,
-				ABN:      practitionerABN,
-				Period:   period,
-			}
-
-			htmlContent, err := s.generateTransactionHTML(data, formatDateHelper)
-			if err != nil {
-				return fmt.Errorf("failed to generate html: %w", err)
-			}
-			result = htmlContent
-			contentType = "text/html"
-		} else {
-			// Handle Excel Export (Propagate tx down to generation helpers)
+		// Handle Excel Export
+		if strings.ToLower(exportType) == "excel" {
 			buf, err := s.generateExcelReport(ctx, f, actorID, role, entityName, practitionerABN, period)
 			if err != nil {
 				return fmt.Errorf("failed to generate excel: %w", err)
@@ -1572,127 +1550,6 @@ func (s *Service) validateLockDate(ctx context.Context, tx *sqlx.Tx, practitione
 	return nil
 }
 
-const reportTemplate = `
-<html>
-<head>
-<style>
-    @page {
-        size: A4 landscape;
-        margin: 1cm;
-    }
-
-    body {
-        font-family: sans-serif;
-        font-size: 12pt;
-        color: #000;
-        margin: 12px;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-        margin-bottom: 30px;
-    }
-
-    th, td {
-        border: 1px solid #d1d1d1;
-        padding: 8px 6px;
-        word-wrap: break-word;
-        vertical-align: middle;
-    }
-
-    th {
-        background-color: #4EA7B3;
-        color: white;
-        text-align: center;
-        font-weight: bold;
-        font-size: 14pt;
-    }
-
-    .group-row {
-        background-color: #DAEEF3;
-        font-weight: bold;
-        color: #2A5D63;
-        font-size: 13pt;
-    }
-
-    /* Total Rows: Bold, Gray Background, Size 12pt */
-    .total-row {
-        background-color: #E1E1E1;
-        font-weight: bold;
-        font-size: 12pt;
-    }
-
-    .amount { text-align: right; }
-    .date-cell { text-align: center; }
-
-    /* Column Widths */
-    .col-date { width: 12%; }
-    .col-acct { width: 20%; }
-    .col-tax  { width: 10%; }
-    .col-form { width: 15%; }
-    .col-clinic { width: 15%; }
-    .col-amt  { width: 9%; }
-    .col-type  { width: 10%; }
-
-	.header-blue { background-color: #4EA7B3 !important; font-weight: bold; font-size: 14pt; text-align: center; border: 1px solid #ffffff; padding:10px; margin: 8px; color: #ffffff;}
-	.meta-item { margin-bottom: 4px; color: #555;  margin: 4px;}
-    .meta-label { font-weight: bold; width: 100px; display: inline-block; color: #555; margin: 4px;}
-</style>
-</head>
-<body>
-		<div class="header-blue">Transaction Report</div>
-		<div class="meta-item"><span class="meta-label">Exported by:</span> {{.FullName}}</div>
-		{{if .ABN}}<div class="meta-item"><span class="meta-label">ABN:</span> {{.ABN}}</div>{{end}}
-        {{if .Period}}<div class="meta-item"><span class="meta-label">Period:</span> {{.Period}}</div>{{end}}
-    <table>
-        <thead>
-            <tr>
-                <th class="col-date">Date</th>
-                <th class="col-acct">Account / Field</th>
-                <th class="col-tax">Tax Type</th>
-                <th class="col-form">Form</th>
-                <th class="col-clinic">Clinic</th>
-                <th class="col-amt">Net</th>
-                <th class="col-amt">GST</th>
-                <th class="col-amt">Gross</th>
-                <th class="col-type">Type</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Groups}}
-                <tr class="group-row">
-                    <td colspan="9">{{.CoaName}}</td>
-                </tr>
-                {{range .Details}}
-                <tr>
-                    <td class="date-cell">{{formatDate .CreatedAt}}</td>
-                    <td style="padding-left: 20px;">{{.FormFieldName}}</td>
-                    <td>{{.TaxTypeName}}</td>
-                   	<td>{{if .FormName}}{{.FormName}}{{else}}-{{end}}</td>
-					<td>{{if .ClinicName}}{{.ClinicName}}{{else}}-{{end}}</td>
-                    <td class="amount">${{getFloat .NetAmount | printf "%.2f"}}</td>
-                    <td class="amount">${{getFloat .GstAmount | printf "%.2f"}}</td>
-                    <td class="amount">${{getFloat .GrossAmount | printf "%.2f"}}</td>
-					<td>{{if .IsExpense}}Expense{{else}}Entry{{end}}</td>
-                </tr>
-                {{end}}
-                <tr class="total-row">
-                    <td colspan="5" style="text-align: left; padding-left: 10px;">Total {{.CoaName}}</td>
-                    <td class="amount">${{.TotalNetAmount | printf "%.2f"}}</td>
-                    <td class="amount"></td>
-                    <td class="amount">${{.TotalGrossAmount | printf "%.2f"}}</td>
-					<td></td>
-                </tr>
-                <tr style="border: none; height: 20px;"><td colspan="9" style="border: none;"></td></tr>
-            {{end}}
-        </tbody>
-    </table>
-</body>
-</html>
-`
-
 type CoaGroup struct {
 	CoaID            string       `json:"coa_id"`
 	CoaName          string       `json:"coa_name"`
@@ -1711,37 +1568,6 @@ type CoaDetail struct {
 	GstAmount     *float64  `json:"gst_amount"`
 	GrossAmount   *float64  `json:"gross_amount"`
 	CreatedAt     time.Time `json:"created_at"`
-}
-
-func (s *Service) generateTransactionHTML(data interface{}, dateHelper func(string) string) (string, error) {
-	tmpl, err := template.New("pdf").Funcs(template.FuncMap{
-		"getFloat": func(f *float64) float64 {
-			if f == nil {
-				return 0.0
-			}
-			return *f
-		},
-		// Helper to format strings or time objects from specific format
-		"formatDate": dateHelper,
-	}).Parse(reportTemplate)
-
-	if err != nil {
-		return "", err
-	}
-
-	var htmlBuf bytes.Buffer
-	if err := tmpl.Execute(&htmlBuf, data); err != nil {
-		return "", err
-	}
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b := `<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`
-
-	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
-
-	return finalHTML, nil
 }
 
 func (s *Service) ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error) {

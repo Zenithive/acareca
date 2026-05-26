@@ -18,7 +18,6 @@ type IHandler interface {
 	GetAccountType(c *gin.Context)
 	ListAccountTaxes(c *gin.Context)
 	GetAccountTax(c *gin.Context)
-
 	ListChartOfAccount(c *gin.Context)
 	GetChartOfAccount(c *gin.Context)
 	GetChartOfAccountByKey(c *gin.Context)
@@ -43,6 +42,7 @@ func NewHandler(svc Service) IHandler {
 // @Param name query string false "Filter by name"
 // @Param search query string false "Search name"
 // @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/account-types [get]
@@ -96,6 +96,7 @@ func (h *handler) GetAccountType(c *gin.Context) {
 // @Param rate query number false "Filter by rate"
 // @Param search query string false "Search name or is_taxable"
 // @Success 200 {object} util.RsList
+// @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/account-taxes [get]
@@ -157,24 +158,23 @@ func (h *handler) GetAccountTax(c *gin.Context) {
 // @Param offset query int false "Offset"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/chart-of-account [get]
 func (h *handler) ListChartOfAccount(c *gin.Context) {
-	practitionerIDs := c.QueryArray("practitioner_id")
-	excludeTypes := c.QueryArray("exclude_type")
-
 	var filter Filter
 	if err := util.BindAndValidate(c, &filter); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	filter.ExcludeType = excludeTypes
+	filter.ExcludeType = c.QueryArray("exclude_type")
 
+	practitionerIDs := c.QueryArray("practitioner_id")
 	practitionerIds := make([]uuid.UUID, 0, len(practitionerIDs))
-	for _, practitionerId := range practitionerIDs {
-		uId, err := uuid.Parse(practitionerId)
+	for _, pID := range practitionerIDs {
+		uId, err := uuid.Parse(pID)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner id: %w", err))
 			return
@@ -183,9 +183,7 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 	}
 	filter.PractitionerID = practitionerIds
 
-	// Parse account_tax_id if provided
-	taxIDStr := c.Query("account_tax_id")
-	if taxIDStr != "" {
+	if taxIDStr := c.Query("account_tax_id"); taxIDStr != "" {
 		v, err := strconv.ParseInt(taxIDStr, 10, 16)
 		if err != nil {
 			response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid account tax id: %w", err))
@@ -195,12 +193,8 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 		filter.AccountTaxID = &val
 	}
 
-	// Identify actor ID based on role
-	var actorID *uuid.UUID
-	var role string
-	var ok bool
-
-	if actorID, role, ok = util.GetRoleBasedID(c); !ok {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
 		return
 	}
@@ -220,41 +214,15 @@ func (h *handler) ListChartOfAccount(c *gin.Context) {
 // @Param id path string true "Chart of Account UUID"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/chart-of-account/{id} [get]
 func (h *handler) GetChartOfAccount(c *gin.Context) {
-	role := c.GetString("role")
-
-	// Get practitioner_id based on role
-	var practitionerID uuid.UUID
-	switch role {
-	case util.RolePractitioner:
-		// For practitioners, force their token ID
-		var ok bool
-		practitionerID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	case util.RoleAccountant:
-		// For accountants, read from query params
-		practitionerIDStr := c.Query("practitioner_id")
-		if practitionerIDStr == "" {
-			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required"))
-			return
-		}
-		// Handle potential JSON-encoded array format
-		practitionerIDStr = strings.Trim(practitionerIDStr, "[]\"\\")
-		var err error
-		practitionerID, err = uuid.Parse(practitionerIDStr)
-		if err != nil {
-			response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner_id format"))
-			return
-		}
-	default:
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
+	practitionerID, err := h.getPractitionerIDByRole(c, nil)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -280,9 +248,10 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 // @Tags coa
 // @Produce json
 // @Param practitioner_id query string false "Practitioner UUID (for Accountants)"
-// @Param key path string true "Chart of Account Key (e.g., patient_fee_account)"
+// @Param key path string true "Chart of Account Key"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
@@ -290,22 +259,17 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 func (h *handler) GetChartOfAccountByKey(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID
-	if role == util.RoleAccountant {
-		var ok bool
+	var ok bool
+
+	switch role {
+	case util.RoleAccountant:
 		actorID, ok = util.GetAccountantID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	} else if role == util.RolePractitioner {
-		var ok bool
+	case util.RolePractitioner:
 		actorID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	} else {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
 
@@ -334,48 +298,34 @@ func (h *handler) GetChartOfAccountByKey(c *gin.Context) {
 // @Param request body RqCreateChartOfAccountOfAccount true "COA Data"
 // @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/chart-of-account [post]
 func (h *handler) CreateChartOfAccount(c *gin.Context) {
-	role := c.GetString("role")
-
 	var req RqCreateChartOfAccountOfAccount
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// Determine practitioner_id based on role
-	var practitionerID uuid.UUID
-	if role == util.RolePractitioner {
-		// For practitioners, force their token ID, ignore request body
-		var ok bool
-		practitionerID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	} else if role == util.RoleAccountant {
-		// For accountants, use the provided practitioner_id
-		practitionerID = req.PractitionerID
-	} else {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
+	practitionerID, err := h.getPractitionerIDByRole(c, &req.PractitionerID)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
 	created, err := h.svc.CreateChartOfAccount(c.Request.Context(), practitionerID, &req)
 	if err != nil {
-		if errors.Is(err, ErrCodeExists) {
+		switch {
+		case errors.Is(err, ErrCodeExists):
 			response.Error(c, http.StatusConflict, err)
-			return
-		}
-		if errors.Is(err, ErrNotFound) {
+		case errors.Is(err, ErrNotFound):
 			response.Error(c, http.StatusBadRequest, err)
-			return
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
-		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 	response.JSON(c, http.StatusCreated, created, "Chart of account created successfully")
@@ -389,6 +339,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Param request body RqUpdateCharOfAccountOfAccount true "Updated COA Data"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 409 {object} response.RsError
@@ -396,8 +347,6 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Security BearerToken
 // @Router /coa/chart-of-account/{id} [put]
 func (h *handler) UpdateCharOfAccount(c *gin.Context) {
-	role := c.GetString("role")
-
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
@@ -410,43 +359,24 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 		return
 	}
 
-	// Determine practitioner_id based on role
-	var practitionerID uuid.UUID
-	if role == util.RolePractitioner {
-		// For practitioners, force their token ID, ignore request body
-		var ok bool
-		practitionerID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	} else if role == util.RoleAccountant {
-		// For accountants, use the provided practitioner_id
-		if req.PractitionerID == nil {
-			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required"))
-			return
-		}
-		practitionerID = *req.PractitionerID
-	} else {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
+	practitionerID, err := h.getPractitionerIDByRole(c, req.PractitionerID)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
 	updated, err := h.svc.UpdateCharOfAccount(c.Request.Context(), id, practitionerID, &req)
 	if err != nil {
-		if errors.Is(err, ErrCodeExists) {
+		switch {
+		case errors.Is(err, ErrCodeExists):
 			response.Error(c, http.StatusConflict, err)
-			return
-		}
-		if errors.Is(err, ErrSystemAccountProtected) {
+		case errors.Is(err, ErrSystemAccountProtected):
 			response.Error(c, http.StatusForbidden, err)
-			return
-		}
-		if errors.Is(err, ErrNotFound) {
+		case errors.Is(err, ErrNotFound):
 			response.Error(c, http.StatusNotFound, err)
-			return
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
-		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, updated, "Chart of account updated successfully")
@@ -455,64 +385,38 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 // @Summary Delete chart of account
 // @Tags coa
 // @Produce json
-// @Param practitioner_id query string false "Practitioner UUID (required for Accountants)"
+// @Param practitioner_id query string false "Practitioner UUID"
 // @Param id path string true "Chart of Account UUID"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 403 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/chart-of-account/{id} [delete]
 func (h *handler) DeleteChartOfAccount(c *gin.Context) {
-	role := c.GetString("role")
-
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, errors.New("invalid id"))
 		return
 	}
 
-	// Determine practitioner_id based on role
-	var practitionerID uuid.UUID
-	if role == util.RolePractitioner {
-		// For practitioners, force their token ID
-		var ok bool
-		practitionerID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	} else if role == util.RoleAccountant {
-		// For accountants, read from query params
-		practitionerIDStr := c.Query("practitioner_id")
-		if practitionerIDStr == "" {
-			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required"))
-			return
-		}
-		// Handle potential JSON-encoded array format
-		practitionerIDStr = strings.Trim(practitionerIDStr, "[]\"\\")
-		var err error
-		practitionerID, err = uuid.Parse(practitionerIDStr)
-		if err != nil {
-			response.Error(c, http.StatusBadRequest, errors.New("invalid practitioner_id format"))
-			return
-		}
-	} else {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
+	practitionerID, err := h.getPractitionerIDByRole(c, nil)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
 	if err := h.svc.DeleteChartOfAccount(c.Request.Context(), id, practitionerID); err != nil {
-		if errors.Is(err, ErrSystemAccountProtected) {
+		switch {
+		case errors.Is(err, ErrSystemAccountProtected):
 			response.Error(c, http.StatusForbidden, err)
-			return
-		}
-		if errors.Is(err, ErrNotFound) {
+		case errors.Is(err, ErrNotFound):
 			response.Error(c, http.StatusNotFound, err)
-			return
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
 		}
-		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, gin.H{"message": "deleted"}, "Chart of account deleted successfully")
@@ -525,33 +429,20 @@ func (h *handler) DeleteChartOfAccount(c *gin.Context) {
 // @Param request body RqCheckCodeUnique true "Code to check"
 // @Success 200 {object} RsCodeUnique
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /coa/chart-of-account/check-code [post]
 func (h *handler) CheckCodeUnique(c *gin.Context) {
-	role := c.GetString("role")
-
 	var req RqCheckCodeUnique
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// Determine practitioner_id based on role
-	var practitionerID uuid.UUID
-	if role == util.RolePractitioner {
-		// For practitioners, force their token ID, ignore request body
-		var ok bool
-		practitionerID, ok = util.GetPractitionerID(c)
-		if !ok {
-			response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-	} else if role == util.RoleAccountant {
-		// For accountants, use the provided practitioner_id
-		practitionerID = req.PractitionerID
-	} else {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid role"))
+	practitionerID, err := h.getPractitionerIDByRole(c, &req.PractitionerID)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
@@ -561,4 +452,27 @@ func (h *handler) CheckCodeUnique(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, result, "Code uniqueness checked successfully")
+}
+
+func (h *handler) getPractitionerIDByRole(c *gin.Context, fallbackID *uuid.UUID) (uuid.UUID, error) {
+	role := c.GetString("role")
+	switch role {
+	case util.RolePractitioner:
+		pID, ok := util.GetPractitionerID(c)
+		if !ok {
+			return uuid.Nil, errors.New("unauthorized")
+		}
+		return pID, nil
+	case util.RoleAccountant:
+		if fallbackID != nil && *fallbackID != uuid.Nil {
+			return *fallbackID, nil
+		}
+		pStr := strings.Trim(c.Query("practitioner_id"), "[]\"\\")
+		if pStr == "" {
+			return uuid.Nil, errors.New("practitioner_id is required")
+		}
+		return uuid.Parse(pStr)
+	default:
+		return uuid.Nil, errors.New("invalid role")
+	}
 }

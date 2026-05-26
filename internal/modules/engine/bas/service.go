@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,7 +35,6 @@ type Service interface {
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
 	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, entityName string, practitionerABN string) (*bytes.Buffer, error)
-	generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error)
 	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 	GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error)
 }
@@ -636,19 +634,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	var result interface{}
 	var contentType string
 
-	// 1. Branching Logic
-	if strings.ToLower(exportType) == "pdf" {
-		data := activityHTMLData{
-			Quarters: quarters,
-			Prev:     prevDates,
-		}
-		result, err = s.generateActivityHTML(data, fullName, practitionerABN)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to generate activity html: %w", err)
-		}
-		contentType = "text/html"
-	} else {
-		// 2. Default to Excel logic
+	if strings.ToLower(exportType) == "excel" {
 		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates, entityName, practitionerABN)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
@@ -903,139 +889,6 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 	xl.SetColWidth(sheet, "B", "B", 25)
 
 	return xl.WriteToBuffer()
-}
-
-const activityTemplate = `
-<html>
-<head>
-<style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #000; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
-    th, td { border: 1px solid #bfbfbf; padding: 8px; word-wrap: break-word; }
-    .header { background-color: #4EA7B3; color: white; font-weight: bold; text-align: center; }
-    .sub-header { background-color: #E1F0F2; font-weight: bold; color: #2A5D63; }
-    .label { font-weight: bold; width: 70%; }
-    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; font-weight: bold;}
-    .total-row { background-color: #4EA7B3; color: white; font-weight: bold; }
-    .meta td { border: none; padding: 3px 0; font-size: 10pt; }
-    .indent { padding-left: 25px; font-weight: normal; }
-</style>
-</head>
-<body>
-    {{$q := index .Quarters 0}}
-
-    <table>
-        <tr>
-            <td class="header">Activity Statement Information</td>
-            <td class="header">BAS</td>
-        </tr>
-    </table>
-    <table class="meta">
-        <tr><td><b>Exported by:</b> {{.FullName}}</td></tr>
-        {{if .PractitionerABN}}<tr><td><b>ABN:</b> {{.PractitionerABN}}</td></tr>{{end}}
-        <tr><td><b>Period:</b> {{$q.Period.Label}} ({{$q.Period.From}} to {{$q.Period.To}})</td></tr>
-    </table>
-
-    <table>
-        <tr>
-            <td class="label">Period start</td>
-            <td>{{$q.Period.From}}</td>
-        </tr>
-        <tr>
-            <td class="label">Period end</td>
-            <td>{{$q.Period.To}}</td>
-        </tr>
-        <tr>
-            <td class="label">Qtr</td>
-            <td>{{$q.Period.Label}}</td>
-        </tr>
-    </table>
-
-    <table>
-        <tr class="sub-header"><td colspan="2">GST Section</td></tr>
-        <tr>
-            <td class="label">G1 (Total Sales)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.G1}}</td>
-        </tr>
-        <tr>
-            <td class="label">1A (GST on Sales)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.A1}}</td>
-        </tr>
-        <tr>
-            <td class="label">G11 (Total Purchases)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.G11}}</td>
-        </tr>
-        <tr>
-            <td class="label">1B (GST on Purchases)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.B1}}</td>
-        </tr>
-    </table>
-
-    <table>
-        <tr class="sub-header"><td colspan="2">PAYG tax withheld</td></tr>
-        <tr><td class="label">Period start</td><td>{{$q.Period.From}}</td></tr>
-        <tr><td class="label">Period end</td><td>{{$q.Period.To}}</td></tr>
-        <tr><td class="label">W1 (Total Wages, salary and other payments)</td><td>-</td></tr>
-        <tr><td class="label">W2 (Amount withheld from payments shown at W1)</td><td>-</td></tr>
-        <tr><td class="label">W3 (Other amounts withheld)</td><td>-</td></tr>
-        <tr><td class="label">W4 (Amount withheld where no ABN is quoted)</td><td>-</td></tr>
-        <tr><td class="label">W5 (Total amounts withheld)</td><td>-</td></tr>
-    </table>
-
-    <table>
-        <tr class="sub-header"><td colspan="2">PAYG instalment</td></tr>
-        <tr><td class="label">Option 1</td><td>-</td></tr>
-        <tr><td class="label">Option 2</td><td>-</td></tr>
-    </table>
-
-    <table>
-        <tr class="total-row">
-            <td class="label">GST Payable or (Refund)</td>
-            <td class="amount">${{calcRefund $q.Report.A1 $q.Report.B1}}</td>
-        </tr>
-    </table>
-</body>
-</html>
-`
-
-func (s *service) generateActivityHTML(data activityHTMLData, fullName string, practitionerABN string) (string, error) {
-	// Wrap the incoming data with metadata fields the template needs
-	type templateData struct {
-		Quarters        []QuarterData
-		Prev            PeriodInfo
-		FullName        string
-		PractitionerABN string
-	}
-
-	td := templateData{
-		Quarters:        data.Quarters,
-		Prev:            data.Prev,
-		FullName:        fullName,
-		PractitionerABN: practitionerABN,
-	}
-
-	tmpl, err := template.New("activity").Funcs(template.FuncMap{
-		"calcRefund": func(a1, b1 float64) string {
-			return fmt.Sprintf("%.2f", a1-b1)
-		},
-	}).Parse(activityTemplate)
-	if err != nil {
-		return "", err
-	}
-
-	var htmlBuf bytes.Buffer
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b := `<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`
-
-	if err := tmpl.Execute(&htmlBuf, td); err != nil {
-		return "", err
-	}
-
-	finalHTML := strings.Replace(htmlBuf.String(), "<body>", "<body>"+b, 1)
-	return finalHTML, nil
 }
 
 type activityHTMLData struct {
