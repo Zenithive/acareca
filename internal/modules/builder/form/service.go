@@ -907,7 +907,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		}
 
 		// Create the entry with all values
-		if err := s.entryRepo.CreateTx(ctx, tx, formEntry, entryValues); err != nil {
+		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
 		}
 

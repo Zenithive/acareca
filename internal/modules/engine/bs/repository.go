@@ -9,7 +9,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Repository defines all DB queries for the Balance Sheet module
 type Repository interface {
 	GetBalanceSheet(ctx context.Context, practitionerIDs []uuid.UUID, f *BSFilter) ([]*BSRow, error)
 }
@@ -24,13 +23,10 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid.UUID, f *BSFilter) ([]*BSRow, error) {
 	base := `SELECT * FROM vw_balance_sheet_line_items`
-
-	// Start with practitioner IDs
 	conditions := []string{"practitioner_id = ANY($1)"}
 	args := []interface{}{practitionerIDs}
 	idx := 2
 
-	// End Date filter
 	if f.EndDate != nil && *f.EndDate != "" {
 		conditions = append(conditions, fmt.Sprintf("date::DATE <= $%d::DATE", idx))
 		args = append(args, *f.EndDate)

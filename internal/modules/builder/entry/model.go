@@ -20,7 +20,7 @@ type RqEntryValue struct {
 	NetAmount   *float64 `json:"net_amount,omitempty"`
 	GstAmount   *float64 `json:"gst_amount,omitempty"`
 	GrossAmount *float64 `json:"gross_amount,omitempty"`
-	Description *string  `json:"description,omitempty"` // For direct COA entries
+	Description *string  `json:"description,omitempty"`
 }
 
 // Validate ensures either form_field_id OR coa_id is provided (not both, not neither)
@@ -52,10 +52,9 @@ type RqUpdateFormEntry struct {
 	Documents *RqDocument    `json:"documents,omitempty"`
 }
 
-// RqDocument holds create/update/delete document IDs for an entry
 type RqDocument struct {
-	Create []string `json:"create"` // document IDs to link
-	Delete []string `json:"delete"` // document IDs to unlink
+	Create []string `json:"create"`
+	Delete []string `json:"delete"`
 }
 
 type FormEntry struct {
@@ -137,7 +136,6 @@ type RsFormEntry struct {
 	PaymentReceived *float64 `json:"payment_received,omitempty"`
 }
 
-// RsEntryDocument is the document info returned inside an entry response
 type RsEntryDocument struct {
 	ID           uuid.UUID `json:"id"`
 	OriginalName string    `json:"original_name"`
@@ -147,12 +145,12 @@ type RsEntryDocument struct {
 }
 
 type RsEntryValue struct {
-	FormFieldID *uuid.UUID `json:"form_field_id,omitempty"` // Nullable for direct COA entries
-	CoaID       *uuid.UUID `json:"coa_id,omitempty"`        // For direct COA entries
+	FormFieldID *uuid.UUID `json:"form_field_id,omitempty"`
+	CoaID       *uuid.UUID `json:"coa_id,omitempty"`
 	FieldKey    string     `json:"field_key,omitempty"`
 	Label       string     `json:"label,omitempty"`
 	IsComputed  bool       `json:"is_computed"`
-	Description *string    `json:"description,omitempty"` // For direct COA entries
+	Description *string    `json:"description,omitempty"`
 	// Amount is used when there is no GST (net == gross).
 	Amount *float64 `json:"amount,omitempty"`
 	// NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.
@@ -166,7 +164,6 @@ type Filter struct {
 	common.Filter
 }
 
-// RsTransactionRow is a flat, one-row-per-entry-value transaction response.
 type RsTransactionRow struct {
 	ID            uuid.UUID `json:"id"`
 	EntryID       uuid.UUID `json:"entry_id"`
@@ -187,27 +184,6 @@ type RsTransactionRow struct {
 	UpdatedAt     *string   `json:"updated_at,omitempty"`
 	Date          *string   `json:"date,omitempty"`
 	IsExpense     bool      `json:"is_expense"`
-}
-
-// RsTransactionDetail kept for backward compat (used by old RsTransaction).
-type RsTransactionDetail struct {
-	FieldName string   `json:"field_name"`
-	GstType   *string  `json:"gst_type"`
-	Amount    *float64 `json:"amount"`
-	GstAmount *float64 `json:"gst_amount"`
-	NetAmount *float64 `json:"net_amount"`
-}
-
-type RsTransaction struct {
-	ID            uuid.UUID             `json:"id"`
-	FormVersionID uuid.UUID             `json:"form_version_id"`
-	ClinicID      uuid.UUID             `json:"clinic_id"`
-	ClinicName    string                `json:"clinic_name"`
-	FormID        uuid.UUID             `json:"form_id"`
-	FormName      string                `json:"form_name"`
-	Method        string                `json:"method"`
-	FormStatus    string                `json:"form_status"`
-	EntryDetail   []RsTransactionDetail `json:"entry_detail"`
 }
 
 type TransactionFilter struct {
@@ -317,7 +293,6 @@ type RsFieldSummary struct {
 	TotalGross     float64   `json:"total_gross"`
 }
 
-// RsCoaEntry represents a grouped COA row for the parent grid
 type RsCoaEntry struct {
 	CoaID            string  `json:"coa_id"`
 	CoaName          string  `json:"coa_name"`
@@ -327,10 +302,9 @@ type RsCoaEntry struct {
 	TotalGrossAmount float64 `json:"total_gross_amount"`
 	EntryCount       int     `json:"entry_count"`
 
-	Details []*RsCoaEntryDetail `json:"details,omitempty"` // <--- Added for export purpose
+	Details []*RsCoaEntryDetail `json:"details,omitempty"`
 }
 
-// RsCoaEntryDetail represents a detailed entry row for the child grid
 type RsCoaEntryDetail struct {
 	ID            string   `json:"id"`
 	EntryID       string   `json:"entry_id"`

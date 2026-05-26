@@ -51,6 +51,7 @@ func NewHandler(svc IService, invitationSvc invitation.Service) IHandler {
 // @Param request body RqFormEntry true "Entry details"
 // @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 403 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /entry/version/{version_id} [post]
@@ -60,14 +61,10 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-
-	// Get ID based on who is logged in
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
+	actorID, _, ok := util.GetRoleBasedID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
 	}
 
 	var req RqFormEntry
@@ -76,7 +73,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, &actorID, actorID)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, actorID, *actorID)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -136,14 +133,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	// Get ID based on who is logged in
-	if strings.EqualFold(role, util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
+	actorID, _, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -154,7 +144,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.svc.Update(c.Request.Context(), id, &req, &actorID)
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, actorID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
@@ -217,20 +207,9 @@ func (h *handler) List(c *gin.Context) {
 		return
 	}
 
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	if strings.EqualFold(role, util.RoleAccountant) {
-		id, ok := util.GetAccountantID(c)
-		if !ok {
-			return
-		}
-		actorID = id
-	} else {
-		id, ok := util.GetPractitionerID(c)
-		if !ok {
-			return
-		}
-		actorID = id
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
+		return
 	}
 
 	var filter Filter
@@ -239,7 +218,7 @@ func (h *handler) List(c *gin.Context) {
 		return
 	}
 
-	list, err := h.svc.List(c.Request.Context(), versionID, filter, actorID, role)
+	list, err := h.svc.List(c.Request.Context(), versionID, filter, *actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -266,20 +245,9 @@ func (h *handler) List(c *gin.Context) {
 // @Security BearerToken
 // @Router /entry/transactions [get]
 func (h *handler) ListTransactions(c *gin.Context) {
-	role := c.GetString("role")
-	var actorID uuid.UUID
-	if strings.EqualFold(role, util.RoleAccountant) {
-		id, ok := util.GetAccountantID(c)
-		if !ok {
-			return
-		}
-		actorID = id
-	} else {
-		id, ok := util.GetPractitionerID(c)
-		if !ok {
-			return
-		}
-		actorID = id
+	actorID, role, ok := util.GetRoleBasedID(c)
+	if !ok {
+		return
 	}
 
 	var filter TransactionFilter
@@ -288,7 +256,6 @@ func (h *handler) ListTransactions(c *gin.Context) {
 		return
 	}
 
-	// Handle PractitionerID with JSON array format parsing
 	if role == util.RoleAccountant {
 		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
 			cleanedStr := strings.Trim(pracIDStr, "[]\" ")
@@ -300,46 +267,16 @@ func (h *handler) ListTransactions(c *gin.Context) {
 			filter.PractitionerID = &pID
 		}
 	} else {
-		filter.PractitionerID = &actorID
+		filter.PractitionerID = actorID
 	}
 
-	list, err := h.svc.ListTransactions(c.Request.Context(), filter, actorID, role)
+	list, err := h.svc.ListTransactions(c.Request.Context(), filter, *actorID, role)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, list, "Form entries fetched successfully")
 }
-
-// // @Summary Get summed values for a specific field
-// // @Description Returns the total net, gst, and gross amounts for all active entries of a field
-// // @Tags entry
-// // @Produce json
-// // @Param field_id path string true "Form Field ID"
-// // @Success 200 {object} RsFieldSummary
-// // @Failure 400 {object} response.RsError
-// // @Failure 404 {object} response.RsError
-// // @Failure 500 {object} response.RsError
-// // @Security BearerToken
-// // @Router /entry/{field_id}/summary [get]
-// func (h *handler) GetFieldSummary(c *gin.Context) {
-// 	fieldID, ok := util.ParseUuidID(c, "field_id")
-// 	if !ok {
-// 		return
-// 	}
-
-// 	summary, err := h.svc.GetFieldSummary(c.Request.Context(), fieldID)
-// 	if err != nil {
-// 		if errors.Is(err, ErrNotFound) {
-// 			response.Error(c, http.StatusNotFound, err)
-// 			return
-// 		}
-// 		response.Error(c, http.StatusInternalServerError, err)
-// 		return
-// 	}
-
-// 	response.JSON(c, http.StatusOK, summary, "Field summary calculated successfully")
-// }
 
 // @Summary List grouped COA entries (parent grid)
 // @Description Returns one row per COA with aggregated amounts and entry counts
@@ -356,6 +293,7 @@ func (h *handler) ListTransactions(c *gin.Context) {
 // @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /entry/coa-entries [get]
@@ -419,6 +357,7 @@ func (h *handler) ListCoaEntries(c *gin.Context) {
 // @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
 // @Success 200 {object} util.RsList
 // @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /entry/coa-entries/{coa_id}/entries [get]
@@ -537,9 +476,9 @@ func (h *handler) HandleExport(c *gin.Context) {
 }
 
 // @Summary Export transaction data for report generation
-// @Description Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation.
+// @Description Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation
 // @Tags entry
-// @Accept  json
+// @Accept json
 // @Produce json
 // @Param practitioner_id query string false "Filter by practitioner ID (supports array string format)"
 // @Param clinic_id query string false "Filter by clinic ID"
@@ -549,10 +488,10 @@ func (h *handler) HandleExport(c *gin.Context) {
 // @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
 // @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
 // @Param search query string false "Search by account, field, or clinic name"
-// @Success 200 {object} map[string]interface{} "JSON containing status, message, and nested transaction data"
-// @Failure 400 {object} response.RsError "Invalid request parameters"
-// @Failure 401 {object} response.RsError "Unauthorized"
-// @Failure 500 {object} response.RsError "Internal server error"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /entry/transactions/export [get]
 func (h *handler) ExportTransactions(c *gin.Context) {

@@ -9,19 +9,16 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Repository defines all DB queries for the BAS module.
 type Repository interface {
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASSummaryRow, error)
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASByAccountRow, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error)
 	GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error)
 	GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (start, end string, err error)
-
 	GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 	GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error)
 	GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error)
-	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-
+	GetAllQuartersInYear(ctx context.Context, financialYearID uuid.UUID) ([]BASQuarterInfo, error)
 	GetBASAnalytics(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error)
 }
 
@@ -36,45 +33,32 @@ func NewRepository(db *sqlx.DB) Repository {
 func (r *repository) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASSummaryRow, error) {
 	query := `
 		SELECT
-			clinic_id,
-			practitioner_id,
-			period_quarter,
-			period_year,
-			g1_total_sales_gross,
-			g3_gst_free_sales,
-			g8_taxable_sales,
-			label_1a_gst_on_sales,
-			g11_total_purchases_gross,
-			g14_gst_free_purchases,
-			g15_taxable_purchases,
-			label_1b_gst_on_purchases,
-			net_gst_payable,
-			total_sales_net,
-			total_purchases_net
+			clinic_id, practitioner_id, period_quarter, period_year,
+			g1_total_sales_gross, g3_gst_free_sales, g8_taxable_sales, label_1a_gst_on_sales,
+			g11_total_purchases_gross, g14_gst_free_purchases, g15_taxable_purchases, label_1b_gst_on_purchases,
+			net_gst_payable, total_sales_net, total_purchases_net
 		FROM vw_bas_summary
 		WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
 
-	if f.FromDate != nil {
+	if f.FromDate != nil && *f.FromDate != "" {
 		query += fmt.Sprintf(" AND period_quarter >= DATE_TRUNC('quarter', $%d::DATE)", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
-	if f.ToDate != nil {
+	if f.ToDate != nil && *f.ToDate != "" {
 		query += fmt.Sprintf(" AND period_quarter <= DATE_TRUNC('quarter', $%d::DATE)", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
-
-	// Filter by financial year via a join on tbl_financial_year date range
-	if f.FinancialYearID != nil {
+	if f.FinancialYearID != nil && *f.FinancialYearID != "" {
 		query += fmt.Sprintf(`
 			AND period_quarter BETWEEN (
 				SELECT DATE_TRUNC('quarter', start_date) FROM tbl_financial_year WHERE id = $%d
 			) AND (
-				SELECT DATE_TRUNC('quarter', end_date)   FROM tbl_financial_year WHERE id = $%d
+				SELECT DATE_TRUNC('quarter', end_date) FROM tbl_financial_year WHERE id = $%d
 			)`, idx, idx)
 		args = append(args, *f.FinancialYearID)
 		idx++
@@ -92,43 +76,30 @@ func (r *repository) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID
 func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASByAccountRow, error) {
 	query := `
 		SELECT
-			clinic_id,
-			practitioner_id,
-			period_quarter,
-			period_year,
-			section_type,
-			bas_category,
-			account_code,
-			account_name,
-			tax_name,
-			tax_rate,
-			entry_count,
-			total_net,
-			total_gst,
-			total_gross
+			clinic_id, practitioner_id, period_quarter, period_year, section_type, bas_category,
+			account_code, account_name, tax_name, tax_rate, entry_count, total_net, total_gst, total_gross
 		FROM vw_bas_by_account
 		WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
 
-	if f.FromDate != nil {
+	if f.FromDate != nil && *f.FromDate != "" {
 		query += fmt.Sprintf(" AND period_quarter >= DATE_TRUNC('quarter', $%d::DATE)", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
-	if f.ToDate != nil {
+	if f.ToDate != nil && *f.ToDate != "" {
 		query += fmt.Sprintf(" AND period_quarter <= DATE_TRUNC('quarter', $%d::DATE)", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
-
-	if f.FinancialYearID != nil {
+	if f.FinancialYearID != nil && *f.FinancialYearID != "" {
 		query += fmt.Sprintf(`
 			AND period_quarter BETWEEN (
 				SELECT DATE_TRUNC('quarter', start_date) FROM tbl_financial_year WHERE id = $%d
 			) AND (
-				SELECT DATE_TRUNC('quarter', end_date)   FROM tbl_financial_year WHERE id = $%d
+				SELECT DATE_TRUNC('quarter', end_date) FROM tbl_financial_year WHERE id = $%d
 			)`, idx, idx)
 		args = append(args, *f.FinancialYearID)
 		idx++
@@ -146,30 +117,20 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BA
 func (r *repository) GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]*BASMonthlyRow, error) {
 	query := `
 		SELECT
-			clinic_id,
-			practitioner_id,
-			period_month,
-			g1_total_sales_gross,
-			g3_gst_free_sales,
-			label_1a_gst_on_sales,
-			g11_total_purchases_gross,
-			g14_gst_free_purchases,
-			label_1b_gst_on_purchases,
-			net_gst_payable,
-			total_sales_net,
-			total_purchases_net
+			clinic_id, practitioner_id, period_month, g1_total_sales_gross, g3_gst_free_sales, label_1a_gst_on_sales,
+			g11_total_purchases_gross, g14_gst_free_purchases, label_1b_gst_on_purchases, net_gst_payable, total_sales_net, total_purchases_net
 		FROM vw_bas_monthly
 		WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
 
-	if f.FromDate != nil {
+	if f.FromDate != nil && *f.FromDate != "" {
 		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
-	if f.ToDate != nil {
+	if f.ToDate != nil && *f.ToDate != "" {
 		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
 		args = append(args, *f.ToDate)
 		idx++
@@ -282,21 +243,16 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid
 	return rows, nil
 }
 
-// GetQuarterInfoByDate fetches metadata for the "quarter" object in your JSON
 func (r *repository) GetQuarterInfoByDate(ctx context.Context, date time.Time) (*BASQuarterInfo, error) {
 	var info BASQuarterInfo
 	query := `
-        SELECT 
-            id::text, 
-            label as name, 
-            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
-            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
-            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
-        FROM tbl_financial_quarter 
-		WHERE start_date = $1 
-   OR ($1 BETWEEN start_date AND end_date)
-        LIMIT 1
-    `
+		SELECT 
+			id::text, label as name, TO_CHAR(start_date, 'YYYY-MM-DD') as startDate, TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+			TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+		FROM tbl_financial_quarter 
+		WHERE start_date = $1 OR ($1 BETWEEN start_date AND end_date)
+		LIMIT 1
+	`
 	if err := r.db.GetContext(ctx, &info, query, date); err != nil {
 		return nil, err
 	}
@@ -306,15 +262,12 @@ func (r *repository) GetQuarterInfoByDate(ctx context.Context, date time.Time) (
 func (r *repository) GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BASQuarterInfo, error) {
 	var info BASQuarterInfo
 	query := `
-        SELECT 
-            id::text, 
-            label as name, 
-            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
-            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
-            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
-        FROM tbl_financial_quarter 
-        WHERE id = $1
-    `
+		SELECT 
+			id::text, label as name, TO_CHAR(start_date, 'YYYY-MM-DD') as startDate, TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+			TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+		FROM tbl_financial_quarter 
+		WHERE id = $1
+	`
 	if err := r.db.GetContext(ctx, &info, query, id); err != nil {
 		return nil, err
 	}
@@ -323,18 +276,14 @@ func (r *repository) GetQuarterInfoByID(ctx context.Context, id uuid.UUID) (*BAS
 
 func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID uuid.UUID) ([]BASQuarterInfo, error) {
 	var list []BASQuarterInfo
-
 	query := `
-        SELECT 
-            id::text, 
-            label as name, 
-            TO_CHAR(start_date, 'YYYY-MM-DD') as startDate,
-            TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
-            TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
-        FROM tbl_financial_quarter 
-        WHERE financial_year_id = $1
-        ORDER BY start_date ASC
-		`
+		SELECT 
+			id::text, label as name, TO_CHAR(start_date, 'YYYY-MM-DD') as startDate, TO_CHAR(end_date, 'YYYY-MM-DD') as endDate,
+			TO_CHAR(start_date, 'Mon') || ' - ' || TO_CHAR(end_date, 'Mon') as displayRange
+		FROM tbl_financial_quarter 
+		WHERE financial_year_id = $1
+		ORDER BY start_date ASC
+	`
 	if err := r.db.SelectContext(ctx, &list, query, financialYearID); err != nil {
 		return nil, err
 	}

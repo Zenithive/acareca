@@ -31,7 +31,6 @@ func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotificat
 }
 
 func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.Hub) {
-	// Use the worker's context for cancellation support
 	deliveries, err := repo.ListFailedInAppDeliveries(ctx, workerBatchSize)
 	if err != nil {
 		log.Printf("retry worker: list failed deliveries: %v", err)
@@ -41,9 +40,7 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		return
 	}
 
-
 	for _, d := range deliveries {
-		// Check if context is cancelled before processing each delivery
 		select {
 		case <-ctx.Done():
 			log.Println("retry worker: context cancelled, stopping retry batch")
@@ -51,16 +48,14 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		default:
 		}
 
-		// Try to push to active WebSocket clients if available
 		pushedToWebSocket := false
-		
-		// Construct complete notification payload matching NotificationEvent structure
+
 		push := map[string]any{
 			"id":             d.NotificationID,
 			"recipient_id":   d.RecipientID,
-			"recipient_type": "PRACTITIONER", // Default, should be stored in FailedDelivery if needed
-			"sender_id":      nil,             // Not available in FailedDelivery
-			"sender_type":    nil,             // Not available in FailedDelivery
+			"recipient_type": "PRACTITIONER",
+			"sender_id":      nil,
+			"sender_type":    nil,
 			"event_type":     d.EventType,
 			"entity_type":    d.EntityType,
 			"entity_id":      d.EntityID,
