@@ -51,6 +51,7 @@ type ChartOfAccount struct {
 	Key             string     `db:"key"`
 	IsSystem        bool       `db:"is_system"`
 	IsTaxable       bool       `db:"is_taxable"`
+	Classification  string     `db:"classification"`
 	CreatedAt       time.Time  `db:"created_at"`
 	UpdatedAt       time.Time  `db:"updated_at"`
 	DeletedAt       *time.Time `db:"deleted_at"`
