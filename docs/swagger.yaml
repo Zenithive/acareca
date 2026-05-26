@@ -1813,12 +1813,10 @@ definitions:
   entry.RqDocument:
     properties:
       create:
-        description: document IDs to link
         items:
           type: string
         type: array
       delete:
-        description: document IDs to unlink
         items:
           type: string
         type: array
@@ -1831,7 +1829,6 @@ definitions:
       coa_id:
         type: string
       description:
-        description: For direct COA entries
         type: string
       form_field_id:
         type: string
@@ -1884,15 +1881,12 @@ definitions:
         description: Amount is used when there is no GST (net == gross).
         type: number
       coa_id:
-        description: For direct COA entries
         type: string
       description:
-        description: For direct COA entries
         type: string
       field_key:
         type: string
       form_field_id:
-        description: Nullable for direct COA entries
         type: string
       gross_amount:
         type: number
@@ -7064,6 +7058,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -7123,6 +7121,10 @@ paths:
             $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -7253,7 +7255,7 @@ paths:
       consumes:
       - application/json
       description: Returns grouped COA transaction records and their details in JSON
-        format for frontend PDF/Excel generation.
+        format for frontend PDF/Excel generation
       parameters:
       - description: Filter by practitioner ID (supports array string format)
         in: query
@@ -7291,12 +7293,12 @@ paths:
       - application/json
       responses:
         "200":
-          description: JSON containing status, message, and nested transaction data
+          description: OK
           schema:
             additionalProperties: true
             type: object
         "400":
-          description: Invalid request parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
         "401":
@@ -7304,7 +7306,7 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
       security:
@@ -7392,6 +7394,10 @@ paths:
             $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "500":

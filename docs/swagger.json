@@ -6147,6 +6147,12 @@
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -6321,6 +6327,12 @@
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -6430,7 +6442,7 @@
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation.",
+                "description": "Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation",
                 "consumes": [
                     "application/json"
                 ],
@@ -6493,14 +6505,14 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "JSON containing status, message, and nested transaction data",
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6512,7 +6524,7 @@
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6648,6 +6660,12 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -12732,14 +12750,12 @@
             "type": "object",
             "properties": {
                 "create": {
-                    "description": "document IDs to link",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "delete": {
-                    "description": "document IDs to unlink",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -12758,7 +12774,6 @@
                     "type": "string"
                 },
                 "description": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "form_field_id": {
@@ -12837,18 +12852,15 @@
                     "type": "number"
                 },
                 "coa_id": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "description": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "field_key": {
                     "type": "string"
                 },
                 "form_field_id": {
-                    "description": "Nullable for direct COA entries",
                     "type": "string"
                 },
                 "gross_amount": {

@@ -6155,6 +6155,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -6329,6 +6335,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -6438,7 +6450,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation.",
+                "description": "Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation",
                 "consumes": [
                     "application/json"
                 ],
@@ -6501,14 +6513,14 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "JSON containing status, message, and nested transaction data",
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6520,7 +6532,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6656,6 +6668,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -12740,14 +12758,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "create": {
-                    "description": "document IDs to link",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "delete": {
-                    "description": "document IDs to unlink",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -12766,7 +12782,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "description": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "form_field_id": {
@@ -12845,18 +12860,15 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "coa_id": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "description": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "field_key": {
                     "type": "string"
                 },
                 "form_field_id": {
-                    "description": "Nullable for direct COA entries",
                     "type": "string"
                 },
                 "gross_amount": {

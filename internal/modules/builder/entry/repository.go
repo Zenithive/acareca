@@ -16,34 +16,23 @@ import (
 var ErrNotFound = errors.New("form entry not found")
 
 type IRepository interface {
-	Create(ctx context.Context, e *FormEntry, values []*FormEntryValue) error
+	Create(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
+	Update(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
+	Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
-	Update(ctx context.Context, e *FormEntry, values []*FormEntryValue) error
-	Delete(ctx context.Context, id uuid.UUID) error
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*FormEntry, error)
 	CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error)
 	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
-
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
-
 	ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
 	CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
-
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error)
 	CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
 	ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error)
 	CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) (int, error)
-
-	// Transaction-based variants
-	CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
-	UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
-	DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
-
 	GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error)
-
 	GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, error)
-
 	// Document linking
 	LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
 	UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
@@ -58,45 +47,7 @@ func NewRepository(db *sqlx.DB) IRepository {
 	return &Repository{db: db}
 }
 
-// Create implements [IRepository].
-func (r *Repository) Create(ctx context.Context, e *FormEntry, values []*FormEntryValue) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	query := `
-		INSERT INTO tbl_form_entry (id, form_version_id, clinic_id, submitted_by, submitted_at, status, date)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING created_at, updated_at
-	`
-	if err := tx.QueryRowContext(ctx, query,
-		e.ID, e.FormVersionID, e.ClinicID, e.SubmittedBy, e.SubmittedAt, e.Status, e.Date,
-	).Scan(&e.CreatedAt, &e.UpdatedAt); err != nil {
-		return fmt.Errorf("create form entry: %w", err)
-	}
-
-	for _, v := range values {
-		v.EntryID = e.ID
-		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			RETURNING created_at, updated_at
-		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
-			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
-			return fmt.Errorf("create entry value: %w", err)
-		}
-	}
-
-	return tx.Commit()
-}
-
-// GetByID implements [IRepository].
 func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
-	// consider date
-
 	query := `SELECT 
             e.id, e.form_version_id, e.clinic_id, e.submitted_by, e.submitted_at, 
             e.status, e.date, e.created_at, e.updated_at,
@@ -125,78 +76,8 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 	return &e, values, nil
 }
 
-// Update implements [IRepository].
-func (r *Repository) Update(ctx context.Context, e *FormEntry, values []*FormEntryValue) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Update the parent entry
-	query := `
-        UPDATE tbl_form_entry
-        SET submitted_by = $1, submitted_at = $2, status = $3, date = $4, updated_at = now()
-        WHERE id = $5 AND deleted_at IS NULL
-        RETURNING created_at, updated_at
-    `
-	if err := tx.QueryRowContext(ctx, query, e.SubmittedBy, e.SubmittedAt, e.Status, e.Date, e.ID).
-		Scan(&e.CreatedAt, &e.UpdatedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("update form entry: %w", err)
-	}
-
-	// Only handle field values if new values were provided
-	// If 'values' is nil or empty, we skip this to avoid duplicating existing IDs
-	if len(values) > 0 {
-		// Mark previous values as "updated"
-		markOldQuery := `
-        UPDATE tbl_form_entry_value 
-        SET updated_at = now() 
-        WHERE entry_id = $1 AND updated_at IS NULL
-    `
-		if _, err := tx.ExecContext(ctx, markOldQuery, e.ID); err != nil {
-			return fmt.Errorf("old entry values: %w", err)
-		}
-
-		for _, v := range values {
-			v.EntryID = e.ID
-			valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
-			RETURNING created_at
-		`
-			if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
-				Scan(&v.CreatedAt); err != nil {
-				return fmt.Errorf("insert entry value: %w", err)
-			}
-			v.UpdatedAt = nil // Set to nil so the API response shows it as null for the new record
-		}
-	}
-
-	return tx.Commit()
-}
-
-// Delete implements [IRepository].
-func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
-	res, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("delete form entry: %w", err)
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// ListByFormVersionID implements [IRepository].
 func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*FormEntry, error) {
 	var permissionClause string
-	// 1. Define the permission check (Same as your Transactions logic)
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND c.practitioner_id IN (
             SELECT practitioner_id FROM tbl_invitation 
@@ -236,7 +117,6 @@ func (r *Repository) ListByFormVersionID(ctx context.Context, formVersionID uuid
 	return list, nil
 }
 
-// CountByFormVersionID implements [IRepository].
 func (r *Repository) CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error) {
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
@@ -276,7 +156,6 @@ func (r *Repository) CountByFormVersionID(ctx context.Context, formVersionID uui
 	return total, nil
 }
 
-// HasSubmittedEntryValuesForField implements [IRepository]. Returns true if the field has any entry values in SUBMITTED entries.
 func (r *Repository) HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error) {
 	query := `SELECT EXISTS (
 		SELECT 1 FROM tbl_form_entry_value v
@@ -330,16 +209,13 @@ var allowedTransactionColumns = map[string]string{
 }
 
 func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error) {
-	// Build permission clause based on role
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant: show transactions for invited practitioners (clinic-based + expenses)
 		permissionClause = ` AND (
 			c.practitioner_id IN (SELECT practitioner_id FROM tbl_invitation WHERE accountant_id = ? AND status = 'COMPLETED')
 			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
 		)`
 	} else {
-		// Practitioner: show own clinic transactions + own expenses
 		permissionClause = ` AND (
 			c.practitioner_id = ?
 			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
@@ -416,7 +292,6 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 }
 
 func (r *Repository) CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error) {
-	// Build permission clause based on role
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND (
@@ -454,8 +329,7 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter, act
 	return total, nil
 }
 
-// CreateTx - Transaction variant of Create
-func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
+func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
 	query := `
 		INSERT INTO tbl_form_entry (id, form_version_id, clinic_id, submitted_by, submitted_at, status, date)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -483,8 +357,7 @@ func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 	return nil
 }
 
-// UpdateTx - Transaction variant of Update
-func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
+func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error {
 	// Update the parent entry
 	query := `
         UPDATE tbl_form_entry
@@ -510,7 +383,7 @@ func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 		return fmt.Errorf("mark old entry values tx: %w", err)
 	}
 
-	// Insert new values as the current active records (updated_at stays NULL)
+	// Insert new values as the current active records
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
@@ -528,8 +401,7 @@ func (r *Repository) UpdateTx(ctx context.Context, tx *sqlx.Tx, e *FormEntry, va
 	return nil
 }
 
-// DeleteTx - Transaction variant of Delete
-func (r *Repository) DeleteTx(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
 	query := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
 	res, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
@@ -579,12 +451,10 @@ func (r *Repository) GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.
 	return &summary, nil
 }
 
-// ListCoaEntries returns grouped COA rows with aggregated amounts and entry counts
 func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant: show clinic entries they have access to + expense entries from those practitioners
 		permissionClause = ` AND (
 			c.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation 
@@ -596,7 +466,6 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			))
 		)`
 	} else {
-		// Practitioner: show own clinic entries + own expense entries
 		permissionClause = ` AND (
 			c.id IN (
 				SELECT id FROM tbl_clinic 
@@ -606,7 +475,6 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		)`
 	}
 
-	// Map filter fields to use start_date/end_date instead of date_from/date_to
 	allowedColumns := map[string]string{
 		"clinic_id":       "e.clinic_id",
 		"form_id":         "fm.id",
@@ -683,12 +551,10 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	return result, nil
 }
 
-// CountCoaEntries returns the total number of grouped COA rows
 func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant: show clinic entries they have access to + expense entries from those practitioners
 		permissionClause = ` AND (
 			c.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation
@@ -700,7 +566,6 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 			))
 		)`
 	} else {
-		// Practitioner: show own clinic entries + own expense entries
 		permissionClause = ` AND (
 			c.id IN (
 				SELECT id FROM tbl_clinic
@@ -749,12 +614,10 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	return total, nil
 }
 
-// ListCoaEntryDetails returns detailed entry rows for a specific COA
 func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntryDetail, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant: show clinic entries they have access to + expense entries from those practitioners
 		permissionClause = ` AND (
 			c.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation 
@@ -766,7 +629,6 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			))
 		)`
 	} else {
-		// Practitioner: show own clinic entries + own expense entries
 		permissionClause = ` AND (
 			c.id IN (
 				SELECT id FROM tbl_clinic 
@@ -877,14 +739,12 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			UpdatedAt:     row.UpdatedAt,
 		}
 
-		// Only include clinic_id, clinic_name, and form_name for non-expense entries
 		if !isExpense {
 			clinicID := row.ClinicID.String()
 			detail.ClinicID = &clinicID
 			detail.ClinicName = &row.ClinicName
 			detail.FormName = &row.FormName
 		} else {
-			// For expense entries, use form_field_name as supplier_name
 			detail.SupplierName = &row.FormFieldName
 		}
 
@@ -893,12 +753,10 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	return result, nil
 }
 
-// CountCoaEntryDetails returns the total number of entry details for a specific COA
 func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f common.Filter, actorID uuid.UUID, role string) (int, error) {
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant: show clinic entries they have access to + expense entries from those practitioners
 		permissionClause = ` AND (
 			c.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation
@@ -910,7 +768,6 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 			))
 		)`
 	} else {
-		// Practitioner: show own clinic entries + own expense entries
 		permissionClause = ` AND (
 			c.id IN (
 				SELECT id FROM tbl_clinic
@@ -962,7 +819,6 @@ func (r *Repository) GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, 
 	return name, err
 }
 
-// LinkDocuments inserts rows into tbl_map_entry_document for the given document IDs.
 func (r *Repository) LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error {
 	if len(documentIDs) == 0 {
 		return nil
@@ -979,7 +835,6 @@ func (r *Repository) LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uui
 	return nil
 }
 
-// UnlinkDocuments removes rows from tbl_map_entry_document for the given document IDs.
 func (r *Repository) UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error {
 	if len(documentIDs) == 0 {
 		return nil
@@ -993,7 +848,6 @@ func (r *Repository) UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID u
 	return nil
 }
 
-// GetDocumentsByEntryID returns all documents linked to an entry.
 func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUID) ([]*RsEntryDocument, error) {
 	query := `
 		SELECT
