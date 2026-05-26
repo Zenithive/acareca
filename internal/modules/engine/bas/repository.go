@@ -160,12 +160,29 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
 		SELECT
-			COALESCE(SUM(gross_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category != 'BAS_EXCLUDED'), 0) AS g1_total_sales_gross,
-			COALESCE(SUM(gst_amount) FILTER (WHERE section_type = 'COLLECTION' AND bas_category != 'BAS_EXCLUDED'), 0) AS label_1a_gst_on_sales,
-			COALESCE(SUM(gross_amount) FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee') AND bas_category != 'BAS_EXCLUDED'), 0) AS g11_total_purchases_gross,
-			COALESCE(SUM(gst_amount) FILTER (WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee') AND bas_category != 'BAS_EXCLUDED'), 0) AS label_1b_gst_on_purchases
+			COALESCE(SUM(gross_amount) FILTER (
+				WHERE account_type = 'Revenue'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS g1_total_sales_gross,
+
+			COALESCE(SUM(gst_amount) FILTER (
+				WHERE account_type = 'Revenue'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS label_1a_gst_on_sales,
+
+			COALESCE(SUM(gross_amount) FILTER (
+				WHERE account_type = 'Expense'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS g11_total_purchases_gross,
+
+			COALESCE(SUM(gst_amount) FILTER (
+				WHERE account_type = 'Expense'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS label_1b_gst_on_purchases
 		FROM vw_bas_line_items
-		WHERE practitioner_id = $1 AND date::DATE >= $2::DATE AND date::DATE <= $3::DATE
+		WHERE practitioner_id = $1
+		  AND submitted_at::DATE >= $2::DATE
+		  AND submitted_at::DATE <= $3::DATE
 	`
 	var row BASReportRow
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
@@ -177,8 +194,14 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	query := `
 		SELECT 
-			period_quarter, section_type, bas_category, coa_id, account_name,
-			SUM(net_amount) AS net_amount, SUM(gst_amount) AS gst_amount, SUM(gross_amount) AS gross_amount
+			period_quarter,
+			account_type,
+			bas_category,
+			coa_id,
+			account_name,
+			SUM(net_amount)   AS net_amount,
+			SUM(gst_amount)   AS gst_amount,
+			SUM(gross_amount) AS gross_amount
 		FROM vw_bas_line_items
 		WHERE practitioner_id IN (?)
 	`
@@ -191,25 +214,30 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid
 
 	if len(f.ParsedQuarterIDs) > 0 {
 		query += ` AND period_quarter >= (SELECT MIN(start_date) FROM tbl_financial_quarter WHERE id IN (?))
-		           AND period_quarter <= (SELECT MAX(end_date) FROM tbl_financial_quarter WHERE id IN (?))`
+				   AND period_quarter <= (SELECT MAX(end_date)   FROM tbl_financial_quarter WHERE id IN (?))`
 		args = append(args, f.ParsedQuarterIDs, f.ParsedQuarterIDs)
 	}
 
-	if len(f.ParsedQuarterIDs) == 0 && f.FinancialYearID != nil && *f.FinancialYearID != "" {
-		query += ` AND period_quarter BETWEEN (SELECT start_date FROM tbl_financial_year WHERE id = ?) 
-		                              AND (SELECT end_date FROM tbl_financial_year WHERE id = ?)`
+	if len(f.ParsedQuarterIDs) == 0 && f.FinancialYearID != nil {
+		query += ` AND period_quarter BETWEEN (
+				SELECT start_date FROM tbl_financial_year WHERE id = ?
+			) AND (
+				SELECT end_date FROM tbl_financial_year WHERE id = ?
+			)`
 		args = append(args, *f.FinancialYearID, *f.FinancialYearID)
 	}
 
-	query += ` GROUP BY period_quarter, section_type, bas_category, coa_id, account_name ORDER BY period_quarter ASC`
+	query += ` GROUP BY period_quarter, account_type, bas_category, coa_id, account_name
+			   ORDER BY period_quarter ASC`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
 		return nil, err
 	}
 
+	finalQuery := r.db.Rebind(fullQuery)
 	var rows []*BASLineItemRow
-	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(fullQuery), fullArgs...); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -265,8 +293,14 @@ func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID u
 func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	query := `
 		SELECT 
-			date AS period_quarter, section_type, bas_category, coa_id, account_name,
-			SUM(net_amount) AS net_amount, SUM(gst_amount) AS gst_amount, SUM(gross_amount) AS gross_amount
+			submitted_at AS period_quarter,
+			account_type,
+			bas_category,
+			coa_id,
+			account_name,
+			SUM(net_amount)   AS net_amount,
+			SUM(gst_amount)   AS gst_amount,
+			SUM(gross_amount) AS gross_amount
 		FROM vw_bas_line_items
 		WHERE practitioner_id IN (?)
 	`
@@ -276,24 +310,27 @@ func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid
 		query += " AND clinic_id = ?"
 		args = append(args, *clinicID)
 	}
+
 	if f.FromDate != nil && *f.FromDate != "" {
-		query += " AND date >= ?"
+		query += " AND submitted_at >= ?"
 		args = append(args, *f.FromDate)
 	}
 	if f.ToDate != nil && *f.ToDate != "" {
-		query += " AND date <= ?"
+		query += " AND submitted_at <= ?"
 		args = append(args, *f.ToDate)
 	}
 
-	query += ` GROUP BY date, section_type, bas_category, coa_id, account_name ORDER BY date ASC`
+	query += ` GROUP BY submitted_at, account_type, bas_category, coa_id, account_name
+			   ORDER BY submitted_at ASC`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
 		return nil, err
 	}
 
+	finalQuery := r.db.Rebind(fullQuery)
 	var rows []*BASLineItemRow
-	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(fullQuery), fullArgs...); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
 	}
 	return rows, nil
