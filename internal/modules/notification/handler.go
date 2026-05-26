@@ -42,7 +42,7 @@ func NewHandler(svc Service) IHandler {
 // @Security     BearerToken
 // @Router       /notification [get]
 func (h *handler) ListNotifications(c *gin.Context) {
-	entityID, ok := h.getEntityID(c)
+	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}
@@ -68,18 +68,18 @@ func (h *handler) ListNotifications(c *gin.Context) {
 // @Param        id   path      string  true  "Notification UUID"
 // @Success      200  {object}  response.RsBase
 // @Failure      401  {object}  response.RsError
-// @Failure      404  {object}  response.RsError
+// @Failure  	 404  {object}  response.RsError
 // @Failure      409  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken
 // @Router       /notification/{id}/read [patch]
 func (h *handler) MarkRead(c *gin.Context) {
-	entityID, ok := h.getEntityID(c)
+	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}
 
-	id, ok := h.parseUUID(c, "id")
+	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
@@ -102,7 +102,7 @@ func (h *handler) MarkRead(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /notification/read-all [patch]
 func (h *handler) MarkAllRead(c *gin.Context) {
-	entityID, ok := h.getEntityID(c)
+	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}
@@ -130,12 +130,12 @@ func (h *handler) MarkAllRead(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /notification/{id}/dismiss [patch]
 func (h *handler) MarkDismissed(c *gin.Context) {
-	entityID, ok := h.getEntityID(c)
+	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}
 
-	id, ok := h.parseUUID(c, "id")
+	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
@@ -162,7 +162,7 @@ func (h *handler) MarkDismissed(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /notification/dismiss [patch]
 func (h *handler) MarkAllDismissed(c *gin.Context) {
-	entityID, ok := h.getEntityID(c)
+	entityID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}
@@ -180,19 +180,6 @@ func (h *handler) MarkAllDismissed(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "dismissed")
 }
 
-func (h *handler) handleTransitionError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, ErrNotFound):
-		response.Error(c, http.StatusNotFound, err)
-	case errors.Is(err, ErrInvalidTransition):
-		response.Error(c, http.StatusConflict, err)
-	case errors.Is(err, ErrMaxRetriesExceeded):
-		response.Error(c, http.StatusUnprocessableEntity, err)
-	default:
-		response.Error(c, http.StatusInternalServerError, err)
-	}
-}
-
 // @Summary      Get notification preferences
 // @Description  Returns the current channel preferences for the authenticated user.
 // @Tags         notification
@@ -203,7 +190,7 @@ func (h *handler) handleTransitionError(c *gin.Context, err error) {
 // @Security     BearerToken
 // @Router       /notification/preferences [get]
 func (h *handler) GetPreferences(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := util.GetUserID(c)
 	if !ok {
 		return
 	}
@@ -228,12 +215,13 @@ func (h *handler) GetPreferences(c *gin.Context) {
 // @Security     BearerToken
 // @Router       /notification/preferences [put]
 func (h *handler) UpdatePreference(c *gin.Context) {
-	userID, okUser := h.getUserID(c)
-	actorID, ok := h.getEntityID(c)
-	role := c.GetString("role")
-	if !ok || !okUser {
+	userID, okUser := util.GetUserID(c)
+	actorID, okEntity := util.GetEntityID(c)
+	if !okUser || !okEntity {
 		return
 	}
+
+	role := c.GetString("role")
 
 	var rq RqUpdatePreference
 	if err := c.ShouldBindJSON(&rq); err != nil {
@@ -250,29 +238,15 @@ func (h *handler) UpdatePreference(c *gin.Context) {
 	response.JSON(c, http.StatusOK, nil, "Notification preferences updated successfully")
 }
 
-// getEntityID retrieves entity ID from context, sends error response and returns false if missing
-func (h *handler) getEntityID(c *gin.Context) (uuid.UUID, bool) {
-	entityID, ok := util.GetEntityID(c)
-	if !ok {
-		return uuid.Nil, false
+func (h *handler) handleTransitionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		response.Error(c, http.StatusNotFound, err)
+	case errors.Is(err, ErrInvalidTransition):
+		response.Error(c, http.StatusConflict, err)
+	case errors.Is(err, ErrMaxRetriesExceeded):
+		response.Error(c, http.StatusUnprocessableEntity, err)
+	default:
+		response.Error(c, http.StatusInternalServerError, err)
 	}
-	return entityID, true
-}
-
-// getUserID retrieves user ID from context, sends error response and returns false if missing
-func (h *handler) getUserID(c *gin.Context) (uuid.UUID, bool) {
-	userID, ok := util.GetUserID(c)
-	if !ok {
-		return uuid.Nil, false
-	}
-	return userID, true
-}
-
-// parseUUID retrieves and parses UUID from path, sends error response and returns false if invalid
-func (h *handler) parseUUID(c *gin.Context, param string) (uuid.UUID, bool) {
-	id, ok := util.ParseUuidID(c, param)
-	if !ok {
-		return uuid.Nil, false
-	}
-	return id, true
 }
