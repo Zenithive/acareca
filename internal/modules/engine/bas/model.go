@@ -27,22 +27,13 @@ type BASSummaryRow struct {
 	PeriodQuarter  time.Time `db:"period_quarter"`
 	PeriodYear     time.Time `db:"period_year"`
 
-	// Sales
-	G1TotalSalesGross float64 `db:"g1_total_sales_gross"`
-	G3GSTFreeSales    float64 `db:"g3_gst_free_sales"`
-	G8TaxableSales    float64 `db:"g8_taxable_sales"`
-	Label1AGSTOnSales float64 `db:"label_1a_gst_on_sales"`
-
-	// Purchases
+	G1TotalSalesGross      float64 `db:"g1_total_sales_gross"`
+	Label1AGSTOnSales      float64 `db:"label_1a_gst_on_sales"`
 	G11TotalPurchasesGross float64 `db:"g11_total_purchases_gross"`
-	G14GSTFreePurchases    float64 `db:"g14_gst_free_purchases"`
-	G15TaxablePurchases    float64 `db:"g15_taxable_purchases"`
 	Label1BGSTOnPurchases  float64 `db:"label_1b_gst_on_purchases"`
-
-	// Net
-	NetGSTPayable     float64 `db:"net_gst_payable"`
-	TotalSalesNet     float64 `db:"total_sales_net"`
-	TotalPurchasesNet float64 `db:"total_purchases_net"`
+	NetGSTPayable          float64 `db:"net_gst_payable"`
+	TotalSalesNet          float64 `db:"total_sales_net"`
+	TotalPurchasesNet      float64 `db:"total_purchases_net"`
 }
 
 // BASByAccountRow maps one row of vw_bas_by_account.
@@ -51,6 +42,7 @@ type BASByAccountRow struct {
 	PractitionerID uuid.UUID `db:"practitioner_id"`
 	PeriodQuarter  time.Time `db:"period_quarter"`
 	PeriodYear     time.Time `db:"period_year"`
+	AccountType    string    `db:"account_type"`
 	SectionType    string    `db:"section_type"`
 	BASCategory    string    `db:"bas_category"`
 	AccountCode    int16     `db:"account_code"`
@@ -177,26 +169,15 @@ type BASReportRow struct {
 }
 
 type RsBASSummary struct {
-	// Period
-	PeriodQuarter string `json:"period_quarter"` // e.g. "2026-01-01"
-	PeriodYear    string `json:"period_year"`    // e.g. "2026-01-01"
-
-	// Sales (ATO labels)
-	G1TotalSalesGross float64 `json:"g1_total_sales_gross"`
-	G3GSTFreeSales    float64 `json:"g3_gst_free_sales"`
-	G8TaxableSales    float64 `json:"g8_taxable_sales"`
-	Label1AGSTOnSales float64 `json:"label_1a_gst_on_sales"`
-
-	// Purchases (ATO labels)
+	PeriodQuarter          string  `json:"period_quarter"`
+	PeriodYear             string  `json:"period_year"`
+	G1TotalSalesGross      float64 `json:"g1_total_sales_gross"`
+	Label1AGSTOnSales      float64 `json:"label_1a_gst_on_sales"`
 	G11TotalPurchasesGross float64 `json:"g11_total_purchases_gross"`
-	G14GSTFreePurchases    float64 `json:"g14_gst_free_purchases"`
-	G15TaxablePurchases    float64 `json:"g15_taxable_purchases"`
 	Label1BGSTOnPurchases  float64 `json:"label_1b_gst_on_purchases"`
-
-	// Net GST
-	NetGSTPayable     float64 `json:"net_gst_payable"`
-	TotalSalesNet     float64 `json:"total_sales_net"`
-	TotalPurchasesNet float64 `json:"total_purchases_net"`
+	NetGSTPayable          float64 `json:"net_gst_payable"`
+	TotalSalesNet          float64 `json:"total_sales_net"`
+	TotalPurchasesNet      float64 `json:"total_purchases_net"`
 }
 
 func (r *BASSummaryRow) ToRs() RsBASSummary {
@@ -204,12 +185,8 @@ func (r *BASSummaryRow) ToRs() RsBASSummary {
 		PeriodQuarter:          r.PeriodQuarter.Format("2006-01-02"),
 		PeriodYear:             r.PeriodYear.Format("2006-01-02"),
 		G1TotalSalesGross:      r.G1TotalSalesGross,
-		G3GSTFreeSales:         r.G3GSTFreeSales,
-		G8TaxableSales:         r.G8TaxableSales,
 		Label1AGSTOnSales:      r.Label1AGSTOnSales,
 		G11TotalPurchasesGross: r.G11TotalPurchasesGross,
-		G14GSTFreePurchases:    r.G14GSTFreePurchases,
-		G15TaxablePurchases:    r.G15TaxablePurchases,
 		Label1BGSTOnPurchases:  r.Label1BGSTOnPurchases,
 		NetGSTPayable:          r.NetGSTPayable,
 		TotalSalesNet:          r.TotalSalesNet,
@@ -331,7 +308,7 @@ type BASQuarterInfo struct {
 
 type BASLineItemRow struct {
 	PeriodQuarter time.Time `db:"period_quarter"`
-	SectionType   *string   `db:"section_type"`
+	AccountType   *string   `db:"account_type"`
 	BasCategory   string    `db:"bas_category"`
 	AccountName   string    `db:"account_name"`
 	NetAmount     float64   `db:"net_amount"`
