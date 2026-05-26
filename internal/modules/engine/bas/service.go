@@ -21,6 +21,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -276,8 +277,8 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	// account and all flow into mapToBASColumn for correct summing.
 	rowKey := func(r *BASLineItemRow) string {
 		sec := ""
-		if r.SectionType != nil {
-			sec = *r.SectionType
+		if r.AccountType != nil {
+			sec = *r.AccountType
 		}
 		return fmt.Sprintf("%s-%s", r.CoaID, sec)
 	}
@@ -414,44 +415,35 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	expenseAccounts := map[string]*accGroup{}
 
 	var b1 BASAmount
-	var mgtFee, labWork BASAmount // Only keep these two as separate totals
+	var mgtFee, labWork BASAmount
 
 	for _, r := range rows {
 		if BASCategory(r.BasCategory) == BASCategoryBASExcluded {
 			continue
 		}
 
-		sectionType := ""
-		if r.SectionType != nil {
-			sectionType = strings.ToUpper(*r.SectionType)
+		accountType := ""
+		if r.AccountType != nil {
+			accountType = strings.ToUpper(*r.AccountType)
 		}
 
-		if sectionType == "COLLECTION" {
-			// Use coa_id as the key to prevent duplicate accounts with same name
+		gstToAdd := r.GstAmount
+		if BASCategory(r.BasCategory) == BASCategoryGSTFree {
+			gstToAdd = 0
+		}
+
+		if accountType == "REVENUE" {
 			if _, seen := incomeAccounts[r.CoaID]; !seen {
 				incomeOrder = append(incomeOrder, r.CoaID)
 				incomeAccounts[r.CoaID] = &accGroup{Name: r.AccountName}
 			}
-
-			// For GST-free items, don't add GST amount
-			gstToAdd := r.GstAmount
-			if BASCategory(r.BasCategory) == BASCategoryGSTFree {
-				gstToAdd = 0
-			}
-
 			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
 			incomeAccounts[r.CoaID].Amounts.GST += gstToAdd
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
 			continue
 		}
 
-		// --- Process All Expenses ---
-		// For GST-free items, don't add GST amount
-		gstToAdd := r.GstAmount
-		if BASCategory(r.BasCategory) == BASCategoryGSTFree {
-			gstToAdd = 0
-		}
-
+		// Expense
 		b1.Gross += gstToAdd
 		accNameLower := strings.ToLower(r.AccountName)
 
@@ -465,8 +457,6 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			labWork.GST += gstToAdd
 			labWork.Net += r.NetAmount
 		default:
-			// Treat everything else as an individual line item
-			// Use a composite key with coa_id to prevent duplicate accounts with same name
 			compositeKey := fmt.Sprintf("%s-%s", r.CoaID, r.AccountName)
 			if _, seen := expenseAccounts[compositeKey]; !seen {
 				expenseOrder = append(expenseOrder, compositeKey)
@@ -491,10 +481,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
-
-		// Add all income items (filtering already done during normalization)
 		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
-
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
 		totalIncome.Net += fAmts.Net
@@ -505,7 +492,6 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	mgtFee = finalize(mgtFee)
 	labWork = finalize(labWork)
 
-	// Only add Management Fee and Lab Work if they have non-zero values
 	col.Sections.Expenses.Items = []BASLineItem{}
 
 	if mgtFee.Gross != 0 || mgtFee.GST != 0 || mgtFee.Net != 0 {
@@ -514,7 +500,6 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 			Amounts: mgtFee,
 		})
 	}
-
 	if labWork.Gross != 0 || labWork.GST != 0 || labWork.Net != 0 {
 		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
 			Name:    "Laboratory Work (GST Free)",
@@ -526,18 +511,15 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	tGST := mgtFee.GST + labWork.GST
 	tNet := mgtFee.Net + labWork.Net
 
-	for _, name := range expenseOrder {
-		acc := expenseAccounts[name]
+	for _, key := range expenseOrder {
+		acc := expenseAccounts[key]
 		fAmts := finalize(acc.Amounts)
-
-		// Only add expense items with non-zero values
 		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
 			col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
 				Name:    acc.Name,
 				Amounts: fAmts,
 			})
 		}
-
 		tGross += fAmts.Gross
 		tGST += fAmts.GST
 		tNet += fAmts.Net
@@ -549,7 +531,6 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		Net:   roundToTwo(tNet),
 	}
 
-	// --- GST Payable ---
 	col.NetGSTPayable = roundToTwo(totalIncome.GST - subtotalExpenses.GST)
 
 	return col
@@ -558,10 +539,6 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 // Helper to round values after calculation
 func roundToTwo(val float64) float64 {
 	return math.Round(val*100) / 100
-}
-
-func ptrString(s string) *string {
-	return &s
 }
 
 type QuarterData struct {
@@ -729,7 +706,7 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1F0F2"}, Pattern: 1},
 	})
 	labelStyle, _ := xl.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
-	currencyStyle, _ := xl.NewStyle(&excelize.Style{CustomNumFmt: ptrString("$#,##0.00")})
+	currencyStyle, _ := xl.NewStyle(&excelize.Style{CustomNumFmt: lo.ToPtr("$#,##0.00")})
 	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
 		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
@@ -858,9 +835,10 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 
 	for _, label := range paygWithheld {
 		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), label)
-		if label == "Period start" {
+		switch label {
+		case "Period start":
 			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), periodStartCell)
-		} else if label == "Period end" {
+		case "Period end":
 			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), periodEndCell)
 		}
 		rowOffset++
@@ -889,11 +867,6 @@ func (s *service) generateActivityExcelReport(ctx context.Context, quarters []Qu
 	xl.SetColWidth(sheet, "B", "B", 25)
 
 	return xl.WriteToBuffer()
-}
-
-type activityHTMLData struct {
-	Quarters []QuarterData
-	Prev     PeriodInfo
 }
 
 type PeriodInfo struct {
@@ -1747,7 +1720,7 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 			GST: roundToTwo(r.GstAmount), Net: roundToTwo(r.NetAmount),
 		}
 
-		if r.SectionType != nil && strings.ToUpper(*r.SectionType) == "COLLECTION" {
+		if r.AccountType != nil && strings.ToUpper(*r.AccountType) == "REVENUE" {
 			if _, ok := incomeMap[r.CoaID]; !ok {
 				incomeMap[r.CoaID] = &BASAccountGroup{ID: r.CoaID, Name: r.AccountName}
 			}

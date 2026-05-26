@@ -3,7 +3,6 @@ package bas
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -199,31 +198,31 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
 	query := `
-			SELECT
-				COALESCE(SUM(gross_amount) FILTER (
-					WHERE section_type = 'COLLECTION'
-					AND bas_category != 'BAS_EXCLUDED'
-				), 0) AS g1_total_sales_gross,
+		SELECT
+			COALESCE(SUM(gross_amount) FILTER (
+				WHERE account_type = 'Revenue'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS g1_total_sales_gross,
 
-				COALESCE(SUM(gst_amount) FILTER (
-					WHERE section_type = 'COLLECTION'
-					AND bas_category != 'BAS_EXCLUDED'
-				), 0) AS label_1a_gst_on_sales,
+			COALESCE(SUM(gst_amount) FILTER (
+				WHERE account_type = 'Revenue'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS label_1a_gst_on_sales,
 
-				COALESCE(SUM(gross_amount) FILTER (
-					WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
-					AND bas_category != 'BAS_EXCLUDED'
-				), 0) AS g11_total_purchases_gross,
+			COALESCE(SUM(gross_amount) FILTER (
+				WHERE account_type = 'Expense'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS g11_total_purchases_gross,
 
-				COALESCE(SUM(gst_amount) FILTER (
-					WHERE (section_type IN ('COST', 'OTHER_COST', 'EXPENSE_ENTRY') OR field_label = 'Total S&F Fee')
-					AND bas_category != 'BAS_EXCLUDED'
-				), 0) AS label_1b_gst_on_purchases
-			FROM vw_bas_line_items
-        	WHERE practitioner_id = $1
-          AND date::DATE >= $2::DATE
-          AND date::DATE <= $3::DATE
-    `
+			COALESCE(SUM(gst_amount) FILTER (
+				WHERE account_type = 'Expense'
+				AND bas_category != 'BAS_EXCLUDED'
+			), 0) AS label_1b_gst_on_purchases
+		FROM vw_bas_line_items
+		WHERE practitioner_id = $1
+		  AND submitted_at::DATE >= $2::DATE
+		  AND submitted_at::DATE <= $3::DATE
+	`
 	var row BASReportRow
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
 		return nil, err
@@ -233,18 +232,18 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 
 func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	query := `
-        SELECT 
-            period_quarter,
-            section_type,
-            bas_category,
-            coa_id,
-            account_name,
-            SUM(net_amount) AS net_amount,
-            SUM(gst_amount) AS gst_amount,
-            SUM(gross_amount) AS gross_amount
-        FROM vw_bas_line_items
-        WHERE practitioner_id IN (?)
-    `
+		SELECT 
+			period_quarter,
+			account_type,
+			bas_category,
+			coa_id,
+			account_name,
+			SUM(net_amount)   AS net_amount,
+			SUM(gst_amount)   AS gst_amount,
+			SUM(gross_amount) AS gross_amount
+		FROM vw_bas_line_items
+		WHERE practitioner_id IN (?)
+	`
 	args := []interface{}{practitionerIDs}
 
 	if clinicID != nil && *clinicID != uuid.Nil {
@@ -253,26 +252,22 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid
 	}
 
 	if len(f.ParsedQuarterIDs) > 0 {
-
 		query += ` AND period_quarter >= (SELECT MIN(start_date) FROM tbl_financial_quarter WHERE id IN (?))
-               AND period_quarter <= (SELECT MAX(end_date) FROM tbl_financial_quarter WHERE id IN (?))`
-
+				   AND period_quarter <= (SELECT MAX(end_date)   FROM tbl_financial_quarter WHERE id IN (?))`
 		args = append(args, f.ParsedQuarterIDs, f.ParsedQuarterIDs)
 	}
 
-	// 3. Handle Financial Year (Fall-through logic)
 	if len(f.ParsedQuarterIDs) == 0 && f.FinancialYearID != nil {
 		query += ` AND period_quarter BETWEEN (
-                SELECT start_date FROM tbl_financial_year WHERE id = ?
-            ) AND (
-                SELECT end_date FROM tbl_financial_year WHERE id = ?
-            )`
-
+				SELECT start_date FROM tbl_financial_year WHERE id = ?
+			) AND (
+				SELECT end_date FROM tbl_financial_year WHERE id = ?
+			)`
 		args = append(args, *f.FinancialYearID, *f.FinancialYearID)
 	}
 
-	query += ` GROUP BY period_quarter, section_type, bas_category, coa_id, account_name 
-               ORDER BY period_quarter ASC`
+	query += ` GROUP BY period_quarter, account_type, bas_category, coa_id, account_name
+			   ORDER BY period_quarter ASC`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
@@ -280,16 +275,9 @@ func (r *repository) GetBASLineItems(ctx context.Context, practitionerIDs []uuid
 	}
 
 	finalQuery := r.db.Rebind(fullQuery)
-
 	var rows []*BASLineItemRow
-
 	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
-	}
-
-	for _, r := range rows {
-		if r.SectionType != nil && strings.Contains(strings.ToUpper(*r.SectionType), "EXPENSE") {
-		}
 	}
 	return rows, nil
 }
@@ -354,20 +342,19 @@ func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID u
 }
 
 func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
-	// We use 'date' instead of 'period_quarter' to prevent the quarter mapping on custom ranges
 	query := `
-        SELECT 
-            date AS period_quarter, -- Aliased to keep the struct compatible
-            section_type,
-            bas_category,
-            coa_id,
-            account_name,
-            SUM(net_amount) AS net_amount,
-            SUM(gst_amount) AS gst_amount,
-            SUM(gross_amount) AS gross_amount
-        FROM vw_bas_line_items
-        WHERE practitioner_id IN (?)
-    `
+		SELECT 
+			submitted_at AS period_quarter,
+			account_type,
+			bas_category,
+			coa_id,
+			account_name,
+			SUM(net_amount)   AS net_amount,
+			SUM(gst_amount)   AS gst_amount,
+			SUM(gross_amount) AS gross_amount
+		FROM vw_bas_line_items
+		WHERE practitioner_id IN (?)
+	`
 	args := []interface{}{practitionerIDs}
 
 	if clinicID != nil && *clinicID != uuid.Nil {
@@ -375,18 +362,17 @@ func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid
 		args = append(args, *clinicID)
 	}
 
-	// Filter by the actual transaction date
 	if f.FromDate != nil && *f.FromDate != "" {
-		query += " AND date >= ?"
+		query += " AND submitted_at >= ?"
 		args = append(args, *f.FromDate)
 	}
 	if f.ToDate != nil && *f.ToDate != "" {
-		query += " AND date <= ?"
+		query += " AND submitted_at <= ?"
 		args = append(args, *f.ToDate)
 	}
 
-	query += ` GROUP BY date, section_type, bas_category, coa_id, account_name 
-               ORDER BY date ASC`
+	query += ` GROUP BY submitted_at, account_type, bas_category, coa_id, account_name
+			   ORDER BY submitted_at ASC`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
@@ -395,10 +381,8 @@ func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid
 
 	finalQuery := r.db.Rebind(fullQuery)
 	var rows []*BASLineItemRow
-
 	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, err
 	}
-
 	return rows, nil
 }
