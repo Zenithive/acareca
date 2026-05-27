@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS tbl_template_setting (
 
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NULL,
-    deleted_at  TIMESTAMPTZ NULL,
+    deleted_at  TIMESTAMPTZ NULL
 );
 
 
