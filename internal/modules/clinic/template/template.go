@@ -359,3 +359,20 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 			IsActive:  true,
 		}}
 }
+
+func DefaultSettings(templateId uuid.UUID) Setting {
+	return Setting{
+		TemplateId:       templateId,
+		PrimaryColor:     "#4247e7",
+		AccentColor:      "#000000",
+		BodyFontFamily:   "Inter",
+		HeaderFontFamily: "Inter",
+		IsLogo:           false,
+		Logo:             nil,
+		LetterHead:       nil,
+		Footer:           nil,
+		TermText:         nil,
+		IsWaterMark:      false,
+		WaterMarkText:    nil,
+	}
+}

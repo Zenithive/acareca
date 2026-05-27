@@ -32,6 +32,10 @@ func (s *Service) Create(ctx context.Context, rq RqTemplate) (*RsTemplate, error
 		return nil, err
 	}
 	rs := t.ToRs()
+	st := DefaultSettings(t.Id)
+	if err := s.repo.CreateSetting(ctx, &st); err != nil {
+		return nil, err
+	}
 	return &rs, nil
 }
 
@@ -80,8 +84,8 @@ func (s *Service) UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSet
 	return &rs, nil
 }
 
-func (s *Service) BulkCreate(ctx context.Context, clincId uuid.UUID) (*[]RsTemplate, error) {
-	rqs := DefaultTemplates(clincId)
+func (s *Service) BulkCreate(ctx context.Context, clinicId uuid.UUID) (*[]RsTemplate, error) {
+	rqs := DefaultTemplates(clinicId)
 
 	templates := make([]Template, 0, len(rqs))
 	for _, rq := range rqs {
@@ -90,6 +94,13 @@ func (s *Service) BulkCreate(ctx context.Context, clincId uuid.UUID) (*[]RsTempl
 
 	if err := s.repo.BulkCreate(ctx, templates); err != nil {
 		return nil, err
+	}
+
+	for _, t := range templates {
+		st := DefaultSettings(t.Id)
+		if err := s.repo.CreateSetting(ctx, &st); err != nil {
+			return nil, err
+		}
 	}
 
 	rs := make([]RsTemplate, 0, len(templates))

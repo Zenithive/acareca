@@ -17,6 +17,7 @@ type IRepository interface {
 	List(ctx context.Context) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error)
 	UpdateSetting(ctx context.Context, st *Setting) error
+	CreateSetting(ctx context.Context, st *Setting) error
 }
 
 type Repository struct {
@@ -29,8 +30,8 @@ func NewRepository(db *sqlx.DB) IRepository {
 
 func (r *Repository) Create(ctx context.Context, t *Template) error {
 	const q = `
-		INSERT INTO tbl_template (clinic_id, name, html, css, template, is_default, is_active)
-		VALUES (:clinic_id, :name, :html, :css, :template, :is_default, :is_active)
+		INSERT INTO tbl_template (clinic_id, name, html, css, is_default, is_active)
+		VALUES (:clinic_id, :name, :html, :css, :is_default, :is_active)
 		RETURNING id, created_at`
 	rows, err := r.db.NamedQueryContext(ctx, q, t)
 	if err != nil {
@@ -46,7 +47,7 @@ func (r *Repository) Create(ctx context.Context, t *Template) error {
 func (r *Repository) Update(ctx context.Context, t *Template) error {
 	const q = `
 		UPDATE tbl_template
-		SET name = :name, html = :html, css = :css, template = :template, updated_at = NOW()
+		SET name = :name, html = :html, css = :css, updated_at = NOW()
 		WHERE id = :id AND clinic_id = :clinic_id AND deleted_at IS NULL`
 	_, err := r.db.NamedExecContext(ctx, q, t)
 	return err
@@ -128,8 +129,8 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting) error {
 
 func (r *Repository) BulkCreate(ctx context.Context, templates []Template) error {
 	const q = `
-		INSERT INTO tbl_template (clinic_id, name, html, css, template, is_default, is_active)
-		VALUES (:clinic_id, :name, :html, :css, :template, :is_default, :is_active)
+		INSERT INTO tbl_template (clinic_id, name, html, css, is_default, is_active)
+		VALUES (:clinic_id, :name, :html, :css, :is_default, :is_active)
 		RETURNING id, created_at`
 
 	rows, err := r.db.NamedQueryContext(ctx, q, templates)
@@ -144,6 +145,49 @@ func (r *Repository) BulkCreate(ctx context.Context, templates []Template) error
 			return err
 		}
 		i++
+	}
+	return rows.Err()
+}
+
+func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
+	const q = `
+		INSERT INTO tbl_template_setting (
+			template_id,
+			primary_color,
+			accent_color,
+			body_font_family,
+			header_font_family,
+			is_logo,
+			logo_id,
+			letterhead_id,
+			footer_id,
+			terms_text,
+			is_watermark,
+			watermark_text
+		) VALUES (
+			:template_id,
+			:primary_color,
+			:accent_color,
+			:body_font_family,
+			:header_font_family,
+			:is_logo,
+			:logo_id,
+			:letterhead_id,
+			:footer_id,
+			:terms_text,
+			:is_watermark,
+			:watermark_text
+		)
+		RETURNING id, created_at`
+
+	rows, err := r.db.NamedQueryContext(ctx, q, st)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		return rows.StructScan(st)
 	}
 	return rows.Err()
 }

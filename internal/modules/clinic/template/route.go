@@ -10,4 +10,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	template.GET("/:id", h.Get)
 	template.PUT("/:id", h.Update)
 	template.DELETE("/:id", h.Delete)
+
+	template.PUT("/:id/setting", h.UpdateSetting)
+	template.GET("/:id/setting", h.GetSetting)
 }

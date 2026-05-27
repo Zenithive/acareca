@@ -8,64 +8,70 @@ import (
 )
 
 type RqTemplate struct {
-	Id        uuid.UUID `json:"-"`
-	ClinicId  uuid.UUID `json:"clinic_id"`
-	Name      string    `json:"name"`
-	Html      string    `json:"html"`
-	Css       string    `json:"css"`
-	IsDefault bool      `json:"is_default"`
-	IsActive  bool      `json:"is_active"`
+	Id          uuid.UUID `json:"-"`
+	ClinicId    uuid.UUID `json:"clinic_id"`
+	Description *string   `json:"description"`
+	Name        string    `json:"name"`
+	Html        string    `json:"html"`
+	Css         string    `json:"css"`
+	IsDefault   bool      `json:"is_default"`
+	IsActive    bool      `json:"is_active"`
 }
 
 func (rq *RqTemplate) ToDB() Template {
 	return Template{
-		Name:      rq.Name,
-		ClinicId:  rq.ClinicId,
-		Html:      rq.Html,
-		Css:       rq.Css,
-		IsDefault: rq.IsDefault,
-		IsActive:  rq.IsActive,
+		Name:        rq.Name,
+		ClinicId:    rq.ClinicId,
+		Description: rq.Description,
+		Html:        rq.Html,
+		Css:         rq.Css,
+		IsDefault:   rq.IsDefault,
+		IsActive:    rq.IsActive,
 	}
 }
 
 type Template struct {
-	Id        uuid.UUID `db:"id"`
-	ClinicId  uuid.UUID `db:"clinicId"`
-	Name      string    `db:"name"`
-	Html      string    `db:"html"`
-	Css       string    `db:"css"`
-	IsDefault bool      `db:"is_default"`
-	IsActive  bool      `db:"is_active"`
+	Id          uuid.UUID `db:"id"`
+	ClinicId    uuid.UUID `db:"clinic_id"`
+	Description *string   `db:"description"`
+	Name        string    `db:"name"`
+	Html        string    `db:"html"`
+	Css         string    `db:"css"`
+	IsDefault   bool      `db:"is_default"`
+	IsActive    bool      `db:"is_active"`
 
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
+	CreatedAt time.Time  `db:"created_at"`
+	UpdatedAt *time.Time `db:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at"`
 }
 
 func (tp *Template) ToRs() RsTemplate {
 	return RsTemplate{
-		Id:        tp.Id,
-		ClinicId:  tp.ClinicId,
-		Name:      tp.Name,
-		Html:      tp.Html,
-		Css:       tp.Css,
-		IsDefault: tp.IsDefault,
-		IsActive:  tp.IsActive,
-		CreatedAt: tp.CreatedAt,
-		UpdatedAt: tp.UpdatedAt,
+		Id:          tp.Id,
+		ClinicId:    tp.ClinicId,
+		Description: tp.Description,
+		Name:        tp.Name,
+		Html:        tp.Html,
+		Css:         tp.Css,
+		IsDefault:   tp.IsDefault,
+		IsActive:    tp.IsActive,
+		CreatedAt:   tp.CreatedAt,
+		UpdatedAt:   tp.UpdatedAt,
 	}
 }
 
 type RsTemplate struct {
-	Id        uuid.UUID `json:"id"`
-	ClinicId  uuid.UUID `json:"clinic_id"`
-	Name      string    `json:"name"`
-	Html      string    `json:"html"`
-	Css       string    `json:"css"`
-	IsDefault bool      `json:"is_default"`
-	IsActive  bool      `json:"is_active"`
+	Id          uuid.UUID `json:"id"`
+	ClinicId    uuid.UUID `json:"clinic_id"`
+	Description *string   `json:"description"`
+	Name        string    `json:"name"`
+	Html        string    `json:"html"`
+	Css         string    `json:"css"`
+	IsDefault   bool      `json:"is_default"`
+	IsActive    bool      `json:"is_active"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 type RqUpdateSetting struct {
@@ -131,18 +137,36 @@ type Setting struct {
 	BodyFontFamily   string         `db:"body_font_family"`
 	HeaderFontFamily string         `db:"header_font_family"`
 	IsLogo           bool           `db:"is_logo"`
-	Logo             *file.Document `db:"logo"`
-	LetterHead       *file.Document `db:"letter_head"`
-	Footer           *file.Document `db:"footer"`
-	TermText         *string        `db:"term_text"`
-	IsWaterMark      bool           `db:"is_water_mark"`
-	WaterMarkText    *string        `db:"water_mark_text"`
+	Logo             *file.Document `db:"logo_id"`
+	LetterHead       *file.Document `db:"letterhead_id"`
+	Footer           *file.Document `db:"footer_id"`
+	TermText         *string        `db:"terms_text"`
+	IsWaterMark      bool           `db:"is_watermark"`
+	WaterMarkText    *string        `db:"watermark_text"`
 
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt *time.Time `db:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at"`
 }
 
 func (st *Setting) ToRs() RsSetting {
+	var logo *file.RsDocument
+	if st.Logo != nil {
+		rs := st.Logo.ToRsDocument()
+		logo = rs
+	}
+
+	var letterhead *file.RsDocument
+	if st.LetterHead != nil {
+		rs := st.LetterHead.ToRsDocument()
+		letterhead = rs
+	}
+
+	var footer *file.RsDocument
+	if st.Footer != nil {
+		rs := st.Footer.ToRsDocument()
+		footer = rs
+	}
 	return RsSetting{
 		Id:               st.Id,
 		TemplateId:       st.TemplateId,
@@ -151,9 +175,9 @@ func (st *Setting) ToRs() RsSetting {
 		BodyFontFamily:   st.BodyFontFamily,
 		HeaderFontFamily: st.HeaderFontFamily,
 		IsLogo:           st.IsLogo,
-		Logo:             st.Logo.ToRsDocument(),
-		LetterHead:       st.LetterHead.ToRsDocument(),
-		Footer:           st.Footer.ToRsDocument(),
+		Logo:             logo,
+		LetterHead:       letterhead,
+		Footer:           footer,
 		TermText:         st.TermText,
 		IsWaterMark:      st.IsWaterMark,
 		WaterMarkText:    st.WaterMarkText,

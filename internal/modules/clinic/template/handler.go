@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
@@ -37,7 +38,7 @@ func (h *Handler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, rs)
+	response.JSON(c, http.StatusCreated, rs, "template created successfully")
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -57,7 +58,7 @@ func (h *Handler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, rs)
+	response.JSON(c, http.StatusOK, rs, "template updated successfully!")
 }
 
 func (h *Handler) Delete(c *gin.Context) {
@@ -77,7 +78,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Status(http.StatusNoContent)
+	response.JSON(c, http.StatusNoContent, nil, "template delete successfully")
 }
 
 func (h *Handler) Get(c *gin.Context) {
@@ -93,12 +94,13 @@ func (h *Handler) Get(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clinic id"})
 		return
 	}
+
 	rs, err := h.svc.Get(c.Request.Context(), clinicId, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, rs)
+	response.JSON(c, http.StatusOK, rs, "")
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -107,7 +109,7 @@ func (h *Handler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, rs)
+	response.JSON(c, http.StatusOK, rs, "")
 }
 
 func (h *Handler) GetSetting(c *gin.Context) {
@@ -121,7 +123,7 @@ func (h *Handler) GetSetting(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, rs)
+	response.JSON(c, http.StatusOK, rs, "")
 }
 
 func (h *Handler) UpdateSetting(c *gin.Context) {
@@ -141,5 +143,5 @@ func (h *Handler) UpdateSetting(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, rs)
+	response.JSON(c, http.StatusOK, rs, "")
 }

@@ -49,14 +49,13 @@ type service struct {
 	template template.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service, template template.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service) Service {
 	return &service{
 		repo:     repo,
 		cfg:      cfg,
 		db:       db,
 		auditSvc: auditSvc,
 		mailer:   mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
-		template: template,
 	}
 }
 
@@ -146,14 +145,15 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
+
+		_, err = s.template.BulkCreate(ctx, createdClinic.ID)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = s.template.BulkCreate(ctx, createdClinic.ID)
 	if err != nil {
 		return nil, err
 	}
