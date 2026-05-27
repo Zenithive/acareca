@@ -71,7 +71,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// notification (in-app list)
 	notificationRepo := notification.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
-	notificationSvc := notification.NewService(notificationRepo, events)
+	notificationSvc := notification.NewService(notificationRepo, events, dbConn)
 
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := notification.NewPublisher(events)

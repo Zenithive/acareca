@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -33,7 +34,7 @@ type Repository interface {
 	// Deduplication check for system error/warning notifications
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
 	GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
-	CreatePreference(ctx context.Context, pref NotificationPreference) error
+	CreatePreference(ctx context.Context, pref NotificationPreference, tx *sqlx.Tx) error
 }
 
 type repository struct {
@@ -313,7 +314,7 @@ func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([
 	return prefs, nil
 }
 
-func (r *repository) CreatePreference(ctx context.Context, p NotificationPreference) error {
+func (r *repository) CreatePreference(ctx context.Context, p NotificationPreference, tx *sqlx.Tx) error {
 	const q = `
 		INSERT INTO tbl_notification_preferences (
 			user_id,
@@ -332,14 +333,24 @@ func (r *repository) CreatePreference(ctx context.Context, p NotificationPrefere
 			deleted_at = NULL
 	`
 
-	_, err := r.db.ExecContext(
+	channelsJSON, err := json.Marshal(p.Channels)
+	if err != nil {
+		return fmt.Errorf("marshal channels: %w", err)
+	}
+
+	// event_type is a single enum column — use the first value from the slice
+	if len(p.EventType) == 0 {
+		return fmt.Errorf("event_type is required")
+	}
+
+	_, err = tx.ExecContext(
 		ctx,
 		q,
 		p.UserID,
 		p.EntityID,
 		p.EntityType,
-		p.EventType,
-		p.Channels,
+		string(p.EventType[0]),
+		channelsJSON,
 	)
 
 	return err

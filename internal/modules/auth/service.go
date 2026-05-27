@@ -132,7 +132,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	var created *User
 	var entityID uuid.UUID
-	var p *practitioner.RsPractitioner
 	var a *accountant.RsAccountant
 	var tokenID uuid.UUID
 
@@ -148,7 +147,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 		switch created.Role {
 		case util.RolePractitioner:
-			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+			p, txErr2 := s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
 				UserID:     created.ID.String(),
 				EntityType: req.EntityType,
 				EntityName: req.EntityName,
@@ -157,9 +156,10 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 				Address:    req.Address,
 				Profession: req.Profession,
 			}, tx)
-			if txErr == nil {
-				entityID = p.ID
+			if txErr2 != nil {
+				return fmt.Errorf("create practitioner: %w", txErr2)
 			}
+			entityID = p.ID
 		case util.RoleAccountant:
 			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
 				UserID:     created.ID.String(),
@@ -217,14 +217,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			s.logSystemError(context.Background(), "auth.send_verification_email", err, created.ID.String(), entityID.String())
 		}
 	}()
-
-	err = s.NotificationSvc.PreferenceSetting(ctx, created.ID, entityID, created.Role)
-	if err != nil {
-		fmt.Printf("[AUTH ERROR] Failed to set notification preferences: %v\n", err)
-		s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "auth.set_notification_preferences",
-			err, created.ID.String(), entityID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
-		)
-	}
 
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
@@ -470,11 +462,25 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	if time.Now().After(token.ExpiresAt) {
 		return errors.New("verification link has expired")
 	}
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.MarkUserVerified(ctx, token, tx); err != nil {
+			return err
+		}
+		if token.Role == nil {
+			return errors.New("token role is missing")
+		}
+		switch *token.Role {
+		case util.RolePractitioner:
+			if err := s.NotificationSvc.PreferenceSetting(ctx, token.EntityID, token.EntityID, *token.Role, tx); err != nil {
+				return fmt.Errorf("failed to set notification preferences: %w", err)
+			}
+		}
+		return nil
+	})
 
-	if err := s.repo.MarkUserVerified(ctx, token); err != nil {
-		return err
+	if err != nil {
+		return errors.New("failed to verified" + err.Error())
 	}
-
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := token.EntityID.String()
 	tokenIDStr := token.ID.String()

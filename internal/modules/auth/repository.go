@@ -38,7 +38,7 @@ type Repository interface {
 	CreateVerificationToken(ctx context.Context, tx *sqlx.Tx, token *VerificationToken) error
 	DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)
-	MarkUserVerified(ctx context.Context, token *VerificationToken) error
+	MarkUserVerified(ctx context.Context, token *VerificationToken, tx *sqlx.Tx) error
 
 	// password reset
 	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
@@ -306,43 +306,41 @@ func (r *repository) GetToken(ctx context.Context, tokenID uuid.UUID) (*Verifica
 	return &t, nil
 }
 
-func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationToken) error {
-	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Identify the target table based on the role stored in the token
-		var table string
-		if token.Role == nil {
-			return errors.New("token role is missing")
-		}
+func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationToken, tx *sqlx.Tx) error {
+	// Identify the target table based on the role stored in the token
+	var table string
+	if token.Role == nil {
+		return errors.New("token role is missing")
+	}
 
-		switch *token.Role {
-		case util.RolePractitioner:
-			table = "tbl_practitioner"
-		case util.RoleAccountant:
-			table = "tbl_accountant"
-		default:
-			return fmt.Errorf("unsupported role for verification: %s", *token.Role)
-		}
+	switch *token.Role {
+	case util.RolePractitioner:
+		table = "tbl_practitioner"
+	case util.RoleAccountant:
+		table = "tbl_accountant"
+	default:
+		return fmt.Errorf("unsupported role for verification: %s", *token.Role)
+	}
 
-		// Update the role-specific table's verified status
-		verifyQuery := fmt.Sprintf("UPDATE %s SET verified = true, updated_at = NOW() WHERE id = $1", table)
-		res, err := tx.ExecContext(ctx, verifyQuery, token.EntityID)
-		if err != nil {
-			return fmt.Errorf("failed to update %s verification: %w", table, err)
-		}
+	// Update the role-specific table's verified status
+	verifyQuery := fmt.Sprintf("UPDATE %s SET verified = true, updated_at = NOW() WHERE id = $1", table)
+	res, err := tx.ExecContext(ctx, verifyQuery, token.EntityID)
+	if err != nil {
+		return fmt.Errorf("failed to update %s verification: %w", table, err)
+	}
 
-		// Check if the row actually existed
-		rows, _ := res.RowsAffected()
-		if rows == 0 {
-			return fmt.Errorf("Entity %s not found in %s", token.EntityID, table)
-		}
+	// Check if the row actually existed
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("Entity %s not found in %s", token.EntityID, table)
+	}
 
-		// Mark the verification token as USED so it can't be reused
-		tokenUpdateQuery := `UPDATE tbl_verification_token SET status = 'USED' WHERE id = $1`
-		if _, err := tx.ExecContext(ctx, tokenUpdateQuery, token.ID); err != nil {
-			return fmt.Errorf("failed to update token status: %w", err)
-		}
-		return nil
-	})
+	// Mark the verification token as USED so it can't be reused
+	tokenUpdateQuery := `UPDATE tbl_verification_token SET status = 'USED' WHERE id = $1`
+	if _, err := tx.ExecContext(ctx, tokenUpdateQuery, token.ID); err != nil {
+		return fmt.Errorf("failed to update token status: %w", err)
+	}
+	return nil
 }
 
 func (r *repository) UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error {

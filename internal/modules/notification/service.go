@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -19,18 +20,20 @@ type Service interface {
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
 	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
-	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error
+	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string, tx *sqlx.Tx) error
 }
 
 type service struct {
 	repo      Repository
 	publisher *Publisher
+	DB        *sqlx.DB
 }
 
-func NewService(repo Repository, events sharedEvents.IEvent) Service {
+func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB) Service {
 	return &service{
 		repo:      repo,
 		publisher: NewPublisher(events),
+		DB:        db,
 	}
 }
 
@@ -114,30 +117,40 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 		EventType:  rq.EventType,
 		Channels:   rq.Channels,
 	}
-	return s.repo.CreatePreference(ctx, pref)
+	err := util.RunInTransaction(ctx, s.DB, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
+			return fmt.Errorf("failed to create preference: %w", err)
+		}
+		return nil
+	})
+
+	return err
 }
 
-func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error {
-	pref := NotificationPreference{
-		UserID:     userID,
-		EntityID:   entityID,
-		EntityType: entityType,
-		Channels: NotificationChannels{
-			string(ChannelInApp): true,
-			string(ChannelEmail): false,
-			string(ChannelPush):  false,
-		},
-		EventType: NotificationEventTypes{
-			EventNewTransaction,
-			EventAccountantActivityAlert,
-			EventSystemActivityAlert,
-		},
-		CreatedAt: time.Now(),
+// PreferenceSetting creates default notification preferences for a new user (one row per event type)
+func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string, tx *sqlx.Tx) error {
+	defaultChannels := NotificationChannels{
+		string(ChannelInApp): true,
+		string(ChannelEmail): false,
+		string(ChannelPush):  false,
 	}
-
-	if err := s.repo.CreatePreference(ctx, pref); err != nil {
-		return fmt.Errorf("failed to create preference: %w", err)
+	eventTypes := []NotificationEventType{
+		EventNewTransaction,
+		EventAccountantActivityAlert,
+		EventSystemActivityAlert,
 	}
-
+	for _, et := range eventTypes {
+		pref := NotificationPreference{
+			UserID:     userID,
+			EntityID:   entityID,
+			EntityType: entityType,
+			EventType:  NotificationEventTypes{et},
+			Channels:   defaultChannels,
+			CreatedAt:  time.Now(),
+		}
+		if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
+			return fmt.Errorf("failed to create preference: %w", err)
+		}
+	}
 	return nil
 }
