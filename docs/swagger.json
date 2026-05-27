@@ -14220,6 +14220,9 @@
                 "reference": {
                     "type": "string"
                 },
+                "status": {
+                    "type": "string"
+                },
                 "tax_method": {
                     "type": "string",
                     "enum": [
@@ -14265,6 +14268,9 @@
                     ]
                 },
                 "reference": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "tax_method": {
@@ -14313,6 +14319,9 @@
                     "type": "string"
                 },
                 "reference": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "tax_method": {
