@@ -11,9 +11,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func RegisterInvoiceRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx.DB, auditSvc audit.Service) {
+func RegisterInvoiceRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx.DB, auditSvc audit.Service, tmp template.IService) {
 	repo := invoice.NewRepository(dbConn)
-	svc := invoice.NewService(repo, cfg, dbConn, auditSvc)
+	svc := invoice.NewService(repo, cfg, dbConn, auditSvc, tmp)
 	h := invoice.NewHandler(svc)
 
 	tmpRepo := template.NewRepository(dbConn)

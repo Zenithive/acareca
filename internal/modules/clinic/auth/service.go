@@ -49,13 +49,14 @@ type service struct {
 	template template.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service, tmp template.IService) Service {
 	return &service{
 		repo:     repo,
 		cfg:      cfg,
 		db:       db,
 		auditSvc: auditSvc,
 		mailer:   mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		template: tmp,
 	}
 }
 

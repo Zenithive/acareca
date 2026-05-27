@@ -25,6 +25,7 @@ import (
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
@@ -249,7 +250,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// ============ INVOICE MODULE ============
-	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc)
+	tmpRepo := template.NewRepository(dbConn)
+	tempSvc := template.NewService(tmpRepo)
+	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
 
 	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc, notificationConsumer
 
