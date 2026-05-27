@@ -14228,6 +14228,9 @@ const docTemplate = `{
                 "reference": {
                     "type": "string"
                 },
+                "status": {
+                    "type": "string"
+                },
                 "tax_method": {
                     "type": "string",
                     "enum": [
@@ -14273,6 +14276,9 @@ const docTemplate = `{
                     ]
                 },
                 "reference": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "tax_method": {
@@ -14321,6 +14327,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "reference": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "tax_method": {
