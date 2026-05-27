@@ -58,11 +58,7 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUI
 		return nil, ErrUnauthorizedAccess
 	}
 
-	baseURL, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("get base URL: %w", err)
-	}
-	return doc.ToRsDocument(baseURL), nil
+	return doc.ToRsDocument(), nil
 }
 
 // ListDocuments lists documents for a user
@@ -73,14 +69,9 @@ func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *
 		return nil, err
 	}
 
-	baseURL, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("get base URL: %w", err)
-	}
-
 	rsDocs := make([]RsDocument, len(docs))
 	for i, doc := range docs {
-		rsDocs[i] = *doc.ToRsDocument(baseURL)
+		rsDocs[i] = *doc.ToRsDocument()
 	}
 
 	result := &util.RsList{}
@@ -126,11 +117,7 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 		"is_public": beforeIsPublic,
 	})
 
-	baseURL, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("get base URL: %w", err)
-	}
-	return updated.ToRsDocument(baseURL), nil
+	return updated.ToRsDocument(), nil
 }
 
 // DeleteDocument deletes a document

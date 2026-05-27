@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -45,6 +46,7 @@ type service struct {
 	db       *sqlx.DB
 	auditSvc audit.Service
 	mailer   *mail.Client
+	template template.IService
 }
 
 func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service) Service {
@@ -143,6 +145,12 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
+
+		_, err = s.template.BulkCreate(ctx, createdClinic.ID)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 

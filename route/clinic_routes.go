@@ -21,4 +21,5 @@ func RegisterClinicRoutes(v1 *gin.RouterGroup, cfg *config.Config, ContactSvc co
 
 	invoiceHandler := invoice.NewHandler(InvoiceSvc)
 	invoice.RegisterRoutes(clinicV1, invoiceHandler, authMiddleware, roleMiddleware)
+
 }
