@@ -10,57 +10,48 @@ import (
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 )
 
-// StreamManager manages per-user notification streams for real-time WebSocket delivery
 type StreamManager struct {
 	events    sharedEvents.IEvent
 	mu        sync.RWMutex
-	streams   map[uuid.UUID]*UserStream // userID -> UserStream
-	consumers *Consumer                 // Reference to main consumer for filtering
+	streams   map[uuid.UUID]*UserStream
+	consumers *Consumer
 }
 
-// UserStream represents a notification stream for a specific user
 type UserStream struct {
 	userID   uuid.UUID
 	ctx      context.Context
 	cancel   context.CancelFunc
 	handler  func(NotificationEvent)
 	active   bool
-	msgCount int32 // Changed to int32 for atomic operations
+	msgCount int32
 }
 
 func NewStreamManager(events sharedEvents.IEvent, consumer *Consumer) *StreamManager {
 	return &StreamManager{
 		events:    events,
-		streams:   make(map[uuid.UUID]*UserStream, 100), // Preallocate for 100 users
+		streams:   make(map[uuid.UUID]*UserStream, 100),
 		consumers: consumer,
 	}
 }
 
-// AttachUserStream registers a handler for a user's notifications
-// When notifications arrive via NATS, they'll be forwarded to this handler
 func (sm *StreamManager) AttachUserStream(userID uuid.UUID, handler func(interface{})) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Check if user already has an active stream
 	if existing, ok := sm.streams[userID]; ok {
 		if existing.active {
 			log.Printf("User %s already has an active stream, cleaning up old stream", userID)
-			// Cancel the old stream's context to prevent memory leak
 			existing.cancel()
 			existing.active = false
 		}
 	}
 
-	// Create a cancellable context for this user's stream
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Wrap the handler to convert NotificationEvent to interface{}
 	wrappedHandler := func(event NotificationEvent) {
 		handler(event)
 	}
 
-	// Create user stream
 	stream := &UserStream{
 		userID:  userID,
 		ctx:     ctx,
@@ -75,7 +66,6 @@ func (sm *StreamManager) AttachUserStream(userID uuid.UUID, handler func(interfa
 	return nil
 }
 
-// DetachUserStream stops the notification stream for a user when they disconnect
 func (sm *StreamManager) DetachUserStream(userID uuid.UUID) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -85,21 +75,14 @@ func (sm *StreamManager) DetachUserStream(userID uuid.UUID) {
 		return
 	}
 
-	// Mark as inactive
 	stream.active = false
-
-	// Cancel the context
 	stream.cancel()
-
-	// Remove from map
 	delete(sm.streams, userID)
 
-	msgCount := atomic.LoadInt32(&stream.msgCount) // Thread-safe read
+	msgCount := atomic.LoadInt32(&stream.msgCount)
 	log.Printf("Detached notification stream for user %s (processed %d messages)", userID, msgCount)
 }
 
-// DeliverToUser delivers a notification to a specific user if they have an active stream
-// This is called by the consumer when a notification arrives
 func (sm *StreamManager) DeliverToUser(userID uuid.UUID, event NotificationEvent) bool {
 	sm.mu.RLock()
 	stream, ok := sm.streams[userID]
@@ -109,14 +92,12 @@ func (sm *StreamManager) DeliverToUser(userID uuid.UUID, event NotificationEvent
 		return false
 	}
 
-	// Deliver to user's handler (WebSocket)
 	stream.handler(event)
-	atomic.AddInt32(&stream.msgCount, 1) // Thread-safe increment
+	atomic.AddInt32(&stream.msgCount, 1)
 
 	return true
 }
 
-// GetActiveStreams returns the number of active user streams
 func (sm *StreamManager) GetActiveStreams() int {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -130,7 +111,6 @@ func (sm *StreamManager) GetActiveStreams() int {
 	return count
 }
 
-// IsUserStreamActive checks if a user has an active stream
 func (sm *StreamManager) IsUserStreamActive(userID uuid.UUID) bool {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -139,7 +119,6 @@ func (sm *StreamManager) IsUserStreamActive(userID uuid.UUID) bool {
 	return ok && stream.active
 }
 
-// GetUserStreamInfo returns information about a user's stream
 func (sm *StreamManager) GetUserStreamInfo(userID uuid.UUID) map[string]interface{} {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -149,7 +128,7 @@ func (sm *StreamManager) GetUserStreamInfo(userID uuid.UUID) map[string]interfac
 		return nil
 	}
 
-	msgCount := atomic.LoadInt32(&stream.msgCount) // Thread-safe read
+	msgCount := atomic.LoadInt32(&stream.msgCount)
 	return map[string]interface{}{
 		"user_id":       stream.userID,
 		"active":        stream.active,

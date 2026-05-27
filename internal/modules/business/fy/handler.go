@@ -27,6 +27,7 @@ func NewHandler(svc Service) IHandler {
 	return &handler{svc: svc}
 }
 
+// CreateFY godoc
 // @Summary Create a new financial year
 // @Tags fy
 // @Accept json
@@ -62,6 +63,7 @@ func (h *handler) CreateFY(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, fy, "Financial year created successfully")
 }
 
+// UpdateFY godoc
 // @Summary Update a financial year
 // @Tags fy
 // @Accept json
@@ -101,6 +103,7 @@ func (h *handler) UpdateFY(c *gin.Context) {
 	response.JSON(c, http.StatusOK, fy, "Financial year updated successfully")
 }
 
+// GetFinancialYears godoc
 // @Summary Get all financial years
 // @Tags fy
 // @Produce json
@@ -118,6 +121,7 @@ func (h *handler) GetFinancialYears(c *gin.Context) {
 	response.JSON(c, http.StatusOK, util.RsList{Items: years, Total: len(years)}, "Financial years fetched successfully")
 }
 
+// GetFinancialQuarters godoc
 // @Summary Get all quarters for a specific financial year
 // @Tags fy
 // @Produce json
@@ -149,6 +153,7 @@ func (h *handler) GetFinancialQuarters(c *gin.Context) {
 	response.JSON(c, http.StatusOK, util.RsList{Items: quarters, Total: len(quarters)}, "Financial quarters fetched successfully")
 }
 
+// ActivateFY godoc
 // @Summary Activate a specific financial year
 // @Tags fy
 // @Produce json
@@ -180,6 +185,7 @@ func (h *handler) ActivateFY(c *gin.Context) {
 	response.JSON(c, http.StatusOK, fy, "Financial year activated successfully")
 }
 
+// GetFinancialYearByID godoc
 // @Summary Get a specific financial year by ID
 // @Tags fy
 // @Produce json

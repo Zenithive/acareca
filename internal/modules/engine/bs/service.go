@@ -18,6 +18,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 	"github.com/xuri/excelize/v2"
 
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -25,13 +26,13 @@ import (
 
 type Service interface {
 	GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error)
-	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
+	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error)
 }
 
 type service struct {
 	repo            Repository
 	equitySvc       equity.Service
-	db              sqlx.DB
+	db              *sqlx.DB
 	auditSvc        audit.Service
 	eventsSvc       events.Service
 	authRepo        auth.Repository
@@ -40,7 +41,7 @@ type service struct {
 	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
 	return &service{
 		repo:            repo,
 		equitySvc:       equitySvc,
@@ -60,60 +61,55 @@ type AccKey struct {
 }
 
 func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error) {
-	// Role-based Practitioner Resolution
 	var targetPracIDs []uuid.UUID
 	var practitionerID uuid.UUID
 
-	if role == util.RolePractitioner {
+	switch role {
+	case util.RolePractitioner:
 		practitionerID = actorID
 		targetPracIDs = []uuid.UUID{actorID}
-	} else if role == util.RoleAccountant {
+
+	case util.RoleAccountant:
 		if f.PractitionerID != nil && *f.PractitionerID != "" {
 			pID, err := uuid.Parse(*f.PractitionerID)
 			if err == nil {
 				practitionerID = pID
 				targetPracIDs = []uuid.UUID{pID}
 			}
-		} else {
-			// Case: Accountant hasn't selected a specific practitioner
-			linked, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
-			}
-			if len(linked) == 0 {
-				return nil, errors.New("no linked practitioners found")
-			}
-			// Default to the first linked practitioner for the actual data fetch
-			targetPracIDs = linked
+		}
 
-			if len(linked) > 0 {
-				practitionerID = linked[0]
-			}
+	default:
+		linked, err := s.invitationSvc.GetPractitionersLinkedToAccountant(ctx, actorID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch linked practitioners: %w", err)
+		}
+		if len(linked) == 0 {
+			return nil, errors.New("no linked practitioners found")
+		}
+		targetPracIDs = linked
+
+		if len(linked) > 0 {
+			practitionerID = linked[0]
 		}
 	}
 
-	// Determine reporting range
 	endDate := time.Now().Format("2006-01-02")
 	if f.EndDate != nil && *f.EndDate != "" {
 		endDate = *f.EndDate
 	}
-
 	f.EndDate = &endDate
 
-	// Get balance sheet accounts (assets, liabilities, other equity accounts)
 	rows, err := s.repo.GetBalanceSheet(ctx, targetPracIDs, f)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get automatically calculated owner equity
 	var totalOwnerEquity equity.OwnerEquityCalculation
 	for _, pID := range targetPracIDs {
 		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, nil, "", endDate)
 		if err != nil {
 			return nil, fmt.Errorf("calculate owner equity: %w", err)
 		}
-		// Aggregate totals
 		totalOwnerEquity.ShareCapital += pracEquity.ShareCapital
 		totalOwnerEquity.FundsIntroduced += pracEquity.FundsIntroduced
 		totalOwnerEquity.Drawings += pracEquity.Drawings
@@ -122,7 +118,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		totalOwnerEquity.TotalEquity += pracEquity.TotalEquity
 	}
 
-	// 4. Group and Summarize Assets/Liabilities/Other Equity
 	assetMap := make(map[AccKey]RsAccount)
 	liabMap := make(map[AccKey]RsAccount)
 	otherEquityMap := make(map[AccKey]RsAccount)
@@ -148,7 +143,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			totalLiabilities += row.Balance
 
 		case "Equity":
-			// Skip owner fund accounts - they're handled separately
 			if row.AccountCode != 880 && row.AccountCode != 881 &&
 				row.AccountCode != 960 && row.AccountCode != 970 {
 				acc := otherEquityMap[key]
@@ -160,7 +154,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		}
 	}
 
-	// 5. Convert Maps back to Slices for the Response
 	assets := []RsAccount{}
 	for _, v := range assetMap {
 		assets = append(assets, v)
@@ -176,28 +169,35 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		equitySect = append(equitySect, v)
 	}
 
-	// 6. Append the Calculated Equity Items
 	addEquityItem := func(code int16, name string, balance float64) {
 		if balance == 0 {
 			return
 		}
-		coaId, _ := s.getCoaIDByAccountCode(ctx, practitionerID, code)
-		equitySect = append(equitySect, RsAccount{
-			CoaId:   *coaId,
-			Code:    code,
-			Name:    name,
-			Balance: balance,
+		var coaId *uuid.UUID
+		err = util.RunInTransaction(ctx, s.db, func(Ctx context.Context, tx *sqlx.Tx) error {
+			var err error
+			coaId, err = s.getCoaIDByAccountCode(Ctx, tx, practitionerID, code)
+			return err
 		})
+		if err != nil {
+			return
+		}
+
+		if coaId != nil {
+			equitySect = append(equitySect, RsAccount{
+				CoaId:   *coaId,
+				Code:    code,
+				Name:    name,
+				Balance: balance,
+			})
+		}
 	}
 	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
 	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
-	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings) // Negative for drawings
+	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
-	// Total equity = calculated owner equity + other equity accounts
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
-
-	// Format dates for the response
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
@@ -212,19 +212,16 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
 	}
 
-	// --- AUDIT & SHARED EVENTS LOGIC ---
 	meta := auditctx.GetMetadata(ctx)
-
 	userIDStr := userID.String()
 	actorIDStr := actorID.String()
 
-	// Trigger Audit Log
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionBalanceSheetGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityBalanceSheet),
+		EntityType: lo.ToPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &actorIDStr,
 		AfterState: map[string]interface{}{
 			"report_type": "Balance Sheet",
@@ -234,9 +231,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		UserAgent: meta.UserAgent,
 	})
 
-	// Trigger Shared Event
 	if role == util.RoleAccountant {
-		// Fetching user details
 		var fullName string
 		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
@@ -268,13 +263,12 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	return result, nil
 }
 
-func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
+func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error) {
 	f := excelize.NewFile()
 	sheet := "Balance Sheet"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
 
-	// --- FETCH METADATA ---
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -314,22 +308,19 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 			}
 		} else {
 			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
-			{
-				if err == nil {
-					if acc.EntityName != nil {
-						entityName = *acc.EntityName
-					} else {
-						entityName = fullName
-					}
-					if acc.ABN != nil {
-						practitionerABN = *acc.ABN
-					}
+			if err == nil {
+				if acc.EntityName != nil {
+					entityName = *acc.EntityName
+				} else {
+					entityName = fullName
+				}
+				if acc.ABN != nil {
+					practitionerABN = *acc.ABN
 				}
 			}
 		}
 	}
 
-	// --- STYLES ---
 	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
 		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
@@ -383,7 +374,6 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		})
 	}
 
-	// --- RENDER HEADERS ---
 	f.SetCellValue(sheet, "A1", "Balance Sheet")
 	f.MergeCell(sheet, "A1", "B1")
 	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
@@ -407,18 +397,14 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
 	f.MergeCell(sheet, "A5", "B5")
 	setRichMeta("A5", "Generated:", currentTimeStr)
-
-	// --- BLANK ROW AFTER METADATA ---
 	f.MergeCell(sheet, "A6", "B6")
 
 	currentRow := 7
 
-	// Helper to render sections with Excel Filters
 	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
 		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
 
-		// --- APPLY TABLE FILTER ---
 		if len(accounts) > 0 {
 			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(accounts))
 			tableName := strings.ReplaceAll(title, " ", "_") + fmt.Sprintf("_%d", currentRow)
@@ -459,19 +445,16 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		return totalCell
 	}
 
-	// --- RENDER SECTIONS ---
 	renderBSSection("ASSETS", data.Assets, data.TotalAssets)
 	renderBSSection("LIABILITIES", data.Liabilities, data.TotalLiabilities)
 	renderBSSection("EQUITY", data.Equity, data.TotalEquity)
 
-	// --- CURRENT YEAR PROFIT ---
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Current Year Profit")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
 	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.CurrentYearProfit)
 	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
 	currentRow += 2
 
-	// --- FINAL TOTALS ---
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL LIABILITIES & EQUITY")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
 	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.TotalLiabilitiesAndEquity)
@@ -480,7 +463,6 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	f.SetColWidth(sheet, "A", "A", 45)
 	f.SetColWidth(sheet, "B", "B", 20)
 
-	// --- AUDIT & SHARED EVENTS  ---
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
@@ -488,7 +470,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		Action:     auditctx.ActionBalanceSheetExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityBalanceSheet),
+		EntityType: lo.ToPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
 		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
@@ -521,11 +503,10 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	}
 	f.UpdateLinkedValue()
 
-	return f, nil
+	return &ExportBalanceSheetResponse{Result: f}, nil
 }
 
-// getCoaIDByAccountCode retrieves the coa_id for a given account code
-func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid.UUID, accountCode int16) (*uuid.UUID, error) {
+func (s *service) getCoaIDByAccountCode(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID, accountCode int16) (*uuid.UUID, error) {
 	query := `
 		SELECT id
 		FROM tbl_chart_of_accounts
@@ -537,7 +518,7 @@ func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid
 	args := []interface{}{practitionerID, accountCode}
 
 	var coaID uuid.UUID
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&coaID)
+	err := tx.QueryRowContext(ctx, query, args...).Scan(&coaID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("COA account with code %d not found for practitioner %s", accountCode, practitionerID)
@@ -547,18 +528,13 @@ func (s *service) getCoaIDByAccountCode(ctx context.Context, practitionerID uuid
 	return &coaID, nil
 }
 
-// Helper function for audit logging
-func strPtr(s string) *string { return &s }
-
 func formatDateForDisplay(dateStr string) string {
 	if dateStr == "" {
 		return ""
 	}
-	// Parse the database format
 	t, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		return dateStr // Return original if parsing fails to avoid losing data
+		return dateStr
 	}
-	// Return the display format
 	return t.Format("02-01-2006")
 }

@@ -4,7 +4,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// BSRow represents a single account balance from the database
 type BSRow struct {
 	PractitionerID      uuid.UUID `db:"practitioner_id"`
 	ClinicID            uuid.UUID `db:"clinic_id"`
@@ -17,13 +16,11 @@ type BSRow struct {
 	LastTransactionDate string    `db:"last_transaction_date"`
 }
 
-// BSFilter defines query parameters for balance sheet
 type BSFilter struct {
 	PractitionerID *string `form:"practitioner_id"`
 	EndDate        *string `form:"end_date"`
 }
 
-// RsBalanceSheet is the complete balance sheet response
 type RsBalanceSheet struct {
 	EndDate                   string      `json:"end_date,omitempty"`
 	Assets                    []RsAccount `json:"assets"`
@@ -36,7 +33,6 @@ type RsBalanceSheet struct {
 	TotalLiabilitiesAndEquity float64     `json:"total_liabilities_and_equity"`
 }
 
-// RsAccount represents a single account line in the balance sheet
 type RsAccount struct {
 	CoaId   uuid.UUID `json:"coa_id"`
 	Code    int16     `json:"code"`
@@ -51,4 +47,8 @@ func (r *BSRow) ToRs() RsAccount {
 		Name:    r.AccountName,
 		Balance: r.Balance,
 	}
+}
+
+type ExportBalanceSheetResponse struct {
+	Result interface{}
 }

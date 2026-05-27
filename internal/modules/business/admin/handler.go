@@ -21,6 +21,7 @@ func NewHandler(svc IService) IHandler {
 	return &handler{svc: svc}
 }
 
+// Create godoc
 // @Summary Create admin profile and user
 // @Description Creates a new entry in tbl_user with Role=ADMIN and a corresponding entry in tbl_admin within a single transaction.
 // @Tags admin
@@ -47,17 +48,17 @@ func (h *handler) Create(c *gin.Context) {
 	response.JSON(c, http.StatusCreated, res, "Admin and User created successfully")
 }
 
+// GetById godoc
 // @Summary Get Admin Detail
 // @Description Get nested Admin and User information by Admin ID
 // @Tags admin
-// @Param id path string true "Admin ID"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 404 {object} response.RsError
 // @Security BearerToken
-// @Router /admin/{id} [get]
+// @Router /admin [get]
 func (h *handler) GetById(c *gin.Context) {
-	adminID, ok := util.ParseUuidID(c, "id")
+	adminID, ok := util.GetEntityID(c)
 	if !ok {
 		return
 	}

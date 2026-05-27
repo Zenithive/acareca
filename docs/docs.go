@@ -193,6 +193,38 @@ const docTemplate = `{
             }
         },
         "/admin": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Get nested Admin and User information by Admin ID",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get Admin Detail",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Creates a new entry in tbl_user with Role=ADMIN and a corresponding entry in tbl_admin within a single transaction.",
                 "consumes": [
@@ -2105,49 +2137,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Get nested Admin and User information by Admin ID",
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Get Admin Detail",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Admin ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/equity/calculation": {
             "get": {
                 "description": "Automatically calculates all owner fund balances (drawings, funds introduced, retained earnings)",
@@ -2939,6 +2928,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3010,6 +3005,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3077,13 +3078,28 @@ const docTemplate = `{
                             "type": "file"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -3096,7 +3112,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.\nSupports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
+                "description": "Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data. Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.",
                 "produces": [
                     "application/json"
                 ],
@@ -3227,6 +3243,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3286,6 +3308,24 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     }
                 }
@@ -3477,6 +3517,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3524,6 +3570,18 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6155,6 +6213,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -6329,6 +6393,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -6438,7 +6508,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation.",
+                "description": "Returns grouped COA transaction records and their details in JSON format for frontend PDF/Excel generation",
                 "consumes": [
                     "application/json"
                 ],
@@ -6501,14 +6571,14 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "JSON containing status, message, and nested transaction data",
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6520,7 +6590,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6656,6 +6726,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8212,6 +8288,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8257,6 +8339,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsBase"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -8295,6 +8389,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "404": {
@@ -8342,6 +8442,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8445,6 +8551,24 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8483,6 +8607,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "404": {
@@ -8558,6 +8688,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8619,6 +8755,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8637,7 +8779,8 @@ const docTemplate = `{
                 ],
                 "description": "Generates and downloads a professional Excel file of the P\u0026L report using the specified filters.",
                 "produces": [
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    " text/html"
                 ],
                 "tags": [
                     "engine/pl"
@@ -8701,6 +8844,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8752,6 +8907,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8831,6 +8992,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8888,6 +9061,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -11503,27 +11682,16 @@ const docTemplate = `{
                     }
                 },
                 "gstPayable": {
-                    "description": "Use pointer for easier omitting",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/bas.BASAccountGroup"
-                        }
-                    ]
+                    "$ref": "#/definitions/bas.BASAccountGroup"
                 },
                 "income": {
-                    "description": "omitempty will hide the key if the slice is nil or empty",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/bas.BASAccountGroup"
                     }
                 },
                 "netProfitLoss": {
-                    "description": "Use pointer for easier omitting",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/bas.BASAccountGroup"
-                        }
-                    ]
+                    "$ref": "#/definitions/bas.BASAccountGroup"
                 }
             }
         },
@@ -11638,23 +11806,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "g11_total_purchases_gross": {
-                    "description": "Purchases (ATO labels)",
-                    "type": "number"
-                },
-                "g14_gst_free_purchases": {
-                    "type": "number"
-                },
-                "g15_taxable_purchases": {
                     "type": "number"
                 },
                 "g1_total_sales_gross": {
-                    "description": "Sales (ATO labels)",
-                    "type": "number"
-                },
-                "g3_gst_free_sales": {
-                    "type": "number"
-                },
-                "g8_taxable_sales": {
                     "type": "number"
                 },
                 "label_1a_gst_on_sales": {
@@ -11664,15 +11818,12 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "net_gst_payable": {
-                    "description": "Net GST",
                     "type": "number"
                 },
                 "period_quarter": {
-                    "description": "Period",
                     "type": "string"
                 },
                 "period_year": {
-                    "description": "e.g. \"2026-01-01\"",
                     "type": "string"
                 },
                 "total_purchases_net": {
@@ -12740,14 +12891,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "create": {
-                    "description": "document IDs to link",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "delete": {
-                    "description": "document IDs to unlink",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -12766,7 +12915,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "description": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "form_field_id": {
@@ -12845,18 +12993,15 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "coa_id": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "description": {
-                    "description": "For direct COA entries",
                     "type": "string"
                 },
                 "field_key": {
                     "type": "string"
                 },
                 "form_field_id": {
-                    "description": "Nullable for direct COA entries",
                     "type": "string"
                 },
                 "gross_amount": {

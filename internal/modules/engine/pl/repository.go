@@ -27,8 +27,6 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLSummaryRow, error) {
-	// Query vw_pl_line_items directly and aggregate by clinic_id
-	// Now uses account_type and pl_section instead of section_type
 	query := `
 		WITH section_totals AS (
 			SELECT 
@@ -88,7 +86,6 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 }
 
 func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLAccountRow, error) {
-	// Query vw_pl_line_items directly; date field already uses item-level date for expense entries
 	query := `
 		SELECT
 			practitioner_id, period_month,
@@ -129,7 +126,6 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 }
 
 func (r *repository) GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error) {
-	// Query vw_pl_line_items directly; date field already uses item-level date for expense entries
 	query := `
 		SELECT
 			practitioner_id, period_month,
@@ -223,9 +219,7 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
-		// We match the selected ClinicID OR the Zero UUID (Manual Expenses)
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
-
 		query += " AND (li.clinic_id = ? OR li.clinic_id = ? OR li.clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
 	}
@@ -290,14 +284,12 @@ func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UU
 		args = append(args, *f.ClinicID, zeroUUID)
 	}
 
-	// Use DATE_TRUNC on the input to ensure we match the '2026-04-01' format in the view
 	if f.DateFrom != nil && *f.DateFrom != "" {
 		query += " AND period_month >= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateFrom)
 	}
 
 	if f.DateUntil != nil && *f.DateUntil != "" {
-		// We use the last day of the month for the Until comparison to ensure the selected month is included
 		query += " AND period_month <= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateUntil)
 	}

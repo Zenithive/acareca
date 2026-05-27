@@ -1,8 +1,8 @@
 package pl
 
 import (
-	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -13,10 +13,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
-	"github.com/xuri/excelize/v2"
 )
 
-// IHandler declares all HTTP entry points for the P&L module.
 type IHandler interface {
 	GetMonthlySummary(c *gin.Context)
 	GetByAccount(c *gin.Context)
@@ -45,8 +43,9 @@ func NewHandler(svc Service, invitationSvc invitation.Service, accountantRepo ac
 // @Param        from_date  query  string  false  "Start date filter (YYYY-MM-DD)"
 // @Param        to_date    query  string  false  "End date filter (YYYY-MM-DD)"
 // @Success      200  {array}   RsPLSummary
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/summary [get]
 func (h *handler) GetMonthlySummary(c *gin.Context) {
@@ -78,8 +77,9 @@ func (h *handler) GetMonthlySummary(c *gin.Context) {
 // @Param        from_date  query  string  false  "Start date filter (YYYY-MM-DD)"
 // @Param        to_date    query  string  false  "End date filter (YYYY-MM-DD)"
 // @Success      200  {array}   RsPLAccount
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/by-account [get]
 func (h *handler) GetByAccount(c *gin.Context) {
@@ -111,8 +111,9 @@ func (h *handler) GetByAccount(c *gin.Context) {
 // @Param        from_date  query  string  false  "Start date filter (YYYY-MM-DD)"
 // @Param        to_date    query  string  false  "End date filter (YYYY-MM-DD)"
 // @Success      200  {array}   RsPLResponsibility
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/by-responsibility [get]
 func (h *handler) GetByResponsibility(c *gin.Context) {
@@ -143,8 +144,9 @@ func (h *handler) GetByResponsibility(c *gin.Context) {
 // @Param        clinic_id          query  string  true   "Clinic UUID"
 // @Param        financial_year_id  query  string  false  "Filter to a single financial year (UUID)"
 // @Success      200  {array}   RsPLFYSummary
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/fy-summary [get]
 func (h *handler) GetFYSummary(c *gin.Context) {
@@ -179,8 +181,10 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Param        tax_type_id query  string  false  "Filter by tax type name (e.g. GST on Income)"
 // @Param        form_id     query  string  false  "Filter by form UUID"
 // @Success      200  {object}  response.RsBase
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      403  {object}  response.RsError "Forbidden"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
@@ -195,7 +199,6 @@ func (h *handler) GetReport(c *gin.Context) {
 		return
 	}
 
-	// MANDATORY: Clean the IDs before doing logic
 	if f.PractitionerID != "" {
 		f.PractitionerID = cleanUUIDString(f.PractitionerID)
 	}
@@ -208,22 +211,18 @@ func (h *handler) GetReport(c *gin.Context) {
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		if f.PractitionerID != "" {
-			// Case A: Accountant specifically picked one
 			if pID, err := uuid.Parse(f.PractitionerID); err == nil {
 				targetNotifIDs = []uuid.UUID{pID}
 			}
 		} else if f.ClinicID == nil || *f.ClinicID == "" {
-			// Case B: Aggregation mode - Fetch ALL linked practitioners
 			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
 			if err != nil || len(linked) == 0 {
 				response.Error(c, http.StatusBadRequest, fmt.Errorf("no linked practitioners found for aggregation"))
-				fmt.Printf("\nError fetching linked practitioners:%v:", err)
 				return
 			}
 			targetNotifIDs = linked
 		}
 	} else {
-		// Practitioner: Only notify self
 		targetNotifIDs = []uuid.UUID{*actorID}
 		f.PractitionerID = actorID.String()
 	}
@@ -241,7 +240,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Summary      Export P&L report to Excel
 // @Description  Generates and downloads a professional Excel file of the P&L report using the specified filters.
 // @Tags         engine/pl
-// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param        clinic_id    query    string  false  "Clinic UUID"
 // @Param        date_from    query    string  false  "Start date (YYYY-MM-DD)"
 // @Param        date_until   query    string  false  "End date (YYYY-MM-DD)"
@@ -250,8 +249,10 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Param        form_id      query    string  false  "Filter by form UUID"
 // @Param        export_type 	   query    string  true   "Export Type: PDF | Excel"
 // @Success      200          {file}   binary  "Profit_and_Loss_Report.xlsx"
-// @Failure      400          {object} response.RsError
-// @Failure      500          {object} response.RsError
+// @Failure      400          {object} response.RsError "Bad Request"
+// @Failure      401          {object} response.RsError "Unauthorized"
+// @Failure      403          {object} response.RsError "Forbidden"
+// @Failure      500          {object} response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/export [get]
 func (h *handler) ExportReport(c *gin.Context) {
@@ -261,7 +262,6 @@ func (h *handler) ExportReport(c *gin.Context) {
 		return
 	}
 
-	// Get the export type from query params (default to excel)
 	exportType := strings.ToLower(c.DefaultQuery("export_type", "excel"))
 
 	var f PLReportFilter
@@ -271,7 +271,7 @@ func (h *handler) ExportReport(c *gin.Context) {
 	}
 
 	var notifIDs []uuid.UUID
-	pracIDParam := c.Query("practitioner_id") // This matches your frontend filter
+	pracIDParam := c.Query("practitioner_id")
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		if pracIDParam != "" {
@@ -279,53 +279,36 @@ func (h *handler) ExportReport(c *gin.Context) {
 			notifIDs = []uuid.UUID{pracUUID}
 			f.PractitionerID = pracIDParam
 		} else {
-			// Fetch all linked practitioners if no filter is applied
 			linked, _ := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
 			notifIDs = linked
 		}
 	}
 
-	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
 	reportData, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, notifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Generate the Excel/PDF file
 	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDParam)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	switch v := excelFile.(type) {
-	case *excelize.File:
-		fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
-		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		c.Header("Content-Disposition", "attachment; filename="+fileName)
-		v.Write(c.Writer)
-
-	case string:
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.Header("Content-Disposition", "inline")
-		c.String(http.StatusOK, v)
-
-	default:
-		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
+	fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
+	if err := excelFile.Write(c.Writer); err != nil {
+		log.Printf("Error writing excel: %v", err)
 	}
 }
 
-// cleanUUIDString handles the case where the frontend sends UUIDs
-// wrapped in JSON-style brackets and quotes like ["uuid"]
 func cleanUUIDString(s string) string {
 	if s == "" {
 		return ""
 	}
-	// Remove brackets, double quotes, and whitespace
 	res := strings.NewReplacer("[", "", "]", "", "\"", "", " ", "").Replace(s)
-
-	// If multiple IDs were sent in a comma-separated string, take the first one
 	if strings.Contains(res, ",") {
 		res = strings.Split(res, ",")[0]
 	}
