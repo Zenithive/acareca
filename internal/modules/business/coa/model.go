@@ -68,6 +68,7 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 		Name:            c.Name,
 		IsSystem:        c.IsSystem,
 		IsTaxable:       c.IsTaxable,
+		Classification:  c.Classification,
 		CreatedAt:       c.CreatedAt,
 		UpdatedAt:       c.UpdatedAt,
 	}
@@ -80,6 +81,7 @@ type RqCreateChartOfAccountOfAccount struct {
 	Code           int16     `json:"code" validate:"required,gte=100,lte=9999"`
 	Name           string    `json:"name" validate:"required,max=255"`
 	IsSystem       *bool     `json:"is_system"`
+	Classification string    `json:"classification"`
 }
 
 type RqUpdateCharOfAccountOfAccount struct {
@@ -106,6 +108,7 @@ type RsChartOfAccount struct {
 	Name            string    `json:"name"`
 	IsSystem        bool      `json:"is_system"`
 	IsTaxable       bool      `json:"is_taxable"`
+	Classification  string    `json:"classification"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

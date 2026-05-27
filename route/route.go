@@ -228,7 +228,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Register accountant routes
 	RegisterAccountantRoutes(v1, cfg, accountantSvc)
 
-	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc)
+	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc)
 	// ============ USER SUBSCRIPTION ============
 	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
 	userSubscriptionGroup := v1.Group("/practitioner/subscription", middleware.Auth(cfg))

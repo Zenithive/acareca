@@ -18,6 +18,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
@@ -67,10 +68,11 @@ type Service struct {
 	detailRepo      detail.IRepository
 	financialRepo   fy.Repository
 	practitionerSvc practitioner.IService
+	coaRepo         coa.Repository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc, coaRepo: coaRepo}
 }
 
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
@@ -552,12 +554,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
 
-			// MANUAL tax type: User enters GROSS + GST
-			// CREATE: net_amount contains GROSS, gst_amount contains GST
-			// UPDATE: gross_amount contains GROSS, net_amount contains pre-calculated NET, gst_amount contains GST
-
 			if v.GrossAmount != nil {
-				// UPDATE case: explicit gross_amount provided
 				grossTotal = *v.GrossAmount
 				if v.GstAmount != nil {
 					netBase = *v.GrossAmount - *v.GstAmount
@@ -565,7 +562,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 					netBase = *v.GrossAmount
 				}
 			} else {
-				// CREATE case: net_amount contains GROSS (misleading field name)
 				grossTotal = inputAmount
 				if v.GstAmount != nil {
 					netBase = inputAmount - *v.GstAmount
@@ -601,9 +597,9 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		})
 	}
 
+	var firstField *field.FormField
 	if s.formulaSvc != nil && len(rq) > 0 {
 		var firstFieldID uuid.UUID
-		var firstField *field.FormField
 		for _, v := range rq {
 			if v.FormFieldID != nil && *v.FormFieldID != "" {
 				var err error
@@ -702,20 +698,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 				switch taxType {
 				case method.TaxTreatmentInclusive:
-					// Formula returns NET, calculate GST and GROSS from NET
 					gst := val * 0.10
 					gstAmount = &gst
-					netBase = val          // Keep as NET
-					grossTotal = val + gst // NET + GST = GROSS
+					netBase = val
+					grossTotal = val + gst
 				case method.TaxTreatmentExclusive:
-					// Formula returns NET, calculate GST and GROSS from NET
 					gst := val * 0.10
 					gstAmount = &gst
-					netBase = val          // Keep as NET
-					grossTotal = val + gst // NET + GST = GROSS
+					netBase = val
+					grossTotal = val + gst
 				case method.TaxTreatmentManual:
-					// For MANUAL tax type on computed fields:
-					// Formula returns GROSS amount, extract NET by subtracting GST
 					var entryGST *float64
 					for _, v := range rq {
 						if v.FormFieldID == nil || *v.FormFieldID == "" {
@@ -731,15 +723,12 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 						}
 					}
 
-					// val is GROSS from formula
 					grossTotal = val
 					if entryGST == nil {
-						// No GST provided
 						gst := 0.0
 						gstAmount = &gst
 						netBase = val
 					} else {
-						// GST provided: net = gross - gst
 						gstAmount = entryGST
 						netBase = val - *entryGST
 					}
@@ -758,6 +747,71 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				GstAmount:   gstAmount,
 				GrossAmount: &grossTotal,
 			})
+		}
+	}
+
+	// =========================================================================
+	// AUTOMATED DOUBLE-ENTRY BALANCING SYSTEM (ALL EDGE CASES)
+	// =========================================================================
+	if len(out) > 0 {
+		var totalLedgerImpact float64
+		var practitionerID *uuid.UUID
+
+		// 1. Traverse lines to calculate aggregate algebraic weight
+		for _, ev := range out {
+			if ev.NetAmount == nil || *ev.NetAmount == 0 {
+				continue
+			}
+
+			var targetCoaID *uuid.UUID
+			if ev.CoaID != nil {
+				targetCoaID = ev.CoaID
+			} else if ev.FormFieldID != nil && firstField != nil {
+				// Fallback to fetch CoaID mapped on the template field
+				f, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && f != nil {
+					targetCoaID = f.CoaID
+				}
+			}
+
+			if targetCoaID != nil {
+				// Use the existing GetByIDInternal method from your COA repository interface
+				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *targetCoaID)
+				if err == nil && chartAccount != nil {
+					if practitionerID == nil {
+						practitionerID = &chartAccount.PractitionerID
+					}
+
+					// Dynamic sign management rule based on natural account structures
+					switch strings.Title(strings.ToLower(chartAccount.AccountTypeName)) {
+					case "Asset", "Expense":
+						totalLedgerImpact += *ev.NetAmount
+					case "Liability", "Equity", "Revenue", "Income":
+						totalLedgerImpact -= *ev.NetAmount
+					}
+				}
+			}
+		}
+
+		// 2. If debits and credits don't balance out to zero, fix the drift
+		if totalLedgerImpact != 0 && practitionerID != nil {
+			// Find Operating Bank Account (Code 600) for this practitioner to absorb the offset
+			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
+			if err == nil && bankAccount != nil {
+
+				// Balancing value is the inversion of the net drift
+				counterBalancingAmount := -totalLedgerImpact
+
+				out = append(out, &FormEntryValue{
+					ID:          uuid.New(),
+					EntryID:     entryID,
+					FormFieldID: nil, // Internal systemic adjustment record
+					CoaID:       &bankAccount.ID,
+					NetAmount:   &counterBalancingAmount,
+					GstAmount:   nil,
+					GrossAmount: &counterBalancingAmount,
+				})
+			}
 		}
 	}
 
