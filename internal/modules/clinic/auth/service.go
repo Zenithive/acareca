@@ -161,7 +161,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 
 	baseUrl, err := s.cfg.GetBaseURL()
 	if err == nil {
-		verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
+		verificationLink := fmt.Sprintf("%s/clinic/verify-email?token=%s", baseUrl, tokenID)
 		go func() {
 			if err := s.mailer.SendVerificationEmail(createdClinic.Email, createdClinic.ClinicName, verificationLink); err != nil {
 				fmt.Printf("[CLINIC ERROR] Failed to send verification email: %v\n", err)
