@@ -79,14 +79,6 @@ type RsDocument struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
-// RsUploadDocument represents an upload response
-type RsUploadDocument struct {
-	ID           uuid.UUID `json:"id"`
-	OriginalName string    `json:"original_name"`
-	FileKey      string    `json:"file_key"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
 // RsListDocuments represents a paginated list of documents
 type RsListDocuments struct {
 	Documents []RsDocument `json:"documents"`
@@ -110,7 +102,7 @@ type RsPresignedUploadURL struct {
 }
 
 // ToRsDocument converts Document to RsDocument
-func (d *Document) ToRsDocument(baseURL string) *RsDocument {
+func (d *Document) ToRsDocument() *RsDocument {
 	return &RsDocument{
 		ID:           d.ID,
 		OriginalName: d.OriginalName,
@@ -121,11 +113,12 @@ func (d *Document) ToRsDocument(baseURL string) *RsDocument {
 }
 
 // ToRsUploadDocument converts Document to RsUploadDocument
-func (d *Document) ToRsUploadDocument(baseURL string) *RsUploadDocument {
-	return &RsUploadDocument{
+func (d *Document) ToRsUploadDocument(baseURL string) *RsDocument {
+	return &RsDocument{
 		ID:           d.ID,
 		OriginalName: d.OriginalName,
 		FileKey:      d.ObjectKey,
+		UploadedAt:   d.UploadedAt,
 		CreatedAt:    d.CreatedAt,
 	}
 }
