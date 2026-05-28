@@ -12933,6 +12933,35 @@ const docTemplate = `{
                 }
             }
         },
+        "coa.AccountClassification": {
+            "type": "string",
+            "enum": [
+                "Current Asset",
+                "Non-Current Asset",
+                "Contra-Asset",
+                "Current Liability",
+                "Non-Current Liability",
+                "Equity",
+                "Contra-Equity",
+                "Operating Revenue",
+                "Other Revenue",
+                "Direct Costs",
+                "Operating Expense"
+            ],
+            "x-enum-varnames": [
+                "ClassificationCurrentAsset",
+                "ClassificationNonCurrentAsset",
+                "ClassificationContraAsset",
+                "ClassificationCurrentLiability",
+                "ClassificationNonCurrentLiability",
+                "ClassificationEquity",
+                "ClassificationContraEquity",
+                "ClassificationOperatingRevenue",
+                "ClassificationOtherRevenue",
+                "ClassificationDirectCosts",
+                "ClassificationOperatingExpense"
+            ]
+        },
         "coa.RqCheckCodeUnique": {
             "type": "object",
             "required": [
@@ -12968,6 +12997,9 @@ const docTemplate = `{
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
@@ -14188,7 +14220,7 @@ const docTemplate = `{
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
-                "clinic_id",
+                "contact_id",
                 "invoice_number",
                 "issue_date",
                 "items",
@@ -14197,6 +14229,9 @@ const docTemplate = `{
             ],
             "properties": {
                 "clinic_id": {
+                    "type": "string"
+                },
+                "contact_id": {
                     "type": "string"
                 },
                 "due_date": {
@@ -14246,6 +14281,9 @@ const docTemplate = `{
         "invoice.RqUpdateInvoice": {
             "type": "object",
             "properties": {
+                "contact_id": {
+                    "type": "string"
+                },
                 "due_date": {
                     "type": "string"
                 },
@@ -14298,6 +14336,12 @@ const docTemplate = `{
             "properties": {
                 "clinic_id": {
                     "type": "string"
+                },
+                "contact_id": {
+                    "type": "string"
+                },
+                "contact_to": {
+                    "$ref": "#/definitions/contact.RsContact"
                 },
                 "created_at": {
                     "type": "string"
