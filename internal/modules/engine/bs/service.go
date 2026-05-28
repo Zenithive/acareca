@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -197,19 +198,20 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
+	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
-		EndDate:                   displayEnd,
-		Assets:                    assets,
-		TotalAssets:               totalAssets,
-		Liabilities:               liabilities,
-		TotalLiabilities:          totalLiabilities,
-		Equity:                    equitySect,
-		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
-		TotalEquity:               totalEquity,
-		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+		EndDate:           displayEnd,
+		Assets:            assets,
+		TotalAssets:       totalAssets,
+		Liabilities:       liabilities,
+		TotalLiabilities:  totalLiabilities,
+		NetAssets:         netAssets,
+		Equity:            equitySect,
+		CurrentYearProfit: totalOwnerEquity.CurrentYearProfit,
+		TotalEquity:       math.Round(totalEquity*100) / 100,
 	}
 
 	meta := auditctx.GetMetadata(ctx)
@@ -401,7 +403,10 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 
 	currentRow := 7
 
-	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
+	var assetTotalCell string
+	var liabTotalCell string
+
+	renderBSSection := func(title string, accounts []RsAccount) string {
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
 		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
 
@@ -445,9 +450,18 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		return totalCell
 	}
 
-	renderBSSection("ASSETS", data.Assets, data.TotalAssets)
-	renderBSSection("LIABILITIES", data.Liabilities, data.TotalLiabilities)
-	renderBSSection("EQUITY", data.Equity, data.TotalEquity)
+	assetTotalCell = renderBSSection("ASSETS", data.Assets)
+	liabTotalCell = renderBSSection("LIABILITIES", data.Liabilities)
+
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET ASSETS")
+	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
+
+	netAssetsFormula := fmt.Sprintf("=%s-%s", assetTotalCell, liabTotalCell)
+	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), netAssetsFormula)
+	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
+	currentRow += 3
+
+	renderBSSection("EQUITY", data.Equity)
 
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Current Year Profit")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
@@ -455,9 +469,9 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
 	currentRow += 2
 
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL LIABILITIES & EQUITY")
+	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL EQUITY")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
-	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.TotalLiabilitiesAndEquity)
+	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.TotalEquity)
 	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
 
 	f.SetColWidth(sheet, "A", "A", 45)

@@ -5,32 +5,35 @@ import (
 )
 
 type BSRow struct {
-	PractitionerID      uuid.UUID `db:"practitioner_id"`
-	ClinicID            uuid.UUID `db:"clinic_id"`
-	AccountType         string    `db:"account_type"`
-	AccountCode         int16     `db:"account_code"`
-	AccountName         string    `db:"account_name"`
-	CoaID               uuid.UUID `db:"coa_id"`
-	Balance             float64   `db:"balance"`
-	EntryCount          int       `db:"entry_count"`
-	LastTransactionDate string    `db:"last_transaction_date"`
+	PractitionerID        uuid.UUID `db:"practitioner_id"`
+	UserID                uuid.UUID `db:"user_id"`
+	ClinicID              uuid.UUID `db:"clinic_id"`
+	AccountType           string    `db:"account_type"`
+	AccountClassification string    `db:"account_classification"`
+	AccountCode           int16     `db:"account_code"`
+	AccountName           string    `db:"account_name"`
+	CoaID                 uuid.UUID `db:"coa_id"`
+	Balance               float64   `db:"balance"`
+	EntryCount            int       `db:"entry_count"`
+	LastTransactionDate   string    `db:"last_transaction_date"`
 }
 
 type BSFilter struct {
 	PractitionerID *string `form:"practitioner_id"`
+	UserID         *string `form:"user_id"`
 	EndDate        *string `form:"end_date"`
 }
 
 type RsBalanceSheet struct {
-	EndDate                   string      `json:"end_date,omitempty"`
-	Assets                    []RsAccount `json:"assets"`
-	TotalAssets               float64     `json:"total_assets"`
-	Liabilities               []RsAccount `json:"liabilities"`
-	TotalLiabilities          float64     `json:"total_liabilities"`
-	Equity                    []RsAccount `json:"equity"`
-	CurrentYearProfit         float64     `json:"current_year_profit"`
-	TotalEquity               float64     `json:"total_equity"`
-	TotalLiabilitiesAndEquity float64     `json:"total_liabilities_and_equity"`
+	EndDate           string      `json:"end_date,omitempty"`
+	Assets            []RsAccount `json:"assets"`
+	TotalAssets       float64     `json:"total_assets"`
+	Liabilities       []RsAccount `json:"liabilities"`
+	TotalLiabilities  float64     `json:"total_liabilities"`
+	NetAssets         float64     `json:"net_assets"`
+	Equity            []RsAccount `json:"equity"`
+	CurrentYearProfit float64     `json:"current_year_profit"`
+	TotalEquity       float64     `json:"total_equity"`
 }
 
 type RsAccount struct {

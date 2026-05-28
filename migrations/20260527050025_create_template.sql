@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS tbl_template_setting (
     deleted_at  TIMESTAMPTZ NULL
 );
 
+ALTER TABLE tbl_template_setting
+    ADD CONSTRAINT uq_template_setting_template_id UNIQUE (template_id);
 
 -- +goose StatementEnd
 
@@ -45,4 +47,8 @@ CREATE TABLE IF NOT EXISTS tbl_template_setting (
 -- +goose StatementBegin
 DROP TABLE IF EXISTS tbl_template_setting;
 DROP TABLE IF EXISTS tbl_template;
+
+ALTER TABLE tbl_template_setting
+    DROP CONSTRAINT IF EXISTS uq_template_setting_template_id;
+
 -- +goose StatementEnd
