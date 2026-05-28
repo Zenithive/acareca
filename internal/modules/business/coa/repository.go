@@ -109,7 +109,7 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID,
 	base := `
 		SELECT 
 			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
-			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, atyp.name AS account_type_name, coa.created_at, coa.updated_at
+			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
@@ -174,7 +174,7 @@ func (r *repository) CountChartOfAccount(ctx context.Context, actorID *uuid.UUID
 func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error) {
 	query := `
 		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		       coa.is_system, at.is_taxable, coa.classification, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.id = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
@@ -185,7 +185,7 @@ func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practi
 func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
 	query := `
         SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-               coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+               coa.is_system, at.is_taxable, coa.classification, coa.created_at, coa.updated_at, coa.deleted_at
         FROM tbl_chart_of_accounts coa
         JOIN tbl_account_tax at ON at.id = coa.account_tax_id
         WHERE coa.key = $1 
@@ -198,7 +198,7 @@ func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, pra
 func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error) {
 	query := `
 		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		       coa.is_system, at.is_taxable, coa.classification, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 	    JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.code = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
@@ -214,13 +214,13 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 
 func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error) {
 	query := `
-		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system, classification)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
 	`
 	var id uuid.UUID
 	err := tx.QueryRowxContext(ctx, query,
-		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.IsSystem,
+		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.IsSystem, c.Classification,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
@@ -234,16 +234,16 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 	}
 
 	var sb strings.Builder
-	sb.WriteString("INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system) VALUES ")
-	args := make([]interface{}, 0, len(rows)*7)
+	sb.WriteString("INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, classification, is_system) VALUES ")
+	args := make([]interface{}, 0, len(rows)*8)
 
 	for i, row := range rows {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		base := i * 7
-		fmt.Fprintf(&sb, "($%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7)
-		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.Key, row.IsSystem)
+		base := i * 8
+		fmt.Fprintf(&sb, "($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8)
+		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.Key, row.Classification, row.IsSystem)
 	}
 
 	if _, err := tx.ExecContext(ctx, sb.String(), args...); err != nil {
@@ -295,7 +295,7 @@ func (r *repository) GetAccountTypeByName(ctx context.Context, name string) (int
 func (r *repository) GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error) {
 	query := `
 		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		       coa.is_system, at.is_taxable, coa.classification, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.id = $1 AND coa.deleted_at IS NULL
@@ -312,7 +312,7 @@ func (r *repository) getChartByID(ctx context.Context, querier interface {
 }, id uuid.UUID) (*ChartOfAccount, error) {
 	query := `
 		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.created_at, coa.updated_at, coa.deleted_at
+		       coa.is_system, at.is_taxable, coa.classification, coa.created_at, coa.updated_at, coa.deleted_at
 		FROM tbl_chart_of_accounts coa
 		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
 		WHERE coa.id = $1
