@@ -218,7 +218,7 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		Name:           req.Name,
 		Key:            GenerateKeyFromName(req.Name),
 		IsSystem:       isSystem,
-		Classification: req.Classification,
+		Classification: ClassificationOperatingExpense,
 	}
 
 	var created *ChartOfAccount

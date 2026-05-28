@@ -54,9 +54,10 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 				due_date,
 				subtotal,
 				tax_total,
-				grand_total
+				grand_total,
+				status
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		`,
 			invoice.ID,
 			invoice.ClinicID,
@@ -71,6 +72,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			subtotal,
 			taxTotal,
 			grandTotal,
+			invoice.Status,
 		)
 		if err != nil {
 			return err
@@ -125,6 +127,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 			reference,
 			payment_method,
 			tax_method,
+			status,
 			issue_date::text,
 			due_date::text,
 			created_at::text,
@@ -141,6 +144,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		&invoice.Reference,
 		&invoice.PaymentMethod,
 		&invoice.TaxMethod,
+		&invoice.Status,
 		&invoice.IssueDate,
 		&invoice.DueDate,
 		&invoice.CreatedAt,
@@ -171,6 +175,7 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			reference,
 			payment_method,
 			tax_method,
+			status,
 			issue_date::text,
 			due_date::text,
 			created_at::text,
@@ -196,6 +201,7 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			&invoice.Reference,
 			&invoice.PaymentMethod,
 			&invoice.TaxMethod,
+			&invoice.Status,
 			&invoice.IssueDate,
 			&invoice.DueDate,
 			&invoice.CreatedAt,
@@ -234,8 +240,9 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 				subtotal = $9,
 				tax_total = $10,
 				grand_total = $11,
+				status = $12,
 				updated_at = NOW()
-			WHERE id = $12
+			WHERE id = $13
 			AND deleted_at IS NULL
 		`,
 			invoice.TemplateID,
@@ -249,6 +256,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			subtotal,
 			taxTotal,
 			grandTotal,
+			invoice.Status,
 			invoice.ID,
 		)
 		if err != nil {

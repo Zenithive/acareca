@@ -41,20 +41,20 @@ func (a *AccountTax) ToRs() AccountTax {
 }
 
 type ChartOfAccount struct {
-	ID              uuid.UUID  `db:"id"`
-	PractitionerID  uuid.UUID  `db:"practitioner_id"`
-	AccountTypeID   int16      `db:"account_type_id"`
-	AccountTypeName string     `db:"account_type_name"`
-	AccountTaxID    int16      `db:"account_tax_id"`
-	Code            int16      `db:"code"`
-	Name            string     `db:"name"`
-	Key             string     `db:"key"`
-	IsSystem        bool       `db:"is_system"`
-	IsTaxable       bool       `db:"is_taxable"`
-	Classification  string     `db:"classification"`
-	CreatedAt       time.Time  `db:"created_at"`
-	UpdatedAt       time.Time  `db:"updated_at"`
-	DeletedAt       *time.Time `db:"deleted_at"`
+	ID              uuid.UUID             `db:"id"`
+	PractitionerID  uuid.UUID             `db:"practitioner_id"`
+	AccountTypeID   int16                 `db:"account_type_id"`
+	AccountTypeName string                `db:"account_type_name"`
+	AccountTaxID    int16                 `db:"account_tax_id"`
+	Code            int16                 `db:"code"`
+	Name            string                `db:"name"`
+	Key             string                `db:"key"`
+	IsSystem        bool                  `db:"is_system"`
+	IsTaxable       bool                  `db:"is_taxable"`
+	Classification  AccountClassification `db:"classification"`
+	CreatedAt       time.Time             `db:"created_at"`
+	UpdatedAt       time.Time             `db:"updated_at"`
+	DeletedAt       *time.Time            `db:"deleted_at"`
 }
 
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {
@@ -75,13 +75,13 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 }
 
 type RqCreateChartOfAccountOfAccount struct {
-	PractitionerID uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
-	AccountTypeID  int16     `json:"account_type_id" validate:"required,min=1"`
-	AccountTaxID   int16     `json:"account_tax_id" validate:"required,min=1"`
-	Code           int16     `json:"code" validate:"required,gte=100,lte=9999"`
-	Name           string    `json:"name" validate:"required,max=255"`
-	IsSystem       *bool     `json:"is_system"`
-	Classification string    `json:"classification"`
+	PractitionerID uuid.UUID             `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  int16                 `json:"account_type_id" validate:"required,min=1"`
+	AccountTaxID   int16                 `json:"account_tax_id" validate:"required,min=1"`
+	Code           int16                 `json:"code" validate:"required,gte=100,lte=9999"`
+	Name           string                `json:"name" validate:"required,max=255"`
+	IsSystem       *bool                 `json:"is_system"`
+	Classification AccountClassification `json:"classification"`
 }
 
 type RqUpdateCharOfAccountOfAccount struct {
@@ -99,18 +99,18 @@ type RqCheckCodeUnique struct {
 }
 
 type RsChartOfAccount struct {
-	ID              uuid.UUID `json:"id"`
-	PractitionerID  uuid.UUID `json:"practitioner_id"`
-	AccountTypeID   int16     `json:"account_type_id"`
-	AccountTypeName string    `json:"account_type_name"`
-	AccountTaxID    int16     `json:"account_tax_id"`
-	Code            int16     `json:"code"`
-	Name            string    `json:"name"`
-	IsSystem        bool      `json:"is_system"`
-	IsTaxable       bool      `json:"is_taxable"`
-	Classification  string    `json:"classification"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              uuid.UUID             `json:"id"`
+	PractitionerID  uuid.UUID             `json:"practitioner_id"`
+	AccountTypeID   int16                 `json:"account_type_id"`
+	AccountTypeName string                `json:"account_type_name"`
+	AccountTaxID    int16                 `json:"account_tax_id"`
+	Code            int16                 `json:"code"`
+	Name            string                `json:"name"`
+	IsSystem        bool                  `json:"is_system"`
+	IsTaxable       bool                  `json:"is_taxable"`
+	Classification  AccountClassification `json:"classification"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
 type RsCodeUnique struct {

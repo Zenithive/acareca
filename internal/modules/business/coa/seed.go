@@ -115,7 +115,7 @@ func SeedDefaultsForPractitioner(ctx context.Context, repo Repository, practitio
 			Code:           row.Code,
 			Name:           row.Name,
 			Key:            GenerateKeyFromName(row.Name),
-			Classification: string(row.Classification),
+			Classification: row.Classification,
 			IsSystem:       row.IsSystem,
 		}
 	}

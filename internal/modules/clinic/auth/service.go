@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -45,15 +46,17 @@ type service struct {
 	db       *sqlx.DB
 	auditSvc audit.Service
 	mailer   *mail.Client
+	template template.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service, tmp template.IService) Service {
 	return &service{
 		repo:     repo,
 		cfg:      cfg,
 		db:       db,
 		auditSvc: auditSvc,
 		mailer:   mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		template: tmp,
 	}
 }
 
@@ -143,6 +146,12 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
+
+		_, err = s.template.BulkCreate(ctx, createdClinic.ID)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -152,7 +161,7 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 
 	baseUrl, err := s.cfg.GetBaseURL()
 	if err == nil {
-		verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
+		verificationLink := fmt.Sprintf("%s/clinic/verify-email?token=%s", baseUrl, tokenID)
 		go func() {
 			if err := s.mailer.SendVerificationEmail(createdClinic.Email, createdClinic.ClinicName, verificationLink); err != nil {
 				fmt.Printf("[CLINIC ERROR] Failed to send verification email: %v\n", err)

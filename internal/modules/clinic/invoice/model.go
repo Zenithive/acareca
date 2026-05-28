@@ -16,6 +16,7 @@ type RqInvoice struct {
 	TaxMethod     *string        `json:"tax_method" validate:"omitempty,oneof=EXCLUSIVE INCLUSIVE"`
 	IssueDate     string         `json:"issue_date" validate:"required,datetime=2006-01-02"`
 	DueDate       *string        `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status        *string        `json:"status"`
 	Items         []*item.RqItem `json:"items" validate:"required,dive"`
 }
 
@@ -24,6 +25,14 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 	for _, rqItem := range r.Items {
 		items = append(items, rqItem.ToItem())
 	}
+
+	// Set default status to "draft" if not provided
+	status := r.Status
+	if status == nil {
+		defaultStatus := "draft"
+		status = &defaultStatus
+	}
+
 	return &Invoice{
 		ClinicID:      r.ClinicID,
 		TemplateID:    r.TemplateID,
@@ -33,6 +42,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		PaymentMethod: r.PaymentMethod,
 		TaxMethod:     r.TaxMethod,
 		IssueDate:     r.IssueDate,
+		Status:        status,
 		DueDate:       r.DueDate,
 		Items:         items,
 	}
@@ -48,6 +58,7 @@ type RqUpdateInvoice struct {
 	TaxMethod     *string              `json:"tax_method,omitempty" validate:"omitempty,oneof=EXCLUSIVE INCLUSIVE"`
 	IssueDate     *string              `json:"issue_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	DueDate       *string              `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status        *string              `json:"status,omitempty"`
 	Items         []*item.RqUpdateItem `json:"items,omitempty" validate:"omitempty,dive"`
 }
 
@@ -85,6 +96,11 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		}
 		inv.Items = items
 	}
+
+	if r.Status != nil {
+		inv.Status = r.Status
+	}
+
 	return inv
 }
 
@@ -99,6 +115,7 @@ type Invoice struct {
 	TaxMethod     *string      `db:"tax_method,omitempty"`
 	IssueDate     string       `db:"issue_date"`
 	DueDate       *string      `db:"due_date,omitempty"`
+	Status        *string      `db:"status"`
 	Items         []*item.Item `db:"-"`
 	CreatedAt     string       `db:"created_at"`
 	UpdatedAt     string       `db:"updated_at"`
@@ -121,6 +138,7 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		TaxMethod:     i.TaxMethod,
 		IssueDate:     i.IssueDate,
 		DueDate:       i.DueDate,
+		Status:        i.Status,
 		Items:         items,
 		CreatedAt:     i.CreatedAt,
 		UpdatedAt:     i.UpdatedAt,
@@ -138,6 +156,7 @@ type RsInvoice struct {
 	TaxMethod     *string        `json:"tax_method,omitempty"`
 	IssueDate     string         `json:"issue_date"`
 	DueDate       *string        `json:"due_date,omitempty"`
+	Status        *string        `json:"status"`
 	Items         []*item.RsItem `json:"items,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 	UpdatedAt     string         `json:"updated_at"`
