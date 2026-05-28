@@ -820,6 +820,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				foundTarget = true
 			}
 
+			if !foundTarget {
+				return nil, fmt.Errorf("missing required balancing account: COA code 600 Business Bank Account for practitioner %s", practitionerID.String())
+			}
+
 			if foundTarget {
 				heapCoaID := uuid.MustParse(resolvedCoaID.String())
 
