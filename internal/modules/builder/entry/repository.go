@@ -333,11 +333,6 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, e *FormEntry, valu
 	query := `
 		INSERT INTO tbl_form_entry (id, form_version_id, clinic_id, submitted_by, submitted_at, status, date)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (id) DO UPDATE SET
-        status = EXCLUDED.status,
-        submitted_at = EXCLUDED.submitted_at,
-        date = EXCLUDED.date,
-        updated_at = NOW()
 		RETURNING created_at, updated_at
 	`
 	if err := tx.QueryRowContext(ctx, query,

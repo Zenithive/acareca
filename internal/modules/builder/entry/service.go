@@ -122,15 +122,8 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			submittedAt = &now
 		}
 
-		var targetID uuid.UUID
-		if entityID != uuid.Nil {
-			targetID = entityID
-		} else {
-			targetID = uuid.New()
-		}
-
 		e := &FormEntry{
-			ID:            targetID,
+			ID:            uuid.New(),
 			FormVersionID: formVersionID,
 			ClinicID:      req.ClinicID,
 			SubmittedBy:   submittedBy,
