@@ -22,15 +22,15 @@ type BSFilter struct {
 }
 
 type RsBalanceSheet struct {
-	EndDate                   string      `json:"end_date,omitempty"`
-	Assets                    []RsAccount `json:"assets"`
-	TotalAssets               float64     `json:"total_assets"`
-	Liabilities               []RsAccount `json:"liabilities"`
-	TotalLiabilities          float64     `json:"total_liabilities"`
-	Equity                    []RsAccount `json:"equity"`
-	CurrentYearProfit         float64     `json:"current_year_profit"`
-	TotalEquity               float64     `json:"total_equity"`
-	TotalLiabilitiesAndEquity float64     `json:"total_liabilities_and_equity"`
+	EndDate           string      `json:"end_date,omitempty"`
+	Assets            []RsAccount `json:"assets"`
+	TotalAssets       float64     `json:"total_assets"`
+	Liabilities       []RsAccount `json:"liabilities"`
+	TotalLiabilities  float64     `json:"total_liabilities"`
+	NetAssets         float64     `json:"net_assets"`
+	Equity            []RsAccount `json:"equity"`
+	CurrentYearProfit float64     `json:"current_year_profit"`
+	TotalEquity       float64     `json:"total_equity"`
 }
 
 type RsAccount struct {
