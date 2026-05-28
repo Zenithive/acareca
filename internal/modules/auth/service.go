@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -261,7 +262,6 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 			return nil, errors.New("account not verified. Please check your email to verify your account")
 		}
 	}
-
 	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
 		return nil, err
@@ -280,7 +280,20 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		UserAgent:  meta.UserAgent,
 	})
 
-	return s.issueTokens(ctx, user, entityID)
+	rs, err := s.issueTokens(ctx, user, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("issue tokens: %w", err)
+	}
+	if user.Role == util.RoleAdmin {
+		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+			if err := s.NotificationSvc.PreferenceSetting(ctx, tx, user.ID, uuid.MustParse(entityID), user.Role); err != nil {
+				log.Printf("failed to set notification preferences for user %s: %v", user.ID, err)
+			}
+			return nil
+		})
+
+	}
+	return rs, err
 }
 
 func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error {
@@ -463,7 +476,8 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		return errors.New("verification link has expired")
 	}
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		if err := s.repo.MarkUserVerified(ctx, token, tx); err != nil {
+		email, err := s.repo.MarkUserVerified(ctx, token, tx)
+		if err != nil {
 			return err
 		}
 		if token.Role == nil {
@@ -471,7 +485,11 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		}
 		switch *token.Role {
 		case util.RolePractitioner:
-			if err := s.NotificationSvc.PreferenceSetting(ctx, token.EntityID, token.EntityID, *token.Role, tx); err != nil {
+			userId, err := s.inviteRepo.GetUserIDByEmail(ctx, email)
+			if err != nil {
+				return fmt.Errorf("failed to retrieve user ID for email %s: %w", email, err)
+			}
+			if err := s.NotificationSvc.PreferenceSetting(ctx, tx, *userId, token.EntityID, *token.Role); err != nil {
 				return fmt.Errorf("failed to set notification preferences: %w", err)
 			}
 		}

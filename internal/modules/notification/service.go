@@ -20,7 +20,7 @@ type Service interface {
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
 	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
-	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string, tx *sqlx.Tx) error
+	PreferenceSetting(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID, entityID uuid.UUID, entityType string) error
 }
 
 type service struct {
@@ -128,29 +128,38 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 }
 
 // PreferenceSetting creates default notification preferences for a new user (one row per event type)
-func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string, tx *sqlx.Tx) error {
-	defaultChannels := NotificationChannels{
-		string(ChannelInApp): true,
-		string(ChannelEmail): false,
-		string(ChannelPush):  false,
+func (s *service) PreferenceSetting(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID, entityID uuid.UUID, entityType string) error {
+
+	// chack if preferences alredy exist for this user and entity
+	existingPrefs, err := s.GetPreferences(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get existing preferences: %w", err)
 	}
-	eventTypes := []NotificationEventType{
-		EventNewTransaction,
-		EventAccountantActivityAlert,
-		EventSystemActivityAlert,
-	}
-	for _, et := range eventTypes {
-		pref := NotificationPreference{
-			UserID:     userID,
-			EntityID:   entityID,
-			EntityType: entityType,
-			EventType:  NotificationEventTypes{et},
-			Channels:   defaultChannels,
-			CreatedAt:  time.Now(),
+	if len(existingPrefs) == 0 {
+		defaultChannels := NotificationChannels{
+			string(ChannelInApp): true,
+			string(ChannelEmail): false,
+			string(ChannelPush):  false,
 		}
-		if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
-			return fmt.Errorf("failed to create preference: %w", err)
+		eventTypes := []NotificationEventType{
+			EventNewTransaction,
+			EventAccountantActivityAlert,
+			EventSystemActivityAlert,
+		}
+		for _, et := range eventTypes {
+			pref := NotificationPreference{
+				UserID:     userID,
+				EntityID:   entityID,
+				EntityType: entityType,
+				EventType:  NotificationEventTypes{et},
+				Channels:   defaultChannels,
+				CreatedAt:  time.Now(),
+			}
+			if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
+				return fmt.Errorf("failed to create preference: %w", err)
+			}
 		}
 	}
+
 	return nil
 }
