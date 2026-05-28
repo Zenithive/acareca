@@ -64,9 +64,9 @@ func (r *Repository) Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUI
 }
 
 func (r *Repository) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*Template, error) {
-	const q = `SELECT * FROM tbl_template WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL`
+	const q = `SELECT * FROM tbl_template WHERE id = $1 AND deleted_at IS NULL`
 	var t Template
-	if err := r.db.GetContext(ctx, &t, q, id, clinicId); err != nil {
+	if err := r.db.GetContext(ctx, &t, q, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
