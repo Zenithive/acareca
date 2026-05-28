@@ -107,6 +107,10 @@ func (h *Handler) Get(c *gin.Context) {
 
 	invoice, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}

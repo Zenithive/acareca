@@ -1604,6 +1604,32 @@ definitions:
       lock_date:
         type: string
     type: object
+  coa.AccountClassification:
+    enum:
+    - Current Asset
+    - Non-Current Asset
+    - Contra-Asset
+    - Current Liability
+    - Non-Current Liability
+    - Equity
+    - Contra-Equity
+    - Operating Revenue
+    - Other Revenue
+    - Direct Costs
+    - Operating Expense
+    type: string
+    x-enum-varnames:
+    - ClassificationCurrentAsset
+    - ClassificationNonCurrentAsset
+    - ClassificationContraAsset
+    - ClassificationCurrentLiability
+    - ClassificationNonCurrentLiability
+    - ClassificationEquity
+    - ClassificationContraEquity
+    - ClassificationOperatingRevenue
+    - ClassificationOtherRevenue
+    - ClassificationDirectCosts
+    - ClassificationOperatingExpense
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -1625,6 +1651,8 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
+      classification:
+        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
@@ -2462,6 +2490,8 @@ definitions:
     properties:
       clinic_id:
         type: string
+      contact_id:
+        type: string
       due_date:
         type: string
       invoice_number:
@@ -2492,7 +2522,7 @@ definitions:
       template_id:
         type: string
     required:
-    - clinic_id
+    - contact_id
     - invoice_number
     - issue_date
     - items
@@ -2501,6 +2531,8 @@ definitions:
     type: object
   invoice.RqUpdateInvoice:
     properties:
+      contact_id:
+        type: string
       due_date:
         type: string
       id:
@@ -2537,6 +2569,10 @@ definitions:
     properties:
       clinic_id:
         type: string
+      contact_id:
+        type: string
+      contact_to:
+        $ref: '#/definitions/contact.RsContact'
       created_at:
         type: string
       due_date:
