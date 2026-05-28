@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/google/uuid"
@@ -37,6 +38,8 @@ type IRepository interface {
 	LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
 	UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
 	GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUID) ([]*RsEntryDocument, error)
+	// Ledger integrity verification
+	AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error
 }
 
 type Repository struct {
@@ -67,7 +70,7 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 
 	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, created_at, updated_at
 		FROM tbl_form_entry_value
-		WHERE entry_id = $1 AND updated_at IS NULL
+		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
 	var values []*FormEntryValue
 	if err := tx.SelectContext(ctx, &values, valQuery, id); err != nil {
@@ -184,7 +187,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 
 	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, created_at, updated_at
 		FROM tbl_form_entry_value
-		WHERE entry_id = $1 AND updated_at IS NULL
+		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
 	var values []*FormEntryValue
 	if err := r.db.SelectContext(ctx, &values, valQuery, e.ID); err != nil {
@@ -402,6 +405,13 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, e *FormEntry, valu
 }
 
 func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+	// Mark all associated form entry values as deleted
+	valDeleteQuery := `UPDATE tbl_form_entry_value SET deleted_at = now() WHERE entry_id = $1 AND deleted_at IS NULL`
+	if _, err := tx.ExecContext(ctx, valDeleteQuery, id); err != nil {
+		return fmt.Errorf("delete form entry values tx: %w", err)
+	}
+
+	// Mark the parent entry as deleted
 	query := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
 	res, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
@@ -886,3 +896,111 @@ func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUI
 	}
 	return result, nil
 }
+
+func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
+	query := `
+		SELECT
+			fev.entry_id,
+			COALESCE(SUM(
+				CASE
+					WHEN LOWER(at.name) LIKE '%asset%' OR LOWER(at.name) LIKE '%expense%' 
+						THEN COALESCE(fev.net_amount, 0)
+					WHEN LOWER(at.name) LIKE '%liability%' OR LOWER(at.name) LIKE '%equity%' OR LOWER(at.name) LIKE '%revenue%' OR LOWER(at.name) LIKE '%income%' 
+						THEN -COALESCE(fev.net_amount, 0)
+					ELSE 0
+				END
+			), 0) as ledger_balance
+		FROM tbl_form_entry_value fev
+		-- Use a single unified join path to fetch the account type name
+		INNER JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(fev.coa_id, (SELECT coa_id FROM tbl_form_field WHERE id = fev.form_field_id)) AND coa.deleted_at IS NULL
+		INNER JOIN tbl_account_type at ON coa.account_type_id = at.id
+		WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
+		GROUP BY fev.entry_id`
+
+	type balanceRow struct {
+		EntryID       uuid.UUID `db:"entry_id"`
+		LedgerBalance float64   `db:"ledger_balance"`
+	}
+
+	var balance balanceRow
+	if err := tx.QueryRowxContext(ctx, query, entryID).StructScan(&balance); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("assert ledger balance query: %w", err)
+	}
+
+	ledgerBalance := math.Round(balance.LedgerBalance*100) / 100
+
+	if ledgerBalance > 0.01 || ledgerBalance < -0.01 {
+		return fmt.Errorf("ledger integrity violation: entry %s has variance of %.2f which exceeds 0.01 threshold", entryID.String(), ledgerBalance)
+	}
+
+	return nil
+}
+
+// // ============================================================================
+// // AssertLedgerGroupBalances implements institutional-grade ledger verification
+// // This method runs a SUM query grouped by entry_id right before tx.Commit()
+// // If the algebraic sum of entries does not equal 0.00 (within 0.01 threshold),
+// // it returns a ledger integrity violation error that triggers a transaction rollback
+// // ============================================================================
+// func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
+// 	query := `
+// 		SELECT
+// 			entry_id,
+// 			COALESCE(SUM(
+// 				CASE
+// 					WHEN coa.account_type_id IN (SELECT id FROM tbl_account_type WHERE name IN ('Asset', 'Expense'))
+// 						THEN COALESCE(fev.net_amount, 0)
+// 					WHEN coa.account_type_id IN (SELECT id FROM tbl_account_type WHERE name IN ('Liability', 'Equity', 'Revenue', 'Income'))
+// 						THEN -COALESCE(fev.net_amount, 0)
+// 					ELSE 0
+// 				END
+// 			), 0) as ledger_balance
+// 		FROM tbl_form_entry_value fev
+// 		LEFT JOIN tbl_chart_of_accounts coa ON fev.coa_id = coa.id AND coa.deleted_at IS NULL
+// 		LEFT JOIN tbl_form_field ff ON fev.form_field_id = ff.id AND ff.deleted_at IS NULL
+// 		LEFT JOIN tbl_chart_of_accounts coa_field ON ff.coa_id = coa_field.id AND coa_field.deleted_at IS NULL
+// 		WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
+// 		GROUP BY fev.entry_id`
+// 	// query := `
+// 	// SELECT
+// 	//     fev.entry_id,
+// 	//     COALESCE(SUM(
+// 	//         CASE
+// 	//             WHEN LOWER(at.name) IN ('asset', 'expense') THEN COALESCE(fev.net_amount, 0)
+// 	//             WHEN LOWER(at.name) IN ('liability', 'equity', 'revenue', 'income') THEN -COALESCE(fev.net_amount, 0)
+// 	//             ELSE 0
+// 	//         END
+// 	//     ), 0) as ledger_balance
+// 	// FROM tbl_form_entry_value fev
+// 	// INNER JOIN tbl_chart_of_accounts coa ON fev.coa_id = coa.id AND coa.deleted_at IS NULL
+// 	// INNER JOIN tbl_account_type at ON coa.account_type_id = at.id
+// 	// WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
+// 	// GROUP BY fev.entry_id`
+
+// 	type balanceRow struct {
+// 		EntryID       uuid.UUID `db:"entry_id"`
+// 		LedgerBalance float64   `db:"ledger_balance"`
+// 	}
+
+// 	var balance balanceRow
+// 	if err := tx.QueryRowxContext(ctx, query, entryID).StructScan(&balance); err != nil {
+// 		if errors.Is(err, sql.ErrNoRows) {
+// 			// No entries to verify
+// 			return nil
+// 		}
+// 		return fmt.Errorf("assert ledger balance query: %w", err)
+// 	}
+
+// 	// Round to prevent floating-point precision issues
+// 	ledgerBalance := math.Round(balance.LedgerBalance*100) / 100
+
+// 	// Check if balance is within acceptable threshold (0.01)
+// 	if ledgerBalance > 0.01 || ledgerBalance < -0.01 {
+// 		return fmt.Errorf("ledger integrity violation: entry %s has variance of %.2f which exceeds 0.01 threshold", entryID.String(), ledgerBalance)
+// 	}
+
+// 	return nil
+// }
