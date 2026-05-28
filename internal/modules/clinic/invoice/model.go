@@ -2,7 +2,7 @@ package invoice
 
 import (
 	"github.com/google/uuid"
-	contactpkg "github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
@@ -112,22 +112,22 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 }
 
 type Invoice struct {
-	ID            uuid.UUID           `db:"id"`
-	ClinicID      uuid.UUID           `db:"clinic_id"`
-	ContactID     *uuid.UUID          `db:"contact_id"`
-	TemplateID    uuid.UUID           `db:"template_id"`
-	Name          string              `db:"name"`
-	InvoiceNumber string              `db:"invoice_number"`
-	Reference     *string             `db:"reference,omitempty"`
-	PaymentMethod *string             `db:"payment_method,omitempty"`
-	TaxMethod     *string             `db:"tax_method,omitempty"`
-	IssueDate     string              `db:"issue_date"`
-	DueDate       *string             `db:"due_date,omitempty"`
-	Status        *string             `db:"status"`
-	ContactTo     *contactpkg.Contact `db:"-"`
-	Items         []*item.Item        `db:"-"`
-	CreatedAt     string              `db:"created_at"`
-	UpdatedAt     string              `db:"updated_at"`
+	ID            uuid.UUID        `db:"id"`
+	ClinicID      uuid.UUID        `db:"clinic_id"`
+	ContactID     *uuid.UUID       `db:"contact_id"`
+	TemplateID    uuid.UUID        `db:"template_id"`
+	Name          string           `db:"name"`
+	InvoiceNumber string           `db:"invoice_number"`
+	Reference     *string          `db:"reference,omitempty"`
+	PaymentMethod *string          `db:"payment_method,omitempty"`
+	TaxMethod     *string          `db:"tax_method,omitempty"`
+	IssueDate     string           `db:"issue_date"`
+	DueDate       *string          `db:"due_date,omitempty"`
+	Status        *string          `db:"status"`
+	ContactTo     *contact.Contact `db:"-"`
+	Items         []*item.Item     `db:"-"`
+	CreatedAt     string           `db:"created_at"`
+	UpdatedAt     string           `db:"updated_at"`
 }
 
 func (i *Invoice) ToRsInvoice() *RsInvoice {
@@ -136,7 +136,7 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		items = append(items, item.ToRsItem(i.ID))
 	}
 
-	var contactTo *contactpkg.RsContact
+	var contactTo *contact.RsContact
 	if i.ContactTo != nil {
 		rsContact := i.ContactTo.ToRsContact()
 		contactTo = &rsContact
@@ -163,22 +163,22 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 }
 
 type RsInvoice struct {
-	ID            uuid.UUID             `json:"id"`
-	ClinicID      uuid.UUID             `json:"clinic_id"`
-	ContactID     *uuid.UUID            `json:"contact_id,omitempty"`
-	ContactTo     *contactpkg.RsContact `json:"contact_to,omitempty"`
-	TemplateID    uuid.UUID             `json:"template_id"`
-	Name          string                `json:"name"`
-	InvoiceNumber string                `json:"invoice_number"`
-	Reference     *string               `json:"reference,omitempty"`
-	PaymentMethod *string               `json:"payment_method,omitempty"`
-	TaxMethod     *string               `json:"tax_method,omitempty"`
-	IssueDate     string                `json:"issue_date"`
-	DueDate       *string               `json:"due_date,omitempty"`
-	Status        *string               `json:"status"`
-	Items         []*item.RsItem        `json:"items,omitempty"`
-	CreatedAt     string                `json:"created_at"`
-	UpdatedAt     string                `json:"updated_at"`
+	ID            uuid.UUID          `json:"id"`
+	ClinicID      uuid.UUID          `json:"clinic_id"`
+	ContactID     *uuid.UUID         `json:"contact_id,omitempty"`
+	ContactTo     *contact.RsContact `json:"contact_to,omitempty"`
+	TemplateID    uuid.UUID          `json:"template_id"`
+	Name          string             `json:"name"`
+	InvoiceNumber string             `json:"invoice_number"`
+	Reference     *string            `json:"reference,omitempty"`
+	PaymentMethod *string            `json:"payment_method,omitempty"`
+	TaxMethod     *string            `json:"tax_method,omitempty"`
+	IssueDate     string             `json:"issue_date"`
+	DueDate       *string            `json:"due_date,omitempty"`
+	Status        *string            `json:"status"`
+	Items         []*item.RsItem     `json:"items,omitempty"`
+	CreatedAt     string             `json:"created_at"`
+	UpdatedAt     string             `json:"updated_at"`
 }
 
 type Filter struct {
