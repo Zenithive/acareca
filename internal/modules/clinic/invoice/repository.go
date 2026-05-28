@@ -12,7 +12,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
-	"github.com/samber/lo"
 )
 
 var ErrNotFound = errors.New("invoice not found")
@@ -152,7 +151,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	`, id).Scan(
 		&invoice.ID,
 		&invoice.ClinicID,
-		lo.ToPtr(invoice.ContactID),
+		&invoice.ContactID,
 		&invoice.TemplateID,
 		&invoice.Name,
 		&invoice.InvoiceNumber,
@@ -170,6 +169,15 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+
+	if invoice.ContactID != nil {
+		contact, err := r.contactRepo.Get(ctx, *invoice.ContactID)
+		if err != nil {
+			return nil, err
+		}
+
+		invoice.ContactTo = &contact
 	}
 
 	items, err := r.itemRepo.GetByInvoiceID(ctx, nil, invoice.ID)
@@ -211,10 +219,11 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 	invoices := make([]*Invoice, 0)
 	for rows.Next() {
 		var invoice Invoice
+
 		if err := rows.Scan(
 			&invoice.ID,
 			&invoice.ClinicID,
-			lo.ToPtr(&invoice.ContactID),
+			&invoice.ContactID,
 			&invoice.TemplateID,
 			&invoice.Name,
 			&invoice.InvoiceNumber,
