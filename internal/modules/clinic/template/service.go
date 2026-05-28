@@ -71,6 +71,15 @@ func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSett
 	if err != nil {
 		return nil, err
 	}
+	// If no settings exist, create default settings
+	if st == nil {
+		defaultSt := DefaultSettings(templateId)
+		if err := s.repo.CreateSetting(ctx, &defaultSt); err != nil {
+			return nil, err
+		}
+		rs := defaultSt.ToRs()
+		return &rs, nil
+	}
 	rs := st.ToRs()
 	return &rs, nil
 }

@@ -1,6 +1,7 @@
 package template
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -122,6 +123,7 @@ func (h *Handler) Delete(c *gin.Context) {
 // @Param id path string true "Template ID"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
+// @Failure 404 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /template/{id} [get]
@@ -141,6 +143,10 @@ func (h *Handler) Get(c *gin.Context) {
 
 	rs, err := h.svc.Get(c.Request.Context(), clinicId, id)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
