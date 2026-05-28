@@ -476,7 +476,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		return errors.New("verification link has expired")
 	}
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		email, err := s.repo.MarkUserVerified(ctx, token, tx)
+		user_id, err := s.repo.MarkUserVerified(ctx, token, tx)
 		if err != nil {
 			return err
 		}
@@ -485,11 +485,9 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		}
 		switch *token.Role {
 		case util.RolePractitioner:
-			userId, err := s.inviteRepo.GetUserIDByEmail(ctx, email)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve user ID for email %s: %w", email, err)
-			}
-			if err := s.NotificationSvc.PreferenceSetting(ctx, tx, *userId, token.EntityID, *token.Role); err != nil {
+			user_id, _ := uuid.Parse(user_id)
+
+			if err := s.NotificationSvc.PreferenceSetting(ctx, tx, user_id, token.EntityID, *token.Role); err != nil {
 				return fmt.Errorf("failed to set notification preferences: %w", err)
 			}
 		}

@@ -335,16 +335,16 @@ func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationTo
 		SET verified = true,
 			updated_at = NOW()
 		WHERE id = $1
-		RETURNING email
+		RETURNING user_id
 	`, table)
 
-	var email string
+	var user_id string
 
 	err := tx.QueryRowContext(
 		ctx,
 		verifyQuery,
 		token.EntityID,
-	).Scan(&email)
+	).Scan(&user_id)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -380,7 +380,7 @@ func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationTo
 		)
 	}
 
-	return email, nil
+	return user_id, nil
 }
 func (r *repository) UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error {
 	query := `UPDATE tbl_user SET password = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL`
