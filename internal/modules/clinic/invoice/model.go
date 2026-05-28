@@ -7,7 +7,7 @@ import (
 )
 
 type RqInvoice struct {
-	ClinicID      uuid.UUID      `json:"clinic_id" validate:"required"`
+	ClinicID      uuid.UUID      `json:"clinic_id" validate:"-"`
 	TemplateID    uuid.UUID      `json:"template_id" validate:"required"`
 	Name          string         `json:"name" validate:"required"`
 	InvoiceNumber string         `json:"invoice_number" validate:"required"`

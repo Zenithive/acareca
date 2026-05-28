@@ -1,6 +1,7 @@
 package invoice
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -39,11 +40,18 @@ func NewHandler(svc IService) IHandler {
 // @Security BearerToken
 // @Router /clinic/invoice [post]
 func (h *Handler) Create(c *gin.Context) {
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!!"))
+		return
+	}
 	var rq RqInvoice
 	if err := util.BindAndValidate(c, &rq); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
+	rq.ClinicID = clinicId
 
 	if err := h.svc.Create(c.Request.Context(), &rq); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
