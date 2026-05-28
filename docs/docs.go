@@ -14373,6 +14373,9 @@ const docTemplate = `{
                 "reference": {
                     "type": "string"
                 },
+                "sent_to": {
+                    "$ref": "#/definitions/contact.RsContact"
+                },
                 "status": {
                     "type": "string"
                 },
