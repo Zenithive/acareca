@@ -25,6 +25,14 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 	for _, rqItem := range r.Items {
 		items = append(items, rqItem.ToItem())
 	}
+
+	// Set default status to "draft" if not provided
+	status := r.Status
+	if status == nil {
+		defaultStatus := "draft"
+		status = &defaultStatus
+	}
+
 	return &Invoice{
 		ClinicID:      r.ClinicID,
 		TemplateID:    r.TemplateID,
@@ -34,7 +42,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		PaymentMethod: r.PaymentMethod,
 		TaxMethod:     r.TaxMethod,
 		IssueDate:     r.IssueDate,
-		Status:        *r.Status,
+		Status:        status,
 		DueDate:       r.DueDate,
 		Items:         items,
 	}
@@ -90,7 +98,7 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	}
 
 	if r.Status != nil {
-		inv.Status = *r.Status
+		inv.Status = r.Status
 	}
 
 	return inv
@@ -107,7 +115,7 @@ type Invoice struct {
 	TaxMethod     *string      `db:"tax_method,omitempty"`
 	IssueDate     string       `db:"issue_date"`
 	DueDate       *string      `db:"due_date,omitempty"`
-	Status        string       `db:"status"`
+	Status        *string      `db:"status"`
 	Items         []*item.Item `db:"-"`
 	CreatedAt     string       `db:"created_at"`
 	UpdatedAt     string       `db:"updated_at"`
@@ -148,7 +156,7 @@ type RsInvoice struct {
 	TaxMethod     *string        `json:"tax_method,omitempty"`
 	IssueDate     string         `json:"issue_date"`
 	DueDate       *string        `json:"due_date,omitempty"`
-	Status        string         `json:"status"`
+	Status        *string        `json:"status"`
 	Items         []*item.RsItem `json:"items,omitempty"`
 	CreatedAt     string         `json:"created_at"`
 	UpdatedAt     string         `json:"updated_at"`

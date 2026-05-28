@@ -1,11 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
 
-ALTER TABLE tbl_invoice
-ADD CONSTRAINT fk_invoice_template
-FOREIGN KEY (template_id)
-REFERENCES tbl_invoice_clinic(id);
-
 CREATE TABLE IF NOT EXISTS tbl_template (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL,
@@ -44,11 +39,10 @@ CREATE TABLE IF NOT EXISTS tbl_template_setting (
 );
 
 
-
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS tbl_template;
 DROP TABLE IF EXISTS tbl_template_setting;
+DROP TABLE IF EXISTS tbl_template;
 -- +goose StatementEnd

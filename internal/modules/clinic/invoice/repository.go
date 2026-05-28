@@ -240,7 +240,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 				subtotal = $9,
 				tax_total = $10,
 				grand_total = $11,
-				status = $12
+				status = $12,
 				updated_at = NOW()
 			WHERE id = $13
 			AND deleted_at IS NULL
