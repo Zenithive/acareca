@@ -43,7 +43,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, *file.UploadWorker, notification.Service, *notification.Consumer) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *notification.Consumer) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -113,9 +113,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// Register file routes
 	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
-
-	// Initialize file upload worker
-	fileUploadWorker := file.NewUploadWorker(fileRepo, storage)
 
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
@@ -254,6 +251,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	tempSvc := template.NewService(tmpRepo, cfg)
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
 
-	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc, notificationConsumer
+	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
 
 }

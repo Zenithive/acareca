@@ -403,8 +403,7 @@ func (r *repository) GetDocumentByUserID(ctx context.Context, tx *sqlx.Tx, userI
 		SELECT
 			d.id, d.owner_id, d.owner_role, d.object_key, d.bucket,
 			d.original_name, d.extension, d.mime_type, d.size_bytes,
-			d.checksum, d.status, d.is_public,
-			d.upload_expires_at, d.uploaded_at,
+			d.checksum, d.status, d.is_public, d.uploaded_at,
 			d.created_at, d.updated_at, d.deleted_at
 		FROM tbl_document d
 		INNER JOIN tbl_user c ON c.document_id = d.id

@@ -24,8 +24,6 @@ type Repository interface {
 	Update(ctx context.Context, doc *Document, tx *sqlx.Tx) (*Document, error)
 	Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string, doc *Document, tx *sqlx.Tx) error
-	FindPendingUploads(ctx context.Context, limit int) ([]Document, error)
-	FindExpiredPendingUploads(ctx context.Context, limit int) ([]Document, error)
 }
 
 type repository struct {
@@ -43,12 +41,12 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 			owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			upload_expires_at, uploaded_at
+			uploaded_at
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8,
 			$9, $10, $11,
-			$12, $13
+			$12
 		) RETURNING id, created_at, updated_at`
 
 	var id uuid.UUID
@@ -58,7 +56,7 @@ func (r *repository) Create(ctx context.Context, doc *Document, tx *sqlx.Tx) (*D
 		doc.OwnerID, doc.OwnerRole, doc.ObjectKey, doc.Bucket,
 		doc.OriginalName, doc.Extension, doc.MimeType, doc.SizeBytes,
 		doc.Checksum, doc.Status, doc.IsPublic,
-		doc.UploadExpiresAt, doc.UploadedAt,
+		doc.UploadedAt,
 	).Scan(&id, &createdAt, &updatedAt)
 
 	if err != nil {
@@ -79,7 +77,7 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Document, err
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			upload_expires_at, uploaded_at,
+			uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
 		WHERE id = $1 AND deleted_at IS NULL`
@@ -104,7 +102,7 @@ func (r *repository) FindByOwner(ctx context.Context, ownerID uuid.UUID, filters
 			id, owner_id, owner_role, object_key, bucket,
 			original_name, extension, mime_type, size_bytes,
 			checksum, status, is_public,
-			upload_expires_at, uploaded_at,
+			uploaded_at,
 			created_at, updated_at, deleted_at
 		FROM tbl_document
 		WHERE owner_id = $1 AND deleted_at IS NULL`
@@ -213,7 +211,6 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) erro
 		UPDATE tbl_document
 		SET 
 			deleted_at = NOW(),
-			status = 'deleted',
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`
 
@@ -232,55 +229,4 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) erro
 	}
 
 	return nil
-}
-
-// FindPendingUploads finds documents with pending status
-func (r *repository) FindPendingUploads(ctx context.Context, limit int) ([]Document, error) {
-	query := `
-		SELECT 
-			id, owner_id, owner_role, object_key, bucket,
-			original_name, extension, mime_type, size_bytes,
-			checksum, status, is_public,
-			upload_expires_at, uploaded_at,
-			created_at, updated_at, deleted_at
-		FROM tbl_document
-		WHERE status = $1 
-			AND deleted_at IS NULL
-			AND (upload_expires_at IS NULL OR upload_expires_at > NOW())
-		ORDER BY created_at ASC
-		LIMIT $2`
-
-	var docs []Document
-	err := r.db.SelectContext(ctx, &docs, query, StatusPending, limit)
-	if err != nil {
-		return nil, fmt.Errorf("find pending uploads: %w", err)
-	}
-
-	return docs, nil
-}
-
-// FindExpiredPendingUploads finds documents with expired pending status
-func (r *repository) FindExpiredPendingUploads(ctx context.Context, limit int) ([]Document, error) {
-	query := `
-		SELECT 
-			id, owner_id, owner_role, object_key, bucket,
-			original_name, extension, mime_type, size_bytes,
-			checksum, status, is_public,
-			upload_expires_at, uploaded_at,
-			created_at, updated_at, deleted_at
-		FROM tbl_document
-		WHERE status = $1 
-			AND deleted_at IS NULL
-			AND upload_expires_at IS NOT NULL 
-			AND upload_expires_at <= NOW()
-		ORDER BY created_at ASC
-		LIMIT $2`
-
-	var docs []Document
-	err := r.db.SelectContext(ctx, &docs, query, StatusPending, limit)
-	if err != nil {
-		return nil, fmt.Errorf("find expired pending uploads: %w", err)
-	}
-
-	return docs, nil
 }
