@@ -3,15 +3,16 @@
 CREATE TABLE IF NOT EXISTS tbl_template (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT NULL,
-    html TEXT NOT NULL,
-    css TEXT NOT NULL,
-    is_default BOOLEAN NOT NULL DEFAULT FALSE,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NULL,
-    deleted_at TIMESTAMPTZ NULL
+    name        VARCHAR(100) NOT NULL,
+    description TEXT         NULL,
+    html        BYTEA        NOT NULL,
+    css         BYTEA        NOT NULL,
+    is_default  BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NULL,
+    deleted_at  TIMESTAMPTZ  NULL
 );
 
 CREATE TABLE IF NOT EXISTS tbl_template_setting (

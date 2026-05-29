@@ -251,7 +251,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// ============ INVOICE MODULE ============
 	tmpRepo := template.NewRepository(dbConn)
-	tempSvc := template.NewService(tmpRepo)
+	tempSvc := template.NewService(tmpRepo, cfg)
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
 
 	return auditSvc, notifier, notificationRepo, fileUploadWorker, notificationSvc, notificationConsumer
