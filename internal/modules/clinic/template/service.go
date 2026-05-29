@@ -117,6 +117,8 @@ func (s *Service) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*R
 	// Convert pre-encrypted binary byte blocks into clean Base64
 	rs.Html = base64.StdEncoding.EncodeToString(t.Html)
 	rs.Css = base64.StdEncoding.EncodeToString(t.Css)
+	return &rs, nil
+}
 
 func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error) {
 	st, err := s.repo.GetSetting(ctx, templateId)
@@ -216,22 +218,4 @@ func (s *Service) Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) 
 
 func (s *Service) List(ctx context.Context) (*util.RsList, error) {
 	return s.repo.List(ctx)
-}
-
-func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error) {
-	st, err := s.repo.GetSetting(ctx, templateId)
-	if err != nil {
-		return nil, err
-	}
-	rs := st.ToRs()
-	return &rs, nil
-}
-
-func (s *Service) UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error) {
-	st := rq.ToDB()
-	if err := s.repo.UpdateSetting(ctx, &st); err != nil {
-		return nil, err
-	}
-	rs := st.ToRs()
-	return &rs, nil
 }
