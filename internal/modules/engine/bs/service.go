@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,10 +16,11 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	"github.com/iamarpitzala/acareca/internal/shared/export"
+	bsexport "github.com/iamarpitzala/acareca/internal/shared/export/bs"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
-	"github.com/xuri/excelize/v2"
 
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 )
@@ -197,19 +198,20 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
+	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
-		EndDate:                   displayEnd,
-		Assets:                    assets,
-		TotalAssets:               totalAssets,
-		Liabilities:               liabilities,
-		TotalLiabilities:          totalLiabilities,
-		Equity:                    equitySect,
-		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
-		TotalEquity:               totalEquity,
-		TotalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+		EndDate:           displayEnd,
+		Assets:            assets,
+		TotalAssets:       totalAssets,
+		Liabilities:       liabilities,
+		TotalLiabilities:  totalLiabilities,
+		NetAssets:         netAssets,
+		Equity:            equitySect,
+		CurrentYearProfit: totalOwnerEquity.CurrentYearProfit,
+		TotalEquity:       math.Round(totalEquity*100) / 100,
 	}
 
 	meta := auditctx.GetMetadata(ctx)
@@ -264,11 +266,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 }
 
 func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error) {
-	f := excelize.NewFile()
-	sheet := "Balance Sheet"
-	f.NewSheet(sheet)
-	f.DeleteSheet("Sheet1")
-
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -320,148 +317,61 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 			}
 		}
 	}
-
-	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-	})
-	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
-	})
-	styleDataLeft, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Family: "Calibri", Size: 10},
-		Alignment: &excelize.Alignment{Horizontal: "left"},
-		Border:    []excelize.Border{{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1}, {Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1}},
-	})
-	styleDataGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border:       []excelize.Border{{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1}, {Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1}},
-	})
-	styleGroupTotal, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border:       []excelize.Border{{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1}, {Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1}},
-	})
-	styleProfit, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
-			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
-		},
-	})
-	styleProfitGreen, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "28a745"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
-			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
-		},
-	})
-	setRichMeta := func(cell string, label string, value string) {
-		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
-			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
-			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
-		})
-	}
-
-	f.SetCellValue(sheet, "A1", "Balance Sheet")
-	f.MergeCell(sheet, "A1", "B1")
-	f.SetCellStyle(sheet, "A1", "B1", styleHeaderBlue)
-
-	f.MergeCell(sheet, "A2", "B2")
-	setRichMeta("A2", "Exported by:", entityName)
-
-	f.MergeCell(sheet, "A3", "B3")
-	if practitionerABN != "" {
-		setRichMeta("A3", "ABN:", practitionerABN)
-	}
-
 	var dateText string
 	if data.EndDate != "" {
 		dateText = fmt.Sprintf("As of %s", data.EndDate)
 	}
 
-	f.MergeCell(sheet, "A4", "B4")
-	setRichMeta("A4", "Period:", dateText)
-
-	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
-	f.MergeCell(sheet, "A5", "B5")
-	setRichMeta("A5", "Generated:", currentTimeStr)
-	f.MergeCell(sheet, "A6", "B6")
-
-	currentRow := 7
-
-	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
-
-		if len(accounts) > 0 {
-			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(accounts))
-			tableName := strings.ReplaceAll(title, " ", "_") + fmt.Sprintf("_%d", currentRow)
-
-			showHeaders := true
-			f.AddTable(sheet, &excelize.Table{
-				Range:         tableRange,
-				Name:          tableName,
-				StyleName:     "",
-				ShowHeaderRow: &showHeaders,
-			})
-		}
-
-		currentRow++
-		dataStartRow := currentRow
-		for _, acc := range accounts {
-			f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), acc.Name)
-			f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataLeft)
-
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), acc.Balance)
-			f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleDataGrid)
-			currentRow++
-		}
-		dataEndRow := currentRow - 1
-
-		totalCell := fmt.Sprintf("B%d", currentRow)
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL "+title)
-
-		if len(accounts) > 0 {
-			formula := fmt.Sprintf("SUBTOTAL(109, B%d:B%d)", dataStartRow, dataEndRow)
-			f.SetCellFormula(sheet, totalCell, formula)
-		} else {
-			f.SetCellValue(sheet, totalCell, 0)
-		}
-
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("B%d", currentRow), styleGroupTotal)
-		currentRow += 2
-		return totalCell
+	config := export.ExportConfig{
+		EntityName:     entityName,
+		EntityABN:      practitionerABN,
+		Period:         dateText,
+		ExportType:     exportType,
+		ExportedByName: fullName,
+		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	renderBSSection("ASSETS", data.Assets, data.TotalAssets)
-	renderBSSection("LIABILITIES", data.Liabilities, data.TotalLiabilities)
-	renderBSSection("EQUITY", data.Equity, data.TotalEquity)
+	exportData := &bsexport.RsBalanceSheet{
+		EndDate:                   data.EndDate,
+		Assets:                    make([]bsexport.RsAccount, len(data.Assets)),
+		TotalAssets:               data.TotalAssets,
+		Liabilities:               make([]bsexport.RsAccount, len(data.Liabilities)),
+		TotalLiabilities:          data.TotalLiabilities,
+		Equity:                    make([]bsexport.RsAccount, len(data.Equity)),
+		CurrentYearProfit:         data.CurrentYearProfit,
+		TotalEquity:               data.TotalEquity,
+		TotalLiabilitiesAndEquity: data.TotalLiabilities + data.TotalEquity,
+	}
 
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Current Year Profit")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
-	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.CurrentYearProfit)
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
-	currentRow += 2
+	for i, acc := range data.Assets {
+		exportData.Assets[i] = bsexport.RsAccount{
+			CoaId:   acc.CoaId,
+			Code:    acc.Code,
+			Name:    acc.Name,
+			Balance: acc.Balance,
+		}
+	}
+	for i, acc := range data.Liabilities {
+		exportData.Liabilities[i] = bsexport.RsAccount{
+			CoaId:   acc.CoaId,
+			Code:    acc.Code,
+			Name:    acc.Name,
+			Balance: acc.Balance,
+		}
+	}
+	for i, acc := range data.Equity {
+		exportData.Equity[i] = bsexport.RsAccount{
+			CoaId:   acc.CoaId,
+			Code:    acc.Code,
+			Name:    acc.Name,
+			Balance: acc.Balance,
+		}
+	}
 
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL LIABILITIES & EQUITY")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleProfit)
-	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.TotalLiabilitiesAndEquity)
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styleProfitGreen)
-
-	f.SetColWidth(sheet, "A", "A", 45)
-	f.SetColWidth(sheet, "B", "B", 20)
+	f, err := bsexport.GenerateExcelReport(exportData, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate balance sheet excel: %w", err)
+	}
 
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
