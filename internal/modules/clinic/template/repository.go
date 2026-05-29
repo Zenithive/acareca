@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -23,6 +24,7 @@ type IRepository interface {
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error)
 	UpdateSetting(ctx context.Context, st *Setting) error
 	CreateSetting(ctx context.Context, st *Setting) error
+	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
 }
 
 type Repository struct {
@@ -188,4 +190,16 @@ func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 		return rows.StructScan(st)
 	}
 	return rows.Err()
+}
+
+func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error) {
+	const q = `SELECT * FROM tbl_document WHERE id = $1 AND deleted_at IS NULL`
+	var doc file.Document
+	if err := r.db.GetContext(ctx, &doc, q, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &doc, nil
 }

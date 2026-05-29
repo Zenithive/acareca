@@ -118,6 +118,47 @@ func (s *Service) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*R
 	rs.Html = base64.StdEncoding.EncodeToString(t.Html)
 	rs.Css = base64.StdEncoding.EncodeToString(t.Css)
 
+func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error) {
+	st, err := s.repo.GetSetting(ctx, templateId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch document details if IDs are present
+	if st.LogoId != nil {
+		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
+		if err != nil {
+			return nil, err
+		}
+		st.Logo = logo
+	}
+
+	if st.LetterHeadId != nil {
+		letterhead, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
+		if err != nil {
+			return nil, err
+		}
+		st.LetterHead = letterhead
+	}
+
+	if st.FooterId != nil {
+		footer, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
+		if err != nil {
+			return nil, err
+		}
+		st.Footer = footer
+	}
+
+	rs := st.ToRs()
+	return &rs, nil
+}
+
+func (s *Service) UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error) {
+	st := rq.ToDB()
+	if err := s.repo.UpdateSetting(ctx, &st); err != nil {
+		return nil, err
+	}
+	rs := st.ToRs()
 	return &rs, nil
 }
 

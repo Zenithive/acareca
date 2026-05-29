@@ -800,6 +800,7 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 			IsActive:  false,
 		}}
 }
+
 func DefaultSettings(templateId uuid.UUID) Setting {
 	termText := "Payment is due within 30 days of the invoice date. Late payments may incur a 2% monthly charge. All services rendered are non-refundable. For disputes, contact our billing department within 7 days."
 	waterMarkText := "PAID"
@@ -811,11 +812,13 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		BodyFontFamily:   "Plus Jakarta Sans", // Clean, modern, highly legible
 		HeaderFontFamily: "Fraunces",          // Elegant serif for invoice title & totals
 		IsLogo:           false,
-		Logo:             nil,
-		LetterHead:       nil,
-		Footer:           nil,
+		LogoId:           nil,
+		LetterHeadId:     nil,
+		FooterId:         nil,
 		TermText:         &termText,
 		IsWaterMark:      false,
 		WaterMarkText:    &waterMarkText,
+		IsTax:            true,
+		TableStyle:       nil,
 	}
 }
