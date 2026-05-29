@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/shared/crypto"
 )
 
 type RqTemplate struct {
@@ -18,16 +19,27 @@ type RqTemplate struct {
 	IsActive    bool      `json:"is_active"`
 }
 
-func (rq *RqTemplate) ToDB() Template {
+func (rq *RqTemplate) ToDB(encryptionKey []byte) (Template, error) {
+	htmlBlob, err := crypto.EncryptAndCompress(rq.Html, encryptionKey)
+	if err != nil {
+		return Template{}, err
+	}
+
+	cssBlob, err := crypto.EncryptAndCompress(rq.Css, encryptionKey)
+	if err != nil {
+		return Template{}, err
+	}
+
 	return Template{
+		Id:          rq.Id,
 		Name:        rq.Name,
 		ClinicId:    rq.ClinicId,
 		Description: rq.Description,
-		Html:        rq.Html,
-		Css:         rq.Css,
+		Html:        htmlBlob,
+		Css:         cssBlob,
 		IsDefault:   rq.IsDefault,
 		IsActive:    rq.IsActive,
-	}
+	}, nil
 }
 
 type Template struct {
@@ -35,8 +47,8 @@ type Template struct {
 	ClinicId    uuid.UUID `db:"clinic_id"`
 	Description *string   `db:"description"`
 	Name        string    `db:"name"`
-	Html        string    `db:"html"`
-	Css         string    `db:"css"`
+	Html        []byte    `db:"html"`
+	Css         []byte    `db:"css"`
 	IsDefault   bool      `db:"is_default"`
 	IsActive    bool      `db:"is_active"`
 
@@ -51,8 +63,8 @@ func (tp *Template) ToRs() RsTemplate {
 		ClinicId:    tp.ClinicId,
 		Description: tp.Description,
 		Name:        tp.Name,
-		Html:        tp.Html,
-		Css:         tp.Css,
+		Html:        "",
+		Css:         "",
 		IsDefault:   tp.IsDefault,
 		IsActive:    tp.IsActive,
 		CreatedAt:   tp.CreatedAt,
@@ -88,61 +100,56 @@ type RqUpdateSetting struct {
 	TermText         *string    `json:"term_text"`
 	IsWaterMark      bool       `json:"is_water_mark"`
 	WaterMarkText    *string    `json:"water_mark_text"`
+	IsTax            bool       `json:"is_tax"`
+	TableStyle       string     `json:"table_style"`
 }
 
 func (rq *RqUpdateSetting) ToDB() Setting {
-	var logo *file.Document
-
-	if rq.Logo != nil {
-		logo = &file.Document{
-			ID: *rq.Logo,
-		}
-	}
-
-	var letterHead *file.Document
-	if rq.LetterHead != nil {
-		letterHead = &file.Document{
-			ID: *rq.LetterHead,
-		}
-	}
-
-	var footer *file.Document
-	if rq.Footer != nil {
-		footer = &file.Document{
-			ID: *rq.Footer,
-		}
+	var tableStyle *string
+	if rq.TableStyle != "" {
+		tableStyle = &rq.TableStyle
 	}
 
 	return Setting{
+		Id:               rq.Id,
 		TemplateId:       rq.TemplateId,
 		PrimaryColor:     rq.PrimaryColor,
 		AccentColor:      rq.AccentColor,
 		BodyFontFamily:   rq.BodyFontFamily,
 		HeaderFontFamily: rq.HeaderFontFamily,
 		IsLogo:           rq.IsLogo,
-		Logo:             logo,
-		LetterHead:       letterHead,
-		Footer:           footer,
+		LogoId:           rq.Logo,
+		LetterHeadId:     rq.LetterHead,
+		FooterId:         rq.Footer,
 		TermText:         rq.TermText,
 		IsWaterMark:      rq.IsWaterMark,
 		WaterMarkText:    rq.WaterMarkText,
+		IsTax:            rq.IsTax,
+		TableStyle:       tableStyle,
 	}
 }
 
 type Setting struct {
-	Id               uuid.UUID      `db:"id"`
-	TemplateId       uuid.UUID      `db:"template_id"`
-	PrimaryColor     string         `db:"primary_color"`
-	AccentColor      string         `db:"accent_color"`
-	BodyFontFamily   string         `db:"body_font_family"`
-	HeaderFontFamily string         `db:"header_font_family"`
-	IsLogo           bool           `db:"is_logo"`
-	Logo             *file.Document `db:"logo_id"`
-	LetterHead       *file.Document `db:"letterhead_id"`
-	Footer           *file.Document `db:"footer_id"`
-	TermText         *string        `db:"terms_text"`
-	IsWaterMark      bool           `db:"is_watermark"`
-	WaterMarkText    *string        `db:"watermark_text"`
+	Id               uuid.UUID  `db:"id"`
+	TemplateId       uuid.UUID  `db:"template_id"`
+	PrimaryColor     string     `db:"primary_color"`
+	AccentColor      string     `db:"accent_color"`
+	BodyFontFamily   string     `db:"body_font_family"`
+	HeaderFontFamily string     `db:"header_font_family"`
+	IsLogo           bool       `db:"is_logo"`
+	LogoId           *uuid.UUID `db:"logo_id"`
+	LetterHeadId     *uuid.UUID `db:"letterhead_id"`
+	FooterId         *uuid.UUID `db:"footer_id"`
+	TermText         *string    `db:"terms_text"`
+	IsWaterMark      bool       `db:"is_watermark"`
+	WaterMarkText    *string    `db:"watermark_text"`
+	IsTax            bool       `db:"is_tax"`
+	TableStyle       *string    `db:"table_style"`
+
+	// These are populated separately via joins or additional queries
+	Logo       *file.Document `db:"-"`
+	LetterHead *file.Document `db:"-"`
+	Footer     *file.Document `db:"-"`
 
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt *time.Time `db:"updated_at"`
@@ -167,6 +174,12 @@ func (st *Setting) ToRs() RsSetting {
 		rs := st.Footer.ToRsDocument()
 		footer = rs
 	}
+
+	tableStyle := ""
+	if st.TableStyle != nil {
+		tableStyle = *st.TableStyle
+	}
+
 	return RsSetting{
 		Id:               st.Id,
 		TemplateId:       st.TemplateId,
@@ -181,8 +194,11 @@ func (st *Setting) ToRs() RsSetting {
 		TermText:         st.TermText,
 		IsWaterMark:      st.IsWaterMark,
 		WaterMarkText:    st.WaterMarkText,
-		CreatedAt:        st.CreatedAt,
-		UpdatedAt:        st.UpdatedAt,
+		IsTax:            st.IsTax,
+		TableStyle:       tableStyle,
+
+		CreatedAt: st.CreatedAt,
+		UpdatedAt: st.UpdatedAt,
 	}
 }
 
@@ -200,6 +216,8 @@ type RsSetting struct {
 	TermText         *string          `json:"term_text"`
 	IsWaterMark      bool             `json:"is_water_mark"`
 	WaterMarkText    *string          `json:"water_mark_text"`
+	IsTax            bool             `json:"is_tax"`
+	TableStyle       string           `json:"table_style"`
 
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`

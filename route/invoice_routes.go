@@ -17,7 +17,7 @@ func RegisterInvoiceRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx
 	h := invoice.NewHandler(svc)
 
 	tmpRepo := template.NewRepository(dbConn)
-	tmpSvc := template.NewService(tmpRepo)
+	tmpSvc := template.NewService(tmpRepo, cfg)
 	tmpHld := template.NewHandler(tmpSvc)
 
 	invoice.RegisterRoutes(v1, h, middleware.Auth(cfg), middleware.RequireRole(util.RoleClinic))

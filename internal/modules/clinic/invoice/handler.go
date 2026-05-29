@@ -129,12 +129,18 @@ func (h *Handler) Get(c *gin.Context) {
 // @Security BearerToken
 // @Router /clinic/invoice [get]
 func (h *Handler) List(c *gin.Context) {
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!!"))
+		return
+	}
+
 	var ft Filter
 	if err := util.BindAndValidate(c, &ft); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	invoices, err := h.svc.List(c.Request.Context(), &ft)
+	invoices, err := h.svc.List(c.Request.Context(), clinicId, &ft)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

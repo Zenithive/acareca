@@ -2593,6 +2593,8 @@ definitions:
         type: string
       reference:
         type: string
+      sent_to:
+        $ref: '#/definitions/contact.RsContact'
       status:
         type: string
       tax_method:
@@ -6498,7 +6500,7 @@ paths:
       summary: Reset clinic password using token
       tags:
       - invoice
-  /clinic/verify:
+  /clinic/verify-email:
     get:
       description: Validates the UUID token sent via email. If valid, marks the clinic
         as verified and the token as used.
@@ -9701,6 +9703,10 @@ paths:
             $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":

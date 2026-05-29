@@ -147,6 +147,7 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		ClinicID:      i.ClinicID,
 		ContactID:     i.ContactID,
 		ContactTo:     contactTo,
+		SentTo:        contactTo,
 		TemplateID:    i.TemplateID,
 		Name:          i.Name,
 		InvoiceNumber: i.InvoiceNumber,
@@ -167,6 +168,7 @@ type RsInvoice struct {
 	ClinicID      uuid.UUID          `json:"clinic_id"`
 	ContactID     *uuid.UUID         `json:"contact_id,omitempty"`
 	ContactTo     *contact.RsContact `json:"contact_to,omitempty"`
+	SentTo        *contact.RsContact `json:"sent_to,omitempty"`
 	TemplateID    uuid.UUID          `json:"template_id"`
 	Name          string             `json:"name"`
 	InvoiceNumber string             `json:"invoice_number"`

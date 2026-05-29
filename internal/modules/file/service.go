@@ -189,12 +189,15 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		Extension:    &ext,
 		MimeType:     mimeType,
 		SizeBytes:    header.Size,
-		Status:       StatusPending,
+		Status:       StatusUploaded,
 		IsPublic:     false,
 	}
 
+	updatedAt := time.Now()
+	doc.UploadedAt = &updatedAt
+
+	// Calculate presigned URL expiration for response
 	expiresAt := time.Now().Add(expiresIn)
-	doc.UploadExpiresAt = &expiresAt
 
 	var created *Document
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {

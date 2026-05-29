@@ -5165,7 +5165,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/clinic/verify": {
+        "/clinic/verify-email": {
             "get": {
                 "description": "Validates the UUID token sent via email. If valid, marks the clinic as verified and the token as used.",
                 "produces": [
@@ -10317,6 +10317,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -14372,6 +14378,9 @@ const docTemplate = `{
                 },
                 "reference": {
                     "type": "string"
+                },
+                "sent_to": {
+                    "$ref": "#/definitions/contact.RsContact"
                 },
                 "status": {
                     "type": "string"

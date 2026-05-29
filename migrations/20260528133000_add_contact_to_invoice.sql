@@ -8,7 +8,7 @@ ALTER TABLE tbl_invoice
 -- +goose StatementEnd
 
 -- +goose Down
--- +goose StatementBegin
+-- +goose StatementBegin 
 ALTER TABLE tbl_invoice
     DROP COLUMN IF EXISTS contact_id;
 
