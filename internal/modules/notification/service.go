@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -38,6 +39,7 @@ func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB) Servic
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
+
 	event := NotificationEvent{
 		ID:            rq.ID,
 		RecipientID:   rq.RecipientID,
@@ -51,7 +53,11 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		Channels:      rq.Channels,
 		CreatedAt:     rq.CreatedAt,
 	}
-
+	// fmt.Printf("Publishing notification event_Channel: %+v\n", event.Channels)
+	// fmt.Printf("Publishing notification event_Type: %+v\n", event.EventType)
+	// fmt.Printf("Publishing notification event_ID: %+v\n", event.ID)
+	// fmt.Printf("Publishing notification event_Entity_Id: %+v\n", event.EntityID)
+	// fmt.Printf("Publishing notification event_Recipient_Id: %+v\n", event.RecipientID)
 	return s.publisher.PublishNotification(ctx, event)
 }
 
@@ -110,17 +116,41 @@ func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) ([]Notif
 }
 
 func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error {
-	pref := NotificationPreference{
-		UserID:     userID,
-		EntityID:   entityID,
-		EntityType: role,
-		EventType:  rq.EventType,
-		Channels:   rq.Channels,
+
+	if !rq.Channels[string(ChannelInApp)] &&
+		!rq.Channels[string(ChannelEmail)] &&
+		!rq.Channels[string(ChannelPush)] {
+		return errors.New("at least one notification channel must be enabled")
 	}
+
 	err := util.RunInTransaction(ctx, s.DB, func(ctx context.Context, tx *sqlx.Tx) error {
-		if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
-			return fmt.Errorf("failed to create preference: %w", err)
+
+		for _, event := range rq.EventType {
+
+			// optional logs
+			if rq.Channels[string(ChannelInApp)] {
+				fmt.Println("InApp enabled")
+			}
+			if rq.Channels[string(ChannelEmail)] {
+				fmt.Println("Email enabled")
+			}
+			if rq.Channels[string(ChannelPush)] {
+				fmt.Println("Push enabled")
+			}
+
+			pref := NotificationPreference{
+				UserID:     userID,
+				EntityID:   entityID,
+				EntityType: role,
+				EventType:  event,
+				Channels:   rq.Channels,
+			}
+
+			if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
+				return fmt.Errorf("failed to create preference: %w", err)
+			}
 		}
+
 		return nil
 	})
 
@@ -151,7 +181,7 @@ func (s *service) PreferenceSetting(ctx context.Context, tx *sqlx.Tx, userID uui
 				UserID:     userID,
 				EntityID:   entityID,
 				EntityType: entityType,
-				EventType:  NotificationEventTypes{et},
+				EventType:  et,
 				Channels:   defaultChannels,
 				CreatedAt:  time.Now(),
 			}

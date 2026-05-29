@@ -86,6 +86,7 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 }
 
 func (s *service) mapToNotificationRequest(e SharedEvent) notification.RqNotification {
+	fmt.Printf(">>> Mapping SharedEvent to RqNotification for event: %s\n", e.EventType)
 
 	payloadObj := notification.BuildNotificationPayload(
 		"Accountant Activity Alert",

@@ -26,6 +26,7 @@ type Repository interface {
 	CountDailyInvitesByEmail(ctx context.Context, practitionerID uuid.UUID, email string) (int, error)
 	GetEmailByAccountantID(ctx context.Context, accountantID uuid.UUID) (string, error)
 	GetPractitionerEmailByID(ctx context.Context, practitionerID uuid.UUID) (string, error)
+	GetPractitionerUserIDByID(ctx context.Context, practitionerID uuid.UUID) (uuid.UUID, error)
 	ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error)
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
@@ -246,6 +247,17 @@ func (r *repository) GetPractitionerEmailByID(ctx context.Context, practitionerI
 		return "", fmt.Errorf("get email by practitioner id: %w", err)
 	}
 	return email, nil
+}
+func (r *repository) GetPractitionerUserIDByID(ctx context.Context, practitionerID uuid.UUID) (uuid.UUID, error) {
+	var userID uuid.UUID
+	query := `
+		SELECT p.user_id FROM tbl_practitioner p
+		JOIN tbl_user u ON p.user_id = u.id
+		WHERE p.id = $1 AND p.deleted_at IS NULL`
+	if err := r.db.GetContext(ctx, &userID, query, practitionerID); err != nil {
+		return uuid.Nil, fmt.Errorf("get user id by practitioner id: %w", err)
+	}
+	return userID, nil
 }
 
 func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error) {

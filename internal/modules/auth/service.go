@@ -480,16 +480,10 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		if err != nil {
 			return err
 		}
-		if token.Role == nil {
-			return errors.New("token role is missing")
-		}
-		switch *token.Role {
-		case util.RolePractitioner:
-			user_id, _ := uuid.Parse(user_id)
+		id, _ := uuid.Parse(user_id)
 
-			if err := s.NotificationSvc.PreferenceSetting(ctx, tx, user_id, token.EntityID, *token.Role); err != nil {
-				return fmt.Errorf("failed to set notification preferences: %w", err)
-			}
+		if err := s.NotificationSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
+			return fmt.Errorf("failed to set notification preferences: %w", err)
 		}
 		return nil
 	})

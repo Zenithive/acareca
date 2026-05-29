@@ -533,12 +533,61 @@ func (s *service) notifyInvitationAccepted(ctx context.Context, inv *Invitation,
 		return
 	}
 
-	body := json.RawMessage(fmt.Sprintf(`"%s accepted your invitation."`, inv.Email))
-	extraData := map[string]interface{}{"invite_id": inv.ID.String()}
-	payload := notification.BuildNotificationPayload("Invitation Accepted", body, nil, nil, &extraData)
+	body := json.RawMessage(
+		fmt.Sprintf(`"%s accepted your invitation."`, inv.Email),
+	)
+
+	extraData := map[string]interface{}{
+		"invite_id": inv.ID.String(),
+	}
+
+	payload := notification.BuildNotificationPayload(
+		"Invitation Accepted",
+		body,
+		nil,
+		nil,
+		&extraData,
+	)
+
 	payloadBytes, _ := json.Marshal(payload)
+
 	senderType := notification.ActorAccountant
 
+	// Default fallback channel
+	channels := []notification.Channel{
+		notification.ChannelInApp,
+	}
+
+	userID, err := s.repo.GetPractitionerUserIDByID(ctx, inv.PractitionerID)
+	if err != nil {
+		fmt.Printf("failed to get user id by email: %v\n", err)
+		return
+	}
+
+	notis, err := s.notification.GetPreferences(ctx, userID)
+	if err != nil {
+		fmt.Printf("failed to get notification preferences: %v\n", err)
+		return
+	}
+
+	for _, noti := range notis {
+		if string(noti.EventType) == string(notification.EventInviteAccepted) {
+
+			channels = []notification.Channel{}
+
+			for ch, isEnabled := range noti.Channels {
+
+				if isEnabled {
+
+					channels = append(
+						channels,
+						notification.Channel(ch),
+					)
+				}
+			}
+			break
+		}
+	}
 	rq := notification.RqNotification{
 		ID:            uuid.New(),
 		RecipientID:   inv.PractitionerID,
@@ -550,13 +599,18 @@ func (s *service) notifyInvitationAccepted(ctx context.Context, inv *Invitation,
 		EntityID:      inv.ID,
 		Status:        notification.StatusUnread,
 		Payload:       payloadBytes,
+		Channels:      channels,
 		CreatedAt:     time.Now(),
 	}
+
+	// Publish notification
 	if err := s.notification.Publish(ctx, rq); err != nil {
-		fmt.Printf("[ERROR] failed to publish invite.accepted notification: %v\n", err)
+		fmt.Printf(
+			"[ERROR] failed to publish invite.accepted notification: %v\n",
+			err,
+		)
 	}
 }
-
 func (s *service) logInvitationAction(ctx context.Context, inv *Invitation, action string, beforeState interface{}) {
 	if s.auditSvc == nil {
 		return

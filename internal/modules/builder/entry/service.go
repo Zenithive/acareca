@@ -186,6 +186,8 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		UserAgent:  meta.UserAgent,
 	})
 
+
+
 	return result, nil
 }
 
@@ -906,7 +908,6 @@ func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID u
 	if err != nil || clinic == nil {
 		return
 	}
-
 	var accountantID uuid.UUID
 	var fullName string
 

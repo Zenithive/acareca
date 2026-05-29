@@ -171,28 +171,28 @@ type NotificationEventTypes []NotificationEventType
 
 func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
 	switch eventType {
-	case EventTransactionCreated, EventTransactionUpdated:
+	case EventTransactionCreated, EventTransactionUpdated, EventAuditLogCreated:
 		return EventNewTransaction
 	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded,
 		EventInviteSent, EventInviteAccepted, EventInviteDeclined:
 		return EventAccountantActivityAlert
-	case EventAuditLogCreated, EventSystemError, EventSystemWarning:
+	case EventSystemError, EventSystemWarning:
 		return EventSystemActivityAlert
 	default:
-		return EventSystemActivityAlert
+		return EventAccountantActivityAlert
 	}
 }
 
 type NotificationPreference struct {
-	ID         uuid.UUID              `db:"id" json:"id"`
-	UserID     uuid.UUID              `db:"user_id" json:"user_id"`
-	EntityID   uuid.UUID              `db:"entity_id" json:"entity_id"`
-	EntityType string                 `db:"entity_type" json:"entity_type"`
-	EventType  NotificationEventTypes `db:"event_type" json:"event_type"`
-	Channels   NotificationChannels   `db:"channels" json:"channels"`
-	CreatedAt  time.Time              `db:"created_at" json:"created_at"`
-	UpdatedAt  time.Time              `db:"updated_at" json:"updated_at"`
-	DeletedAt  *time.Time             `db:"deleted_at" json:"-"`
+	ID         uuid.UUID             `db:"id" json:"id"`
+	UserID     uuid.UUID             `db:"user_id" json:"user_id"`
+	EntityID   uuid.UUID             `db:"entity_id" json:"entity_id"`
+	EntityType string                `db:"entity_type" json:"entity_type"`
+	EventType  NotificationEventType `db:"event_type" json:"event_type"`
+	Channels   NotificationChannels  `db:"channels" json:"channels"`
+	CreatedAt  time.Time             `db:"created_at" json:"created_at"`
+	UpdatedAt  time.Time             `db:"updated_at" json:"updated_at"`
+	DeletedAt  *time.Time            `db:"deleted_at" json:"-"`
 }
 
 type RqUpdatePreference struct {

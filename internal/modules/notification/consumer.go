@@ -275,39 +275,32 @@ func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 	return notificationID, nil
 }
 
-func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType, requestedChannels []Channel) []Channel {
-	prefs, err := c.repo.GetAllPreferences(ctx, userID)
+func (c *Consumer) getEnabledChannels(ctx context.Context,userID, entityID uuid.UUID,entityType ActorType,eventType EventType,requestedChannels []Channel,) []Channel {
+
+	// ❗ FIX 1: pass entityID, NOT userID
+	prefs, err := c.repo.GetAllPreferencesByentityID(ctx, userID)
+
+
 	if err != nil || len(prefs) == 0 {
-		return []Channel{ChannelInApp}
+		return []Channel{}
 	}
 
 	notificationEventType := MapEventTypeToNotificationEventType(eventType)
-
 	var matchingPref *NotificationPreference
 	for i := range prefs {
-		if prefs[i].EntityID == entityID && prefs[i].EntityType == string(entityType) {
+		if prefs[i].EntityID == userID &&
+			prefs[i].EntityType == string(entityType) &&
+			prefs[i].EventType == notificationEventType {
 			matchingPref = &prefs[i]
 			break
 		}
 	}
-
 	if matchingPref == nil {
-		return []Channel{ChannelInApp}
-	}
-
-	eventTypeEnabled := false
-	for _, enabledEventType := range matchingPref.EventType {
-		if enabledEventType == notificationEventType {
-			eventTypeEnabled = true
-			break
-		}
-	}
-
-	if !eventTypeEnabled {
 		return []Channel{}
 	}
 
 	enabledChannels := make(map[Channel]bool)
+
 	for channelKey, enabled := range matchingPref.Channels {
 		if enabled {
 			ch := Channel(channelKey)
@@ -318,6 +311,7 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 	}
 
 	var allowedChannels []Channel
+
 	for _, ch := range requestedChannels {
 		if enabledChannels[ch] {
 			allowedChannels = append(allowedChannels, ch)
@@ -337,10 +331,8 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 
 	for _, pref := range prefs {
 		if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-			for _, enabledEventType := range pref.EventType {
-				if enabledEventType == notificationEventType {
-					return true
-				}
+			if pref.EventType == notificationEventType {
+				return true
 			}
 			return false
 		}
