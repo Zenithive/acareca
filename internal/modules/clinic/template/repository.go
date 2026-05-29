@@ -3,6 +3,7 @@ package template
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 
 	"github.com/google/uuid"
@@ -36,8 +37,8 @@ func NewRepository(db *sqlx.DB) IRepository {
 
 func (r *Repository) Create(ctx context.Context, t *Template) error {
 	const q = `
-		INSERT INTO tbl_template (clinic_id, name, html, css, is_default, is_active)
-		VALUES (:clinic_id, :name, :html, :css, :is_default, :is_active)
+		INSERT INTO tbl_template (clinic_id, name, description, html, css, is_default, is_active)
+		VALUES (:clinic_id, :name, :description, :html, :css, :is_default, :is_active)
 		RETURNING id, created_at`
 	rows, err := r.db.NamedQueryContext(ctx, q, t)
 	if err != nil {
@@ -53,7 +54,7 @@ func (r *Repository) Create(ctx context.Context, t *Template) error {
 func (r *Repository) Update(ctx context.Context, t *Template) error {
 	const q = `
 		UPDATE tbl_template
-		SET name = :name, html = :html, css = :css, updated_at = NOW()
+		SET name = :name, description = :description, html = :html, css = :css, updated_at = NOW()
 		WHERE id = :id AND clinic_id = :clinic_id AND deleted_at IS NULL`
 	_, err := r.db.NamedExecContext(ctx, q, t)
 	return err
@@ -66,9 +67,9 @@ func (r *Repository) Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUI
 }
 
 func (r *Repository) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*Template, error) {
-	const q = `SELECT * FROM tbl_template WHERE id = $1 AND deleted_at IS NULL`
+	const q = `SELECT * FROM tbl_template WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL`
 	var t Template
-	if err := r.db.GetContext(ctx, &t, q, id); err != nil {
+	if err := r.db.GetContext(ctx, &t, q, id, clinicId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -83,9 +84,14 @@ func (r *Repository) List(ctx context.Context) (*util.RsList, error) {
 	if err := r.db.SelectContext(ctx, &items, q); err != nil {
 		return nil, err
 	}
+
 	rs := make([]RsTemplate, len(items))
 	for i, t := range items {
-		rs[i] = t.ToRs()
+		rsView := t.ToRs()
+		// Encode raw internal binary arrays to Base64 text streams
+		rsView.Html = base64.StdEncoding.EncodeToString(t.Html)
+		rsView.Css = base64.StdEncoding.EncodeToString(t.Css)
+		rs[i] = rsView
 	}
 	return &util.RsList{Items: rs, Total: len(rs)}, nil
 }
@@ -143,8 +149,8 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting) error {
 
 func (r *Repository) BulkCreate(ctx context.Context, templates []Template) error {
 	const q = `
-		INSERT INTO tbl_template (clinic_id, name, html, css, is_default, is_active)
-		VALUES (:clinic_id, :name, :html, :css, :is_default, :is_active)
+		INSERT INTO tbl_template (clinic_id, name, description, html, css, is_default, is_active)
+		VALUES (:clinic_id, :name, :description, :html, :css, :is_default, :is_active)
 		RETURNING id, created_at`
 
 	rows, err := r.db.NamedQueryContext(ctx, q, templates)
@@ -166,31 +172,11 @@ func (r *Repository) BulkCreate(ctx context.Context, templates []Template) error
 func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 	const q = `
 		INSERT INTO tbl_template_setting (
-			template_id,
-			primary_color,
-			accent_color,
-			body_font_family,
-			header_font_family,
-			is_logo,
-			logo_id,
-			letterhead_id,
-			footer_id,
-			terms_text,
-			is_watermark,
-			watermark_text
+			template_id, primary_color, accent_color, body_font_family, header_font_family,
+			is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text
 		) VALUES (
-			:template_id,
-			:primary_color,
-			:accent_color,
-			:body_font_family,
-			:header_font_family,
-			:is_logo,
-			:logo_id,
-			:letterhead_id,
-			:footer_id,
-			:terms_text,
-			:is_watermark,
-			:watermark_text
+			:template_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
+			:is_logo, :logo_id, :letterhead_id, :footer_id, :terms_text, :is_watermark, :watermark_text
 		)
 		RETURNING id, created_at`
 

@@ -169,7 +169,7 @@ func (h *handler) GetProfile(c *gin.Context) {
 // @Success 200 {object} response.RsBase "Email verified successfully"
 // @Failure 400 {object} response.RsError "Invalid token format or token already used"
 // @Failure 500 {object} response.RsError "Internal server error"
-// @Router /clinic/verify [get]
+// @Router /clinic/verify-email [get]
 func (h *handler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {

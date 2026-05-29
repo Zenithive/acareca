@@ -800,6 +800,7 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 			IsActive:  false,
 		}}
 }
+
 func DefaultSettings(templateId uuid.UUID) Setting {
 	termText := "Payment is due within 30 days of the invoice date. Late payments may incur a 2% monthly charge. All services rendered are non-refundable. For disputes, contact our billing department within 7 days."
 	waterMarkText := "PAID"

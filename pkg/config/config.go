@@ -44,6 +44,8 @@ type Config struct {
 
 	// NATS Configuration
 	NATSUrl string
+
+	TemplateEncryptionKey string
 }
 
 func getEnv(key, fallback string) string {
@@ -106,6 +108,8 @@ func NewConfig() *Config {
 
 		// NATS Configuration
 		NATSUrl: getEnv("NATS_URL", "nats://localhost:4222"),
+
+		TemplateEncryptionKey: getEnv("TEMPLATE_ENCRYPTION_KEY", "default_32_bytes_secret_key_abc"),
 	}
 }
 
