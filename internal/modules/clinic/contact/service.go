@@ -13,7 +13,7 @@ type IService interface {
 	Update(ctx context.Context, contact RqUpdateContact) error
 	Delete(ctx context.Context, Id uuid.UUID) error
 	Get(ctx context.Context, Id uuid.UUID) (RsContact, error)
-	List(ctx context.Context, filter *Filter) (*util.RsList, error)
+	List(ctx context.Context, clinicID uuid.UUID, filter *Filter) (*util.RsList, error)
 
 	DeleteAddressByID(ctx context.Context, Id uuid.UUID) error
 }
@@ -56,10 +56,10 @@ func (s *service) Get(ctx context.Context, Id uuid.UUID) (RsContact, error) {
 }
 
 // List implements [Service].
-func (s *service) List(ctx context.Context, filter *Filter) (*util.RsList, error) {
+func (s *service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) (*util.RsList, error) {
 	ft := filter.MapToFilter()
 
-	contacts, err := s.repo.List(ctx)
+	contacts, err := s.repo.List(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}

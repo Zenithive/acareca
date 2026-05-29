@@ -21,7 +21,7 @@ type IRepository interface {
 	Update(ctx context.Context, invoice *Invoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*Invoice, error)
-	List(ctx context.Context, filter common.Filter) ([]*Invoice, error)
+	List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, error)
 }
 
 type Repository struct {
@@ -190,7 +190,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 }
 
 // List implements [IRepository].
-func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice, error) {
+func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			id,
@@ -209,8 +209,9 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			updated_at::text
 		FROM tbl_invoice
 		WHERE deleted_at IS NULL
+		AND clinic_id = $1
 		ORDER BY created_at DESC
-	`)
+	`, clinicID)
 	if err != nil {
 		return nil, err
 	}

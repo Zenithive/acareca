@@ -88,6 +88,8 @@ type RqUpdateSetting struct {
 	TermText         *string    `json:"term_text"`
 	IsWaterMark      bool       `json:"is_water_mark"`
 	WaterMarkText    *string    `json:"water_mark_text"`
+	IsTax            bool       `json:"is_tax"`
+	TableStyle       string     `json:"table_style"`
 }
 
 func (rq *RqUpdateSetting) ToDB() Setting {
@@ -114,6 +116,7 @@ func (rq *RqUpdateSetting) ToDB() Setting {
 	}
 
 	return Setting{
+		Id:               rq.Id,
 		TemplateId:       rq.TemplateId,
 		PrimaryColor:     rq.PrimaryColor,
 		AccentColor:      rq.AccentColor,
@@ -126,6 +129,8 @@ func (rq *RqUpdateSetting) ToDB() Setting {
 		TermText:         rq.TermText,
 		IsWaterMark:      rq.IsWaterMark,
 		WaterMarkText:    rq.WaterMarkText,
+		IsTax:            rq.IsTax,
+		TableStyle:       rq.TableStyle,
 	}
 }
 
@@ -143,6 +148,8 @@ type Setting struct {
 	TermText         *string        `db:"terms_text"`
 	IsWaterMark      bool           `db:"is_watermark"`
 	WaterMarkText    *string        `db:"watermark_text"`
+	IsTax            bool           `db:"is_tax"`
+	TableStyle       string         `db:"table_style"`
 
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt *time.Time `db:"updated_at"`
@@ -181,8 +188,11 @@ func (st *Setting) ToRs() RsSetting {
 		TermText:         st.TermText,
 		IsWaterMark:      st.IsWaterMark,
 		WaterMarkText:    st.WaterMarkText,
-		CreatedAt:        st.CreatedAt,
-		UpdatedAt:        st.UpdatedAt,
+		IsTax:            st.IsTax,
+		TableStyle:       st.TableStyle,
+
+		CreatedAt: st.CreatedAt,
+		UpdatedAt: st.UpdatedAt,
 	}
 }
 
@@ -200,6 +210,8 @@ type RsSetting struct {
 	TermText         *string          `json:"term_text"`
 	IsWaterMark      bool             `json:"is_water_mark"`
 	WaterMarkText    *string          `json:"water_mark_text"`
+	IsTax            bool             `json:"is_tax"`
+	TableStyle       string           `json:"table_style"`
 
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`

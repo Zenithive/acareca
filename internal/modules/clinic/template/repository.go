@@ -92,7 +92,6 @@ func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Set
 	const q = `SELECT * FROM tbl_template_setting WHERE template_id = $1 AND deleted_at IS NULL`
 	var st Setting
 	if err := r.db.GetContext(ctx, &st, q, templateId); err != nil {
-		// Return nil if no settings found (not an error - settings are optional)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -106,11 +105,11 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting) error {
 		INSERT INTO tbl_template_setting (
 			template_id, primary_color, accent_color, body_font_family, header_font_family,
 			is_logo, logo_id, letterhead_id, footer_id,
-			terms_text, is_watermark, watermark_text
+			terms_text, is_watermark, watermark_text, is_tax, table_style
 		) VALUES (
 			:template_id, :primary_color, :accent_color, :body_font_family, :header_font_family,
 			:is_logo, :logo_id, :letterhead_id, :footer_id,
-			:terms_text, :is_watermark, :watermark_text
+			:terms_text, :is_watermark, :watermark_text, :is_tax, :table_style
 		)
 		ON CONFLICT (template_id) DO UPDATE SET
 			primary_color     = EXCLUDED.primary_color,
@@ -124,6 +123,8 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting) error {
 			terms_text        = EXCLUDED.terms_text,
 			is_watermark      = EXCLUDED.is_watermark,
 			watermark_text    = EXCLUDED.watermark_text,
+			is_tax = EXCLUDED.is_tax,
+			table_style = EXCLUDED.table_style
 			updated_at        = NOW()
 		RETURNING id, created_at, updated_at`
 
