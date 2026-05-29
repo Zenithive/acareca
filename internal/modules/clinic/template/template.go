@@ -22,7 +22,6 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
       {{/if}}
       {{#if show_logo}}<h2 class="brand-name">{{clinic_name}}</h2>{{/if}}
     </div>
-    <h1 class="doc-title">{{invoice_name}}</h1>
   </header>
 
   <section class="info-grid">
@@ -377,7 +376,6 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
       </div>
     </div>
     <div class="inv-doc-badge">
-      <p class="inv-doc-type">{{invoice_name}}</p>
       <p class="inv-doc-number">No. {{invoice_number}}</p>
     </div>
   </div>
