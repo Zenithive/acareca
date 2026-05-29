@@ -124,7 +124,7 @@ func (r *Repository) UpdateSetting(ctx context.Context, st *Setting) error {
 			is_watermark      = EXCLUDED.is_watermark,
 			watermark_text    = EXCLUDED.watermark_text,
 			is_tax = EXCLUDED.is_tax,
-			table_style = EXCLUDED.table_style
+			table_style = EXCLUDED.table_style,
 			updated_at        = NOW()
 		RETURNING id, created_at, updated_at`
 
