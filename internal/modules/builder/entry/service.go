@@ -24,7 +24,9 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -33,7 +35,7 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -67,13 +69,14 @@ type Service struct {
 	detailRepo      detail.IRepository
 	financialRepo   fy.Repository
 	practitionerSvc practitioner.IService
+	notificationSvc notification.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService) IService {
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, notificationSvc notification.Service) IService {
 	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
 }
 
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
 
 	var result *RsFormEntry
@@ -185,8 +188,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
-
-
+	s.TransactionNotificationEvent(ctx, entityID, role)
 
 	return result, nil
 }
@@ -1516,4 +1518,33 @@ func (s *Service) handleDocumentUnlinks(ctx context.Context, tx *sqlx.Tx, entryI
 		return fmt.Errorf("unlink documents: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uuid.UUID, role string) {
+
+	var senderName string
+	switch role {
+	case util.RoleAccountant:
+		acc, _ := s.authRepo.FindByAccountentId(ctx, entityID)
+		senderName = fmt.Sprintf("%s %s", acc.FirstName, acc.LastName)
+
+	case util.RolePractitioner:
+		prac, _ := s.authRepo.FindByPractitionerID(ctx, entityID)
+		senderName = fmt.Sprintf("%s %s", prac.FirstName, prac.LastName)
+
+		//get All Accountent ByPractitionerId
+		accs, _ := s.
+
+		common.PublishNotification(ctx, s.notificationSvc, entityID, func(inv *invitation.Invitation) common.NotificationMeta {
+			return common.NotificationMeta{
+				EntityID:      inv.ID,
+				EntityKey:     "invite_id",
+				Title:         "Invitation received",
+				Body:          fmt.Sprintf(`" create from entry by %s "`, senderName),
+				EventType:     notification.EventTransactionCreated,
+				EntityType:    notification.EntityTransaction,
+				RecipientType: notification.ActorAccountant,
+			}
+		})
+	}
 }

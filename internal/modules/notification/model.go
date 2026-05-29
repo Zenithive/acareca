@@ -171,15 +171,15 @@ type NotificationEventTypes []NotificationEventType
 
 func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
 	switch eventType {
-	case EventTransactionCreated, EventTransactionUpdated, EventAuditLogCreated:
+	case EventTransactionCreated, EventTransactionUpdated:
 		return EventNewTransaction
 	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded,
 		EventInviteSent, EventInviteAccepted, EventInviteDeclined:
 		return EventAccountantActivityAlert
-	case EventSystemError, EventSystemWarning:
+	case EventSystemError, EventSystemWarning, EventAuditLogCreated:
 		return EventSystemActivityAlert
 	default:
-		return EventAccountantActivityAlert
+		return EventSystemActivityAlert
 	}
 }
 
