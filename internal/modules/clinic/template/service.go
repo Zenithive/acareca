@@ -72,6 +72,31 @@ func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSett
 		return nil, err
 	}
 
+	// Fetch document details if IDs are present
+	if st.LogoId != nil {
+		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
+		if err != nil {
+			return nil, err
+		}
+		st.Logo = logo
+	}
+
+	if st.LetterHeadId != nil {
+		letterhead, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
+		if err != nil {
+			return nil, err
+		}
+		st.LetterHead = letterhead
+	}
+
+	if st.FooterId != nil {
+		footer, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
+		if err != nil {
+			return nil, err
+		}
+		st.Footer = footer
+	}
+
 	rs := st.ToRs()
 	return &rs, nil
 }

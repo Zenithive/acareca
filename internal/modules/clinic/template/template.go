@@ -811,11 +811,13 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		BodyFontFamily:   "Plus Jakarta Sans", // Clean, modern, highly legible
 		HeaderFontFamily: "Fraunces",          // Elegant serif for invoice title & totals
 		IsLogo:           false,
-		Logo:             nil,
-		LetterHead:       nil,
-		Footer:           nil,
+		LogoId:           nil,
+		LetterHeadId:     nil,
+		FooterId:         nil,
 		TermText:         &termText,
 		IsWaterMark:      false,
 		WaterMarkText:    &waterMarkText,
+		IsTax:            true,
+		TableStyle:       nil,
 	}
 }
