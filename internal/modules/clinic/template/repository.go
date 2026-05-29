@@ -2,11 +2,15 @@ package template
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
+
+var ErrNotFound = errors.New("template not found")
 
 type IRepository interface {
 	Create(ctx context.Context, t *Template) error
@@ -63,6 +67,9 @@ func (r *Repository) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) 
 	const q = `SELECT * FROM tbl_template WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL`
 	var t Template
 	if err := r.db.GetContext(ctx, &t, q, id, clinicId); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &t, nil
@@ -85,6 +92,10 @@ func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Set
 	const q = `SELECT * FROM tbl_template_setting WHERE template_id = $1 AND deleted_at IS NULL`
 	var st Setting
 	if err := r.db.GetContext(ctx, &st, q, templateId); err != nil {
+		// Return nil if no settings found (not an error - settings are optional)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &st, nil

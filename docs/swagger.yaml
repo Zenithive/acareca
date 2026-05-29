@@ -1110,13 +1110,13 @@ definitions:
         items:
           $ref: '#/definitions/bs.RsAccount'
         type: array
+      net_assets:
+        type: number
       total_assets:
         type: number
       total_equity:
         type: number
       total_liabilities:
-        type: number
-      total_liabilities_and_equity:
         type: number
     type: object
   calculation.PreviewSummary:
@@ -1678,6 +1678,8 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
+      classification:
+        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
@@ -4904,6 +4906,10 @@ paths:
         in: query
         name: end_date
         type: string
+      - description: Submitted-by User UUID
+        in: query
+        name: user_id
+        type: string
       produces:
       - application/json
       responses:
@@ -4940,6 +4946,10 @@ paths:
       - description: Practitioner UUID (Required for Accountants to filter)
         in: query
         name: practitioner_id
+        type: string
+      - description: Submitted-by User UUID
+        in: query
+        name: user_id
         type: string
       - description: Start Date (YYYY-MM-DD)
         in: query
@@ -9701,6 +9711,10 @@ paths:
             $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
