@@ -2907,12 +2907,6 @@ const docTemplate = `{
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
                         "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Submitted-by User UUID",
-                        "name": "user_id",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2970,12 +2964,6 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Practitioner UUID (Required for Accountants to filter)",
                         "name": "practitioner_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Submitted-by User UUID",
-                        "name": "user_id",
                         "in": "query"
                     },
                     {
@@ -5177,7 +5165,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/clinic/verify": {
+        "/clinic/verify-email": {
             "get": {
                 "description": "Validates the UUID token sent via email. If valid, marks the clinic as verified and the token as used.",
                 "produces": [
@@ -12217,9 +12205,6 @@ const docTemplate = `{
                         "$ref": "#/definitions/bs.RsAccount"
                     }
                 },
-                "net_assets": {
-                    "type": "number"
-                },
                 "total_assets": {
                     "type": "number"
                 },
@@ -12227,6 +12212,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_liabilities": {
+                    "type": "number"
+                },
+                "total_liabilities_and_equity": {
                     "type": "number"
                 }
             }
@@ -13046,9 +13034,6 @@ const docTemplate = `{
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
-                },
-                "classification": {
-                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
