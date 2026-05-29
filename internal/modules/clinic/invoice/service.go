@@ -12,7 +12,7 @@ type IService interface {
 	Update(ctx context.Context, invoice *RqUpdateInvoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error)
-	List(ctx context.Context, ft *Filter) (*util.RsList, error)
+	List(ctx context.Context, clinicID uuid.UUID, ft *Filter) (*util.RsList, error)
 }
 
 type Service struct {
@@ -46,10 +46,10 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error) {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error) {
+func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) (*util.RsList, error) {
 	ft := filter.MapToFilter()
 
-	invoices, err := s.repo.List(ctx, ft)
+	invoices, err := s.repo.List(ctx, clinicID, ft)
 	if err != nil {
 		return nil, err
 	}

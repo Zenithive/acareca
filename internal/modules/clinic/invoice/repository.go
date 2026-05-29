@@ -2,32 +2,39 @@ package invoice
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
+	contactpkg "github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
+var ErrNotFound = errors.New("invoice not found")
+
 type IRepository interface {
 	Create(ctx context.Context, invoice *Invoice) error
 	Update(ctx context.Context, invoice *Invoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*Invoice, error)
-	List(ctx context.Context, filter common.Filter) ([]*Invoice, error)
+	List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, error)
 }
 
 type Repository struct {
-	db       *sqlx.DB
-	itemRepo item.IRepository
+	db          *sqlx.DB
+	itemRepo    item.IRepository
+	contactRepo contactpkg.Repository
 }
 
 func NewRepository(db *sqlx.DB) IRepository {
 	return &Repository{
-		db:       db,
-		itemRepo: item.NewRepository(db),
+		db:          db,
+		itemRepo:    item.NewRepository(db),
+		contactRepo: contactpkg.NewRepository(db),
 	}
 }
 
@@ -37,6 +44,9 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		if invoice.ID == uuid.Nil {
 			invoice.ID = uuid.New()
 		}
+		if err := r.validateContactTo(ctx, invoice); err != nil {
+			return err
+		}
 
 		subtotal, taxTotal, grandTotal := calculateTotals(invoice.Items)
 
@@ -44,6 +54,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			INSERT INTO tbl_invoice (
 				id,
 				clinic_id,
+				contact_id,
 				template_id,
 				name,
 				invoice_number,
@@ -57,10 +68,11 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 				grand_total,
 				status
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		`,
 			invoice.ID,
 			invoice.ClinicID,
+			invoice.ContactID,
 			invoice.TemplateID,
 			invoice.Name,
 			invoice.InvoiceNumber,
@@ -100,7 +112,7 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 		if rowsAffected == 0 {
-			return errors.New("invoice not found")
+			return ErrNotFound
 		}
 
 		_, err = tx.ExecContext(ctx, `
@@ -121,6 +133,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		SELECT
 			id,
 			clinic_id,
+			contact_id::text,
 			template_id,
 			name,
 			invoice_number,
@@ -138,6 +151,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	`, id).Scan(
 		&invoice.ID,
 		&invoice.ClinicID,
+		&invoice.ContactID,
 		&invoice.TemplateID,
 		&invoice.Name,
 		&invoice.InvoiceNumber,
@@ -151,7 +165,19 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		&invoice.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
+	}
+
+	if invoice.ContactID != nil {
+		contact, err := r.contactRepo.Get(ctx, *invoice.ContactID)
+		if err != nil {
+			return nil, err
+		}
+
+		invoice.ContactTo = &contact
 	}
 
 	items, err := r.itemRepo.GetByInvoiceID(ctx, nil, invoice.ID)
@@ -164,11 +190,12 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 }
 
 // List implements [IRepository].
-func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice, error) {
+func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			id,
 			clinic_id,
+			contact_id::text,
 			template_id,
 			name,
 			invoice_number,
@@ -182,8 +209,9 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			updated_at::text
 		FROM tbl_invoice
 		WHERE deleted_at IS NULL
+		AND clinic_id = $1
 		ORDER BY created_at DESC
-	`)
+	`, clinicID)
 	if err != nil {
 		return nil, err
 	}
@@ -192,9 +220,11 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 	invoices := make([]*Invoice, 0)
 	for rows.Next() {
 		var invoice Invoice
+
 		if err := rows.Scan(
 			&invoice.ID,
 			&invoice.ClinicID,
+			&invoice.ContactID,
 			&invoice.TemplateID,
 			&invoice.Name,
 			&invoice.InvoiceNumber,
@@ -214,7 +244,6 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 		if err != nil {
 			return nil, err
 		}
-
 		invoices = append(invoices, &invoice)
 	}
 
@@ -224,27 +253,33 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 // Update implements [IRepository].
 func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := r.validateContactTo(ctx, invoice); err != nil {
+			return err
+		}
+
 		subtotal, taxTotal, grandTotal := calculateTotals(invoice.Items)
 
 		result, err := tx.ExecContext(ctx, `
 			UPDATE tbl_invoice
 			SET
-				template_id = $1,
-				name = $2,
-				invoice_number = $3,
-				reference = $4,
-				payment_method = $5,
-				tax_method = $6,
-				issue_date = $7,
-				due_date = $8,
-				subtotal = $9,
-				tax_total = $10,
-				grand_total = $11,
-				status = $12,
+				contact_id = $1,
+				template_id = $2,
+				name = $3,
+				invoice_number = $4,
+				reference = $5,
+				payment_method = $6,
+				tax_method = $7,
+				issue_date = $8,
+				due_date = $9,
+				subtotal = $10,
+				tax_total = $11,
+				grand_total = $12,
+				status = $13,
 				updated_at = NOW()
-			WHERE id = $13
+			WHERE id = $14
 			AND deleted_at IS NULL
 		`,
+			invoice.ContactID,
 			invoice.TemplateID,
 			invoice.Name,
 			invoice.InvoiceNumber,
@@ -268,7 +303,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 		if rowsAffected == 0 {
-			return errors.New("invoice not found")
+			return ErrNotFound
 		}
 
 		_, err = tx.ExecContext(ctx, `
@@ -287,6 +322,25 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 
 		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)
 	})
+}
+
+func (r *Repository) validateContactTo(ctx context.Context, invoice *Invoice) error {
+	if invoice.ContactID == nil || *invoice.ContactID == uuid.Nil {
+		return errors.New("contact_id is required")
+	}
+
+	contactTo, err := r.contactRepo.Get(ctx, *invoice.ContactID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("contact not found")
+		}
+		return err
+	}
+	if contactTo.ClinicId != invoice.ClinicID {
+		return fmt.Errorf("contact %s does not belong to clinic %s", invoice.ContactID.String(), invoice.ClinicID.String())
+	}
+
+	return nil
 }
 
 func calculateTotals(items []*item.Item) (float64, float64, float64) {

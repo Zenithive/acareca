@@ -2907,6 +2907,12 @@ const docTemplate = `{
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2964,6 +2970,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Practitioner UUID (Required for Accountants to filter)",
                         "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
                         "in": "query"
                     },
                     {
@@ -10317,6 +10329,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -12199,6 +12217,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/bs.RsAccount"
                     }
                 },
+                "net_assets": {
+                    "type": "number"
+                },
                 "total_assets": {
                     "type": "number"
                 },
@@ -12206,9 +12227,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_liabilities": {
-                    "type": "number"
-                },
-                "total_liabilities_and_equity": {
                     "type": "number"
                 }
             }
@@ -12933,6 +12951,35 @@ const docTemplate = `{
                 }
             }
         },
+        "coa.AccountClassification": {
+            "type": "string",
+            "enum": [
+                "Current Asset",
+                "Non-Current Asset",
+                "Contra-Asset",
+                "Current Liability",
+                "Non-Current Liability",
+                "Equity",
+                "Contra-Equity",
+                "Operating Revenue",
+                "Other Revenue",
+                "Direct Costs",
+                "Operating Expense"
+            ],
+            "x-enum-varnames": [
+                "ClassificationCurrentAsset",
+                "ClassificationNonCurrentAsset",
+                "ClassificationContraAsset",
+                "ClassificationCurrentLiability",
+                "ClassificationNonCurrentLiability",
+                "ClassificationEquity",
+                "ClassificationContraEquity",
+                "ClassificationOperatingRevenue",
+                "ClassificationOtherRevenue",
+                "ClassificationDirectCosts",
+                "ClassificationOperatingExpense"
+            ]
+        },
         "coa.RqCheckCodeUnique": {
             "type": "object",
             "required": [
@@ -12969,6 +13016,9 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1
                 },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
+                },
                 "code": {
                     "type": "integer",
                     "maximum": 9999,
@@ -12996,6 +13046,9 @@ const docTemplate = `{
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
@@ -14188,7 +14241,7 @@ const docTemplate = `{
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
-                "clinic_id",
+                "contact_id",
                 "invoice_number",
                 "issue_date",
                 "items",
@@ -14197,6 +14250,9 @@ const docTemplate = `{
             ],
             "properties": {
                 "clinic_id": {
+                    "type": "string"
+                },
+                "contact_id": {
                     "type": "string"
                 },
                 "due_date": {
@@ -14246,6 +14302,9 @@ const docTemplate = `{
         "invoice.RqUpdateInvoice": {
             "type": "object",
             "properties": {
+                "contact_id": {
+                    "type": "string"
+                },
                 "due_date": {
                     "type": "string"
                 },
@@ -14299,6 +14358,12 @@ const docTemplate = `{
                 "clinic_id": {
                     "type": "string"
                 },
+                "contact_id": {
+                    "type": "string"
+                },
+                "contact_to": {
+                    "$ref": "#/definitions/contact.RsContact"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -14328,6 +14393,9 @@ const docTemplate = `{
                 },
                 "reference": {
                     "type": "string"
+                },
+                "sent_to": {
+                    "$ref": "#/definitions/contact.RsContact"
                 },
                 "status": {
                     "type": "string"

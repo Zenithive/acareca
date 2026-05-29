@@ -1,6 +1,7 @@
 package invoice
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -39,11 +40,18 @@ func NewHandler(svc IService) IHandler {
 // @Security BearerToken
 // @Router /clinic/invoice [post]
 func (h *Handler) Create(c *gin.Context) {
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!!"))
+		return
+	}
 	var rq RqInvoice
 	if err := util.BindAndValidate(c, &rq); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
+
+	rq.ClinicID = clinicId
 
 	if err := h.svc.Create(c.Request.Context(), &rq); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -99,6 +107,10 @@ func (h *Handler) Get(c *gin.Context) {
 
 	invoice, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
@@ -117,12 +129,18 @@ func (h *Handler) Get(c *gin.Context) {
 // @Security BearerToken
 // @Router /clinic/invoice [get]
 func (h *Handler) List(c *gin.Context) {
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!!"))
+		return
+	}
+
 	var ft Filter
 	if err := util.BindAndValidate(c, &ft); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	invoices, err := h.svc.List(c.Request.Context(), &ft)
+	invoices, err := h.svc.List(c.Request.Context(), clinicId, &ft)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

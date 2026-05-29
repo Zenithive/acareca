@@ -2899,6 +2899,12 @@
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2956,6 +2962,12 @@
                         "type": "string",
                         "description": "Practitioner UUID (Required for Accountants to filter)",
                         "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
                         "in": "query"
                     },
                     {
@@ -10309,6 +10321,12 @@
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -12191,6 +12209,9 @@
                         "$ref": "#/definitions/bs.RsAccount"
                     }
                 },
+                "net_assets": {
+                    "type": "number"
+                },
                 "total_assets": {
                     "type": "number"
                 },
@@ -12198,9 +12219,6 @@
                     "type": "number"
                 },
                 "total_liabilities": {
-                    "type": "number"
-                },
-                "total_liabilities_and_equity": {
                     "type": "number"
                 }
             }
@@ -12925,6 +12943,35 @@
                 }
             }
         },
+        "coa.AccountClassification": {
+            "type": "string",
+            "enum": [
+                "Current Asset",
+                "Non-Current Asset",
+                "Contra-Asset",
+                "Current Liability",
+                "Non-Current Liability",
+                "Equity",
+                "Contra-Equity",
+                "Operating Revenue",
+                "Other Revenue",
+                "Direct Costs",
+                "Operating Expense"
+            ],
+            "x-enum-varnames": [
+                "ClassificationCurrentAsset",
+                "ClassificationNonCurrentAsset",
+                "ClassificationContraAsset",
+                "ClassificationCurrentLiability",
+                "ClassificationNonCurrentLiability",
+                "ClassificationEquity",
+                "ClassificationContraEquity",
+                "ClassificationOperatingRevenue",
+                "ClassificationOtherRevenue",
+                "ClassificationDirectCosts",
+                "ClassificationOperatingExpense"
+            ]
+        },
         "coa.RqCheckCodeUnique": {
             "type": "object",
             "required": [
@@ -12961,6 +13008,9 @@
                     "type": "integer",
                     "minimum": 1
                 },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
+                },
                 "code": {
                     "type": "integer",
                     "maximum": 9999,
@@ -12988,6 +13038,9 @@
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
@@ -14180,7 +14233,7 @@
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
-                "clinic_id",
+                "contact_id",
                 "invoice_number",
                 "issue_date",
                 "items",
@@ -14189,6 +14242,9 @@
             ],
             "properties": {
                 "clinic_id": {
+                    "type": "string"
+                },
+                "contact_id": {
                     "type": "string"
                 },
                 "due_date": {
@@ -14238,6 +14294,9 @@
         "invoice.RqUpdateInvoice": {
             "type": "object",
             "properties": {
+                "contact_id": {
+                    "type": "string"
+                },
                 "due_date": {
                     "type": "string"
                 },
@@ -14291,6 +14350,12 @@
                 "clinic_id": {
                     "type": "string"
                 },
+                "contact_id": {
+                    "type": "string"
+                },
+                "contact_to": {
+                    "$ref": "#/definitions/contact.RsContact"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -14320,6 +14385,9 @@
                 },
                 "reference": {
                     "type": "string"
+                },
+                "sent_to": {
+                    "$ref": "#/definitions/contact.RsContact"
                 },
                 "status": {
                     "type": "string"
