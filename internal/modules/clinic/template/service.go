@@ -17,7 +17,7 @@ type IService interface {
 	Update(ctx context.Context, rq RqTemplate) (*RsTemplate, error)
 	Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) error
 	Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*RsTemplate, error)
-	List(ctx context.Context) (*util.RsList, error)
+	List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
 }
@@ -216,6 +216,6 @@ func (s *Service) Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) 
 	return s.repo.Delete(ctx, clinicId, id)
 }
 
-func (s *Service) List(ctx context.Context) (*util.RsList, error) {
-	return s.repo.List(ctx)
+func (s *Service) List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error) {
+	return s.repo.List(ctx, clinicId)
 }

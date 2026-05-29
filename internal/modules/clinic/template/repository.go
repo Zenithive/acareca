@@ -20,7 +20,7 @@ type IRepository interface {
 	Update(ctx context.Context, t *Template) error
 	Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) error
 	Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*Template, error)
-	List(ctx context.Context) (*util.RsList, error)
+	List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error)
 	UpdateSetting(ctx context.Context, st *Setting) error
 	CreateSetting(ctx context.Context, st *Setting) error
@@ -78,10 +78,10 @@ func (r *Repository) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) 
 	return &t, nil
 }
 
-func (r *Repository) List(ctx context.Context) (*util.RsList, error) {
-	const q = `SELECT * FROM tbl_template WHERE deleted_at IS NULL ORDER BY created_at DESC`
+func (r *Repository) List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error) {
+	const q = `SELECT * FROM tbl_template WHERE deleted_at IS NULL AND clinic_id = $1 ORDER BY created_at DESC`
 	var items []Template
-	if err := r.db.SelectContext(ctx, &items, q); err != nil {
+	if err := r.db.SelectContext(ctx, &items, q, clinicId); err != nil {
 		return nil, err
 	}
 
