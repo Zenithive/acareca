@@ -465,62 +465,55 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND (
-			c.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation 
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation 
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			))
-		)`
+		permissionClause = ` WHERE (
+            v.practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            )
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            ))
+        )`
 	} else {
-		permissionClause = ` AND (
-			c.id IN (
-				SELECT id FROM tbl_clinic 
-				WHERE practitioner_id = ? AND deleted_at IS NULL
-			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
-		)`
+		permissionClause = ` WHERE (
+            v.clinic_id IN (
+                SELECT id FROM tbl_clinic
+                WHERE practitioner_id = ? AND deleted_at IS NULL
+            )
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
+        )`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id":       "e.clinic_id",
-		"form_id":         "fm.id",
-		"coa_id":          "coa.id",
-		"tax_type_id":     "at2.id",
-		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		// For expense entries use item-level date; for all others use entry-level date
-		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"clinic_id":       "v.clinic_id",
+		"form_id":         "v.form_id",
+		"coa_id":          "v.coa_id",
+		"tax_type_id":     "v.tax_id",
+		"practitioner_id": "v.practitioner_id",
+		"start_date":      "v.entry_date",
+		"end_date":        "v.entry_date",
 	}
 
 	base := `
-		SELECT
-			MAX(coa.id::text)::uuid     AS coa_id,
-			coa.name        AS coa_name,
-			MAX(coa.is_system::int)::bool AS is_system,
-			COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
-			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
-			COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
-			COUNT(DISTINCT ev.id)             AS entry_count
-		FROM tbl_chart_of_accounts coa
-		INNER JOIN tbl_form_field              ff  ON ff.coa_id = coa.id         AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_form_entry_value        ev  ON ev.form_field_id = ff.id   AND ev.updated_at IS NULL
-		INNER JOIN tbl_form_entry              e   ON e.id = ev.entry_id         AND e.deleted_at IS NULL
-		INNER JOIN tbl_custom_form_version     fv  ON fv.id = e.form_version_id  AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
-		LEFT  JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
-		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		WHERE coa.deleted_at IS NULL` + permissionClause
+        SELECT
+            MAX(v.coa_id::text)::uuid                      AS coa_id,
+            v.account_name                                 AS coa_name,
+            COALESCE(MAX(coa.is_system::int)::bool, false) AS is_system,
+            ROUND(SUM(v.net_amount)::numeric, 2)::float8   AS total_net_amount,
+            ROUND(SUM(v.gst_amount)::numeric, 2)::float8   AS total_gst_amount,
+            ROUND(SUM(v.gross_amount)::numeric, 2)::float8 AS total_gross_amount,
+            COUNT(DISTINCT v.entry_id)                     AS entry_count
+        FROM vw_double_entry_line_items v
+        LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id` + permissionClause
 
-	searchCols := []string{"coa.name"}
+	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
-	groupByClause := ` GROUP BY coa.name`
-	args := []any{actorID, actorID}
 
+	groupByClause := ` GROUP BY v.account_name`
+	args := []any{actorID, actorID}
 	args = append(args, qArgs...)
+
 	if strings.Contains(q, "ORDER BY") {
 		q = strings.Replace(q, "ORDER BY", groupByClause+" ORDER BY", 1)
 	} else if strings.Contains(q, "LIMIT") {
@@ -541,9 +534,8 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	}
 
 	var rows []*coaEntryRow
-
 	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
-		return nil, fmt.Errorf("list coa entries: %w", err)
+		return nil, fmt.Errorf("list coa entries via views: %w", err)
 	}
 
 	result := make([]*RsCoaEntry, 0, len(rows))
@@ -565,62 +557,54 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` AND (
-			c.practitioner_id IN (
+		permissionClause = ` WHERE (
+			practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+			OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			))
 		)`
 	} else {
-		permissionClause = ` AND (
-			c.id IN (
+		permissionClause = ` WHERE (
+			clinic_id IN (
 				SELECT id FROM tbl_clinic
 				WHERE practitioner_id = ? AND deleted_at IS NULL
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+			OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id = ?)
 		)`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id":       "e.clinic_id",
-		"form_id":         "fm.id",
-		"coa_id":          "coa.id",
-		"tax_type_id":     "at2.id",
-		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		// For expense entries use item-level date; for all others use entry-level date
-		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"clinic_id":       "clinic_id",
+		"form_id":         "form_id",
+		"coa_id":          "coa_id",
+		"tax_type_id":     "tax_id",
+		"practitioner_id": "practitioner_id",
+		"start_date":      "entry_date",
+		"end_date":        "entry_date",
 	}
 
-	base := `
-		FROM tbl_chart_of_accounts coa
-		INNER JOIN tbl_form_field              ff  ON ff.coa_id = coa.id         AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_form_entry_value        ev  ON ev.form_field_id = ff.id   AND ev.updated_at IS NULL
-		INNER JOIN tbl_form_entry              e   ON e.id = ev.entry_id         AND e.deleted_at IS NULL
-		INNER JOIN tbl_custom_form_version     fv  ON fv.id = e.form_version_id  AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                    fm  ON fm.id = fv.form_id         AND fm.deleted_at IS NULL
-		LEFT  JOIN tbl_clinic                  c   ON c.id = e.clinic_id         AND c.deleted_at IS NULL
-		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		WHERE coa.deleted_at IS NULL` + permissionClause
+	base := ` FROM vw_double_entry_line_items` + permissionClause
 
-	searchCols := []string{"coa.name"}
+	searchCols := []string{"account_name", "account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
-	args := []any{actorID, actorID}
+
 	if strings.Contains(strings.ToUpper(q), "COUNT(*)") {
-		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT coa.name)")
+		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT account_name)")
 	}
 
+	args := []any{actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
-		return 0, fmt.Errorf("count coa entries: %w", err)
+		return 0, fmt.Errorf("count coa entries via views: %w", err)
 	}
+
 	return total, nil
 }
 
@@ -629,131 +613,149 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND (
-			c.practitioner_id IN (
+			v.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation 
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation 
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			))
 		)`
 	} else {
 		permissionClause = ` AND (
-			c.id IN (
+			v.clinic_id IN (
 				SELECT id FROM tbl_clinic 
 				WHERE practitioner_id = ? AND deleted_at IS NULL
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
 		)`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id":       "e.clinic_id",
-		"form_id":         "fm.id",
-		"tax_type_id":     "at2.id",
-		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		// For expense entries use item-level date; for all others use entry-level date
-		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"created_at": "ev.created_at",
+		"clinic_id":       "v.clinic_id",
+		"form_id":         "v.form_id",
+		"tax_type_id":     "v.tax_id",
+		"practitioner_id": "v.practitioner_id",
+		"start_date":      "v.entry_date",
+		"end_date":        "v.entry_date",
+		"created_at":      "v.entry_date",
 	}
 
 	base := `
 		SELECT
-			ev.id,
-			e.id            AS entry_id,
-			ff.id           AS form_field_id,
-			coa.id          AS coa_id,
-			at2.id          AS tax_type_id,
-			fm.id           AS form_id,
-			e.clinic_id,
-			e.form_version_id AS version_id,
-			ff.label        AS form_field_name,
-			coa.name        AS coa_name,
-			at2.name        AS tax_type_name,
-			fm.name         AS form_name,
-			fm.method       AS form_method,
-			COALESCE(c.name, 'Expense') AS clinic_name,
-			ev.net_amount,
-			ev.gst_amount,
-			ev.gross_amount,
-			COALESCE(
-				CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END,
-				ev.created_at
-			) AS created_at,
-			ev.updated_at
-		FROM tbl_form_entry_value ev
-		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
-		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		LEFT  JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE ev.updated_at IS NULL AND coa.name = ?` + permissionClause
+			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id, 
+			v.entry_id                                                     AS entry_id,
+			v.form_field_id                                                AS form_field_id,
+			v.coa_id                                                       AS coa_id,
+			v.tax_id                                                       AS tax_type_id,
+			v.form_id                                                      AS form_id,
+			v.clinic_id                                                    AS clinic_id,
+			NULL::uuid                                                     AS line_item_value_id,
+			v.form_id                                                      AS version_id,
+			COALESCE(ff.label, 'System Accounts')                          AS form_field_name,
+			v.account_name                                                 AS coa_name,
+			COALESCE(t.name, '')                                           AS tax_type_name,
+			COALESCE(f.name, '')                                           AS form_name,
+			COALESCE(f.method::text, '')                                   AS form_method,
+			COALESCE(c.name, '')                                           AS clinic_name,
+			COALESCE(v.normal_balance, '')                          AS transaction_type,
+			ROUND(ABS(COALESCE(v.net_amount, 0))::numeric, 2)::float8   AS net_amount,
+			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8   AS gst_amount, 
+			ROUND(ABS(COALESCE(v.gross_amount, 0))::numeric, 2)::float8 AS gross_amount,
+			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')              AS created_at
+		FROM vw_double_entry_line_items v
+		LEFT JOIN tbl_form f        ON f.id = v.form_id
+		LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
+		LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
+		LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
+		
+		WHERE v.account_name = ?` + permissionClause
 
-	searchCols := []string{"ff.label", "coa.name", "fm.name", "COALESCE(c.name, 'Expense')"}
+	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
 	args := []any{coaName, actorID, actorID}
 	args = append(args, qArgs...)
 	q = r.db.Rebind(q)
 
 	type detailRow struct {
-		ID            uuid.UUID `db:"id"`
-		EntryID       uuid.UUID `db:"entry_id"`
-		FormFieldID   uuid.UUID `db:"form_field_id"`
-		CoaID         uuid.UUID `db:"coa_id"`
-		TaxTypeID     *int16    `db:"tax_type_id"`
-		FormID        uuid.UUID `db:"form_id"`
-		ClinicID      uuid.UUID `db:"clinic_id"`
-		VersionID     uuid.UUID `db:"version_id"`
-		FormFieldName string    `db:"form_field_name"`
-		CoaName       string    `db:"coa_name"`
-		TaxTypeName   *string   `db:"tax_type_name"`
-		FormName      string    `db:"form_name"`
-		FormMethod    string    `db:"form_method"`
-		ClinicName    string    `db:"clinic_name"`
-		NetAmount     *float64  `db:"net_amount"`
-		GstAmount     *float64  `db:"gst_amount"`
-		GrossAmount   *float64  `db:"gross_amount"`
-		CreatedAt     string    `db:"created_at"`
-		UpdatedAt     *string   `db:"updated_at"`
+		ID              uuid.UUID  `db:"id"`
+		EntryID         uuid.UUID  `db:"entry_id"`
+		FormFieldID     *string    `db:"form_field_id"`
+		CoaID           uuid.UUID  `db:"coa_id"`
+		TaxTypeID       *int16     `db:"tax_type_id"`
+		FormID          *string    `db:"form_id"`
+		ClinicID        uuid.UUID  `db:"clinic_id"`
+		LineItemValueID *uuid.UUID `db:"line_item_value_id"`
+		VersionID       *string    `db:"version_id"`
+		FormFieldName   string     `db:"form_field_name"`
+		CoaName         string     `db:"coa_name"`
+		TaxTypeName     *string    `db:"tax_type_name"`
+		FormName        *string    `db:"form_name"`
+		FormMethod      *string    `db:"form_method"`
+		ClinicName      string     `db:"clinic_name"`
+		TransactionType string     `db:"transaction_type"`
+		NetAmount       float64    `db:"net_amount"`
+		GstAmount       float64    `db:"gst_amount"`
+		GrossAmount     float64    `db:"gross_amount"`
+		CreatedAt       string     `db:"created_at"`
+		UpdatedAt       *string    `db:"updated_at"`
 	}
 
 	var rows []*detailRow
 	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
-		return nil, fmt.Errorf("list coa entry details: %w", err)
+		return nil, fmt.Errorf("list coa entry details via views: %w", err)
 	}
 
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
-		isExpense := row.FormMethod == "EXPENSE_ENTRY"
+		method := ""
+		if row.FormMethod != nil {
+			method = *row.FormMethod
+		}
+		isExpense := method == "EXPENSE_ENTRY"
+
+		netVal := row.NetAmount
+		gstVal := row.GstAmount
+		grossVal := row.GrossAmount
 
 		detail := &RsCoaEntryDetail{
-			ID:            row.ID.String(),
-			EntryID:       row.EntryID.String(),
-			FormFieldID:   row.FormFieldID.String(),
-			CoaID:         row.CoaID.String(),
-			TaxTypeID:     row.TaxTypeID,
-			FormID:        row.FormID.String(),
-			VersionID:     row.VersionID.String(),
-			FormFieldName: row.FormFieldName,
-			CoaName:       row.CoaName,
-			TaxTypeName:   row.TaxTypeName,
-			IsExpense:     isExpense,
-			NetAmount:     row.NetAmount,
-			GstAmount:     row.GstAmount,
-			GrossAmount:   row.GrossAmount,
-			CreatedAt:     row.CreatedAt,
-			UpdatedAt:     row.UpdatedAt,
+			ID:              row.ID.String(),
+			EntryID:         row.EntryID.String(),
+			CoaID:           row.CoaID.String(),
+			TaxTypeID:       row.TaxTypeID,
+			FormFieldName:   row.FormFieldName,
+			CoaName:         row.CoaName,
+			TaxTypeName:     row.TaxTypeName,
+			IsExpense:       isExpense,
+			TransactionType: row.TransactionType,
+			NetAmount:       &netVal,
+			GstAmount:       &gstVal,
+			GrossAmount:     &grossVal,
+			CreatedAt:       row.CreatedAt,
+			UpdatedAt:       row.UpdatedAt,
+		}
+
+		if row.LineItemValueID != nil {
+			detail.ID = row.LineItemValueID.String()
+		}
+		if row.FormFieldID != nil {
+			detail.FormFieldID = *row.FormFieldID
+		}
+		if row.FormID != nil {
+			detail.FormID = *row.FormID
+		}
+		if row.VersionID != nil {
+			detail.VersionID = *row.VersionID
 		}
 
 		if !isExpense {
 			clinicID := row.ClinicID.String()
 			detail.ClinicID = &clinicID
 			detail.ClinicName = &row.ClinicName
-			detail.FormName = &row.FormName
+			if row.FormName != nil {
+				detail.FormName = row.FormName
+			}
 		} else {
 			detail.SupplierName = &row.FormFieldName
 		}
@@ -768,48 +770,40 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND (
-			c.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation
+			v.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation
+			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+				SELECT practitioner_id FROM tbl_invitation 
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			))
 		)`
 	} else {
 		permissionClause = ` AND (
-			c.id IN (
-				SELECT id FROM tbl_clinic
+			v.clinic_id IN (
+				SELECT id FROM tbl_clinic 
 				WHERE practitioner_id = ? AND deleted_at IS NULL
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
 		)`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id":       "e.clinic_id",
-		"form_id":         "fm.id",
-		"tax_type_id":     "at2.id",
-		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		// For expense entries use item-level date; for all others use entry-level date
-		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"created_at": "ev.created_at",
+		"clinic_id":       "v.clinic_id",
+		"form_id":         "v.form_id",
+		"tax_type_id":     "v.tax_id",
+		"practitioner_id": "v.practitioner_id",
+		"start_date":      "v.entry_date",
+		"end_date":        "v.entry_date",
+		"created_at":      "v.entry_date",
 	}
 
 	base := `
-		FROM tbl_form_entry_value ev
-		INNER JOIN tbl_form_entry              e   ON e.id   = ev.entry_id          AND e.deleted_at  IS NULL
-		INNER JOIN tbl_form_field              ff  ON ff.id  = ev.form_field_id     AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts       coa ON coa.id = ff.coa_id            AND coa.deleted_at IS NULL
-		LEFT  JOIN tbl_account_tax             at2 ON at2.id = coa.account_tax_id
-		INNER JOIN tbl_custom_form_version     fv  ON fv.id  = e.form_version_id    AND fv.deleted_at IS NULL
-		INNER JOIN tbl_form                    fm  ON fm.id  = fv.form_id           AND fm.deleted_at IS NULL
-		LEFT  JOIN tbl_clinic                  c   ON c.id   = e.clinic_id          AND c.deleted_at  IS NULL
-		WHERE ev.updated_at IS NULL AND coa.name = ?` + permissionClause
+		FROM vw_double_entry_line_items v
+		WHERE v.account_name = ?` + permissionClause
 
-	searchCols := []string{"ff.label", "coa.name", "fm.name", "COALESCE(c.name, 'Expense')"}
+	searchCols := []string{"v.account_name", "v.description"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
 	args := []any{coaName, actorID, actorID}
 	args = append(args, qArgs...)
@@ -817,7 +811,7 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
-		return 0, fmt.Errorf("count coa entry details: %w", err)
+		return 0, fmt.Errorf("count coa entry details via views: %w", err)
 	}
 	return total, nil
 }

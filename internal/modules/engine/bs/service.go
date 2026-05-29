@@ -208,7 +208,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		TotalAssets:       totalAssets,
 		Liabilities:       liabilities,
 		TotalLiabilities:  totalLiabilities,
-		NetAssets:         netAssets,
+		NetAssets:         math.Round(netAssets*100) / 100,
 		Equity:            equitySect,
 		CurrentYearProfit: totalOwnerEquity.CurrentYearProfit,
 		TotalEquity:       math.Round(totalEquity*100) / 100,
