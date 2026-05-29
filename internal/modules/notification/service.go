@@ -53,11 +53,11 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		Channels:      rq.Channels,
 		CreatedAt:     rq.CreatedAt,
 	}
-	// fmt.Printf("Publishing notification event_Channel: %+v\n", event.Channels)
-	// fmt.Printf("Publishing notification event_Type: %+v\n", event.EventType)
-	// fmt.Printf("Publishing notification event_ID: %+v\n", event.ID)
-	// fmt.Printf("Publishing notification event_Entity_Id: %+v\n", event.EntityID)
-	// fmt.Printf("Publishing notification event_Recipient_Id: %+v\n", event.RecipientID)
+	fmt.Printf("Publishing notification event_Channel: %+v\n", event.Channels)
+	fmt.Printf("Publishing notification event_Type: %+v\n", event.EventType)
+	fmt.Printf("Publishing notification event_ID: %+v\n", event.ID)
+	fmt.Printf("Publishing notification event_Entity_Id: %+v\n", event.EntityID)
+	fmt.Printf("Publishing notification event_Recipient_Id: %+v\n", event.RecipientID)
 	return s.publisher.PublishNotification(ctx, event)
 }
 

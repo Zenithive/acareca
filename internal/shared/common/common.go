@@ -15,10 +15,10 @@ func PublishNotification[T any](ctx context.Context, notificationSvc notificatio
 		return
 	}
 
-	if recipientID == nil || *recipientID == practitionerID {
-		return
-	}
-
+	// if recipientID == nil || *recipientID == practitionerID {
+	// 	return
+	// }
+	fmt.Printf("PublishNotification recipientID====================================================: %+v\n", recipientID)
 	meta := mapper(data)
 	extraData := map[string]interface{}{
 		meta.EntityKey: meta.EntityID.String(),

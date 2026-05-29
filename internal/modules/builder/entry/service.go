@@ -188,7 +188,10 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
-	s.TransactionNotificationEvent(ctx, entityID, role)
+	fmt.Println("============================")
+	if err = s.TransactionNotificationEvent(ctx, entityID, role, req); err != nil {
+		log.Printf("failed to send transaction notification event: %v", err.Error())
+	}
 
 	return result, nil
 }
@@ -284,9 +287,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		// Handle document create/delete ops
 		if req.Documents != nil {
 			if err := s.handleDocumentLinks(ctx, tx, id, req.Documents); err != nil {
-				return err
-			}
-			if err := s.handleDocumentUnlinks(ctx, tx, id, req.Documents); err != nil {
 				return err
 			}
 		}
@@ -1505,46 +1505,56 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-// handleDocumentUnlinks processes and unlinks documents from an entry
-func (s *Service) handleDocumentUnlinks(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, docs *RqDocument) error {
-	if docs == nil || len(docs.Delete) == 0 {
-		return nil
-	}
-	docIDs, err := util.ParseUUIDs(docs.Delete)
-	if err != nil {
-		return fmt.Errorf("invalid document id: %w", err)
-	}
-	if err := s.repo.UnlinkDocuments(ctx, tx, entryID, docIDs); err != nil {
-		return fmt.Errorf("unlink documents: %w", err)
-	}
-	return nil
-}
-
-func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uuid.UUID, role string) {
+func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uuid.UUID, role string, req *RqFormEntry) error {
 
 	var senderName string
+
 	switch role {
+
 	case util.RoleAccountant:
-		acc, _ := s.authRepo.FindByAccountentId(ctx, entityID)
+		acc, err := s.authRepo.FindByAccountentId(ctx, entityID)
+		if err != nil {
+			return fmt.Errorf("find accountant: %w", err)
+		}
+
 		senderName = fmt.Sprintf("%s %s", acc.FirstName, acc.LastName)
 
 	case util.RolePractitioner:
-		prac, _ := s.authRepo.FindByPractitionerID(ctx, entityID)
+		prac, err := s.authRepo.FindByPractitionerID(ctx, entityID)
+		if err != nil {
+			return fmt.Errorf("find practitioner: %w", err)
+		}
+
 		senderName = fmt.Sprintf("%s %s", prac.FirstName, prac.LastName)
 
-		//get All Accountent ByPractitionerId
-		accs, _ := s.
+	default:
+		return fmt.Errorf("invalid role: %s", role)
+	}
 
-		common.PublishNotification(ctx, s.notificationSvc, entityID, func(inv *invitation.Invitation) common.NotificationMeta {
+	if req == nil {
+		return fmt.Errorf("request payload is nil")
+	}
+
+	fmt.Println("////////////////////////////////////////////////////////////", entityID, senderName)
+
+	common.PublishNotification(
+		ctx,
+		s.notificationSvc,
+		&entityID,
+		entityID,
+		req,
+		func(req *RqFormEntry) common.NotificationMeta {
 			return common.NotificationMeta{
-				EntityID:      inv.ID,
-				EntityKey:     "invite_id",
-				Title:         "Invitation received",
-				Body:          fmt.Sprintf(`" create from entry by %s "`, senderName),
+				EntityID:      entityID,
+				EntityKey:     "transaction_id",
+				Title:         "Transaction Created",
+				Body:          fmt.Sprintf("Created entry by %s", senderName),
 				EventType:     notification.EventTransactionCreated,
 				EntityType:    notification.EntityTransaction,
-				RecipientType: notification.ActorAccountant,
+				RecipientType: notification.ActorPractitioner,
 			}
-		})
-	}
+		},
+	)
+
+	return nil
 }
