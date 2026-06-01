@@ -177,6 +177,8 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 		INNER JOIN tbl_subscription s ON ps.subscription_id = s.id
 		WHERE ps.practitioner_id = $1 
 		  AND ps.status = 'ACTIVE' 
+		  AND ps.start_date <= NOW()
+		  AND ps.end_date >= NOW()
 		  AND ps.deleted_at IS NULL
 		  AND s.deleted_at IS NULL
 		ORDER BY ps.created_at DESC

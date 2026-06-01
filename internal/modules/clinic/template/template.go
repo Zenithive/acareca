@@ -22,7 +22,6 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
       {{/if}}
       {{#if show_logo}}<h2 class="brand-name">{{clinic_name}}</h2>{{/if}}
     </div>
-    <h1 class="doc-title">{{invoice_name}}</h1>
   </header>
 
   <section class="info-grid">
@@ -189,8 +188,8 @@ body {
   min-width: 0;
 }
 .brand-logo {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -367,20 +366,21 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   <div class="inv-letterhead">{{letterhead_html}}</div>
 
   <div class="inv-header">
-    <div class="inv-clinic-block">
-      <div class="inv-logo-circle">
-        <div class="inv-logo-cross"></div>
-      </div>
-      <div>
-        <p class="inv-clinic-name">{{clinic_name}}</p>
-        <p class="inv-clinic-tagline">Medical &amp; Healthcare Services</p>
-      </div>
-    </div>
-    <div class="inv-doc-badge">
-      <p class="inv-doc-type">{{invoice_name}}</p>
-      <p class="inv-doc-number">No. {{invoice_number}}</p>
-    </div>
+  <div class="inv-clinic-block">
+    {{#if show_logo_image}}
+      <img class="brand-logo" src="{{logo_url}}" alt="{{clinic_name}}" />
+    {{else}}
+      {{#if show_logo}}<div class="inv-logo-circle"><div class="inv-logo-cross"></div></div>{{/if}}
+    {{/if}}
+    {{#if show_logo}}<div>
+      <p class="inv-clinic-name">{{clinic_name}}</p>
+      <p class="inv-clinic-tagline">Medical &amp; Healthcare Services</p>
+    </div>{{/if}}
   </div>
+  <div class="inv-doc-badge">
+    <p class="inv-doc-number">No. {{invoice_number}}</p>
+  </div>
+</div>
 
   <div class="inv-status-ribbon">
     <span class="inv-status-left">Patient / Client Billing Summary</span>
@@ -694,6 +694,15 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 .inv-item-name { font-weight: 600; font-size: 13px; color: #1a2332; margin: 0 0 2px; }
 .inv-item-desc { font-size: 11px; color: #8fa3b4; }
 
+.inv-table.striped tbody tr:nth-child(even) {
+  background: #f0f8f5;
+}
+
+.inv-table.bordered td,
+.inv-table.bordered th {
+  border: 1px solid #e8edf2;
+}
+
 .inv-lower {
   display: grid; grid-template-columns: 1fr 280px;
   gap: 28px;
@@ -800,6 +809,7 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 			IsActive:  false,
 		}}
 }
+
 func DefaultSettings(templateId uuid.UUID) Setting {
 	termText := "Payment is due within 30 days of the invoice date. Late payments may incur a 2% monthly charge. All services rendered are non-refundable. For disputes, contact our billing department within 7 days."
 	waterMarkText := "PAID"

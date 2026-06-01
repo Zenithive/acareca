@@ -121,7 +121,7 @@ func (h *handler) Get(c *gin.Context) {
 func (h *handler) List(c *gin.Context) {
 	clinicId, ok := util.GetEntityID(c)
 	if !ok {
-		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!!"))
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!"))
 		return
 	}
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
+	"github.com/iamarpitzala/acareca/internal/shared/crypto"
 )
 
 type RqTemplate struct {
@@ -18,16 +19,27 @@ type RqTemplate struct {
 	IsActive    bool      `json:"is_active"`
 }
 
-func (rq *RqTemplate) ToDB() Template {
+func (rq *RqTemplate) ToDB(encryptionKey []byte) (Template, error) {
+	htmlBlob, err := crypto.EncryptAndCompress(rq.Html, encryptionKey)
+	if err != nil {
+		return Template{}, err
+	}
+
+	cssBlob, err := crypto.EncryptAndCompress(rq.Css, encryptionKey)
+	if err != nil {
+		return Template{}, err
+	}
+
 	return Template{
+		Id:          rq.Id,
 		Name:        rq.Name,
 		ClinicId:    rq.ClinicId,
 		Description: rq.Description,
-		Html:        rq.Html,
-		Css:         rq.Css,
+		Html:        htmlBlob,
+		Css:         cssBlob,
 		IsDefault:   rq.IsDefault,
 		IsActive:    rq.IsActive,
-	}
+	}, nil
 }
 
 type Template struct {
@@ -35,8 +47,8 @@ type Template struct {
 	ClinicId    uuid.UUID `db:"clinic_id"`
 	Description *string   `db:"description"`
 	Name        string    `db:"name"`
-	Html        string    `db:"html"`
-	Css         string    `db:"css"`
+	Html        []byte    `db:"html"`
+	Css         []byte    `db:"css"`
 	IsDefault   bool      `db:"is_default"`
 	IsActive    bool      `db:"is_active"`
 
@@ -51,8 +63,8 @@ func (tp *Template) ToRs() RsTemplate {
 		ClinicId:    tp.ClinicId,
 		Description: tp.Description,
 		Name:        tp.Name,
-		Html:        tp.Html,
-		Css:         tp.Css,
+		Html:        "",
+		Css:         "",
 		IsDefault:   tp.IsDefault,
 		IsActive:    tp.IsActive,
 		CreatedAt:   tp.CreatedAt,

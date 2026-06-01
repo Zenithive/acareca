@@ -35,6 +35,7 @@ func RegisterBuilderRoutes(
 	dbConn *sqlx.DB,
 	clinicSvc clinic.Service,
 	coaSvc coa.Service,
+	coaRepo coa.Repository,
 	practitionerSvc practitioner.IService,
 	accountantRepo accountant.Repository,
 	authRepo auth.Repository,

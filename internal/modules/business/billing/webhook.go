@@ -200,15 +200,15 @@ func periodEnd(sub *stripe.Subscription) time.Time {
 // mapStripeStatus maps a Stripe subscription status string to a local Status.
 func mapStripeStatus(stripeStatus string) subscription.Status {
 	switch stripeStatus {
-	case "active":
+	case "active", "trialing":
 		return subscription.StatusActive
-	case "past_due":
+	case "past_due", "unpaid", "incomplete":
 		return subscription.StatusPastDue
-	case "canceled":
+	case "canceled", "incomplete_expired":
 		return subscription.StatusCancelled
 	case "paused":
 		return subscription.StatusPaused
 	default:
-		return subscription.StatusActive
+		return subscription.StatusPastDue
 	}
 }
