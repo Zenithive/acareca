@@ -1,4 +1,4 @@
-package notification
+package worker
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -17,7 +18,6 @@ import (
 
 type Consumer struct {
 	events        sharedEvents.IEvent
-	repo          Repository
 	prefRepo      preference.Repository
 	notifier      *sharednotification.Hub
 	db            *sqlx.DB
@@ -27,7 +27,6 @@ type Consumer struct {
 
 func NewConsumer(
 	events sharedEvents.IEvent,
-	repo Repository,
 	prefRepo preference.Repository,
 	notifier *sharednotification.Hub,
 	db *sqlx.DB,
@@ -35,7 +34,6 @@ func NewConsumer(
 ) *Consumer {
 	consumer := &Consumer{
 		events:    events,
-		repo:      repo,
 		notifier:  notifier,
 		db:        db,
 		prefRepo:  prefRepo,
@@ -102,7 +100,7 @@ func (c *Consumer) StartPushConsumer(ctx context.Context) error {
 func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 	ctx := context.Background()
 
-	var event NotificationEvent
+	var event notification.NotificationEvent
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
 	}
@@ -156,8 +154,8 @@ func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
 	return nil
 }
 
-func (c *Consumer) createNotification(ctx context.Context, event NotificationEvent, channels []util.Channel) (uuid.UUID, error) {
-	notification := Notification{
+func (c *Consumer) createNotification(ctx context.Context, event notification.NotificationEvent, channels []util.Channel) (uuid.UUID, error) {
+	notification := notification.Notification{
 		ID:            event.ID,
 		RecipientID:   event.RecipientID,
 		RecipientType: event.RecipientType,

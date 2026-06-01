@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
+	"github.com/iamarpitzala/acareca/internal/modules/worker"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -23,7 +24,7 @@ type Service interface {
 
 type service struct {
 	repo      Repository
-	publisher *Publisher
+	publisher *worker.Publisher
 	DB        *sqlx.DB
 	PrefRepo  preference.Repository
 }
@@ -31,7 +32,7 @@ type service struct {
 func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB, prefRepo preference.Repository) Service {
 	return &service{
 		repo:      repo,
-		publisher: NewPublisher(events),
+		publisher: worker.NewPublisher(events),
 		DB:        db,
 		PrefRepo:  prefRepo,
 	}

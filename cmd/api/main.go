@@ -18,6 +18,7 @@ import (
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	nt "github.com/iamarpitzala/acareca/pkg/nats"
 	"github.com/iamarpitzala/acareca/route"
 	"github.com/joho/godotenv"
 )
@@ -64,49 +65,19 @@ func main() {
 	var events sharedEvents.IEvent
 	var nc *nats.Conn
 
-	nc, err = nats.Connect(
-		cfg.NATSUrl,
-		nats.Name("acareca-notification-service"),
-		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
-		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
-			log.Printf("⚠️  NATS disconnected: %v", err)
-		}),
-		nats.ReconnectHandler(func(nc *nats.Conn) {
-			log.Printf("✅ NATS reconnected to %s", nc.ConnectedUrl())
-		}),
-		nats.ClosedHandler(func(nc *nats.Conn) {
-			log.Println("❌ NATS connection closed")
-		}),
-	)
-	if err != nil {
-		log.Printf("⚠️  Warning: Failed to connect to NATS: %v", err)
-		log.Println("💡 To enable NATS: Set NATS_URL in .env")
-		events = nil
-	} else {
-		defer nc.Close()
-		log.Printf("✅ Connected to NATS at %s", cfg.NATSUrl)
-
-		events, err = sharedEvents.NewEvent(
-			nc,
-			5,
-			100,
-			512,
-			30*time.Second,
-			"DLQ",
-			notification.StreamNotification,
-			[]string{
-				notification.SubjectNotificationInApp,
-				notification.SubjectNotificationEmail,
-				notification.SubjectNotificationPush,
-			},
-		)
+	if cfg.NATSUrl != "" {
+		nc, events, err = nt.NewNats(cfg.NATSUrl)
 		if err != nil {
-			log.Printf("⚠️  Warning: Failed to setup JetStream: %v", err)
-			events = nil
+			log.Printf("⚠️  Warning: Failed to connect to NATS: %v", err)
+			log.Println("💡 To enable NATS: Set NATS_URL in .env")
 		} else {
-			log.Println("✅ JetStream initialized successfully")
+			log.Printf("✅ Connected to NATS at %s", cfg.NATSUrl)
 		}
+	}
+
+	if nc != nil {
+		nc.Drain()
+		nc.Close()
 	}
 
 	ginMode := os.Getenv("GIN_MODE")

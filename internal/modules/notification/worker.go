@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -16,7 +15,7 @@ const (
 	workerBatchSize = 50
 )
 
-func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotification.Hub, preferredSvc preference.IService) {
+func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotification.Hub) {
 	ticker := time.NewTicker(workerInterval)
 	defer ticker.Stop()
 

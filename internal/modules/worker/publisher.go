@@ -1,10 +1,11 @@
-package notification
+package worker
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -19,12 +20,12 @@ func NewPublisher(events sharedEvents.IEvent) *Publisher {
 	}
 }
 
-func (p *Publisher) PublishNotification(ctx context.Context, event NotificationEvent) error {
+func (p *Publisher) PublishNotification(ctx context.Context, event notification.NotificationEvent) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
 	}
 
-	if err := p.events.Publish(ctx, SubjectNotificationInApp, event); err != nil {
+	if err := p.events.Publish(ctx, notification.SubjectNotificationInApp, event); err != nil {
 		return fmt.Errorf("failed to publish notification event: %w", err)
 	}
 
@@ -43,7 +44,7 @@ func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, re
 		"payload":         payload,
 	}
 
-	if err := p.events.Publish(ctx, SubjectNotificationEmail, emailEvent); err != nil {
+	if err := p.events.Publish(ctx, notification.SubjectNotificationEmail, emailEvent); err != nil {
 		return fmt.Errorf("failed to publish email event: %w", err)
 	}
 
@@ -62,7 +63,7 @@ func (p *Publisher) PublishPushDelivery(ctx context.Context, notificationID, rec
 		"payload":         payload,
 	}
 
-	if err := p.events.Publish(ctx, SubjectNotificationPush, pushEvent); err != nil {
+	if err := p.events.Publish(ctx, notification.SubjectNotificationPush, pushEvent); err != nil {
 		return fmt.Errorf("failed to publish push event: %w", err)
 	}
 
