@@ -485,7 +485,6 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 }
 
 func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error {
-
 	meta := auditctx.GetMetadata(ctx)
 	ownerID, err := s.CheckPermission(ctx, actorID, id)
 	if err != nil {
@@ -498,6 +497,22 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 			return err
 		}
 
+		// Cascade Soft-Delete Clinic Addresses
+		if err := s.repo.DeleteClinicAddress(ctx, tx, id); err != nil {
+			return fmt.Errorf("delete clinic addresses: %w", err)
+		}
+
+		// Cascade Soft-Delete Clinic Contacts
+		if err := s.repo.DeleteClinicContacts(ctx, tx, id); err != nil {
+			return fmt.Errorf("delete clinic contacts: %w", err)
+		}
+
+		// Cascade Soft-Delete All Forms, Fields, Versions, Entries & Values
+		if err := s.repo.DeleteFormsByClinicID(ctx, tx, id); err != nil {
+			return fmt.Errorf("delete clinic custom forms tree: %w", err)
+		}
+
+		// Finally, Delete the Core Clinic Entry
 		if err := s.repo.DeleteClinic(ctx, tx, id); err != nil {
 			return fmt.Errorf("delete clinic: %w", err)
 		}
