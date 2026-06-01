@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -898,9 +899,56 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			}
 		}
 
-		// Create the entry with all values
+		// Create the entry with all values first
 		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
+		}
+
+		// Now add auto-balancing entry for Bank Account
+		// Calculate total ledger impact from all expense entries
+		var totalLedgerImpact float64
+		for _, ev := range entryValues {
+			if ev.NetAmount != nil {
+				// Expenses are debits, so positive amounts increase the impact
+				totalLedgerImpact += *ev.NetAmount
+			}
+		}
+
+		// Round to avoid floating point issues
+		totalLedgerImpact = math.Round(totalLedgerImpact*100) / 100
+
+		// If there's an imbalance, create a Bank Account balancing entry
+		if totalLedgerImpact != 0 {
+			// Get Bank Account (COA code 600) directly from database
+			var bankAccountID uuid.UUID
+			bankQuery := `SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 AND code = 600 AND deleted_at IS NULL LIMIT 1`
+			if err := tx.QueryRowContext(ctx, bankQuery, OwnerID).Scan(&bankAccountID); err != nil {
+				return fmt.Errorf("failed to find Bank Account (COA 600) for auto-balancing: %w", err)
+			}
+
+			// Create balancing entry (credit to Bank Account)
+			counterBalance := -totalLedgerImpact
+			balancingEntry := &entry.FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: nil, // System-generated, no form field
+				CoaID:       &bankAccountID,
+				NetAmount:   &counterBalance,
+				GstAmount:   nil,
+				GrossAmount: &counterBalance,
+				Description: nil,
+			}
+
+			// Insert balancing entry directly
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertQuery, balancingEntry.ID, balancingEntry.EntryID, balancingEntry.FormFieldID, balancingEntry.CoaID, balancingEntry.NetAmount, balancingEntry.GstAmount, balancingEntry.GrossAmount); err != nil {
+				return fmt.Errorf("failed to insert auto-balancing entry: %w", err)
+			}
+		}
+
+		// Verify ledger integrity
+		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, entryID); err != nil {
+			return fmt.Errorf("ledger integrity check failed: %w", err)
 		}
 
 		// Link collected unique document links to this entry ID
@@ -1335,6 +1383,66 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 					return fmt.Errorf("failed to process creation document links: %w", linkErr)
 				}
 			}
+		}
+
+		// After all updates/creates/deletes, rebalance the entire entry
+		// First, delete any existing auto-generated balancing entries (form_field_id IS NULL)
+		deleteBalancingQuery := `DELETE FROM tbl_form_entry_value WHERE entry_id = $1 AND form_field_id IS NULL AND updated_at IS NULL`
+		if _, err := tx.ExecContext(ctx, deleteBalancingQuery, existingEntry.ID); err != nil {
+			return fmt.Errorf("failed to delete old balancing entries: %w", err)
+		}
+
+		// Get all current active entry values to recalculate balance
+		var currentValues []*entry.FormEntryValue
+		selectQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description FROM tbl_form_entry_value WHERE entry_id = $1 AND updated_at IS NULL`
+		if err := tx.SelectContext(ctx, &currentValues, selectQuery, existingEntry.ID); err != nil {
+			return fmt.Errorf("failed to get current entry values: %w", err)
+		}
+
+		// Calculate total ledger impact from all active expense entries
+		var totalLedgerImpact float64
+		for _, ev := range currentValues {
+			if ev.NetAmount != nil && ev.FormFieldID != nil {
+				// Expenses are debits, so positive amounts increase the impact
+				totalLedgerImpact += *ev.NetAmount
+			}
+		}
+
+		// Round to avoid floating point issues
+		totalLedgerImpact = math.Round(totalLedgerImpact*100) / 100
+
+		// If there's an imbalance, create a Bank Account balancing entry
+		if totalLedgerImpact != 0 {
+			// Get Bank Account (COA code 600) directly from database
+			var bankAccountID uuid.UUID
+			bankQuery := `SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 AND code = 600 AND deleted_at IS NULL LIMIT 1`
+			if err := tx.QueryRowContext(ctx, bankQuery, practitionerID).Scan(&bankAccountID); err != nil {
+				return fmt.Errorf("failed to find Bank Account (COA 600) for auto-balancing: %w", err)
+			}
+
+			// Create balancing entry (credit to Bank Account)
+			counterBalance := -totalLedgerImpact
+			balancingEntry := &entry.FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     existingEntry.ID,
+				FormFieldID: nil, // System-generated, no form field
+				CoaID:       &bankAccountID,
+				NetAmount:   &counterBalance,
+				GstAmount:   nil,
+				GrossAmount: &counterBalance,
+				Description: nil,
+			}
+
+			// Insert balancing entry directly
+			insertBalancingQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+			if _, err := tx.ExecContext(ctx, insertBalancingQuery, balancingEntry.ID, balancingEntry.EntryID, balancingEntry.FormFieldID, balancingEntry.CoaID, balancingEntry.NetAmount, balancingEntry.GstAmount, balancingEntry.GrossAmount); err != nil {
+				return fmt.Errorf("failed to insert balancing entry: %w", err)
+			}
+		}
+
+		// Verify ledger integrity
+		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, existingEntry.ID); err != nil {
+			return fmt.Errorf("ledger integrity check failed: %w", err)
 		}
 
 		return nil
