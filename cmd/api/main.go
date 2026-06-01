@@ -121,7 +121,7 @@ func main() {
 	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.ClientInfo())
 
-	auditSvc, notifier, notificationRepo, fileUploadWorker, _, notificationConsumer := route.RegisterRoutes(r, cfg, events)
+	auditSvc, notifier, notificationRepo, _, notificationConsumer := route.RegisterRoutes(r, cfg, events)
 
 	if events != nil {
 		go func() {
@@ -153,9 +153,6 @@ func main() {
 
 	go notification.StartRetryWorker(workerCtx, notificationRepo, notifier)
 	log.Println("✅ Notification retry worker started")
-
-	go fileUploadWorker.Start(workerCtx)
-	log.Println("✅ File upload worker started")
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,

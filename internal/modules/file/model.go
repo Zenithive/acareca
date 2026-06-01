@@ -24,8 +24,7 @@ type Document struct {
 	Status   string  `db:"status"`
 	IsPublic bool    `db:"is_public"`
 
-	UploadExpiresAt *time.Time `db:"upload_expires_at"`
-	UploadedAt      *time.Time `db:"uploaded_at"`
+	UploadedAt *time.Time `db:"uploaded_at"`
 
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
@@ -34,10 +33,8 @@ type Document struct {
 
 // Document status constants
 const (
-	StatusPending  = "pending"
 	StatusUploaded = "uploaded"
 	StatusFailed   = "failed"
-	StatusDeleted  = "deleted"
 )
 
 // Request models
@@ -56,7 +53,7 @@ type RqUpdateDocument struct {
 
 // RqListDocuments represents a document list request
 type RqListDocuments struct {
-	Status *string `form:"status" json:"status" validate:"omitempty,oneof=pending uploaded failed deleted"`
+	Status *string `form:"status" json:"status" validate:"omitempty,oneof=uploaded failed"`
 	filter common.Filter
 }
 
@@ -77,14 +74,6 @@ type RsDocument struct {
 	FileKey      string     `json:"file_key"`
 	UploadedAt   *time.Time `json:"uploaded_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
-}
-
-// RsUploadDocument represents an upload response
-type RsUploadDocument struct {
-	ID           uuid.UUID `json:"id"`
-	OriginalName string    `json:"original_name"`
-	FileKey      string    `json:"file_key"`
-	CreatedAt    time.Time `json:"created_at"`
 }
 
 // RsListDocuments represents a paginated list of documents
@@ -110,7 +99,7 @@ type RsPresignedUploadURL struct {
 }
 
 // ToRsDocument converts Document to RsDocument
-func (d *Document) ToRsDocument(baseURL string) *RsDocument {
+func (d *Document) ToRsDocument() *RsDocument {
 	return &RsDocument{
 		ID:           d.ID,
 		OriginalName: d.OriginalName,
@@ -121,11 +110,12 @@ func (d *Document) ToRsDocument(baseURL string) *RsDocument {
 }
 
 // ToRsUploadDocument converts Document to RsUploadDocument
-func (d *Document) ToRsUploadDocument(baseURL string) *RsUploadDocument {
-	return &RsUploadDocument{
+func (d *Document) ToRsUploadDocument(baseURL string) *RsDocument {
+	return &RsDocument{
 		ID:           d.ID,
 		OriginalName: d.OriginalName,
 		FileKey:      d.ObjectKey,
+		UploadedAt:   d.UploadedAt,
 		CreatedAt:    d.CreatedAt,
 	}
 }

@@ -32,7 +32,6 @@ CREATE TABLE IF NOT EXISTS tbl_document (
     entity_id UUID,
 
     -- upload tracking
-    upload_expires_at TIMESTAMP,
     uploaded_at TIMESTAMP,
 
     -- audit

@@ -73,7 +73,6 @@ type IService interface {
 	List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error)
-
 	CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error)
 	UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
 	GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error)
@@ -103,8 +102,6 @@ func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IServ
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
-
-	// Permission checks are now handled by middleware - no need to check here
 
 	// 1. Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
@@ -171,9 +168,9 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			if err := f.Validate(); err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &d.ClinicID, realOwnerID, f.ToRqFormField())
+			created, err := s.fieldSvc.Create(ctx, tx, activeVersionID, &d.ClinicID, realOwnerID, f.ToRqFormField())
 			if err != nil {
-				return err // Rollback everything including the Form
+				return err
 			}
 			keyToFieldID[f.FieldKey] = created.ID
 			syncResult.CreatedCount++
@@ -205,7 +202,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 				finalAccountantID = actorUserID
 			}
 
-			// Fetching user details exactly like your Clinic implementation
 			user, err := s.authRepo.FindByID(ctx, actorUserID)
 			if err == nil {
 				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
@@ -220,7 +216,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 					ActorType:      "ACCOUNTANT",
 					EventType:      "form.created",
 					EntityType:     "FORM",
-					EntityID:       created.ID, // Use 'created' from s.detailSvc.Create
+					EntityID:       created.ID,
 					Description:    fmt.Sprintf("Accountant %s created a new form: %s", fullName, created.Name),
 					Metadata:       events.JSONBMap{"form_name": created.Name},
 					CreatedAt:      time.Now(),
@@ -330,7 +326,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 					return fmt.Errorf("field %s has submitted entries; use force_delete to override", id)
 				}
 			}
-			if err := s.fieldSvc.DeleteTx(ctx, tx, id); err != nil {
+			if err := s.fieldSvc.Delete(ctx, tx, id); err != nil {
 				return err
 			}
 			syncResult.DeletedCount++
@@ -358,7 +354,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		// --- FIELD UPDATES ---
 		for _, item := range req.Update {
 			item.Sanitize()
-			fUpd, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
+			fUpd, err := s.fieldSvc.Update(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
 			if err != nil {
 				return fmt.Errorf("update failed for field %s: %w", item.ID, err)
 			}
@@ -374,7 +370,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			if err := item.Validate(); err != nil {
 				return fmt.Errorf("validation failed for field %s: %w", item.FieldKey, err)
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, actorID, item.ToRqFormField())
+			created, err := s.fieldSvc.Create(ctx, tx, activeVersionID, &req.ClinicID, actorID, item.ToRqFormField())
 			if err != nil {
 				return fmt.Errorf("failed to create field %s: %w", item.FieldKey, err)
 			}
@@ -492,7 +488,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 					return errors.New("field has submitted entries")
 				}
 			}
-			if err := s.fieldSvc.DeleteTx(ctx, tx, fieldID); err != nil {
+			if err := s.fieldSvc.Delete(ctx, tx, fieldID); err != nil {
 				return err
 			}
 			result.Deleted = append(result.Deleted, fieldID)
@@ -500,7 +496,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 
 		for _, updateItem := range req.Update {
 			updateItem.Sanitize()
-			updated, err := s.fieldSvc.UpdateTx(ctx, tx, updateItem.ID, req.ClinicID, practitionerID, &updateItem)
+			updated, err := s.fieldSvc.Update(ctx, tx, updateItem.ID, req.ClinicID, practitionerID, &updateItem)
 			if err != nil {
 				return err
 			}
@@ -512,7 +508,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			if err := createItem.Validate(); err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, practitionerID, createItem.ToRqFormField())
+			created, err := s.fieldSvc.Create(ctx, tx, activeVersionID, &req.ClinicID, practitionerID, createItem.ToRqFormField())
 			if err != nil {
 				return err
 			}
@@ -618,7 +614,7 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return nil
 	})
 
-	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY, NON-EXPENSE FORMS ONLY) ---
+	// --- TRIGGER SHARED EVENT RECORD ---
 	meta := auditctx.GetMetadata(ctx)
 	if formDetail.Method != "EXPENSE_ENTRY" {
 		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
@@ -672,9 +668,7 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	return nil
 }
 
-// GetByID implements [IService].
 func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error) {
-	// Permission checks are handled by middleware
 	detail, err := s.detailSvc.GetByID(ctx, formId, uuid.Nil, "")
 	if err != nil {
 		return detail, err
@@ -684,7 +678,6 @@ func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.Rs
 
 func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error) {
 	// Fetch current state for audit log and validation
-	// Permission checks are handled by middleware
 	existing, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
 	if err != nil {
 		return nil, err
@@ -744,7 +737,6 @@ func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType strin
 	return util.Round(net, 2), util.Round(gst, 2), util.Round(gross, 2)
 }
 
-// CreateExpense implements [IService].
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 	var OwnerID uuid.UUID
@@ -877,7 +869,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				Amount:      &item.Amount,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
+			rsField, err := s.fieldSvc.Create(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
 			}
@@ -907,7 +899,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		}
 
 		// Create the entry with all values
-		if err := s.entryRepo.CreateTx(ctx, tx, formEntry, entryValues); err != nil {
+		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
 		}
 
@@ -943,7 +935,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 	return createdForm, nil
 }
 
-// UpdateExpense implements [IService].
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 
@@ -1091,7 +1082,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 		// Handle deletions
 		for _, fieldID := range rq.Delete {
-			if err := s.fieldSvc.DeleteTx(ctx, tx, fieldID); err != nil {
+			if err := s.fieldSvc.Delete(ctx, tx, fieldID); err != nil {
 				return fmt.Errorf("failed to delete field %s: %w", fieldID, err)
 			}
 		}
@@ -1190,7 +1181,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Amount:      &amount,
 			}
 
-			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
+			if _, err := s.fieldSvc.Update(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
 				return fmt.Errorf("failed to update field: %w", err)
 			}
 
@@ -1312,7 +1303,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Amount:      &item.Amount,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, practitionerID, formFields)
+			rsField, err := s.fieldSvc.Create(ctx, tx, activeVersionID, nil, practitionerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create new field: %w", err)
 			}
@@ -1371,7 +1362,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 	return updatedForm, nil
 }
 
-// GetExpense implements [IService].
 func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error) {
 	// Get form details
 	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, role)

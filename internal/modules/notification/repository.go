@@ -32,7 +32,6 @@ type Repository interface {
 	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error
 	// Deduplication check for system error/warning notifications
 	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
-
 	GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
 	CreatePreference(ctx context.Context, pref NotificationPreference) error
 }
@@ -72,7 +71,6 @@ func (r *repository) CreateNotificationWithDeliveries(ctx context.Context, tx *s
 		return uuid.Nil, fmt.Errorf("insert notification: %w", err)
 	}
 
-	// Create delivery records
 	for _, ch := range channels {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO tbl_notification_delivery (notification_id, channel) VALUES ($1, $2)`,
@@ -95,7 +93,6 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		where += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 
-	// Search Filter
 	if filter.Search != nil && *filter.Search != "" {
 		args = append(args, "%"+*filter.Search+"%")
 		where += fmt.Sprintf(" AND (event_type ILIKE $%d OR payload::text ILIKE $%d)", len(args), len(args))
@@ -106,7 +103,6 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		return nil, 0, fmt.Errorf("count notifications: %w", err)
 	}
 
-	// Set pagination defaults
 	limit := 10
 	if filter.Limit != nil && *filter.Limit > 0 {
 		limit = *filter.Limit
@@ -126,7 +122,6 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 		LIMIT $%d OFFSET $%d
 	`, where, len(args)+1, len(args)+2)
 
-	// Append limit and offset to args AFTER the where clause params
 	args = append(args, limit, offset)
 
 	var rows []Notification
@@ -139,13 +134,11 @@ func (r *repository) ListByRecipient(ctx context.Context, recipientID uuid.UUID,
 
 func (r *repository) GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error) {
 	var count int
-	// Exclude dismissed notifications from unread count to match list query behavior
 	query := `SELECT COUNT(*) FROM tbl_notification WHERE recipient_id = $1 AND status = 'UNREAD' AND status != 'DISMISSED'`
 	err := r.db.GetContext(ctx, &count, query, recipientID)
 	return count, err
 }
 
-// MarkRead transitions UNREAD → READ.
 func (r *repository) MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification
@@ -172,9 +165,7 @@ func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) err
 	return nil
 }
 
-// MarkDismissed transitions UNREAD → DISMISSED or READ → DISMISSED.
 func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error {
-	// First, try to mark as READ if it's UNREAD (this may fail if already READ, which is fine)
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification 
          SET status = 'READ', read_at = NOW() 
@@ -183,13 +174,10 @@ func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipie
            AND id = ANY($2)`,
 		recipientID, ids,
 	)
-	// Only log database errors, not "no rows affected" scenarios
 	if err != nil {
 		log.Printf("Warning: Failed to mark notifications as READ before dismissing: %v", err)
-		// Continue anyway - we'll try to dismiss them regardless
 	}
 
-	// Now mark as DISMISSED (works for both UNREAD and READ status)
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification 
          SET status = 'DISMISSED' 
@@ -202,11 +190,9 @@ func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipie
 		return err
 	}
 
-	// Check if at least one row was updated
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
-// ListFailedInAppDeliveries returns FAILED in_app deliveries that are still under the retry cap.
 func (r *repository) ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error) {
 	const q = `
 		SELECT d.notification_id, n.recipient_id, d.retry_count,
@@ -278,7 +264,6 @@ func (r *repository) RetryDelivery(ctx context.Context, notificationID uuid.UUID
 	return requireOneRow(res, ErrInvalidTransition)
 }
 
-// requireOneRow returns errIfZero when no rows were affected (wrong state / not found).
 func requireOneRow(res interface{ RowsAffected() (int64, error) }, errIfZero error) error {
 	n, err := res.RowsAffected()
 	if err != nil {
@@ -290,8 +275,6 @@ func requireOneRow(res interface{ RowsAffected() (int64, error) }, errIfZero err
 	return nil
 }
 
-// HasActiveSystemNotification checks if an UNREAD system notification already exists
-// for the given entityID + eventType to prevent duplicate alert fatigue.
 func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error) {
 	var count int
 	const q = `

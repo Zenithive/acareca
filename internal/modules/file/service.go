@@ -58,11 +58,7 @@ func (s *service) GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUI
 		return nil, ErrUnauthorizedAccess
 	}
 
-	baseURL, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("get base URL: %w", err)
-	}
-	return doc.ToRsDocument(baseURL), nil
+	return doc.ToRsDocument(), nil
 }
 
 // ListDocuments lists documents for a user
@@ -73,14 +69,9 @@ func (s *service) ListDocuments(ctx context.Context, userID uuid.UUID, filters *
 		return nil, err
 	}
 
-	baseURL, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("get base URL: %w", err)
-	}
-
 	rsDocs := make([]RsDocument, len(docs))
 	for i, doc := range docs {
-		rsDocs[i] = *doc.ToRsDocument(baseURL)
+		rsDocs[i] = *doc.ToRsDocument()
 	}
 
 	result := &util.RsList{}
@@ -126,11 +117,7 @@ func (s *service) UpdateDocument(ctx context.Context, id uuid.UUID, req *RqUpdat
 		"is_public": beforeIsPublic,
 	})
 
-	baseURL, err := s.cfg.GetBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("get base URL: %w", err)
-	}
-	return updated.ToRsDocument(baseURL), nil
+	return updated.ToRsDocument(), nil
 }
 
 // DeleteDocument deletes a document
@@ -202,12 +189,15 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 		Extension:    &ext,
 		MimeType:     mimeType,
 		SizeBytes:    header.Size,
-		Status:       StatusPending,
+		Status:       StatusUploaded,
 		IsPublic:     false,
 	}
 
+	updatedAt := time.Now()
+	doc.UploadedAt = &updatedAt
+
+	// Calculate presigned URL expiration for response
 	expiresAt := time.Now().Add(expiresIn)
-	doc.UploadExpiresAt = &expiresAt
 
 	var created *Document
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {

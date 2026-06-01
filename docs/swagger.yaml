@@ -982,18 +982,13 @@ definitions:
           $ref: '#/definitions/bas.BASAccountGroup'
         type: array
       gstPayable:
-        allOf:
-        - $ref: '#/definitions/bas.BASAccountGroup'
-        description: Use pointer for easier omitting
+        $ref: '#/definitions/bas.BASAccountGroup'
       income:
-        description: omitempty will hide the key if the slice is nil or empty
         items:
           $ref: '#/definitions/bas.BASAccountGroup'
         type: array
       netProfitLoss:
-        allOf:
-        - $ref: '#/definitions/bas.BASAccountGroup'
-        description: Use pointer for easier omitting
+        $ref: '#/definitions/bas.BASAccountGroup'
     type: object
   bas.RsBASByAccount:
     properties:
@@ -1068,31 +1063,18 @@ definitions:
   bas.RsBASSummary:
     properties:
       g1_total_sales_gross:
-        description: Sales (ATO labels)
-        type: number
-      g3_gst_free_sales:
-        type: number
-      g8_taxable_sales:
         type: number
       g11_total_purchases_gross:
-        description: Purchases (ATO labels)
-        type: number
-      g14_gst_free_purchases:
-        type: number
-      g15_taxable_purchases:
         type: number
       label_1a_gst_on_sales:
         type: number
       label_1b_gst_on_purchases:
         type: number
       net_gst_payable:
-        description: Net GST
         type: number
       period_quarter:
-        description: Period
         type: string
       period_year:
-        description: e.g. "2026-01-01"
         type: string
       total_purchases_net:
         type: number
@@ -1622,6 +1604,32 @@ definitions:
       lock_date:
         type: string
     type: object
+  coa.AccountClassification:
+    enum:
+    - Current Asset
+    - Non-Current Asset
+    - Contra-Asset
+    - Current Liability
+    - Non-Current Liability
+    - Equity
+    - Contra-Equity
+    - Operating Revenue
+    - Other Revenue
+    - Direct Costs
+    - Operating Expense
+    type: string
+    x-enum-varnames:
+    - ClassificationCurrentAsset
+    - ClassificationNonCurrentAsset
+    - ClassificationContraAsset
+    - ClassificationCurrentLiability
+    - ClassificationNonCurrentLiability
+    - ClassificationEquity
+    - ClassificationContraEquity
+    - ClassificationOperatingRevenue
+    - ClassificationOtherRevenue
+    - ClassificationDirectCosts
+    - ClassificationOperatingExpense
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -1643,6 +1651,8 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
+      classification:
+        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
@@ -1813,12 +1823,10 @@ definitions:
   entry.RqDocument:
     properties:
       create:
-        description: document IDs to link
         items:
           type: string
         type: array
       delete:
-        description: document IDs to unlink
         items:
           type: string
         type: array
@@ -1831,7 +1839,6 @@ definitions:
       coa_id:
         type: string
       description:
-        description: For direct COA entries
         type: string
       form_field_id:
         type: string
@@ -1884,15 +1891,12 @@ definitions:
         description: Amount is used when there is no GST (net == gross).
         type: number
       coa_id:
-        description: For direct COA entries
         type: string
       description:
-        description: For direct COA entries
         type: string
       field_key:
         type: string
       form_field_id:
-        description: Nullable for direct COA entries
         type: string
       gross_amount:
         type: number
@@ -2486,6 +2490,8 @@ definitions:
     properties:
       clinic_id:
         type: string
+      contact_id:
+        type: string
       due_date:
         type: string
       invoice_number:
@@ -2506,6 +2512,8 @@ definitions:
         type: string
       reference:
         type: string
+      status:
+        type: string
       tax_method:
         enum:
         - EXCLUSIVE
@@ -2514,7 +2522,7 @@ definitions:
       template_id:
         type: string
     required:
-    - clinic_id
+    - contact_id
     - invoice_number
     - issue_date
     - items
@@ -2523,6 +2531,8 @@ definitions:
     type: object
   invoice.RqUpdateInvoice:
     properties:
+      contact_id:
+        type: string
       due_date:
         type: string
       id:
@@ -2545,6 +2555,8 @@ definitions:
         type: string
       reference:
         type: string
+      status:
+        type: string
       tax_method:
         enum:
         - EXCLUSIVE
@@ -2557,6 +2569,10 @@ definitions:
     properties:
       clinic_id:
         type: string
+      contact_id:
+        type: string
+      contact_to:
+        $ref: '#/definitions/contact.RsContact'
       created_at:
         type: string
       due_date:
@@ -2576,6 +2592,10 @@ definitions:
       payment_method:
         type: string
       reference:
+        type: string
+      sent_to:
+        $ref: '#/definitions/contact.RsContact'
+      status:
         type: string
       tax_method:
         type: string
@@ -2986,6 +3006,23 @@ definitions:
     - StatusCancelled
     - StatusPaused
     - StatusExpired
+  template.RqTemplate:
+    properties:
+      clinic_id:
+        type: string
+      css:
+        type: string
+      description:
+        type: string
+      html:
+        type: string
+      is_active:
+        type: boolean
+      is_default:
+        type: boolean
+      name:
+        type: string
+    type: object
   util.RsList:
     properties:
       items: {}
@@ -3116,6 +3153,26 @@ paths:
       tags:
       - accountant
   /admin:
+    get:
+      description: Get nested Admin and User information by Admin ID
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get Admin Detail
+      tags:
+      - admin
     post:
       consumes:
       - application/json
@@ -3144,33 +3201,6 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
       summary: Create admin profile and user
-      tags:
-      - admin
-  /admin/{id}:
-    get:
-      description: Get nested Admin and User information by Admin ID
-      parameters:
-      - description: Admin ID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get Admin Detail
       tags:
       - admin
   /admin/accountant:
@@ -4891,6 +4921,10 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -4938,6 +4972,10 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -4982,12 +5020,22 @@ paths:
           description: OK
           schema:
             type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
       summary: Export Business Activity Statement to Excel
@@ -4995,9 +5043,9 @@ paths:
       - engine/bas
   /bas/analytics:
     get:
-      description: |-
-        Returns account-centric analytics for BAS preparation. Groups income and expenses into time-series data.
-        Supports relative periods (Today, Last 30 Days) and custom date ranges, clamped to the financial year.
+      description: Returns account-centric analytics for BAS preparation. Groups income
+        and expenses into time-series data. Supports relative periods (Today, Last
+        30 Days) and custom date ranges, clamped to the financial year.
       parameters:
       - description: Financial Year UUID
         in: query
@@ -5086,6 +5134,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -5127,6 +5179,18 @@ paths:
           description: OK
           schema:
             type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
       security:
       - BearerToken: []
       summary: Export Quarterly BAS Preparation
@@ -5254,6 +5318,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -5285,6 +5353,14 @@ paths:
             $ref: '#/definitions/bas.RsBASReport'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -6424,7 +6500,7 @@ paths:
       summary: Reset clinic password using token
       tags:
       - invoice
-  /clinic/verify:
+  /clinic/verify-email:
     get:
       description: Validates the UUID token sent via email. If valid, marks the clinic
         as verified and the token as used.
@@ -7064,6 +7140,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -7123,6 +7203,10 @@ paths:
             $ref: '#/definitions/util.RsList'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -7253,7 +7337,7 @@ paths:
       consumes:
       - application/json
       description: Returns grouped COA transaction records and their details in JSON
-        format for frontend PDF/Excel generation.
+        format for frontend PDF/Excel generation
       parameters:
       - description: Filter by practitioner ID (supports array string format)
         in: query
@@ -7291,12 +7375,12 @@ paths:
       - application/json
       responses:
         "200":
-          description: JSON containing status, message, and nested transaction data
+          description: OK
           schema:
             additionalProperties: true
             type: object
         "400":
-          description: Invalid request parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
         "401":
@@ -7304,7 +7388,7 @@ paths:
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/response.RsError'
       security:
@@ -7392,6 +7476,10 @@ paths:
             $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8284,6 +8372,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -8317,6 +8409,18 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -8342,6 +8446,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "404":
           description: Not Found
           schema:
@@ -8379,6 +8487,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "404":
           description: Not Found
           schema:
@@ -8404,6 +8520,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "404":
           description: Not Found
           schema:
@@ -8433,6 +8553,10 @@ paths:
             $ref: '#/definitions/response.RsBase'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "404":
@@ -8507,6 +8631,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -8544,6 +8672,10 @@ paths:
             type: array
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8591,6 +8723,7 @@ paths:
         type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - ' text/html'
       responses:
         "200":
           description: Profit_and_Loss_Report.xlsx
@@ -8598,6 +8731,14 @@ paths:
             type: file
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8634,6 +8775,10 @@ paths:
             type: array
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8685,6 +8830,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
@@ -8723,6 +8876,10 @@ paths:
             type: array
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -9444,6 +9601,211 @@ paths:
       summary: Get form summary by form ID (Grouped by COA)
       tags:
       - calculation
+  /template:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.RsList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get an template by ID
+      tags:
+      - template
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/template.RqTemplate'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Create a new template for a clinic
+      tags:
+      - template
+  /template/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete an template by ID
+      tags:
+      - template
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get an template by ID
+      tags:
+      - template
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update an template by ID
+      tags:
+      - template
+  /template/{id}/setting:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Get an template settings by ID
+      tags:
+      - template
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Update an template setting by ID
+      tags:
+      - template
 securityDefinitions:
   BearerToken:
     description: Type "Bearer <your_token>" to authenticate

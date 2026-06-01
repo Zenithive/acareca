@@ -1,12 +1,10 @@
 package bas
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,13 +17,13 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/export"
+	basexport "github.com/iamarpitzala/acareca/internal/shared/export/bas"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
-	"github.com/xuri/excelize/v2"
 )
 
-// Service defines the business-logic layer for the BAS module.
 type Service interface {
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error)
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
@@ -35,7 +33,6 @@ type Service interface {
 	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, entityName string, practitionerABN string) (*bytes.Buffer, error)
 	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
 	GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error)
 }
@@ -176,7 +173,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionActivityStatementGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityType: lo.ToPtr(auditctx.EntityActivityStatement),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Activity Statement",
@@ -185,10 +182,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 		UserAgent: meta.UserAgent,
 	})
 
-	// Shared Events: only fire for accountants, using the PracIDs passed from the handler.
-	// NOTE: When called from ExportBASReport's loop, PracIDs is passed but events are
-	// intentionally suppressed there — ExportActivityStatement fires its own events.
-	// Here we only fire if this is a direct GetReport call (PracIDs non-empty and role is accountant).
+	// --- Shared Events ---
 	if role == util.RoleAccountant && len(PracIDs) > 0 {
 		var fullName string
 		user, err := s.authRepo.FindByID(ctx, userID)
@@ -228,41 +222,33 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		isAccountant = true
 	}
 
-	// Track unique practitioners to notify
 	practitionerMap := make(map[uuid.UUID]bool)
 
 	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		// For accountants, get all practitioners they have access to
-		// This is done by fetching clinics and extracting unique practitioner IDs
 		commonFilter := f.MapToFilter()
 		clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch accessible practitioners: %w", err)
 		}
 
-		// Extract unique practitioner IDs from clinics
 		for _, clinic := range clinics {
 			practitionerMap[clinic.PractitionerID] = true
 		}
 
-		// Convert map to slice
 		for pID := range practitionerMap {
 			targetPracIDs = append(targetPracIDs, pID)
 		}
 
-		// If no practitioners found, return empty result instead of error
 		if len(targetPracIDs) == 0 {
 			return &RsBASPreparation{Columns: []BASColumn{}}, nil
 		}
 	} else {
-		// For practitioners, use their own ID
 		targetPracIDs = []uuid.UUID{actorID}
 		practitionerMap[actorID] = true
 	}
 
-	// Fetch BAS line items without clinic filtering
 	var rawRows []*BASLineItemRow
 	nilClinic := uuid.Nil
 	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, f)
@@ -271,10 +257,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	}
 	rawRows = append(rawRows, rows...)
 
-	// rowKey identifies a unique account slot per (coa_id, section_type).
-	// We intentionally exclude bas_category so that multiple DB rows for the
-	// same coa_id (e.g. TAXABLE + GST_FREE entries) are treated as the same
-	// account and all flow into mapToBASColumn for correct summing.
 	rowKey := func(r *BASLineItemRow) string {
 		sec := ""
 		if r.AccountType != nil {
@@ -283,16 +265,12 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		return fmt.Sprintf("%s-%s", r.CoaID, sec)
 	}
 
-	// masterAccounts tracks which account slots exist across all quarters.
-	// We store a slice of rows per key so every bas_category variant is preserved.
 	masterAccounts := make(map[string][]*BASLineItemRow)
 	for _, r := range rawRows {
 		key := rowKey(r)
 		masterAccounts[key] = append(masterAccounts[key], r)
 	}
 
-	// quarterGroups indexes rows by their period_quarter date string so we can
-	// look them up when iterating over the requested quarter IDs.
 	quarterGroups := make(map[string][]*BASLineItemRow)
 	for _, r := range rawRows {
 		k := r.PeriodQuarter.Format("2006-01-02")
@@ -302,7 +280,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
-	// --- STEP 3: ITERATE SELECTED QUARTERS & NORMALIZE ---
 	if len(f.ParsedQuarterIDs) > 0 {
 		for _, qID := range f.ParsedQuarterIDs {
 			qInfo, err := s.repo.GetQuarterInfoByID(ctx, qID)
@@ -310,7 +287,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 				continue
 			}
 
-			// Index this quarter's rows by their account key for O(1) lookup.
 			quarterRowIndex := make(map[string][]*BASLineItemRow)
 			for _, qr := range quarterGroups[qInfo.StartDate] {
 				key := rowKey(qr)
@@ -323,7 +299,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 				if !exists {
 					continue
 				}
-				// Include all rows for this account (all bas_category variants).
 				for _, foundRow := range foundRows {
 					if foundRow.GrossAmount != 0 || foundRow.GstAmount != 0 || foundRow.NetAmount != 0 {
 						normalizedRows = append(normalizedRows, foundRow)
@@ -339,13 +314,11 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		}
 	}
 
-	// --- CRITICAL SORTING STEP ---
 	// This ensures Q1 comes before Q2, even if Q3 is missing.
 	sort.Slice(resp.Columns, func(i, j int) bool {
 		return resp.Columns[i].Quarter.StartDate < resp.Columns[j].Quarter.StartDate
 	})
 
-	// Build Grand Total last
 	resp.GrandTotal = s.mapToBASColumn(finalizedRowsForTotal)
 	resp.GrandTotal.Quarter.Name = "Total"
 
@@ -359,7 +332,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionBASReportGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityBASReport),
+		EntityType: lo.ToPtr(auditctx.EntityBASReport),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type":    "Quarterly BAS Report",
@@ -370,7 +343,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	})
 
 	if isAccountant {
-		// Fetching user details
 		var fullName string
 		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
@@ -481,6 +453,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
+
 		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
@@ -514,6 +487,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, key := range expenseOrder {
 		acc := expenseAccounts[key]
 		fAmts := finalize(acc.Amounts)
+
 		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
 			col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
 				Name:    acc.Name,
@@ -549,7 +523,6 @@ type QuarterData struct {
 func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error) {
 	parsedActorID := actorID.String()
 
-	// --- FETCH METADATA ---
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -559,11 +532,9 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	var entityName string
 	var practitionerABN string
 	targetID := ""
-	// Use the practitioner ID in filter
 	if filterPractitionerID != "" {
 		targetID = filterPractitionerID
 	} else if role == util.RolePractitioner {
-		// If role is practitioner, use actorID
 		targetID = actorID.String()
 	}
 
@@ -612,7 +583,28 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	var contentType string
 
 	if strings.ToLower(exportType) == "excel" {
-		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates, entityName, practitionerABN)
+		var exportQuarters []basexport.QuarterData
+		exportQuarters = make([]basexport.QuarterData, len(quarters))
+		for i, q := range quarters {
+			var report *basexport.RsBASReport
+			if q.Report != nil {
+				report = &basexport.RsBASReport{G1: q.Report.G1, A1: q.Report.A1, G11: q.Report.G11, B1: q.Report.B1}
+			}
+			exportQuarters[i] = basexport.QuarterData{
+				Period: basexport.PeriodInfo{From: q.Period.From, To: q.Period.To, Label: q.Period.Label},
+				Report: report,
+			}
+		}
+
+		config := export.ExportConfig{
+			EntityName:     entityName,
+			EntityABN:      practitionerABN,
+			ExportType:     exportType,
+			ExportedByName: fullName,
+			GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
+		}
+
+		result, err = basexport.GenerateActivityStatementExcelReport(exportQuarters, basexport.PeriodInfo{From: prevDates.From, To: prevDates.To, Label: prevDates.Label}, config)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
 		}
@@ -628,7 +620,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionActivityStatementExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityType: lo.ToPtr(auditctx.EntityActivityStatement),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Activity Statement",
@@ -638,7 +630,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		UserAgent: meta.UserAgent,
 	})
 
-	// Record the Shared Event — only for accountants, never for practitioners.
+	// Record the Shared Event
 	if role == util.RoleAccountant && len(practitionerIDs) > 0 {
 		for _, pID := range practitionerIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
@@ -661,214 +653,6 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	return result, contentType, nil
 }
 
-func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, entityName string, practitionerABN string) (*bytes.Buffer, error) {
-
-	xl := excelize.NewFile()
-	defer xl.Close()
-
-	sheet := "Activity Statement"
-	dataSheet := "SourceData"
-	xl.SetSheetName("Sheet1", sheet)
-	xl.NewSheet(dataSheet)
-
-	// --- 1. Populate Hidden Data Sheet (The Lookup Table) ---
-	headers := []string{"Label", "G1", "1A", "G11", "1B", "Start", "End"}
-	for i, h := range headers {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-		xl.SetCellValue(dataSheet, cell, h)
-	}
-
-	for i, q := range quarters {
-		row := i + 2
-		g1, a1, g11, b1 := 0.0, 0.0, 0.0, 0.0
-		if q.Report != nil {
-			g1, a1, g11, b1 = q.Report.G1, q.Report.A1, q.Report.G11, q.Report.B1
-		}
-
-		xl.SetCellValue(dataSheet, fmt.Sprintf("A%d", row), q.Period.Label)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("B%d", row), g1)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("C%d", row), a1)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("D%d", row), g11)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("E%d", row), b1)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("F%d", row), q.Period.From)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("G%d", row), q.Period.To)
-	}
-	xl.SetSheetVisible(dataSheet, false)
-
-	// --- 2. Styles ---
-	headerStyle, _ := xl.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
-	})
-	subHeaderStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1F0F2"}, Pattern: 1},
-	})
-	labelStyle, _ := xl.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
-	currencyStyle, _ := xl.NewStyle(&excelize.Style{CustomNumFmt: lo.ToPtr("$#,##0.00")})
-	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
-	})
-
-	// --- 3. Main Header ---
-	xl.SetCellValue(sheet, "A1", "Activity Statement Information")
-	xl.SetCellValue(sheet, "B1", "BAS")
-	xl.SetCellStyle(sheet, "A1", "B1", headerStyle)
-
-	// Helper to format dates to DD-MM-YYYY
-	formatDate := func(d string) string {
-		t, err := time.Parse("2006-01-02", d)
-		if err != nil {
-			return d
-		}
-		return t.Format("02-01-2006")
-	}
-
-	setRichMeta := func(cell string, label string, value string) {
-		xl.SetCellRichText(sheet, cell, []excelize.RichTextRun{
-			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
-			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
-		})
-	}
-
-	// --- Metadata Rows ---
-	rowOffset := 2
-	setRichMeta(fmt.Sprintf("A%d", rowOffset), "Exported by:", entityName)
-	rowOffset++
-
-	if practitionerABN != "" {
-		setRichMeta(fmt.Sprintf("A%d", rowOffset), "ABN:", practitionerABN)
-		rowOffset++
-	}
-
-	if len(quarters) > 0 {
-		periodRange := fmt.Sprintf("%s (%s to %s)",
-			quarters[0].Period.Label,
-			formatDate(quarters[0].Period.From),
-			formatDate(quarters[len(quarters)-1].Period.To),
-		)
-		setRichMeta(fmt.Sprintf("A%d", rowOffset), "Period:", periodRange)
-		rowOffset++
-	}
-
-	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
-	setRichMeta(fmt.Sprintf("A%d", rowOffset), "Generated:", currentTimeStr)
-	rowOffset++
-
-	rowOffset++ // Spacer
-
-	// Quarter dropdown row
-	qtrRow := rowOffset
-	var qLabels []string
-	for _, q := range quarters {
-		qLabels = append(qLabels, q.Period.Label)
-	}
-	dv := excelize.NewDataValidation(true)
-	dv.Sqref = fmt.Sprintf("B%d", qtrRow)
-	dv.SetDropList(qLabels)
-	xl.AddDataValidation(sheet, dv)
-	xl.SetCellValue(sheet, fmt.Sprintf("A%d", qtrRow), "Qtr")
-	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", qtrRow), fmt.Sprintf("A%d", qtrRow), labelStyle)
-	if len(qLabels) > 0 {
-		xl.SetCellValue(sheet, fmt.Sprintf("B%d", qtrRow), qLabels[0])
-	}
-	rowOffset++
-
-	// Period start / end (VLOOKUP from hidden data sheet)
-	xl.SetCellValue(sheet, fmt.Sprintf("A%d", rowOffset), "Period start")
-	xl.SetCellFormula(sheet, fmt.Sprintf("B%d", rowOffset), fmt.Sprintf("=VLOOKUP(B%d, %s!A:G, 6, FALSE)", qtrRow, dataSheet))
-	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", rowOffset), fmt.Sprintf("A%d", rowOffset), labelStyle)
-	periodStartCell := fmt.Sprintf("B%d", rowOffset)
-	rowOffset++
-
-	xl.SetCellValue(sheet, fmt.Sprintf("A%d", rowOffset), "Period end")
-	xl.SetCellFormula(sheet, fmt.Sprintf("B%d", rowOffset), fmt.Sprintf("=VLOOKUP(B%d, %s!A:G, 7, FALSE)", qtrRow, dataSheet))
-	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", rowOffset), fmt.Sprintf("A%d", rowOffset), labelStyle)
-	periodEndCell := fmt.Sprintf("B%d", rowOffset)
-	rowOffset++
-
-	rowOffset++ // spacer before GST section
-
-	// --- 5. GST Section ---
-	gstFields := []struct {
-		Label string
-		Col   int
-	}{
-		{"G1 (Total Sales)", 2},
-		{"1A (GST on Sales)", 3},
-		{"G11 (Total Purchases)", 4},
-		{"1B (GST on Purchases)", 5},
-	}
-
-	gstStartRow := rowOffset
-	rowIdx := rowOffset
-	for _, f := range gstFields {
-		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), f.Label)
-		xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), fmt.Sprintf("=VLOOKUP(B%d, %s!A:G, %d, FALSE)", qtrRow, dataSheet, f.Col))
-		xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
-		rowIdx++
-	}
-	rowOffset = rowIdx
-
-	// Cells for GST Payable formula (1A is row gstStartRow+1, 1B is row gstStartRow+3)
-	cell1A := fmt.Sprintf("B%d", gstStartRow+1)
-	cell1B := fmt.Sprintf("B%d", gstStartRow+3)
-
-	// --- 6. PAYG Tax Withheld Section ---
-	rowOffset++ // spacer
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "PAYG tax withheld")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "B"+strconv.Itoa(rowOffset), subHeaderStyle)
-	rowOffset++
-
-	paygWithheld := []string{
-		"Period start",
-		"Period end",
-		"W1 (Total Wages, salary and other payments)",
-		"W2 (Amount withheld from payments shown at W1)",
-		"W3 (Other amounts withheld)",
-		"W4 (Amount withheld where no ABN is quoted)",
-		"W5 (Total amounts withheld)",
-	}
-
-	for _, label := range paygWithheld {
-		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), label)
-		switch label {
-		case "Period start":
-			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), periodStartCell)
-		case "Period end":
-			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), periodEndCell)
-		}
-		rowOffset++
-	}
-
-	// --- 7. PAYG Instalment Section ---
-	rowOffset++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "PAYG instalment")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "B"+strconv.Itoa(rowOffset), subHeaderStyle)
-	rowOffset++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "Option 1")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "A"+strconv.Itoa(rowOffset), labelStyle)
-	rowOffset++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "Option 2")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "A"+strconv.Itoa(rowOffset), labelStyle)
-	rowOffset++
-
-	// --- 8. GST Refund/Payable ---
-	rowOffset++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowOffset), "GST Payable or (Refund)")
-	xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowOffset), fmt.Sprintf("=%s-%s", cell1A, cell1B))
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowOffset), "A"+strconv.Itoa(rowOffset), totalRowStyle)
-	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowOffset), "B"+strconv.Itoa(rowOffset), currencyStyle)
-
-	xl.SetColWidth(sheet, "A", "A", 55)
-	xl.SetColWidth(sheet, "B", "B", 25)
-
-	return xl.WriteToBuffer()
-}
-
 type PeriodInfo struct {
 	From  string
 	To    string
@@ -878,7 +662,6 @@ type PeriodInfo struct {
 func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr, prev PeriodInfo, err error) {
 	var start, end time.Time
 
-	// 1. Get Current Range
 	if f.QuarterID != nil {
 		qID, _ := uuid.Parse(*f.QuarterID)
 		fromStr, toStr, err := s.repo.GetQuarterDates(ctx, qID)
@@ -894,8 +677,6 @@ func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr,
 		}
 	}
 
-	// 2. Custom Quarter Mapping for your project
-	// Jan-Mar: Q3 | Apr-Jun: Q4 | Jul-Sep: Q1 | Oct-Dec: Q2
 	getProjectQuarter := func(t time.Time) string {
 		month := t.Month()
 		var qNum int
@@ -918,17 +699,12 @@ func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr,
 		return fmt.Sprintf("Q%d (%s) %d", qNum, qMonths, t.Year())
 	}
 
-	// 3. Set Current Period
 	curr.From = start.Format("02-Jan-06")
 	curr.To = end.Format("02-Jan-06")
 	curr.Label = getProjectQuarter(start)
 
-	// 4. Set Previous Period (Preceding Quarter = Current Start - 3 Months)
-	// Example: If current is April (Q4), prevStart becomes January (Q3)
 	prevStart := start.AddDate(0, -3, 0)
 
-	// We calculate the end of that previous quarter
-	// (3 months from prevStart, then minus 1 day)
 	prevEnd := prevStart.AddDate(0, 3, 0).Add(-time.Hour * 24)
 
 	prev.From = prevStart.Format("02-Jan-06")
@@ -939,23 +715,15 @@ func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr,
 }
 
 func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error) {
-	// 1. Call the repository method to fetch all quarters in the same financial year
 	quarters, err := s.repo.GetAllQuartersInYear(ctx, quarterID)
 	if err != nil {
-		// Log the error if you have a logger, then return
 		return nil, fmt.Errorf("service: failed to fetch quarters for year: %w", err)
 	}
 
-	// 2. Return the list (it will contain Q1, Q2, Q3, Q4)
 	return quarters, nil
 }
 
 func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
-	f := excelize.NewFile()
-	sheet := "Quarterly BAS REPORT"
-	f.NewSheet(sheet)
-	f.DeleteSheet("Sheet1")
-
 	parsedActorID := actorID.String()
 
 	var fullName string
@@ -967,8 +735,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	err := util.RunInTransaction(ctx, s.repo.(*repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
 
-		// --- FETCH METADATA ---
-		user, innerErr := s.authRepo.FindByID(ctx, userID) // Fallback to transactional find if supported by authRepo
+		user, innerErr := s.authRepo.FindByID(ctx, userID)
 		if innerErr == nil {
 			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
 		}
@@ -1017,7 +784,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 			}
 		}
 
-		// Get Financial Year
 		parsedID, innerErr := uuid.Parse(*filter.FinancialYearID)
 		if innerErr != nil {
 			return fmt.Errorf("invalid financial year id: %w", innerErr)
@@ -1071,244 +837,27 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		return nil, err
 	}
 
-	// --- STYLES ---
-	// Top Headers (Q1, Q2, etc.) - Light Blue, Bold, Black Borders
-	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 11},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Standard Grid Style (Used for all data cells)
-	styleDataGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "left"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Standard Table Grid Style (Used for all table data cells)
-	styleTableGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Section Titles (INCOME, EXPENSES, Net GST Payable) - Bold, Underline, Large
-	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
-	})
-
-	// Net GST Payable (Red Text)
-	styleGSTPayableCol, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Color: "dc3545"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// --- DATA PREPARATION ---
-	allCols := append(data.Columns, data.GrandTotal)
-
-	setRichMeta := func(cell string, label string, value string) {
-		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
-			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
-			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
-		})
+	exportData := &basexport.RsBASPreparation{
+		Columns:    make([]basexport.BASColumn, len(data.Columns)),
+		GrandTotal: convertBASColumn(data.GrandTotal),
+	}
+	for i, col := range data.Columns {
+		exportData.Columns[i] = convertBASColumn(col)
 	}
 
-	// --- RENDER HEADERS ---
-	lastColIdx := (len(allCols) * 4)
-	lastColName, _ := excelize.ColumnNumberToName(lastColIdx)
-
-	// 1. Financial Year Header (Row 2)
-	f.MergeCell(sheet, "A2", fmt.Sprintf("%s2", lastColName))
-	f.SetCellValue(sheet, "A2", FY.Label)
-	f.SetCellStyle(sheet, "A2", fmt.Sprintf("%s2", lastColName), styleHeaderBlue)
-
-	// 2. Metadata Rows (Rows 3-4)
-	f.MergeCell(sheet, "A3", fmt.Sprintf("%s3", lastColName))
-	setRichMeta("A3", "Exported by:", entityName)
-
-	f.MergeCell(sheet, "A4", fmt.Sprintf("%s4", lastColName))
-	if practitionerABN != "" {
-		setRichMeta("A4", "ABN:", practitionerABN)
+	config := export.ExportConfig{
+		EntityName:     entityName,
+		EntityABN:      practitionerABN,
+		ExportType:     exportType,
+		ExportedByName: fullName,
+		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	f.MergeCell(sheet, "A5", fmt.Sprintf("%s5", lastColName))
-	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
-	setRichMeta("A5", "Generated:", currentTimeStr)
-
-	f.MergeCell(sheet, "A6", fmt.Sprintf("%s6", lastColName)) // Spacer Row
-
-	for i := range allCols {
-		cIdx := 1 + (i * 4)
-		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
-		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-		headerValue := allCols[i].Quarter.Name
-
-		if allCols[i].Quarter.StartDate != "" {
-			t, err := time.Parse("2006-01-02", allCols[i].Quarter.StartDate)
-			yearStr := ""
-			if err == nil {
-				yearStr = fmt.Sprintf("%d", t.Year())
-			}
-
-			headerValue = fmt.Sprintf("%s (%s) %s",
-				allCols[i].Quarter.Name,
-				allCols[i].Quarter.DisplayRange,
-				yearStr,
-			)
-		}
-
-		f.MergeCell(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol))
-		f.SetCellValue(sheet, fmt.Sprintf("%s7", startCol), headerValue)
-		f.SetCellStyle(sheet, fmt.Sprintf("%s7", startCol), fmt.Sprintf("%s7", endCol), styleHeaderBlue)
-
-		f.SetCellValue(sheet, fmt.Sprintf("%s8", startCol), "Gross")
-		f.SetCellValue(sheet, fmt.Sprintf("%s8", midCol), "GST")
-		f.SetCellValue(sheet, fmt.Sprintf("%s8", endCol), "Net")
-		f.SetCellStyle(sheet, fmt.Sprintf("%s8", startCol), fmt.Sprintf("%s8", endCol), styleHeaderBlue)
+	f, err := basexport.GenerateBASPreparationExcelReport(exportData, config, FY.Label)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate BAS preparation excel: %w", err)
 	}
 
-	type SectionMeta struct {
-		StartRow int
-		EndRow   int
-	}
-	var incomeMeta, expenseMeta SectionMeta
-
-	// --- INCOME SECTION ---
-	currentRow := 9
-	incomeHeaderRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
-	currentRow++
-	incomeMeta.StartRow = currentRow
-
-	incomeRows := s.getUniqueNamesFromSection(allCols, "income")
-	for _, name := range incomeRows {
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), name)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataGrid)
-
-		for i := range allCols {
-			cIdx := 1 + (i * 4)
-			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-			midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
-			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", midCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
-
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
-			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Income.Items, name, styleTableGrid)
-		}
-		currentRow++
-	}
-	incomeMeta.EndRow = currentRow - 1
-
-	if len(incomeRows) > 0 {
-		tblRange := fmt.Sprintf("A%d:A%d", incomeHeaderRow, incomeMeta.EndRow)
-		showH := true
-
-		f.AddTable(sheet, &excelize.Table{
-			Range:         tblRange,
-			Name:          "IncomeTable",
-			StyleName:     "",
-			ShowHeaderRow: &showH,
-		})
-	}
-
-	// --- EXPENSES SECTION ---
-	currentRow += 1
-	expenseHeaderRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "EXPENSES")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
-	currentRow++
-	expenseMeta.StartRow = currentRow
-
-	expenseRows := s.getUniqueNamesFromSection(allCols, "expenses")
-	for _, name := range expenseRows {
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), name)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataGrid)
-
-		for i := range allCols {
-			cIdx := 1 + (i * 4)
-			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-			midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
-			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", midCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
-
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
-			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Expenses.Items, name, styleTableGrid)
-		}
-		currentRow++
-	}
-	expenseMeta.EndRow = currentRow - 1
-
-	if len(expenseRows) > 0 {
-		tblRange := fmt.Sprintf("A%d:A%d", expenseHeaderRow, expenseMeta.EndRow)
-		showH := true
-
-		f.AddTable(sheet, &excelize.Table{
-			Range:         tblRange,
-			Name:          "ExpenseTable",
-			StyleName:     "",
-			ShowHeaderRow: &showH,
-		})
-	}
-
-	// --- SUMMARY SECTION ---
-	currentRow += 2
-	netGSTRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net GST Payable")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
-
-	for i := range allCols {
-		cIdx := 1 + (i * 4)
-		grossCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		gstCol, _ := excelize.ColumnNumberToName(cIdx + 2)
-		netCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-		f.MergeCell(sheet, fmt.Sprintf("%s%d", grossCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow))
-
-		incomeGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, incomeMeta.StartRow, gstCol, incomeMeta.EndRow)
-		expenseGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, expenseMeta.StartRow, gstCol, expenseMeta.EndRow)
-		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s-%s", incomeGST, expenseGST))
-		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", grossCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
-	}
-
-	// --- FINAL DIMENSIONS ---
-	f.SetColWidth(sheet, "A", "A", 45)
-	for col := 2; col <= 1+(len(allCols)*4); col++ {
-		name, _ := excelize.ColumnNumberToName(col)
-		if (col-1)%4 == 0 {
-			f.SetColWidth(sheet, name, name, 3)
-		} else {
-			f.SetColWidth(sheet, name, name, 15)
-		}
-	}
-
-	// --- AUDIT LOG (Asynchronous Execution After Successful DB Operations) ---
 	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
@@ -1317,7 +866,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionBASReportExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityBASReport),
+		EntityType: lo.ToPtr(auditctx.EntityBASReport),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type":    "Quarterly BAS Report",
@@ -1328,245 +877,40 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		UserAgent: meta.UserAgent,
 	})
 
-	if exportType == "pdf" {
-		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label, fullName, practitionerABN)
-		if err != nil {
-			return nil, err
-		}
-		return htmlContent, nil
-	}
-
 	return f, nil
 }
 
-func (s *service) writeFormattedAmounts(f *excelize.File, sheet string, startIdx, row int, items []BASLineItem, name string, styleID int) {
-	for _, item := range items {
-		if item.Name == name {
-			g, _ := excelize.ColumnNumberToName(startIdx + 1)
-			t, _ := excelize.ColumnNumberToName(startIdx + 2)
-			n, _ := excelize.ColumnNumberToName(startIdx + 3)
-
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", g, row), item.Amounts.Gross)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", t, row), item.Amounts.GST)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", n, row), item.Amounts.Net)
-
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", g, row), fmt.Sprintf("%s%d", n, row), styleID)
-			return
+func convertBASSection(section BASSection) basexport.BASSection {
+	items := make([]basexport.BASLineItem, len(section.Items))
+	for i, item := range section.Items {
+		items[i] = basexport.BASLineItem{
+			Name: item.Name,
+			Amounts: basexport.BASAmount{
+				Gross: item.Amounts.Gross,
+				GST:   item.Amounts.GST,
+				Net:   item.Amounts.Net,
+			},
 		}
 	}
+	return basexport.BASSection{Items: items}
 }
 
-func (s *service) getUniqueNamesFromSection(allCols []BASColumn, section string) []string {
-	m := make(map[string]bool)
-	var names []string
-	for _, col := range allCols {
-		var items []BASLineItem
-		if section == "income" {
-			items = col.Sections.Income.Items
-		} else {
-			items = col.Sections.Expenses.Items
-		}
-		for _, itm := range items {
-			if itm.Name != "" && !m[itm.Name] {
-				m[itm.Name] = true
-				names = append(names, itm.Name)
-			}
-		}
+func convertBASColumn(col BASColumn) basexport.BASColumn {
+	var sections basexport.BASColumn
+	sections.Sections.Income = convertBASSection(col.Sections.Income)
+	sections.Sections.Expenses = convertBASSection(col.Sections.Expenses)
+
+	return basexport.BASColumn{
+		Quarter: basexport.BASQuarterInfo{
+			ID:           col.Quarter.ID,
+			Name:         col.Quarter.Name,
+			StartDate:    col.Quarter.StartDate,
+			EndDate:      col.Quarter.EndDate,
+			DisplayRange: col.Quarter.DisplayRange,
+		},
+		Sections:      sections.Sections,
+		NetGSTPayable: col.NetGSTPayable,
 	}
-	return names
-}
-
-func strPtr(s string) *string {
-	return &s
-}
-
-// Helper to convert the Excel file to PDF using HTML
-func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string, fullName string, practitionerABN string) (string, error) {
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return "", err
-	}
-
-	var b bytes.Buffer
-	b.WriteString("<html><head><style>")
-	b.WriteString(`
-		@page { size: A3 landscape; margin: 0.5cm; }
-		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 10px; }
-		table { border-collapse: collapse; table-layout: fixed; width: 100%; border: 1.2pt solid #000; }
-		td { border: 1px solid #000; padding: 4px 2px; font-size: 8.5pt; height: 22px; text-align: center; }
-		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; }
-		.fy-title { font-size: 16pt; font-weight: bold; background-color: #DAEEF3 !important; padding: 15px; border: 1.2pt solid #000; }
-		.section-title { font-weight: bold; font-size: 11pt; border: none; padding-top: 12px; text-align: left; }
-		.data-left { text-align: left; border: 1px solid #000; }
-		.text-right { text-align: right; }
-		.profit-green { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; }
-		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
-		.income-blue td {background-color: #DAEEF3 !important; }
-		.expense-blue td {background-color: #DAEEF3 !important; }
-        .meta-item { font-size: 10pt; margin-bottom: 4px; }
-        .meta-label { font-weight: bold; }
-	`)
-	b.WriteString("</style></head><body>")
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`)
-
-	b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>Exported by:</span> %s</div>", fullName))
-	if practitionerABN != "" {
-		b.WriteString(fmt.Sprintf("<div class='meta-item'><span class='meta-label'>ABN:</span> %s</div>", practitionerABN))
-	}
-
-	b.WriteString("<table>")
-
-	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
-	totalCols := 1 + (len(data.Columns)+1)*3 // +1 for Total
-
-	b.WriteString("<colgroup>")
-	b.WriteString("<col style='width: 16%;'>")
-
-	colWidth := 84.0 / float64(totalCols-1)
-
-	for i := 0; i < totalCols-1; i++ {
-		b.WriteString(fmt.Sprintf("<col style='width: %.2f%%;'>", colWidth))
-	}
-
-	b.WriteString("</colgroup>")
-
-	formatCurr := func(v float64) string { return fmt.Sprintf("$%.2f", v) }
-
-	for rIdx, row := range rows {
-		rowNum := rIdx + 1
-
-		// --- ROW 1: FINANCIAL YEAR ---
-		if rowNum == 1 {
-			// Render FY row BEFORE iterating Excel
-			b.WriteString("<tr>")
-			b.WriteString(fmt.Sprintf("<td colspan='%d' class='fy-title'>%s</td>", totalCols, FYLabel))
-			b.WriteString("</tr>")
-			continue
-		}
-
-		//  skip empty rows
-		if len(row) == 0 {
-			continue
-		}
-
-		// --- ROW 6: QUARTERS ---
-		if rowNum == 6 {
-			b.WriteString("<tr>")
-
-			// Column A spacer (Particulars column)
-			b.WriteString("<td class='header-blue'></td>")
-
-			// Dynamic quarters from API
-			for _, col := range data.Columns {
-				// Extract the Year from the startDate
-				yearDisplay := ""
-				if col.Quarter.StartDate != "" {
-					// Parse the "2025-07-01" format
-					t, err := time.Parse("2006-01-02", col.Quarter.StartDate)
-					if err == nil {
-						yearDisplay = fmt.Sprintf(" %d", t.Year())
-					}
-				}
-
-				// Build the label: Quarter name (Display Range) Year
-				label := fmt.Sprintf("%s (%s) %s",
-					col.Quarter.Name,
-					col.Quarter.DisplayRange,
-					yearDisplay,
-				)
-				b.WriteString(fmt.Sprintf(
-					"<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>",
-					label,
-				))
-			}
-
-			// Grand Total column (always last)
-			b.WriteString("<td class='header-blue' colspan='3' style='font-size:10pt;'>Total</td>")
-
-			b.WriteString("</tr>")
-			continue
-		}
-
-		// --- ROW 7: SUBHEADERS ---
-		if rowNum == 7 {
-			b.WriteString("<tr>")
-			b.WriteString("<td class='header-blue'>Particulars</td>")
-			totalBlocks := len(data.Columns) + 1 // +1 for Total
-			for i := 0; i < totalBlocks; i++ {
-				b.WriteString("<td class='header-blue'>Gross</td><td class='header-blue'>GST</td><td class='header-blue'>Net</td>")
-			}
-			b.WriteString("</tr>")
-			continue
-		}
-
-		// skip header rows completely
-		if rowNum <= 6 {
-			continue
-		}
-
-		// --- DATA ROWS ---
-		valA := ""
-		if len(row) > 0 {
-			valA = row[0]
-		}
-
-		classA := "data-left"
-		if valA == "INCOME" || valA == "EXPENSES" {
-			classA = "section-title"
-			b.WriteString("<tr>")
-			b.WriteString(fmt.Sprintf("<td colspan='%d' class='%s'>%s</td>", totalCols, classA, valA))
-			b.WriteString("</tr>")
-			continue
-		}
-
-		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td>", classA, valA))
-
-		// Combine data columns (4 quarters + 1 grand total)
-		allColumns := append(data.Columns, data.GrandTotal)
-
-		for _, col := range allColumns {
-			var g, gst, n float64
-			found := false
-
-			// Match Account from API Data
-			for _, item := range append(col.Sections.Income.Items, col.Sections.Expenses.Items...) {
-				if item.Name == valA {
-					g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
-					found = true
-					break
-				}
-			}
-
-			// Handle Special Rows
-			if valA == "Net GST Payable" {
-				gst = col.NetGSTPayable
-				found = true
-			}
-
-			cellClass := "text-right"
-			if valA == "Net GST Payable" {
-				cellClass += " gst-red"
-			}
-
-			if found {
-				b.WriteString(fmt.Sprintf("<td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>",
-					cellClass, formatCurr(g), cellClass, formatCurr(gst), cellClass, formatCurr(n)))
-			} else {
-				for i := 0; i < 3; i++ {
-					b.WriteString("<td class='text-right'>$0.00</td>")
-				}
-			}
-		}
-		b.WriteString("</tr>")
-	}
-
-	b.WriteString("</table></body></html>")
-
-	return b.String(), err
 }
 
 func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error) {

@@ -14,7 +14,6 @@ type Admin struct {
 	DeletedAt *time.Time `db:"deleted_at"`
 }
 
-// Local User struct to avoid import cycle
 type User struct {
 	ID        uuid.UUID  `db:"id"`
 	Email     string     `db:"email"`
@@ -29,11 +28,11 @@ type User struct {
 }
 
 type RqCreateAdmin struct {
-	Email     string  `json:"email" validate:"required,email"`
-	FirstName string  `json:"first_name" validate:"required"`
-	LastName  string  `json:"last_name" validate:"required"`
-	Password  string  `json:"password" validate:"required,min=8"`
-	Phone     *string `json:"phone"      validate:"omitempty,e164"`
+	Email     string  `json:"email" binding:"required,email"`
+	FirstName string  `json:"first_name" binding:"required"`
+	LastName  string  `json:"last_name" binding:"required"`
+	Password  string  `json:"password" binding:"required,min=8"`
+	Phone     *string `json:"phone" binding:"omitempty"`
 }
 
 type RsAdmin struct {
@@ -41,17 +40,15 @@ type RsAdmin struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
-// User details for the nested response
 type RsUserDetail struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Phone     *string   `json:"phone"`
+	ID        uuid.UUID `json:"id" db:"id"`
+	Email     string    `json:"email" db:"email"`
+	FirstName string    `json:"first_name" db:"first_name"`
+	LastName  string    `json:"last_name" db:"last_name"`
+	Phone     *string   `json:"phone" db:"phone"`
 }
 
-// The final nested response structure
 type RsAdminDetail struct {
-	ID   uuid.UUID    `json:"id"`
-	User RsUserDetail `json:"user"`
+	ID   uuid.UUID    `json:"id" db:"id"`
+	User RsUserDetail `json:"user" db:"user"` // Enabled sqlx struct embedding support
 }

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS tbl_invoice (
     deleted_at      TIMESTAMPTZ
 );
 
+
 CREATE TABLE IF NOT EXISTS tbl_invoice_item (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id    UUID NOT NULL,

@@ -14,7 +14,7 @@ type Repository interface {
 	Update(ctx context.Context, contact Contact) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (Contact, error)
-	List(ctx context.Context) ([]Contact, error)
+	List(ctx context.Context, clinicID uuid.UUID) ([]Contact, error)
 
 	DeleteAddressByID(ctx context.Context, id uuid.UUID) error
 }
@@ -271,7 +271,7 @@ func (r *repository) getAddressesByContactID(ctx context.Context, contactID uuid
 	return addresses, rows.Err()
 }
 
-func (r *repository) List(ctx context.Context) ([]Contact, error) {
+func (r *repository) List(ctx context.Context, clinicID uuid.UUID) ([]Contact, error) {
 
 	rows, err := r.db.QueryContext(ctx,
 		`
@@ -289,8 +289,10 @@ func (r *repository) List(ctx context.Context) ([]Contact, error) {
 			updated_at
 		FROM tbl_clinic_contact_person
 		WHERE deleted_at IS NULL
+		AND clinic_id = $1
 		ORDER BY created_at DESC
 		`,
+		clinicID,
 	)
 	if err != nil {
 		return nil, err

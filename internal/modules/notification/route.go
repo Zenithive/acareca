@@ -10,7 +10,6 @@ func RegisterRoutes(nft *gin.RouterGroup, h IHandler) {
 	nft.PATCH("/read-all", h.MarkAllRead)
 	nft.PATCH("/:id/dismiss", h.MarkDismissed)
 	nft.PATCH("/dismiss", h.MarkAllDismissed)
-
 	nft.GET("/preferences", h.GetPreferences)
 	nft.PUT("/preference", h.UpdatePreference)
 }

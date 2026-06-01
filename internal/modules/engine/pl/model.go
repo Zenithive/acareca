@@ -14,7 +14,7 @@ type PLReportFilter struct {
 	DateFrom       *string `form:"date_from"`
 	DateUntil      *string `form:"date_until"`
 	CoaID          *string `form:"coa_id"`
-	TaxTypeID      *string `form:"tax_type_id"` // matches tbl_account_tax.name
+	TaxTypeID      *string `form:"tax_type_id"`
 	FormID         *string `form:"form_id"`
 	PractitionerID string  `form:"practitioner_id"`
 }

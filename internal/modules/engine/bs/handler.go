@@ -31,19 +31,20 @@ func NewHandler(svc Service, invitationSvc invitation.Service) Handler {
 }
 
 // GetBalanceSheet godoc
-// @Summary Get Balance Sheet
-// @Description Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)
-// @Tags Balance Sheet
-// @Accept json
-// @Produce json
-// @Param start_date query string false "Start Date (YYYY-MM-DD)"
-// @Param end_date query string false "End Date (YYYY-MM-DD)"
-// @Success 200 {object} RsBalanceSheet
-// @Failure 400 {object} response.RsError
-// @Failure 401 {object} response.RsError
-// @Failure 500 {object} response.RsError
+// @Summary      Get Balance Sheet
+// @Description  Get balance sheet showing assets, liabilities, and equity (including owner fund accounts)
+// @Tags         Balance Sheet
+// @Accept       json
+// @Produce      json
+// @Param        start_date query string false "Start Date (YYYY-MM-DD)"
+// @Param        end_date   query string false "End Date (YYYY-MM-DD)"
+// @Success      200 {object} RsBalanceSheet
+// @Failure      400 {object} response.RsError "Bad Request"
+// @Failure      401 {object} response.RsError "Unauthorized"
+// @Failure      403 {object} response.RsError "Forbidden"
+// @Failure      500 {object} response.RsError "Internal Server Error"
 // @Security     BearerToken
-// @Router /balance-sheet [get]
+// @Router       /balance-sheet [get]
 func (h *handler) GetBalanceSheet(c *gin.Context) {
 	actorID, role, ok := util.GetRoleBasedID(c)
 	userID, _ := util.GetUserID(c)
@@ -76,9 +77,10 @@ func (h *handler) GetBalanceSheet(c *gin.Context) {
 // @Param        end_date         query  string   false  "End Date (YYYY-MM-DD)"
 // @Param        export_type 	  query  string   true   "Export Type: pdf | excel"
 // @Success      200              {file}   binary  "Balance_Sheet_2026-04-30.xlsx"
-// @Failure      400              {object} response.RsError
-// @Failure      401              {object} response.RsError
-// @Failure      500              {object} response.RsError
+// @Failure      400              {object} response.RsError "Bad Request"
+// @Failure      401              {object} response.RsError "Unauthorized"
+// @Failure      403 {object} response.RsError "Forbidden"
+// @Failure      500              {object} response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /balance-sheet/export [get]
 func (h *handler) ExportBalanceSheet(c *gin.Context) {
@@ -89,7 +91,6 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		return
 	}
 
-	// Get the export type from query params (default to excel)
 	exportType := strings.ToLower(c.DefaultQuery("export_type", "excel"))
 
 	var f BSFilter
@@ -98,21 +99,18 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		return
 	}
 
-	// 1. Fetch report data
 	reportData, err := h.svc.GetBalanceSheet(c.Request.Context(), &f, *actorID, role, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Logic for notifications (notifIDs)
 	var notifIDs []uuid.UUID
 	if strings.EqualFold(role, util.RoleAccountant) {
 		if f.PractitionerID != nil && *f.PractitionerID != "" {
 			pID, _ := uuid.Parse(*f.PractitionerID)
 			notifIDs = []uuid.UUID{pID}
 		} else {
-			// Service already did this work, but for notifications we might need the list again
 			linked, _ := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
 			notifIDs = linked
 		}
@@ -123,14 +121,13 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		pracIDStr = *f.PractitionerID
 	}
 
-	exportedFile, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDStr)
+	exportedFileResp, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// 3. Response handling
-	switch v := exportedFile.(type) {
+	switch v := exportedFileResp.Result.(type) {
 	case *excelize.File:
 		fileName := fmt.Sprintf("Balance_Sheet_%s.xlsx", time.Now().Format("2006-01-02"))
 		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

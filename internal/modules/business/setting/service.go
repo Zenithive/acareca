@@ -9,6 +9,7 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type Service interface {
@@ -50,7 +51,7 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionPractitionerCreated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityPractitioner),
+		EntityType: lo.ToPtr(auditctx.EntityPractitioner),
 		EntityID:   &idStr,
 		AfterState: result,
 		IPAddress:  meta.IPAddress,
@@ -120,7 +121,7 @@ func (s *service) UpdatePractitioner(ctx context.Context, id uuid.UUID, req *RqU
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionPractitionerUpdated,
 		Module:      auditctx.ModuleBusiness,
-		EntityType:  strPtr(auditctx.EntityPractitioner),
+		EntityType:  lo.ToPtr(auditctx.EntityPractitioner),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
@@ -161,7 +162,7 @@ func (s *service) DeletePractitioner(ctx context.Context, id uuid.UUID) error {
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionPractitionerDeleted,
 		Module:      auditctx.ModuleBusiness,
-		EntityType:  strPtr(auditctx.EntityPractitioner),
+		EntityType:  lo.ToPtr(auditctx.EntityPractitioner),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		IPAddress:   meta.IPAddress,
@@ -211,7 +212,7 @@ func (s *service) UpsertSetting(ctx context.Context, practitionerID uuid.UUID, r
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionSettingUpdated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityFinancialSettings),
+		EntityType: lo.ToPtr(auditctx.EntityFinancialSettings),
 		EntityID:   &idStr,
 		AfterState: result,
 		IPAddress:  meta.IPAddress,
@@ -247,5 +248,3 @@ func (s *service) UpsertSettingTx(ctx context.Context, tx *sqlx.Tx, practitioner
 	}
 	return updated.ToRs(), nil
 }
-
-func strPtr(s string) *string { return &s }
