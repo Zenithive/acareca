@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/google/uuid"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
@@ -118,25 +117,30 @@ func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UU
 }
 
 func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error {
-	pref := NotificationPreference{
-		UserID:     userID,
-		EntityID:   entityID,
-		EntityType: entityType,
-		Channels: NotificationChannels{
-			string(ChannelInApp): true,
-			string(ChannelEmail): false,
-			string(ChannelPush):  false,
-		},
-		EventType: NotificationEventTypes{
-			EventNewTransaction,
-			EventAccountantActivityAlert,
-			EventSystemActivityAlert,
-		},
-		CreatedAt: time.Now(),
+	channels := NotificationChannels{
+		string(ChannelInApp): true,
+		string(ChannelEmail): false,
+		string(ChannelPush):  false,
 	}
 
-	if err := s.repo.CreatePreference(ctx, pref); err != nil {
-		return fmt.Errorf("failed to create preference: %w", err)
+	eventTypes := []NotificationEventType{
+		EventNewTransaction,
+		EventAccountantActivityAlert,
+		EventSystemActivityAlert,
+	}
+
+	for _, eventType := range eventTypes {
+		pref := NotificationPreference{
+			UserID:     userID,
+			EntityID:   entityID,
+			EntityType: entityType,
+			Channels:   channels,
+			EventType:  eventType,
+		}
+
+		if err := s.repo.CreatePreference(ctx, pref); err != nil {
+			return fmt.Errorf("failed to create preference for event type %s: %w", eventType, err)
+		}
 	}
 
 	return nil

@@ -1,7 +1,9 @@
 package notification
 
 import (
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -167,8 +169,6 @@ const (
 	EventSystemActivityAlert     NotificationEventType = "system.activity.alert"
 )
 
-type NotificationEventTypes []NotificationEventType
-
 func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
 	switch eventType {
 	case EventTransactionCreated, EventTransactionUpdated:
@@ -184,23 +184,49 @@ func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventT
 }
 
 type NotificationPreference struct {
-	ID         uuid.UUID              `db:"id" json:"id"`
-	UserID     uuid.UUID              `db:"user_id" json:"user_id"`
-	EntityID   uuid.UUID              `db:"entity_id" json:"entity_id"`
-	EntityType string                 `db:"entity_type" json:"entity_type"`
-	EventType  NotificationEventTypes `db:"event_type" json:"event_type"`
-	Channels   NotificationChannels   `db:"channels" json:"channels"`
-	CreatedAt  time.Time              `db:"created_at" json:"created_at"`
-	UpdatedAt  time.Time              `db:"updated_at" json:"updated_at"`
-	DeletedAt  *time.Time             `db:"deleted_at" json:"-"`
+	ID         uuid.UUID             `db:"id" json:"id"`
+	UserID     uuid.UUID             `db:"user_id" json:"user_id"`
+	EntityID   uuid.UUID             `db:"entity_id" json:"entity_id"`
+	EntityType string                `db:"entity_type" json:"entity_type"`
+	EventType  NotificationEventType `db:"event_type" json:"event_type"`
+	Channels   NotificationChannels  `db:"channels" json:"channels"`
+	CreatedAt  time.Time             `db:"created_at" json:"created_at"`
+	UpdatedAt  time.Time             `db:"updated_at" json:"updated_at"`
+	DeletedAt  *time.Time            `db:"deleted_at" json:"-"`
 }
 
 type RqUpdatePreference struct {
-	EventType NotificationEventTypes `json:"event_type" validate:"required"`
-	Channels  NotificationChannels   `json:"channels"   validate:"required"`
+	EventType NotificationEventType `json:"event_type" validate:"required"`
+	Channels  NotificationChannels  `json:"channels"   validate:"required"`
 }
 
 type NotificationChannels map[string]bool
+
+func (nc NotificationChannels) Value() (driver.Value, error) {
+	if nc == nil {
+		return nil, nil
+	}
+	return json.Marshal(nc)
+}
+
+func (nc *NotificationChannels) Scan(value interface{}) error {
+	if value == nil {
+		*nc = nil
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case string:
+		bytes = []byte(v)
+	case []byte:
+		bytes = v
+	default:
+		return fmt.Errorf("cannot scan %T into NotificationChannels", value)
+	}
+
+	return json.Unmarshal(bytes, nc)
+}
 
 type RqBulkDismiss struct {
 	IDs []uuid.UUID `json:"ids" validate:"required,min=1"`

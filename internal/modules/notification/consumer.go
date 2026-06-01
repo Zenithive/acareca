@@ -295,15 +295,7 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 		return []Channel{ChannelInApp}
 	}
 
-	eventTypeEnabled := false
-	for _, enabledEventType := range matchingPref.EventType {
-		if enabledEventType == notificationEventType {
-			eventTypeEnabled = true
-			break
-		}
-	}
-
-	if !eventTypeEnabled {
+	if matchingPref.EventType != notificationEventType {
 		return []Channel{}
 	}
 
@@ -337,12 +329,7 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 
 	for _, pref := range prefs {
 		if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-			for _, enabledEventType := range pref.EventType {
-				if enabledEventType == notificationEventType {
-					return true
-				}
-			}
-			return false
+			return pref.EventType == notificationEventType
 		}
 	}
 
