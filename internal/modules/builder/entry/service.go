@@ -72,8 +72,8 @@ type Service struct {
 	notificationSvc notification.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, notificationSvc notification.Service) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, NotificationSvc notification.Service) IService {
+	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc, notificationSvc: NotificationSvc}
 }
 
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
@@ -189,7 +189,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		UserAgent:  meta.UserAgent,
 	})
 	fmt.Println("============================")
-	if err = s.TransactionNotificationEvent(ctx, entityID, role, req); err != nil {
+	if err = s.TransactionNotificationEvent(ctx, entityID, role, req, s.notificationSvc); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -1505,7 +1505,7 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uuid.UUID, role string, req *RqFormEntry) error {
+func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uuid.UUID, role string, req *RqFormEntry, notificationSvc notification.Service) error {
 
 	var senderName string
 
@@ -1539,7 +1539,7 @@ func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uui
 
 	common.PublishNotification(
 		ctx,
-		s.notificationSvc,
+		notificationSvc,
 		&entityID,
 		entityID,
 		req,
@@ -1552,6 +1552,7 @@ func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uui
 				EventType:     notification.EventTransactionCreated,
 				EntityType:    notification.EntityTransaction,
 				RecipientType: notification.ActorPractitioner,
+				Channel:       notification.Channel[notification.ChannelEmail],
 			}
 		},
 	)

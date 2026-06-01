@@ -12,6 +12,7 @@ import (
 
 func PublishNotification[T any](ctx context.Context, notificationSvc notification.Service, recipientID *uuid.UUID, practitionerID uuid.UUID, data T, mapper func(T) NotificationMeta) {
 	if notificationSvc == nil {
+		fmt.Println("============================", notificationSvc)
 		return
 	}
 
@@ -60,4 +61,5 @@ type NotificationMeta struct {
 	EventType     notification.EventType
 	EntityType    notification.EntityType
 	RecipientType notification.ActorType
+	Channel       []notification.Channel
 }
