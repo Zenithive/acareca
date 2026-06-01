@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -17,6 +18,7 @@ import (
 type Consumer struct {
 	events        sharedEvents.IEvent
 	repo          Repository
+	prefRepo      preference.Repository
 	notifier      *sharednotification.Hub
 	db            *sqlx.DB
 	publisher     *Publisher
@@ -26,6 +28,7 @@ type Consumer struct {
 func NewConsumer(
 	events sharedEvents.IEvent,
 	repo Repository,
+	prefRepo preference.Repository,
 	notifier *sharednotification.Hub,
 	db *sqlx.DB,
 	publisher *Publisher,
@@ -35,6 +38,7 @@ func NewConsumer(
 		repo:      repo,
 		notifier:  notifier,
 		db:        db,
+		prefRepo:  prefRepo,
 		publisher: publisher,
 	}
 
@@ -108,18 +112,12 @@ func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 		return nil
 	}
 
-	allowedChannels := c.getEnabledChannels(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType, event.Channels)
-	if len(allowedChannels) == 0 {
-		log.Printf("No channels enabled for notification %s", event.ID)
-		return nil
-	}
-
-	notificationID, err := c.createNotification(ctx, event, allowedChannels)
+	notificationID, err := c.createNotification(ctx, event, event.Channels)
 	if err != nil {
 		return err
 	}
 
-	c.deliverToChannels(ctx, notificationID, event, allowedChannels)
+	c.deliverToChannels(ctx, notificationID, event, event.Channels)
 
 	return nil
 }
@@ -158,7 +156,7 @@ func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
 	return nil
 }
 
-func (c *Consumer) createNotification(ctx context.Context, event NotificationEvent, channels []Channel) (uuid.UUID, error) {
+func (c *Consumer) createNotification(ctx context.Context, event NotificationEvent, channels []util.Channel) (uuid.UUID, error) {
 	notification := Notification{
 		ID:            event.ID,
 		RecipientID:   event.RecipientID,
@@ -187,7 +185,7 @@ func (c *Consumer) createNotification(ctx context.Context, event NotificationEve
 	return notificationID, nil
 }
 
-func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UUID, event NotificationEvent, channels []Channel) {
+func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UUID, event NotificationEvent, channels []util.Channel) {
 	for _, ch := range channels {
 		switch ch {
 		case util.ChannelInApp:
@@ -275,67 +273,20 @@ func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 	return notificationID, nil
 }
 
-func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType, requestedChannels []Channel) []Channel {
-
-	// ❗ FIX 1: pass entityID, NOT userID
-	prefs, err := c.repo.GetAllPreferencesByentityID(ctx, entityID)
-
-	if err != nil || len(prefs) == 0 {
-		return []Channel{}
-	}
-
-	notificationEventType := MapEventTypeToNotificationEventType(eventType)
-	var matchingPref *NotificationPreference
-	for i := range prefs {
-		if prefs[i].EntityID == entityID &&
-			prefs[i].EntityType == string(entityType) &&
-			prefs[i].EventType == notificationEventType {
-			matchingPref = &prefs[i]
-			break
-		}
-	}
-	if matchingPref == nil {
-		return []Channel{}
-	}
-
-	enabledChannels := make(map[Channel]bool)
-
-	for channelKey, enabled := range matchingPref.Channels {
-		if enabled {
-			ch := Channel(channelKey)
-			if ch.IsValid() {
-				enabledChannels[ch] = true
-			}
-		}
-	}
-
-	var allowedChannels []Channel
-
-	for _, ch := range requestedChannels {
-		if enabledChannels[ch] {
-			allowedChannels = append(allowedChannels, ch)
-		}
-	}
-
-	return allowedChannels
-}
-
-func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType) bool {
-	prefs, err := c.repo.GetAllPreferences(ctx, userID)
-	if err != nil || len(prefs) == 0 {
-		return true
+func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType util.ActorType, eventType util.EventType) (error, bool) {
+	pref, err := c.prefRepo.GetPreferencesByUserID(ctx, userID)
+	if err != nil {
+		return err, true
 	}
 
 	notificationEventType := MapEventTypeToNotificationEventType(eventType)
 
-	for _, pref := range prefs {
-		if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-			if pref.EventType == notificationEventType {
-				return true
-			}
-			return false
+	if pref.EntityID == entityID && pref.EntityType == string(entityType) {
+		if pref.EventType == notificationEventType {
+			return nil, true
 		}
+		return nil, false
 	}
 
-	return true
+	return nil, true
 }

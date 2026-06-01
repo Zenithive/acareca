@@ -46,29 +46,13 @@ type RecipientWithPreferences struct {
 	UserID        uuid.UUID
 }
 
-// PublishNotification sends notifications to multiple recipients based on their preferences
-// It fetches each recipient's preferences and filters channels accordingly
-func PublishNotification(
-	ctx context.Context,
-	notificationSvc notification.Service,
-	recipients []RecipientWithPreferences,
-	senderID uuid.UUID,
-	senderType util.ActorType,
-	senderName string,
-	eventType util.EventType,
-	entityType util.EntityType,
-	entityID uuid.UUID,
-	entityKey string,
-	title string,
-	body string,
-) {
+func PublishNotification(ctx context.Context, notificationSvc notification.Service, recipients []RecipientWithPreferences, senderID uuid.UUID, senderType util.ActorType, senderName string, eventType util.EventType, entityType util.EntityType, entityID uuid.UUID, entityKey string, title string, body string) {
 	if notificationSvc == nil {
 		log.Println("[WARN] notification service is nil, skipping notifications")
 		return
 	}
 
-	// Map EventType to NotificationEventType for preference lookup
-	notificationEventType := notification.MapEventTypeToNotificationEventType(eventType)
+	notificationEventType := MapEventTypeToNotificationEventType(eventType)
 
 	for _, recipient := range recipients {
 		// Get user preferences
@@ -79,14 +63,12 @@ func PublishNotification(
 		}
 
 		// Find channels enabled for this event type
-		channels := []notification.Channel{}
-		for _, pref := range prefs {
-			if pref.EventType == notificationEventType {
+		channels := []util.Channel{}
+		for _, event := range prefs.EventType {
+			if event == notificationEventType {
 				// Check each channel and add if enabled
-				for ch, isEnabled := range pref.Channels {
-					if isEnabled {
-						channels = append(channels, notification.Channel(ch))
-					}
+				for ch := range prefs.Channels {
+					channels = append(channels, util.Channel(ch))
 				}
 				break
 			}
@@ -121,7 +103,7 @@ func PublishNotification(
 			EventType:     eventType,
 			EntityType:    entityType,
 			EntityID:      entityID,
-			Status:        notification.StatusUnread,
+			Status:        util.StatusUnread,
 			Payload:       payloadBytes,
 			Channels:      channels,
 			CreatedAt:     time.Now(),

@@ -27,13 +27,12 @@ func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotificat
 			log.Println("notification retry worker stopped")
 			return
 		case <-ticker.C:
-			preferredSvc.Get(ctx) // optional: refresh preferences cache
-			retryFailed(ctx, repo, hub, preferredSvc)
+			retryFailed(ctx, repo, hub)
 		}
 	}
 }
 
-func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.Hub, preferredSvc preference.IService) {
+func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.Hub) {
 	deliveries, err := repo.ListFailedInAppDeliveries(ctx, workerBatchSize)
 	if err != nil {
 		log.Printf("retry worker: list failed deliveries: %v", err)
@@ -56,7 +55,7 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		push := map[string]any{
 			"id":             d.NotificationID,
 			"recipient_id":   d.RecipientID,
-			"recipient_type": util.ActorTypePractitioner,
+			"recipient_type": d.RecepientType,
 			"sender_id":      nil,
 			"sender_type":    nil,
 			"event_type":     d.EventType,

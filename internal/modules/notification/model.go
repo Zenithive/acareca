@@ -53,6 +53,7 @@ type Delivery struct {
 type FailedDelivery struct {
 	NotificationID uuid.UUID       `db:"notification_id"`
 	RecipientID    uuid.UUID       `db:"recipient_id"`
+	RecepientType  util.ActorType  `db:"recipient_type"`
 	RetryCount     int             `db:"retry_count"`
 	EventType      util.EventType  `db:"event_type"`
 	EntityType     util.EntityType `db:"entity_type"`

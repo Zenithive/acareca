@@ -12,6 +12,7 @@ import (
 
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
@@ -98,20 +99,19 @@ func (s *service) mapToNotificationRequest(e SharedEvent) notification.RqNotific
 
 	payloadBytes, _ := json.Marshal(payloadObj)
 
-	// 2. Map SharedEvent to RqNotification
-	senderType := notification.ActorAccountant
+	senderType := util.ActorAccountant
 
 	return notification.RqNotification{
 		ID:            uuid.New(),
 		RecipientID:   e.PractitionerID,
-		RecipientType: notification.ActorPractitioner,
+		RecipientType: util.ActorPractitioner,
 		SenderID:      &e.AccountantID,
 		SenderType:    &senderType,
-		EventType:     notification.EventType(e.EventType),
-		EntityType:    notification.EntityType(e.EntityType),
+		EventType:     util.EventType(e.EventType),
+		EntityType:    util.EntityType(e.EntityType),
 		EntityID:      e.EntityID,
 		Payload:       payloadBytes,
-		Channels:      []notification.Channel{notification.ChannelInApp},
+		Channels:      []util.Channel{util.ChannelInApp},
 		CreatedAt:     time.Now(),
 	}
 }

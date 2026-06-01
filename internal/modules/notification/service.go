@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -17,19 +18,22 @@ type Service interface {
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
+	GetPreferences(ctx context.Context, userID uuid.UUID) (preference.Preference, error)
 }
 
 type service struct {
 	repo      Repository
 	publisher *Publisher
 	DB        *sqlx.DB
+	PrefRepo  preference.Repository
 }
 
-func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB) Service {
+func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB, prefRepo preference.Repository) Service {
 	return &service{
 		repo:      repo,
 		publisher: NewPublisher(events),
 		DB:        db,
+		PrefRepo:  prefRepo,
 	}
 }
 
@@ -97,4 +101,8 @@ func (s *service) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error 
 
 func (s *service) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error {
 	return s.repo.MarkDismissed(ctx, ids, recipientID)
+}
+
+func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) (preference.Preference, error) {
+	return s.PrefRepo.GetPreferencesByUserID(ctx, userID)
 }
