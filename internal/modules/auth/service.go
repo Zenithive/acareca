@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -69,10 +70,10 @@ type service struct {
 	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
 	fileRepo         filemod.Repository
-	NotificationSvc  notification.Service
+	PreferenceSvc    preference.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, notificationSvc notification.Service) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -97,7 +98,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		adminSvc:         adminSvc,
 		inviteRepo:       inviteRepo,
 		fileRepo:         fileRepo,
-		NotificationSvc:  notificationSvc,
+		PreferenceSvc:    preferenceSvc,
 	}
 }
 
@@ -132,7 +133,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	var created *User
 	var entityID uuid.UUID
-	var p *practitioner.RsPractitioner
 	var a *accountant.RsAccountant
 	var tokenID uuid.UUID
 
@@ -148,7 +148,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 		switch created.Role {
 		case util.RolePractitioner:
-			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+			p, txErr2 := s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
 				UserID:     created.ID.String(),
 				EntityType: req.EntityType,
 				EntityName: req.EntityName,
@@ -157,9 +157,10 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 				Address:    req.Address,
 				Profession: req.Profession,
 			}, tx)
-			if txErr == nil {
-				entityID = p.ID
+			if txErr2 != nil {
+				return fmt.Errorf("create practitioner: %w", txErr2)
 			}
+			entityID = p.ID
 		case util.RoleAccountant:
 			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
 				UserID:     created.ID.String(),
@@ -218,14 +219,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		}
 	}()
 
-	err = s.NotificationSvc.PreferenceSetting(ctx, created.ID, entityID, created.Role)
-	if err != nil {
-		fmt.Printf("[AUTH ERROR] Failed to set notification preferences: %v\n", err)
-		s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "auth.set_notification_preferences",
-			err, created.ID.String(), entityID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
-		)
-	}
-
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
 	entityIDStr := entityID.String()
@@ -269,7 +262,6 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 			return nil, errors.New("account not verified. Please check your email to verify your account")
 		}
 	}
-
 	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
 		return nil, err
@@ -288,7 +280,20 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		UserAgent:  meta.UserAgent,
 	})
 
-	return s.issueTokens(ctx, user, entityID)
+	rs, err := s.issueTokens(ctx, user, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("issue tokens: %w", err)
+	}
+	if user.Role == util.RoleAdmin {
+		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+			if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, user.ID, uuid.MustParse(entityID), user.Role); err != nil {
+				log.Printf("failed to set notification preferences for user %s: %v", user.ID, err)
+			}
+			return nil
+		})
+
+	}
+	return rs, err
 }
 
 func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error {
@@ -470,11 +475,22 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	if time.Now().After(token.ExpiresAt) {
 		return errors.New("verification link has expired")
 	}
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		user_id, err := s.repo.MarkUserVerified(ctx, token, tx)
+		if err != nil {
+			return err
+		}
+		id, _ := uuid.Parse(user_id)
 
-	if err := s.repo.MarkUserVerified(ctx, token); err != nil {
-		return err
+		if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
+			return fmt.Errorf("failed to set notification preferences: %w", err)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return errors.New("failed to verified" + err.Error())
 	}
-
 	meta := auditctx.GetMetadata(ctx)
 	userIDStr := token.EntityID.String()
 	tokenIDStr := token.ID.String()

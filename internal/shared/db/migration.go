@@ -11,7 +11,7 @@ import (
 func RunMigrations(db *sql.DB) error {
 	log.Println("Running database migrations with goose...")
 
-	migrationsDir := "migrations"
+	migrationsDir := "../../migrations"
 	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}

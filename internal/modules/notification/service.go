@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/google/uuid"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
@@ -17,24 +17,24 @@ type Service interface {
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
-	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
-	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
-	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error
 }
 
 type service struct {
 	repo      Repository
 	publisher *Publisher
+	DB        *sqlx.DB
 }
 
-func NewService(repo Repository, events sharedEvents.IEvent) Service {
+func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB) Service {
 	return &service{
 		repo:      repo,
 		publisher: NewPublisher(events),
+		DB:        db,
 	}
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
+
 	event := NotificationEvent{
 		ID:            rq.ID,
 		RecipientID:   rq.RecipientID,
@@ -48,7 +48,11 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		Channels:      rq.Channels,
 		CreatedAt:     rq.CreatedAt,
 	}
-
+	fmt.Printf("Publishing notification event_Channel: %+v\n", event.Channels)
+	fmt.Printf("Publishing notification event_Type: %+v\n", event.EventType)
+	fmt.Printf("Publishing notification event_ID: %+v\n", event.ID)
+	fmt.Printf("Publishing notification event_Entity_Id: %+v\n", event.EntityID)
+	fmt.Printf("Publishing notification event_Recipient_Id: %+v\n", event.RecipientID)
 	return s.publisher.PublishNotification(ctx, event)
 }
 
@@ -93,51 +97,4 @@ func (s *service) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error 
 
 func (s *service) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error {
 	return s.repo.MarkDismissed(ctx, ids, recipientID)
-}
-
-func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error) {
-	prefs, err := s.repo.GetAllPreferences(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	if prefs == nil {
-		return []NotificationPreference{}, nil
-	}
-	return prefs, nil
-}
-
-func (s *service) UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error {
-	pref := NotificationPreference{
-		UserID:     userID,
-		EntityID:   entityID,
-		EntityType: role,
-		EventType:  rq.EventType,
-		Channels:   rq.Channels,
-	}
-	return s.repo.CreatePreference(ctx, pref)
-}
-
-func (s *service) PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error {
-	pref := NotificationPreference{
-		UserID:     userID,
-		EntityID:   entityID,
-		EntityType: entityType,
-		Channels: NotificationChannels{
-			string(ChannelInApp): true,
-			string(ChannelEmail): false,
-			string(ChannelPush):  false,
-		},
-		EventType: NotificationEventTypes{
-			EventNewTransaction,
-			EventAccountantActivityAlert,
-			EventSystemActivityAlert,
-		},
-		CreatedAt: time.Now(),
-	}
-
-	if err := s.repo.CreatePreference(ctx, pref); err != nil {
-		return fmt.Errorf("failed to create preference: %w", err)
-	}
-
-	return nil
 }

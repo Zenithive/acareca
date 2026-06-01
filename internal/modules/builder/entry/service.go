@@ -23,7 +23,9 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	entryexport "github.com/iamarpitzala/acareca/internal/shared/export/entry"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
@@ -33,9 +35,9 @@ import (
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
-	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
@@ -63,6 +65,7 @@ type Service struct {
 	formulaSvc      formula.IService
 	fieldSvc        field.IService
 	invitationSvc   invitation.Service
+	invitationRepo  invitation.Repository
 	detailRepo      detail.IRepository
 	financialRepo   fy.Repository
 	practitionerSvc practitioner.IService
@@ -73,7 +76,7 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc, coaRepo: coaRepo}
 }
 
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	meta := auditctx.GetMetadata(ctx)
 
 	var result *RsFormEntry
@@ -186,6 +189,10 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
+	fmt.Println("============================")
+	if err = s.TransactionNotificationEvent(ctx, entityID, role, req, s.notificationSvc); err != nil {
+		log.Printf("failed to send transaction notification event: %v", err.Error())
+	}
 
 	return result, nil
 }
@@ -216,7 +223,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	return rs, nil
 }
 
-func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	var result *RsFormEntry
 	var beforeState interface{}
 
@@ -283,9 +290,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			if err := s.handleDocumentLinks(ctx, tx, id, req.Documents); err != nil {
 				return err
 			}
-			if err := s.handleDocumentUnlinks(ctx, tx, id, req.Documents); err != nil {
-				return err
-			}
 		}
 
 		updated, vals, innerErr := s.repo.GetByID(ctx, tx, id)
@@ -333,6 +337,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		IPAddress:   meta.IPAddress,
 		UserAgent:   meta.UserAgent,
 	})
+
+	// Send update notification
+	if err = s.TransactionNotificationEventUpdate(ctx, entityID, role, result, s.notificationSvc); err != nil {
+		log.Printf("failed to send transaction update notification event: %v", err.Error())
+	}
 
 	return result, nil
 }
@@ -959,7 +968,6 @@ func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID u
 	if err != nil || clinic == nil {
 		return
 	}
-
 	var accountantID uuid.UUID
 	var fullName string
 
@@ -1396,17 +1404,172 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-// handleDocumentUnlinks processes and unlinks documents from an entry
-func (s *Service) handleDocumentUnlinks(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, docs *RqDocument) error {
-	if docs == nil || len(docs.Delete) == 0 {
-		return nil
+func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uuid.UUID, role string, req *RqFormEntry, notificationSvc notification.Service) error {
+	if notificationSvc == nil {
+		return fmt.Errorf("notification service is nil")
 	}
-	docIDs, err := util.ParseUUIDs(docs.Delete)
+
+	// Get clinic to find practitioner
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 	if err != nil {
-		return fmt.Errorf("invalid document id: %w", err)
+		return fmt.Errorf("get clinic: %w", err)
 	}
-	if err := s.repo.UnlinkDocuments(ctx, tx, entryID, docIDs); err != nil {
-		return fmt.Errorf("unlink documents: %w", err)
+	if clinic == nil {
+		return fmt.Errorf("clinic not found")
 	}
+
+	return s.sendTransactionNotification(
+		ctx,
+		entityID,
+		role,
+		clinic.PractitionerID,
+		req.ClinicID,
+		notification.EventTransactionCreated,
+		"Transaction Created",
+		notificationSvc,
+	)
+}
+
+func (s *Service) TransactionNotificationEventUpdate(ctx context.Context, entityID uuid.UUID, role string, entry *RsFormEntry, notificationSvc notification.Service) error {
+	if notificationSvc == nil {
+		return fmt.Errorf("notification service is nil")
+	}
+
+	// Get clinic to find practitioner
+	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, entry.ClinicID)
+	if err != nil {
+		return fmt.Errorf("get clinic: %w", err)
+	}
+	if clinic == nil {
+		return fmt.Errorf("clinic not found")
+	}
+
+	return s.sendTransactionNotification(
+		ctx,
+		entityID,
+		role,
+		clinic.PractitionerID,
+		entry.ClinicID,
+		notification.EventTransactionUpdated,
+		"Transaction Updated",
+		notificationSvc,
+	)
+}
+
+// sendTransactionNotification is a reusable helper that sends notifications to all relevant parties
+// based on their preferences and permissions
+func (s *Service) sendTransactionNotification(
+	ctx context.Context,
+	entityID uuid.UUID,
+	role string,
+	practitionerID uuid.UUID,
+	clinicID uuid.UUID,
+	eventType notification.EventType,
+	title string,
+	notificationSvc notification.Service,
+) error {
+	// Get practitioner user ID
+	practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+	if err != nil {
+		return fmt.Errorf("get practitioner user ID: %w", err)
+	}
+
+	// Determine sender info
+	var senderName string
+	var senderType notification.ActorType
+
+	switch role {
+	case util.RoleAccountant:
+		acc, err := s.authRepo.FindByAccountentId(ctx, entityID)
+		if err != nil {
+			return fmt.Errorf("find accountant: %w", err)
+		}
+		senderName = fmt.Sprintf("%s %s", acc.FirstName, acc.LastName)
+		senderType = notification.ActorAccountant
+
+	case util.RolePractitioner:
+		prac, err := s.authRepo.FindByPractitionerID(ctx, entityID)
+		if err != nil {
+			return fmt.Errorf("find practitioner: %w", err)
+		}
+		senderName = fmt.Sprintf("%s %s", prac.FirstName, prac.LastName)
+		senderType = notification.ActorPractitioner
+
+	default:
+		return fmt.Errorf("invalid role: %s", role)
+	}
+
+	// Build recipients list
+	recipients := []common.RecipientWithPreferences{}
+
+	// 1. Add all admins (always notified as observers)
+	admins, err := s.adminRepo.GetAllAdmins(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get admins: %v", err)
+	} else {
+		for _, adm := range admins {
+			recipients = append(recipients, common.RecipientWithPreferences{
+				RecipientID:   adm.ID,
+				RecipientType: notification.ActorAdmin,
+				UserID:        adm.User.ID,
+			})
+		}
+	}
+
+	// 2. Add practitioner (owner) - only if they are NOT the sender
+	if !(role == util.RolePractitioner && practitionerID == entityID) {
+		recipients = append(recipients, common.RecipientWithPreferences{
+			RecipientID:   practitionerID,
+			RecipientType: notification.ActorPractitioner,
+			UserID:        practitionerUserID,
+		})
+	}
+
+	// 3. Add accountants linked to this practitioner
+	// For accountants: check notification permission first
+	accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, practitionerID)
+	if err != nil {
+		log.Printf("[WARN] failed to get linked accountants: %v", err)
+	} else {
+		for _, acc := range accountants {
+			// Skip if sender is this accountant
+			if role == util.RoleAccountant && acc.AccountantID == entityID {
+				continue
+			}
+
+			// Check if accountant has notification access permission
+			permissions, err := s.invitationSvc.GetPermissionsForAccountant(ctx, acc.AccountantID, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get permissions for accountant %s: %v", acc.AccountantID, err)
+				continue
+			}
+
+			// Only add if accountant has notification access (reports_view_download permission with read access)
+			if permissions != nil && permissions.Has(invitation.PermReportsViewDownload, false) {
+				recipients = append(recipients, common.RecipientWithPreferences{
+					RecipientID:   acc.AccountantID,
+					RecipientType: notification.ActorAccountant,
+					UserID:        acc.UserID,
+				})
+			}
+		}
+	}
+
+	// Send notifications with preferences
+	common.PublishNotification(
+		ctx,
+		notificationSvc,
+		recipients,
+		entityID,
+		senderType,
+		senderName,
+		eventType,
+		notification.EntityTransaction,
+		clinicID,
+		"transaction_id",
+		title,
+		fmt.Sprintf("%s by %s", title, senderName),
+	)
+
 	return nil
 }

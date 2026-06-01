@@ -13,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/form"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
@@ -22,6 +23,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
@@ -40,6 +42,9 @@ func RegisterBuilderRoutes(
 	auditSvc audit.Service,
 	eventsSvc events.Service,
 	invitationSvc invitation.Service,
+	invitationRepo invitation.Repository,
+	notificationSvc notification.Service,
+	adminRepo admin.Repository,
 ) {
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
@@ -77,7 +82,7 @@ func RegisterBuilderRoutes(
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, detailRepo, fyRepo, practitionerSvc, coaRepo)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, invitationRepo, detailRepo, fyRepo, practitionerSvc, notificationSvc, adminRepo)
 	entriesHandler := entry.NewHandler(entriesSvc, invitationSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())

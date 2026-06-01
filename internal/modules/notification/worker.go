@@ -6,7 +6,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 const (
@@ -14,7 +16,7 @@ const (
 	workerBatchSize = 50
 )
 
-func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotification.Hub) {
+func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotification.Hub, preferredSvc preference.IService) {
 	ticker := time.NewTicker(workerInterval)
 	defer ticker.Stop()
 
@@ -25,12 +27,13 @@ func StartRetryWorker(ctx context.Context, repo Repository, hub *sharednotificat
 			log.Println("notification retry worker stopped")
 			return
 		case <-ticker.C:
-			retryFailed(ctx, repo, hub)
+			preferredSvc.Get(ctx) // optional: refresh preferences cache
+			retryFailed(ctx, repo, hub, preferredSvc)
 		}
 	}
 }
 
-func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.Hub) {
+func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.Hub, preferredSvc preference.IService) {
 	deliveries, err := repo.ListFailedInAppDeliveries(ctx, workerBatchSize)
 	if err != nil {
 		log.Printf("retry worker: list failed deliveries: %v", err)
@@ -53,7 +56,7 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		push := map[string]any{
 			"id":             d.NotificationID,
 			"recipient_id":   d.RecipientID,
-			"recipient_type": "PRACTITIONER",
+			"recipient_type": util.ActorTypePractitioner,
 			"sender_id":      nil,
 			"sender_type":    nil,
 			"event_type":     d.EventType,
@@ -69,7 +72,7 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 			log.Printf("retry worker: pushed to active WebSocket for user %s", d.RecipientID)
 		}
 
-		if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, ChannelInApp); err != nil {
+		if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, util.ChannelInApp); err != nil {
 			log.Printf("retry worker: failed to mark delivered %s: %v", d.NotificationID, err)
 		} else {
 			if pushedToWebSocket {

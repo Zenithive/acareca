@@ -61,7 +61,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	actorID, _, ok := util.GetRoleBasedID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
@@ -73,7 +73,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.svc.Create(c.Request.Context(), versionID, &req, actorID, *actorID)
+	created, err := h.svc.Create(c.Request.Context(), versionID, &req, actorID, *actorID, role)
 	if err != nil {
 		if errors.Is(err, limits.ErrLimitReached) {
 			response.Error(c, http.StatusForbidden, err)
@@ -133,8 +133,9 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	actorID, _, ok := util.GetRoleBasedID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
 
@@ -144,7 +145,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.svc.Update(c.Request.Context(), id, &req, actorID)
+	updated, err := h.svc.Update(c.Request.Context(), id, &req, actorID, *actorID, role)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)

@@ -134,7 +134,7 @@ func (c *Consumer) handleEmailDelivery(msg jetstream.Msg) error {
 
 	log.Printf("Processing email delivery for notification: %s", notificationID)
 
-	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelEmail); err != nil {
+	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, util.ChannelEmail); err != nil {
 		return fmt.Errorf("failed to mark email as delivered: %w", err)
 	}
 
@@ -151,7 +151,7 @@ func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
 
 	log.Printf("Processing push delivery for notification: %s", notificationID)
 
-	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelPush); err != nil {
+	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, util.ChannelPush); err != nil {
 		return fmt.Errorf("failed to mark push as delivered: %w", err)
 	}
 
@@ -168,7 +168,7 @@ func (c *Consumer) createNotification(ctx context.Context, event NotificationEve
 		EventType:     event.EventType,
 		EntityType:    event.EntityType,
 		EntityID:      event.EntityID,
-		Status:        StatusUnread,
+		Status:        util.StatusUnread,
 		Payload:       event.Payload,
 		CreatedAt:     event.CreatedAt,
 	}
@@ -190,11 +190,11 @@ func (c *Consumer) createNotification(ctx context.Context, event NotificationEve
 func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UUID, event NotificationEvent, channels []Channel) {
 	for _, ch := range channels {
 		switch ch {
-		case ChannelInApp:
+		case util.ChannelInApp:
 			c.deliverInApp(ctx, notificationID, event)
-		case ChannelEmail:
+		case util.ChannelEmail:
 			c.queueEmailDelivery(ctx, notificationID, event)
-		case ChannelPush:
+		case util.ChannelPush:
 			c.queuePushDelivery(ctx, notificationID, event)
 		}
 	}
@@ -216,7 +216,7 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 			"event_type":   event.EventType,
 			"entity_type":  event.EntityType,
 			"entity_id":    event.EntityID,
-			"status":       StatusUnread,
+			"status":       util.StatusUnread,
 			"payload":      event.Payload,
 			"created_at":   event.CreatedAt,
 		}
@@ -227,7 +227,7 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 		}
 	}
 
-	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, ChannelInApp); err != nil {
+	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, util.ChannelInApp); err != nil {
 		log.Printf("Failed to mark delivery as delivered %s: %v", notificationID, err)
 	} else {
 		if pushedToWebSocket {
@@ -241,7 +241,7 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 func (c *Consumer) queueEmailDelivery(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
 	if err := c.publisher.PublishEmailDelivery(ctx, notificationID, event.RecipientID, event.EventType, event.Payload); err != nil {
 		log.Printf("Failed to queue email for notification %s: %v", notificationID, err)
-		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, ChannelEmail, "failed to publish to NATS")
+		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, util.ChannelEmail, "failed to publish to NATS")
 	} else {
 		log.Printf("Email delivery queued for notification %s", notificationID)
 	}
@@ -250,7 +250,7 @@ func (c *Consumer) queueEmailDelivery(ctx context.Context, notificationID uuid.U
 func (c *Consumer) queuePushDelivery(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
 	if err := c.publisher.PublishPushDelivery(ctx, notificationID, event.RecipientID, event.EventType, event.Payload); err != nil {
 		log.Printf("Failed to queue push for notification %s: %v", notificationID, err)
-		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, ChannelPush, "failed to publish to NATS")
+		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, util.ChannelPush, "failed to publish to NATS")
 	} else {
 		log.Printf("Push delivery queued for notification %s", notificationID)
 	}
@@ -276,38 +276,30 @@ func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 }
 
 func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid.UUID, entityType ActorType, eventType EventType, requestedChannels []Channel) []Channel {
-	prefs, err := c.repo.GetAllPreferences(ctx, userID)
+
+	// ❗ FIX 1: pass entityID, NOT userID
+	prefs, err := c.repo.GetAllPreferencesByentityID(ctx, entityID)
+
 	if err != nil || len(prefs) == 0 {
-		return []Channel{ChannelInApp}
+		return []Channel{}
 	}
 
 	notificationEventType := MapEventTypeToNotificationEventType(eventType)
-
 	var matchingPref *NotificationPreference
 	for i := range prefs {
-		if prefs[i].EntityID == entityID && prefs[i].EntityType == string(entityType) {
+		if prefs[i].EntityID == entityID &&
+			prefs[i].EntityType == string(entityType) &&
+			prefs[i].EventType == notificationEventType {
 			matchingPref = &prefs[i]
 			break
 		}
 	}
-
 	if matchingPref == nil {
-		return []Channel{ChannelInApp}
-	}
-
-	eventTypeEnabled := false
-	for _, enabledEventType := range matchingPref.EventType {
-		if enabledEventType == notificationEventType {
-			eventTypeEnabled = true
-			break
-		}
-	}
-
-	if !eventTypeEnabled {
 		return []Channel{}
 	}
 
 	enabledChannels := make(map[Channel]bool)
+
 	for channelKey, enabled := range matchingPref.Channels {
 		if enabled {
 			ch := Channel(channelKey)
@@ -318,6 +310,7 @@ func (c *Consumer) getEnabledChannels(ctx context.Context, userID, entityID uuid
 	}
 
 	var allowedChannels []Channel
+
 	for _, ch := range requestedChannels {
 		if enabledChannels[ch] {
 			allowedChannels = append(allowedChannels, ch)
@@ -337,10 +330,8 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 
 	for _, pref := range prefs {
 		if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-			for _, enabledEventType := range pref.EventType {
-				if enabledEventType == notificationEventType {
-					return true
-				}
+			if pref.EventType == notificationEventType {
+				return true
 			}
 			return false
 		}

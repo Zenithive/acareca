@@ -319,7 +319,9 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 
 	var message string
+
 	title := "System Activity Alert"
+
 	// Specialized logic for Lock Date messages
 	if entry.Action == auditctx.ActionLockDateUpdated {
 		getLockDate := func(state interface{}) *string {
