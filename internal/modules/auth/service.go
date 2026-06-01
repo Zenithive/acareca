@@ -19,7 +19,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -70,10 +70,10 @@ type service struct {
 	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
 	fileRepo         filemod.Repository
-	NotificationSvc  notification.Service
+	PreferenceSvc    preference.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, notificationSvc notification.Service) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -98,7 +98,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		adminSvc:         adminSvc,
 		inviteRepo:       inviteRepo,
 		fileRepo:         fileRepo,
-		NotificationSvc:  notificationSvc,
+		PreferenceSvc:    preferenceSvc,
 	}
 }
 
@@ -286,7 +286,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	}
 	if user.Role == util.RoleAdmin {
 		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-			if err := s.NotificationSvc.PreferenceSetting(ctx, tx, user.ID, uuid.MustParse(entityID), user.Role); err != nil {
+			if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, user.ID, uuid.MustParse(entityID), user.Role); err != nil {
 				log.Printf("failed to set notification preferences for user %s: %v", user.ID, err)
 			}
 			return nil
@@ -482,7 +482,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		}
 		id, _ := uuid.Parse(user_id)
 
-		if err := s.NotificationSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
+		if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
 			return fmt.Errorf("failed to set notification preferences: %w", err)
 		}
 		return nil

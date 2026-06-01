@@ -9,7 +9,24 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
+
+type NotificationEventTypes []util.NotificationEventType
+
+func MapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
+	switch eventType {
+	case util.EventTransactionCreated, util.EventTransactionUpdated:
+		return util.EventNewTransaction
+	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded,
+		util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
+		return util.EventAccountantActivityAlert
+	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
+		return util.EventSystemActivityAlert
+	default:
+		return util.EventSystemActivityAlert
+	}
+}
 
 type NotificationMeta struct {
 	EntityID      uuid.UUID
@@ -17,15 +34,15 @@ type NotificationMeta struct {
 	Title         string
 	Body          string
 	SenderName    *string
-	EventType     notification.EventType
-	EntityType    notification.EntityType
-	RecipientType notification.ActorType
+	EventType     util.EventType
+	EntityType    util.EntityType
+	RecipientType util.ActorType
 }
 
 // RecipientWithPreferences holds recipient info and their notification preferences
 type RecipientWithPreferences struct {
 	RecipientID   uuid.UUID
-	RecipientType notification.ActorType
+	RecipientType util.ActorType
 	UserID        uuid.UUID
 }
 
@@ -36,10 +53,10 @@ func PublishNotification(
 	notificationSvc notification.Service,
 	recipients []RecipientWithPreferences,
 	senderID uuid.UUID,
-	senderType notification.ActorType,
+	senderType util.ActorType,
 	senderName string,
-	eventType notification.EventType,
-	entityType notification.EntityType,
+	eventType util.EventType,
+	entityType util.EntityType,
 	entityID uuid.UUID,
 	entityKey string,
 	title string,

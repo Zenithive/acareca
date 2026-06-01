@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Publisher struct {
@@ -30,7 +31,7 @@ func (p *Publisher) PublishNotification(ctx context.Context, event NotificationE
 	return nil
 }
 
-func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType EventType, payload interface{}) error {
+func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
 	}
@@ -49,7 +50,7 @@ func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, re
 	return nil
 }
 
-func (p *Publisher) PublishPushDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType EventType, payload interface{}) error {
+func (p *Publisher) PublishPushDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
 	}
