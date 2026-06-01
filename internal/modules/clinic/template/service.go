@@ -126,6 +126,10 @@ func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSett
 		return nil, err
 	}
 
+	if st == nil {
+		return nil, fmt.Errorf("template setting not found for template id: %s", templateId)
+	}
+
 	// Fetch document details if IDs are present
 	if st.LogoId != nil {
 		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
