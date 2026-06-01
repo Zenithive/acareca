@@ -15,7 +15,6 @@ type Service interface {
 	GetActiveUsers(ctx context.Context, filter *Filter) (*RsActiveUsers, error)
 	GetPractitionerDetails(ctx context.Context, practitionerID uuid.UUID) (*RsPractitionerDetail, error)
 	ListPractitionersWithDetails(ctx context.Context, filter *PractitionerFilter) (*util.RsList, error)
-
 	// Dashboard APIs
 	GetPractitionerOverview(ctx context.Context) (*RsPractitionerOverview, error)
 	GetResourceAnalytics(ctx context.Context, filter *ResourceAnalyticsFilter) (*RsResourceAnalytics, error)
@@ -89,8 +88,6 @@ func (s *service) getDateRange(filter *Filter) (time.Time, time.Time) {
 
 	return startDate, endDate
 }
-
-// Dashboard Service Methods
 
 func (s *service) GetPractitionerOverview(ctx context.Context) (*RsPractitionerOverview, error) {
 	return s.repo.GetPractitionerOverview(ctx)

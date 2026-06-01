@@ -96,6 +96,7 @@ type RqLiveCalculate struct {
 type RsLiveCalculate struct {
 	FormVersionID  uuid.UUID              `json:"form_version_id"`
 	ComputedFields []RsComputedFieldValue `json:"computed_fields"`
+	Formulas       []formula.RsFormula    `json:"formulas"`
 }
 
 type RsCoaEntry struct {
@@ -103,6 +104,7 @@ type RsCoaEntry struct {
 	CoaName          string  `json:"coa_name" db:"coa_name"`
 	SectionType      string  `json:"section_type" db:"section_type"`
 	TotalNetAmount   float64 `json:"total_net_amount" db:"total_net_amount"`
+	TotalGSTAmount   float64 `json:"total_gst_amount" db:"total_gst_amount"`
 	TotalGrossAmount float64 `json:"total_gross_amount" db:"total_gross_amount"`
 	EntryCount       int     `json:"entry_count" db:"entry_count"`
 }

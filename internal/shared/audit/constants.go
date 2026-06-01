@@ -11,6 +11,7 @@ const (
 	ModuleIdentity  = "identity"
 	ModuleEngine    = "engine"
 	ModuleBusiness  = "business"
+	ModuleFile      = "file"
 )
 
 // Action constants - Auth module
@@ -26,6 +27,10 @@ const (
 	ActionOAuthLinked     = "user.oauth_linked"
 	ActionSessionCreated  = "session.created"
 	ActionSessionRevoked  = "session.revoked"
+	ActionFileUploaded    = "file.upload"
+	ActionFileDownloaded  = "file.download"
+	ActionFileUpdated     = "file.update"
+	ActionFileDeleted     = "file.delete"
 )
 
 // Action constants - Admin module
@@ -53,6 +58,7 @@ const (
 	ActionFYUpdated           = "fy.updated"
 	ActionFYClosed            = "fy.closed"
 	ActionFYActivated         = "fy.activated"
+	ActionLockDateUpdated     = "lock_date.updated"
 )
 
 // Action constants - Forms module
@@ -87,6 +93,7 @@ const (
 	EntityInvitation             = "tbl_invitation"
 	EntityPermission             = "tbl_invite_permissions"
 	EntitySystem                 = "system"
+	EntityFile                   = "tbl_document"
 )
 
 // Action Constants -Accountant module
@@ -122,15 +129,39 @@ const (
 	EntityPLReport          = "pl_report"
 	EntityActivityStatement = "activity_statement"
 	EntityTransactions      = "transactions"
+	EntityBalanceSheet      = "balance_sheet"
 )
 
 const (
-	ActionBASReportExported          = "bas_report.exported"
-	ActionPLReportExported           = "pl_report.exported"
-	ActionActivityStatementExported  = "activity_statement.exported"
-	ActitionTransactionsExported     = "transactions.exported"
+	ActionBASReportExported         = "bas_report.exported"
+	ActionPLReportExported          = "pl_report.exported"
+	ActionActivityStatementExported = "activity_statement.exported"
+	ActitionTransactionsExported    = "transactions.exported"
+	ActionBalanceSheetExported      = "balance_sheet.exported"
+
 	ActionBASReportGenerated         = "bas_report.generated"
 	ActionPLReportGenerated          = "pl_report.generated"
 	ActionActivityStatementGenerated = "activity_statement.generated"
 	ActitionTransactionsGenerated    = "transactions.generated"
+	ActitionBalanceSheetGenerated    = "balance_sheet.generated"
+)
+
+// Invoice Module constants
+const (
+	// Modules
+	ModuleInvoice = "invoice"
+
+	// Actions
+	ActionClinicRegistered     = "invoice.clinic_registered"
+	ActionClinicLoggedIn       = "invoice.clinic_logged_in"
+	ActionClinicLoggedOut      = "invoice.clinic_logged_out"
+	ActionClinicSessionCreated = "clinic.session_created"
+	ActionClinicSessionRevoked = "clinic.session_revoked"
+
+	// Entitites
+	EntityInvoiceClinic         = "tbl_invoice_clinic"
+	EntityInvoiceClinicAddress  = "tbl_invoice_clinic_address"
+	EntityInvoiceClinicContacts = "tbl_invoice_clinic_contacts"
+	EntityClinicSession         = "tbl_clinic_session"
+	EntityClinicVerification    = "tbl_clinic_verification_token"
 )

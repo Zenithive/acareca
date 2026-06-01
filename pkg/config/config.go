@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -21,10 +22,30 @@ type Config struct {
 	ResendAPIKey       string
 	Env                string
 	DevUrl             string
+	ProdUrl            string
 	LocalUrl           string
 	AllowedOrigins     string
 	StripeSecretKey    string
 	FrontendURL        string
+	SenderEmail        string
+
+	// File Upload Configuration
+	FileUploadMaxSize         int64
+	FileUploadAllowedTypes    string
+	FileUploadStorageProvider string
+	FileUploadLocalPath       string
+
+	// R2 Configuration
+	R2AccountID       string
+	R2AccessKeyID     string
+	R2SecretAccessKey string
+	R2BucketName      string
+	R2PublicURL       string
+
+	// NATS Configuration
+	NATSUrl string
+
+	TemplateEncryptionKey string
 }
 
 func getEnv(key, fallback string) string {
@@ -33,6 +54,19 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return val
+}
+
+func getEnvInt64(key string, fallback int64) int64 {
+	val, ok := os.LookupEnv(key)
+	if !ok || val == "" {
+		return fallback
+	}
+
+	intVal, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return intVal
 }
 
 func NewConfig() *Config {
@@ -52,19 +86,42 @@ func NewConfig() *Config {
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
 		Env:                getEnv("ENV", "local"),
 		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
+		ProdUrl:            getEnv("PROD_API_URL", "https://aca-reca-frontend-production.up.railway.app"),
 		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
 		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
+		SenderEmail:        getEnv("SENDER_EMAIL", ""),
+
+		// File Upload Configuration
+		FileUploadMaxSize:         getEnvInt64("FILE_UPLOAD_MAX_SIZE", 10485760), // 10MB default
+		FileUploadAllowedTypes:    getEnv("FILE_UPLOAD_ALLOWED_TYPES", "image/jpeg,image/png,image/gif,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"),
+		FileUploadStorageProvider: getEnv("FILE_UPLOAD_STORAGE_PROVIDER", "local"),
+		// FileUploadLocalPath:       getEnv("FILE_UPLOAD_LOCAL_PATH", "./uploads"),
+
+		// R2 Configuration
+		R2AccountID:       getEnv("R2_ACCOUNT_ID", ""),
+		R2AccessKeyID:     getEnv("R2_ACCESS_KEY_ID", ""),
+		R2SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
+		R2BucketName:      getEnv("R2_BUCKET_NAME", ""),
+		R2PublicURL:       getEnv("R2_PUBLIC_URL", ""),
+
+		// NATS Configuration
+		NATSUrl: getEnv("NATS_URL", "nats://localhost:4222"),
+
+		TemplateEncryptionKey: getEnv("TEMPLATE_ENCRYPTION_KEY", "default_32_bytes_secret_key_abc"),
 	}
 }
 
 func (c *Config) GetBaseURL() (string, error) {
-	if c.Env == "" {
+	switch c.Env {
+	case "":
 		return "", fmt.Errorf("environment not set")
-	} else if c.Env == "production" {
+	case "prod":
+		return c.ProdUrl, nil
+	case "dev":
 		return c.DevUrl, nil
-	} else {
+	default:
 		return c.LocalUrl, nil
 	}
 }

@@ -8,11 +8,10 @@ import (
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config) {
 	admin := rg.Group("/admin")
-
 	admin.POST("", h.Create)
 	protected := admin.Group("/")
 	protected.Use(middleware.Auth(cfg))
 	{
-		protected.GET("/:id", h.GetById)
+		protected.GET("", h.GetById)
 	}
 }

@@ -50,6 +50,9 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		"form_id":         "fm.id",
 		"coa_id":          "coa.id",
 		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
+		// For expense entries use item-level date; for all others use entry-level date
+		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
 	}
 
 	base := `
@@ -58,6 +61,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
             coa.name                          AS coa_name,
             ff.section_type                   AS section_type,
             COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
+			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
             COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
             COUNT(DISTINCT ev.id)             AS entry_count
         FROM tbl_chart_of_accounts coa
@@ -90,6 +94,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		CoaName          string    `db:"coa_name"`
 		SectionType      string    `db:"section_type"`
 		TotalNetAmount   float64   `db:"total_net_amount"`
+		TotalGSTAmount   float64   `db:"total_gst_amount"`
 		TotalGrossAmount float64   `db:"total_gross_amount"`
 		EntryCount       int       `db:"entry_count"`
 	}
@@ -105,6 +110,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 			CoaName:          row.CoaName,
 			SectionType:      row.SectionType,
 			TotalNetAmount:   row.TotalNetAmount,
+			TotalGSTAmount:   row.TotalGSTAmount,
 			TotalGrossAmount: row.TotalGrossAmount,
 			EntryCount:       row.EntryCount,
 		})

@@ -14,8 +14,8 @@ type Repository interface {
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLAccountRow, error)
 	GetByResponsibility(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLResponsibilityRow, error)
 	GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLFYSummaryRow, error)
-	GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error)
-	GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error)
+	GetReport(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) ([]*PLReportRow, error)
+	GetPLSummary(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) (*PLSummaryRow, error)
 }
 
 type repository struct {
@@ -27,13 +27,13 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, f *PLFilter) ([]*PLSummaryRow, error) {
-	// Query vw_pl_line_items directly and aggregate by clinic_id
 	query := `
 		WITH section_totals AS (
 			SELECT 
 				practitioner_id, 
 				period_month, 
-				section_type,
+				account_type,
+				pl_section,
 				SUM(net_amount) AS total_net, 
 				SUM(gst_amount) AS total_gst, 
 				SUM(gross_amount) AS total_gross,
@@ -46,31 +46,31 @@ func (r *repository) GetMonthlySummary(ctx context.Context, clinicID uuid.UUID, 
 	idx := 2
 
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND date::DATE >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND date::DATE <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
 
 	query += `
-			GROUP BY practitioner_id, period_month, section_type
+			GROUP BY practitioner_id, period_month, account_type, pl_section
 		)
 		SELECT
 			practitioner_id, period_month,
-			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_net,
-			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gst,
-			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COLLECTION'),  0) AS income_gross,
-			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_net,
-			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'COST'),        0) AS cogs_gst,
-			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'COST'),        0) AS cogs_gross,
-			COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COLLECTION'), 0) - COALESCE(SUM(total_net) FILTER (WHERE section_type = 'COST'), 0) AS gross_profit_net,
-			COALESCE(SUM(total_net)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_net,
-			COALESCE(SUM(total_gst)   FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gst,
-			COALESCE(SUM(total_gross) FILTER (WHERE section_type = 'OTHER_COST'), 0) AS other_expenses_gross,
+			COALESCE(SUM(total_net)   FILTER (WHERE account_type = 'Revenue'),  0) AS income_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE account_type = 'Revenue'),  0) AS income_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE account_type = 'Revenue'),  0) AS income_gross,
+			COALESCE(SUM(total_net)   FILTER (WHERE pl_section = '2. Cost of Sales'),  0) AS cogs_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE pl_section = '2. Cost of Sales'),  0) AS cogs_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE pl_section = '2. Cost of Sales'),  0) AS cogs_gross,
+			COALESCE(SUM(total_net) FILTER (WHERE account_type = 'Revenue'), 0) - COALESCE(SUM(total_net) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS gross_profit_net,
+			COALESCE(SUM(total_net)   FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_net,
+			COALESCE(SUM(total_gst)   FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_gst,
+			COALESCE(SUM(total_gross) FILTER (WHERE pl_section = '3. Other Expenses'),  0) AS other_expenses_gross,
 			COALESCE(SUM(sg_net_amount), 0) AS net_profit_net,
 			COALESCE(SUM(sg_gross_amount), 0) AS net_profit_gross
 		FROM section_totals
@@ -92,27 +92,31 @@ func (r *repository) GetByAccount(ctx context.Context, clinicID uuid.UUID, f *PL
 			pl_section, section_type,
 			account_code, account_name, account_type,
 			tax_name, tax_rate,
-			total_net, total_gst, total_gross,
-			signed_net, signed_gross,
-			entry_count
-		FROM vw_pl_by_account
+			SUM(net_amount) AS total_net,
+			SUM(gst_amount) AS total_gst,
+			SUM(gross_amount) AS total_gross,
+			SUM(signed_net_amount) AS signed_net,
+			SUM(signed_gross_amount) AS signed_gross,
+			COUNT(DISTINCT entry_id) AS entry_count
+		FROM vw_pl_line_items
 		WHERE clinic_id = $1
 	`
 	args := []any{clinicID}
 	idx := 2
 
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND date::DATE >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND date::DATE <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
 
-	query += " ORDER BY period_month ASC, pl_section ASC, account_code ASC"
+	query += ` GROUP BY practitioner_id, period_month, pl_section, section_type, account_code, account_name, account_type, tax_name, tax_rate
+		ORDER BY period_month ASC, pl_section ASC, account_code ASC`
 
 	var rows []*PLAccountRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
@@ -127,26 +131,29 @@ func (r *repository) GetByResponsibility(ctx context.Context, clinicID uuid.UUID
 			practitioner_id, period_month,
 			payment_responsibility, section_type, pl_section,
 			account_code, account_name,
-			total_net, total_gst, total_gross,
-			entry_count
-		FROM vw_pl_by_responsibility
+			SUM(net_amount) AS total_net,
+			SUM(gst_amount) AS total_gst,
+			SUM(gross_amount) AS total_gross,
+			COUNT(DISTINCT entry_id) AS entry_count
+		FROM vw_pl_line_items
 		WHERE clinic_id = $1
 	`
 	args := []interface{}{clinicID}
 	idx := 2
 
 	if f.FromDate != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND date::DATE >= $%d::DATE", idx)
 		args = append(args, *f.FromDate)
 		idx++
 	}
 	if f.ToDate != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+		query += fmt.Sprintf(" AND date::DATE <= $%d::DATE", idx)
 		args = append(args, *f.ToDate)
 		idx++
 	}
 
-	query += " ORDER BY period_month ASC, payment_responsibility ASC, pl_section ASC, account_code ASC"
+	query += ` GROUP BY practitioner_id, period_month, payment_responsibility, section_type, pl_section, account_code, account_name
+		ORDER BY period_month ASC, payment_responsibility ASC, pl_section ASC, account_code ASC`
 
 	var rows []*PLResponsibilityRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
@@ -187,7 +194,7 @@ func (r *repository) GetFYSummary(ctx context.Context, clinicID uuid.UUID, f *PL
 	return rows, nil
 }
 
-func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLReportRow, error) {
+func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) ([]*PLReportRow, error) {
 	query := `
 		SELECT
 			COALESCE(li.clinic_id::TEXT, '') AS clinic_id,
@@ -197,6 +204,8 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			li.form_field_id::TEXT,
 			li.field_label,
 			li.section_type::TEXT,
+			li.account_type,
+			li.pl_section,
 			li.coa_id::TEXT,
 			li.account_name,
 			li.tax_name,
@@ -205,97 +214,95 @@ func (r *repository) GetReport(ctx context.Context, f *PLReportFilter) ([]*PLRep
 			SUM(li.gross_amount) AS gross_amount
 		FROM vw_pl_line_items li
 		LEFT JOIN tbl_clinic c ON c.id = li.clinic_id AND c.deleted_at IS NULL
-		WHERE li.practitioner_id = $1
+		WHERE li.practitioner_id IN (?)
 	`
-	args := []interface{}{f.PractitionerID}
-	idx := 2
+	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
-		// We match the selected ClinicID OR the Zero UUID (Manual Expenses)
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
-
-		query += fmt.Sprintf(" AND (li.clinic_id = $%d OR li.clinic_id = $%d OR li.clinic_id IS NULL)", idx, idx+1)
+		query += " AND (li.clinic_id = ? OR li.clinic_id = ? OR li.clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
-		idx += 2
-	} else {
-		// scope to practitioner via the view's practitioner_id column
-		query += fmt.Sprintf(" AND li.practitioner_id = $%d", idx)
-		args = append(args, f.PractitionerID)
-		idx++
 	}
 
-	if f.DateFrom != nil {
-		query += fmt.Sprintf(" AND li.submitted_at::DATE >= $%d::DATE", idx)
+	if f.DateFrom != nil && *f.DateFrom != "" {
+		query += " AND li.date::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
-		idx++
 	}
-	if f.DateUntil != nil {
-		query += fmt.Sprintf(" AND li.submitted_at::DATE <= $%d::DATE", idx)
+	if f.DateUntil != nil && *f.DateUntil != "" {
+		query += " AND li.date::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
-		idx++
 	}
 	if f.CoaID != nil {
-		query += fmt.Sprintf(" AND li.coa_id = $%d", idx)
+		query += " AND li.coa_id = ?"
 		args = append(args, *f.CoaID)
-		idx++
 	}
 	if f.TaxTypeID != nil {
-		query += fmt.Sprintf(" AND li.tax_name = $%d", idx)
+		query += " AND li.tax_name = ?"
 		args = append(args, *f.TaxTypeID)
-		idx++
 	}
 	if f.FormID != nil {
-		query += fmt.Sprintf(" AND li.form_id = $%d", idx)
+		query += " AND li.form_id = ?"
 		args = append(args, *f.FormID)
-		idx++
 	}
 
 	query += `
 		GROUP BY
 			li.clinic_id, c.name, li.form_id, li.form_name,
 			li.form_field_id, li.field_label, li.section_type,
+			li.account_type, li.pl_section,
 			li.coa_id, li.account_name, li.tax_name
-		ORDER BY li.section_type, li.account_name
+		ORDER BY li.pl_section, li.account_name
 	`
 
+	fullQuery, fullArgs, err := sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery := r.db.Rebind(fullQuery)
+
 	var rows []*PLReportRow
-	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, finalQuery, fullArgs...); err != nil {
 		return nil, fmt.Errorf("get report: %w", err)
 	}
 	return rows, nil
 }
 
-func (r *repository) GetPLSummary(ctx context.Context, f *PLReportFilter) (*PLSummaryRow, error) {
+func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) (*PLSummaryRow, error) {
 	query := `
 		SELECT 
 			COALESCE(SUM(net_profit_net), 0)   AS net_profit_net,
 			COALESCE(SUM(gross_profit_net), 0) AS gross_profit_net
 		FROM vw_pl_summary_monthly
-		WHERE practitioner_id = $1
+		WHERE practitioner_id IN (?)
 	`
-	args := []interface{}{f.PractitionerID}
-	idx := 2
+	args := []interface{}{practitionerIDs}
 
 	if f.ClinicID != nil && *f.ClinicID != "" {
 		zeroUUID := "00000000-0000-0000-0000-000000000000"
-		query += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id = $%d OR clinic_id IS NULL)", idx, idx+1)
+		query += " AND (clinic_id = ? OR clinic_id = ? OR clinic_id IS NULL)"
 		args = append(args, *f.ClinicID, zeroUUID)
-		idx += 2
 	}
 
-	if f.DateFrom != nil {
-		query += fmt.Sprintf(" AND period_month >= DATE_TRUNC('month', $%d::DATE)", idx)
+	if f.DateFrom != nil && *f.DateFrom != "" {
+		query += " AND period_month >= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateFrom)
-		idx++
 	}
-	if f.DateUntil != nil {
-		query += fmt.Sprintf(" AND period_month <= DATE_TRUNC('month', $%d::DATE)", idx)
+
+	if f.DateUntil != nil && *f.DateUntil != "" {
+		query += " AND period_month <= DATE_TRUNC('month', ?::DATE)"
 		args = append(args, *f.DateUntil)
-		idx++
 	}
+
+	fullQuery, fullArgs, err := sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery := r.db.Rebind(fullQuery)
 
 	var summary PLSummaryRow
-	if err := r.db.GetContext(ctx, &summary, query, args...); err != nil {
+	if err := r.db.GetContext(ctx, &summary, finalQuery, fullArgs...); err != nil {
 		return nil, fmt.Errorf("get summary: %w", err)
 	}
 	return &summary, nil

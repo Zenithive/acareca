@@ -33,6 +33,7 @@ func RegisterBuilderRoutes(
 	dbConn *sqlx.DB,
 	clinicSvc clinic.Service,
 	coaSvc coa.Service,
+	coaRepo coa.Repository,
 	practitionerSvc practitioner.IService,
 	accountantRepo accountant.Repository,
 	authRepo auth.Repository,
@@ -76,7 +77,7 @@ func RegisterBuilderRoutes(
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, detailRepo)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, detailRepo, fyRepo, practitionerSvc, coaRepo)
 	entriesHandler := entry.NewHandler(entriesSvc, invitationSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())

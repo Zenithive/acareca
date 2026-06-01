@@ -79,7 +79,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 		if v.FormFieldID == nil {
 			continue
 		}
-		
+
 		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
@@ -163,7 +163,7 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 		if v.FormFieldID == nil {
 			continue
 		}
-		
+
 		f, ok := fieldMap[*v.FormFieldID]
 		if !ok {
 			return nil, fmt.Errorf("field %s not found", v.FormFieldID)
@@ -465,13 +465,23 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 				// User entered NET amount, use as-is
 
 			case method.TaxTreatmentManual:
-				if (f.SectionType) != nil && *f.SectionType == "COLLECTION" {
-					// if entry.GstAmount != nil {
-					actualNetAmount = entry.NetAmount
-					// }
+				// Xero Manual GST: user enters Gross + explicit GST
+				// On CREATE/preview: entry.NetAmount = user's entered Gross
+				// On UPDATE/live: entry.GrossAmount = actual Gross (if provided)
+				var grossInput float64
+				if entry.GrossAmount != nil {
+					// Use explicit gross_amount if provided
+					grossInput = *entry.GrossAmount
 				} else {
-					// For MANUAL tax type, use GROSS amount if provided, otherwise use net
-					actualNetAmount = entry.NetAmount
+					// Treat entry.NetAmount as Gross (backward compat)
+					grossInput = entry.NetAmount
+				}
+
+				// Calculate Net from Gross - GST
+				if entry.GstAmount != nil {
+					actualNetAmount = grossInput - *entry.GstAmount
+				} else {
+					actualNetAmount = grossInput
 				}
 			}
 
@@ -545,6 +555,12 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 	computed, err := s.formulaSvc.EvalFormulas(ctx, formVersionID, keyValues, taxTypeByKey, manualGSTByKey)
 	if err != nil {
 		return nil, fmt.Errorf("eval formulas: %w", err)
+	}
+
+	formulas, err := s.formulaSvc.ListByFormVersionID(ctx, formVersionID)
+	if err != nil {
+		// Log error but perhaps don't fail the whole calculation if formulas are just for preview
+		return nil, fmt.Errorf("fetch formulas for preview: %w", err)
 	}
 
 	results := make([]RsComputedFieldValue, 0, len(computed))
@@ -628,6 +644,7 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 	return &RsLiveCalculate{
 		FormVersionID:  formVersionID,
 		ComputedFields: results,
+		Formulas:       formulas,
 	}, nil
 }
 
@@ -1021,23 +1038,28 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 			payload.grossamount = &grossVal
 
 		case method.TaxTreatmentManual:
-			if field.SectionType != nil && *field.SectionType == "COLLECTION" {
-				payload.actualamount = entry.NetAmount
-				payload.displaynet = entry.NetAmount
-				if entry.GstAmount != nil {
-					payload.gstamount = entry.GstAmount
-					gross := entry.NetAmount + *entry.GstAmount
-					payload.grossamount = &gross
-				}
-			} else {
-				payload.actualamount = entry.NetAmount
-				payload.displaynet = entry.NetAmount
-				payload.gstamount = entry.GstAmount
-				if entry.GstAmount != nil {
-					gross := entry.NetAmount + *entry.GstAmount
-					payload.grossamount = &gross
-				}
+			// Xero Manual GST: user enters Gross + explicit GST.
+			// entry.NetAmount is actually the GROSS (misleading name from frontend).
+			// entry.GstAmount is the explicit GST the user typed.
+			if entry.GstAmount == nil {
+				return nil, fmt.Errorf("gst_amount is required for MANUAL tax type on field %s", field.FieldKey)
 			}
+			taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{
+				Amount:    entry.NetAmount, // this is actually Gross
+				GstAmount: entry.GstAmount,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
+			}
+			netVal := taxResult.Amount       // derived: Gross - GST
+			gstVal := taxResult.GstAmount    // as entered
+			grossVal := taxResult.TotalAmount // as entered (Gross)
+
+			payload.displaynet = netVal
+			// Formula feed: MANUAL tax type uses GROSS amount
+			payload.actualamount = grossVal
+			payload.gstamount = &gstVal
+			payload.grossamount = &grossVal
 
 		case method.TaxTreatmentZero:
 			payload.actualamount = entry.NetAmount
@@ -1145,13 +1167,9 @@ func (s *service) evaluatePreviewFormulas(ctx context.Context, fields []RqPrevie
 			case "ZERO":
 				feedbackVal = val // No GST
 			case "MANUAL":
-				// For MANUAL, val is NET amount
-				// Add manually entered GST to get gross amount for dependent formulas
-				if gst, hasGST := manualGSTByKey[cf.fieldKey]; hasGST {
-					feedbackVal = val + gst // NET + GST = GROSS
-				} else {
-					feedbackVal = val
-				}
+				// For MANUAL, val is GROSS amount from formula calculation
+				// No need to add GST since formula already used GROSS
+				feedbackVal = val
 			}
 		}
 		vals[cf.fieldKey] = feedbackVal

@@ -14,9 +14,9 @@ type PLReportFilter struct {
 	DateFrom       *string `form:"date_from"`
 	DateUntil      *string `form:"date_until"`
 	CoaID          *string `form:"coa_id"`
-	TaxTypeID      *string `form:"tax_type_id"` // matches tbl_account_tax.name
+	TaxTypeID      *string `form:"tax_type_id"`
 	FormID         *string `form:"form_id"`
-	PractitionerID string  `form:"-"` // set from JWT, not query param
+	PractitionerID string  `form:"practitioner_id"`
 }
 
 type PLReportRow struct {
@@ -27,6 +27,8 @@ type PLReportRow struct {
 	FormFieldID string  `db:"form_field_id"`
 	FieldLabel  string  `db:"field_label"`
 	SectionType *string `db:"section_type"`
+	AccountType string  `db:"account_type"`
+	PLSection   string  `db:"pl_section"`
 	CoaID       string  `db:"coa_id"`
 	AccountName string  `db:"account_name"`
 	TaxName     string  `db:"tax_name"`

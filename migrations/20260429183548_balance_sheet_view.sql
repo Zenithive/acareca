@@ -3,15 +3,14 @@
 DROP VIEW IF EXISTS vw_balance_sheet_summary CASCADE;
 DROP VIEW IF EXISTS vw_balance_sheet_line_items CASCADE;
 
-
 CREATE OR REPLACE VIEW vw_balance_sheet_line_items AS
 SELECT fe.clinic_id,
     COALESCE(cfv.practitioner_id, p.id) AS practitioner_id,
     fe.id AS entry_id,
-    fe.submitted_at,
+    fe."date"::date,
     fe.date AS entry_date,
-    DATE_TRUNC('month', fe.submitted_at) AS period_month,
-    DATE_TRUNC('year', fe.submitted_at) AS period_year,
+    DATE_TRUNC('month', fe.date) AS period_month,
+    DATE_TRUNC('year', fe."date"::date) AS period_year,
     ff.id AS form_field_id,
     ff.section_type,
     COALESCE(fev.coa_id, ff.coa_id) AS coa_id,
@@ -22,6 +21,8 @@ SELECT fe.clinic_id,
     COALESCE(fev.net_amount, 0) AS net_amount,
     COALESCE(fev.gross_amount, 0) AS gross_amount,
     fev.description,
+    cfv.form_id AS form_id,             
+    coa.account_tax_id AS tax_id,
     CASE
         WHEN coa.code = 880 THEN - COALESCE(fev.net_amount, 0) -- Drawings (reduces equity)
         WHEN coa.code = 881 THEN COALESCE(fev.net_amount, 0) -- Funds Introduced (increases equity)
@@ -72,7 +73,6 @@ WHERE fe.status = 'SUBMITTED'
     );
 
 
-
 CREATE OR REPLACE VIEW vw_balance_sheet_summary AS
 SELECT practitioner_id,
     clinic_id,
@@ -82,7 +82,7 @@ SELECT practitioner_id,
     coa_id,
     SUM(signed_amount) AS balance,
     COUNT(DISTINCT entry_id) AS entry_count,
-    MAX(submitted_at) AS last_transaction_date
+    MAX(date) AS last_transaction_date
 FROM vw_balance_sheet_line_items
 GROUP BY practitioner_id,
     clinic_id,

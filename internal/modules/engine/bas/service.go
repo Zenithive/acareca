@@ -1,14 +1,11 @@
 package bas
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,38 +14,42 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/export"
+	basexport "github.com/iamarpitzala/acareca/internal/shared/export/bas"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
-	"github.com/xuri/excelize/v2"
+	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
-// Service defines the business-logic layer for the BAS module.
 type Service interface {
 	GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error)
 	GetByAccount(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASByAccount, error)
 	GetMonthly(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASMonthly, error)
 	GetReport(ctx context.Context, f *BASReportFilter, PracIDs []uuid.UUID, userID uuid.UUID, actorID uuid.UUID, role string) (*RsBASReport, error)
 	GetBASPreparation(ctx context.Context, actorID uuid.UUID, role string, f *BASFilter, userID uuid.UUID) (*RsBASPreparation, error)
-	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error)
+	ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error)
 	GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr PeriodInfo, prev PeriodInfo, err error)
 	GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error)
-	generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error)
-	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error)
+	ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error)
+	GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error)
 }
 
 type service struct {
-	repo           Repository
-	accountantRepo accountant.Repository
-	auditSvc       audit.Service
-	clinicRepo     clinic.Repository
-	fyRepo         fy.Repository
-	eventsSvc      events.Service
-	authRepo       auth.Repository
+	repo            Repository
+	accountantRepo  accountant.Repository
+	auditSvc        audit.Service
+	clinicRepo      clinic.Repository
+	fyRepo          fy.Repository
+	eventsSvc       events.Service
+	authRepo        auth.Repository
+	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo}
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository, practitionerSvc practitioner.IService) Service {
+	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo, practitionerSvc: practitionerSvc}
 }
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
@@ -172,7 +173,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionActivityStatementGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityType: lo.ToPtr(auditctx.EntityActivityStatement),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Activity Statement",
@@ -181,10 +182,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 		UserAgent: meta.UserAgent,
 	})
 
-	// Shared Events: only fire for accountants, using the PracIDs passed from the handler.
-	// NOTE: When called from ExportBASReport's loop, PracIDs is passed but events are
-	// intentionally suppressed there — ExportActivityStatement fires its own events.
-	// Here we only fire if this is a direct GetReport call (PracIDs non-empty and role is accountant).
+	// --- Shared Events ---
 	if role == util.RoleAccountant && len(PracIDs) > 0 {
 		var fullName string
 		user, err := s.authRepo.FindByID(ctx, userID)
@@ -224,178 +222,103 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		isAccountant = true
 	}
 
-	var ownerID uuid.UUID
-	var clinicIDs []uuid.UUID
-
-	// Track unique practitioners to notify
 	practitionerMap := make(map[uuid.UUID]bool)
 
-	// Convert BASFilter to common.Filter for clinic listing
-	commonFilter := f.MapToFilter()
-
-	// Use clinic_id array from BASFilter
-	requestedClinicIDs := f.ParsedClinicIDs
+	var targetPracIDs []uuid.UUID
 
 	if isAccountant {
-		// If clinic_ids are provided, verify permission for each clinic
-		if len(requestedClinicIDs) > 0 {
-			for _, clinicID := range requestedClinicIDs {
-				permission, err := s.clinicRepo.GetAccountantPermission(ctx, actorID, clinicID)
-				if err != nil {
-					return nil, fmt.Errorf("permission denied for clinic %s", clinicID)
-				}
-				practitionerMap[permission.PractitionerID] = true
-				ownerID = permission.PractitionerID
-				clinicIDs = append(clinicIDs, clinicID)
-			}
-		} else {
-			// If no clinic_ids provided, get all clinics the accountant has access to
-			clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
-			}
-			if len(clinics) == 0 {
-				return nil, fmt.Errorf("no clinics found for this accountant")
-			}
-			// Use the first clinic's practitioner as owner (they should all belong to same practitioner)
-			ownerID = clinics[0].PractitionerID
-			for _, clinic := range clinics {
-				practitionerMap[clinic.PractitionerID] = true
-				clinicIDs = append(clinicIDs, clinic.ID)
-			}
+		commonFilter := f.MapToFilter()
+		clinics, err := s.clinicRepo.ListClinicByAccountant(ctx, actorID, commonFilter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch accessible practitioners: %w", err)
+		}
+
+		for _, clinic := range clinics {
+			practitionerMap[clinic.PractitionerID] = true
+		}
+
+		for pID := range practitionerMap {
+			targetPracIDs = append(targetPracIDs, pID)
+		}
+
+		if len(targetPracIDs) == 0 {
+			return &RsBASPreparation{Columns: []BASColumn{}}, nil
 		}
 	} else {
-		ownerID = actorID
-
-		if len(requestedClinicIDs) > 0 {
-			// Verify the practitioner owns each requested clinic
-			for _, clinicID := range requestedClinicIDs {
-				_, err := s.clinicRepo.GetClinicByIDAndPractitioner(ctx, clinicID, ownerID)
-				if err != nil {
-					return nil, fmt.Errorf("clinic %s not found or access denied", clinicID.String())
-				}
-				clinicIDs = append(clinicIDs, clinicID)
-			}
-		} else {
-			// Get all clinics for this practitioner
-			clinics, err := s.clinicRepo.ListClinicByPractitioner(ctx, ownerID, commonFilter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch clinics: %w", err)
-			}
-			if len(clinics) == 0 {
-				return nil, fmt.Errorf("no clinics found for this practitioner")
-			}
-			for _, clinic := range clinics {
-				clinicIDs = append(clinicIDs, clinic.ID)
-			}
-		}
+		targetPracIDs = []uuid.UUID{actorID}
+		practitionerMap[actorID] = true
 	}
-	var rawRows []*BASLineItemRow
 
-	// 1. Fetch ALL data for the practitioner in one single call.
-	// By passing uuid.Nil to the reverted repo, it pulls both clinic data and manual expenses.
+	var rawRows []*BASLineItemRow
 	nilClinic := uuid.Nil
-	rows, err := s.repo.GetBASLineItems(ctx, ownerID, &nilClinic, f)
+	rows, err := s.repo.GetBASLineItems(ctx, targetPracIDs, &nilClinic, f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch BAS items: %w", err)
 	}
 	rawRows = append(rawRows, rows...)
 
-	for i, r := range rawRows {
-		sec := "NIL"
-		if r.SectionType != nil {
-			sec = *r.SectionType
+	rowKey := func(r *BASLineItemRow) string {
+		sec := ""
+		if r.AccountType != nil {
+			sec = *r.AccountType
 		}
-		fmt.Printf("[%d] Name: %-15s | Section: %-15s | Quarter: %s | Gross: %10.2f\n",
-			i, r.AccountName, sec, r.PeriodQuarter.Format("2006-01-02"), r.GrossAmount)
+		return fmt.Sprintf("%s-%s", r.CoaID, sec)
 	}
 
-	unifiedMap := make(map[string]*BASLineItemRow)
+	masterAccounts := make(map[string][]*BASLineItemRow)
 	for _, r := range rawRows {
-		section := ""
-		if r.SectionType != nil {
-
-			section = strings.ToUpper(*r.SectionType)
-		}
-
-		key := fmt.Sprintf("%s-%s-%s-%s",
-			r.PeriodQuarter.Format("2006-01-02"),
-			section,
-			r.BasCategory,
-			r.CoaID,
-		)
-
-		if existing, found := unifiedMap[key]; found {
-			existing.NetAmount += r.NetAmount
-			existing.GstAmount += r.GstAmount
-			existing.GrossAmount += r.GrossAmount
-		} else {
-			unifiedMap[key] = r
-		}
-	}
-
-	for k, v := range unifiedMap {
-		fmt.Printf("Key: %-40s | Name: %s\n", k, v.AccountName)
-	}
-
-	// 3. Convert Map back to Slice
-	var allRows []*BASLineItemRow
-	for _, r := range unifiedMap {
-		allRows = append(allRows, r)
+		key := rowKey(r)
+		masterAccounts[key] = append(masterAccounts[key], r)
 	}
 
 	quarterGroups := make(map[string][]*BASLineItemRow)
-	for _, r := range allRows {
+	for _, r := range rawRows {
 		k := r.PeriodQuarter.Format("2006-01-02")
 		quarterGroups[k] = append(quarterGroups[k], r)
 	}
 
-	// DEBUG 3: Quarter Matching
 	resp := &RsBASPreparation{Columns: []BASColumn{}}
 	var finalizedRowsForTotal []*BASLineItemRow
 
-	// --- Iterate over SELECTED Quarters first ---
 	if len(f.ParsedQuarterIDs) > 0 {
 		for _, qID := range f.ParsedQuarterIDs {
-
-			// Get metadata by ID (Always works even if no transactions)
 			qInfo, err := s.repo.GetQuarterInfoByID(ctx, qID)
 			if err != nil {
 				continue
 			}
 
-			// Get data from our map (might be nil/empty)
-			qRows := quarterGroups[qInfo.StartDate]
-
-			finalizedRowsForTotal = append(finalizedRowsForTotal, qRows...)
-
-			// Map to column (mapToBASColumn handles nil/empty rows by returning $0)
-			col := s.mapToBASColumn(qRows)
-			col.Quarter = *qInfo
-			resp.Columns = append(resp.Columns, col)
-		}
-	} else {
-		// Fallback for when no specific quarters are selected (Show what exists)
-		for key, qRows := range quarterGroups {
-			finalizedRowsForTotal = append(finalizedRowsForTotal, qRows...)
-
-			col := s.mapToBASColumn(qRows)
-			quarterDate, _ := time.Parse("2006-01-02", key)
-			qInfo, _ := s.repo.GetQuarterInfoByDate(ctx, quarterDate)
-			if qInfo != nil {
-				col.Quarter = *qInfo
+			quarterRowIndex := make(map[string][]*BASLineItemRow)
+			for _, qr := range quarterGroups[qInfo.StartDate] {
+				key := rowKey(qr)
+				quarterRowIndex[key] = append(quarterRowIndex[key], qr)
 			}
+
+			normalizedRows := make([]*BASLineItemRow, 0)
+			for key := range masterAccounts {
+				foundRows, exists := quarterRowIndex[key]
+				if !exists {
+					continue
+				}
+				for _, foundRow := range foundRows {
+					if foundRow.GrossAmount != 0 || foundRow.GstAmount != 0 || foundRow.NetAmount != 0 {
+						normalizedRows = append(normalizedRows, foundRow)
+					}
+				}
+			}
+
+			finalizedRowsForTotal = append(finalizedRowsForTotal, normalizedRows...)
+
+			col := s.mapToBASColumn(normalizedRows)
+			col.Quarter = *qInfo
 			resp.Columns = append(resp.Columns, col)
 		}
 	}
 
-	// --- CRITICAL SORTING STEP ---
 	// This ensures Q1 comes before Q2, even if Q3 is missing.
 	sort.Slice(resp.Columns, func(i, j int) bool {
 		return resp.Columns[i].Quarter.StartDate < resp.Columns[j].Quarter.StartDate
 	})
 
-	// Build Grand Total last
 	resp.GrandTotal = s.mapToBASColumn(finalizedRowsForTotal)
 	resp.GrandTotal.Quarter.Name = "Total"
 
@@ -409,7 +332,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionBASReportGenerated,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityBASReport),
+		EntityType: lo.ToPtr(auditctx.EntityBASReport),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type":    "Quarterly BAS Report",
@@ -420,7 +343,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	})
 
 	if isAccountant {
-		// Fetching user details
 		var fullName string
 		user, err := s.authRepo.FindByID(ctx, userID)
 		if err == nil {
@@ -465,51 +387,56 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	expenseAccounts := map[string]*accGroup{}
 
 	var b1 BASAmount
-	var mgtFee, labWork BASAmount // Only keep these two as separate totals
+	var mgtFee, labWork BASAmount
 
 	for _, r := range rows {
 		if BASCategory(r.BasCategory) == BASCategoryBASExcluded {
 			continue
 		}
 
-		sectionType := ""
-		if r.SectionType != nil {
-			sectionType = strings.ToUpper(*r.SectionType)
+		accountType := ""
+		if r.AccountType != nil {
+			accountType = strings.ToUpper(*r.AccountType)
 		}
 
-		if sectionType == "COLLECTION" {
+		gstToAdd := r.GstAmount
+		if BASCategory(r.BasCategory) == BASCategoryGSTFree {
+			gstToAdd = 0
+		}
+
+		if accountType == "REVENUE" {
 			if _, seen := incomeAccounts[r.CoaID]; !seen {
 				incomeOrder = append(incomeOrder, r.CoaID)
 				incomeAccounts[r.CoaID] = &accGroup{Name: r.AccountName}
 			}
 			incomeAccounts[r.CoaID].Amounts.Gross += r.GrossAmount
-			incomeAccounts[r.CoaID].Amounts.GST += r.GstAmount
+			incomeAccounts[r.CoaID].Amounts.GST += gstToAdd
 			incomeAccounts[r.CoaID].Amounts.Net += r.NetAmount
 			continue
 		}
 
-		// --- Process All Expenses ---
-		b1.Gross += r.GstAmount
+		// Expense
+		b1.Gross += gstToAdd
 		accNameLower := strings.ToLower(r.AccountName)
 
 		switch {
 		case strings.Contains(accNameLower, "management"):
 			mgtFee.Gross += r.GrossAmount
-			mgtFee.GST += r.GstAmount
+			mgtFee.GST += gstToAdd
 			mgtFee.Net += r.NetAmount
 		case strings.Contains(accNameLower, "lab"):
 			labWork.Gross += r.GrossAmount
-			labWork.GST += r.GstAmount
+			labWork.GST += gstToAdd
 			labWork.Net += r.NetAmount
 		default:
-			// Treat everything else as an individual line item
-			if _, seen := expenseAccounts[r.AccountName]; !seen {
-				expenseOrder = append(expenseOrder, r.AccountName)
-				expenseAccounts[r.AccountName] = &accGroup{Name: r.AccountName}
+			compositeKey := fmt.Sprintf("%s-%s", r.CoaID, r.AccountName)
+			if _, seen := expenseAccounts[compositeKey]; !seen {
+				expenseOrder = append(expenseOrder, compositeKey)
+				expenseAccounts[compositeKey] = &accGroup{Name: r.AccountName}
 			}
-			expenseAccounts[r.AccountName].Amounts.Gross += r.GrossAmount
-			expenseAccounts[r.AccountName].Amounts.GST += r.GstAmount
-			expenseAccounts[r.AccountName].Amounts.Net += r.NetAmount
+			expenseAccounts[compositeKey].Amounts.Gross += r.GrossAmount
+			expenseAccounts[compositeKey].Amounts.GST += gstToAdd
+			expenseAccounts[compositeKey].Amounts.Net += r.NetAmount
 		}
 	}
 
@@ -526,6 +453,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	for _, cid := range incomeOrder {
 		acc := incomeAccounts[cid]
 		fAmts := finalize(acc.Amounts)
+
 		col.Sections.Income.Items = append(col.Sections.Income.Items, BASLineItem{Name: acc.Name, Amounts: fAmts})
 		totalIncome.Gross += fAmts.Gross
 		totalIncome.GST += fAmts.GST
@@ -537,24 +465,35 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 	mgtFee = finalize(mgtFee)
 	labWork = finalize(labWork)
 
-	col.Sections.Expenses.Items = []BASLineItem{
-		{Name: "Management Fee (Gross Up)", Amounts: mgtFee},
-		{Name: "Laboratory Work (GST Free)", Amounts: labWork},
+	col.Sections.Expenses.Items = []BASLineItem{}
+
+	if mgtFee.Gross != 0 || mgtFee.GST != 0 || mgtFee.Net != 0 {
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    "Management Fee (Gross Up)",
+			Amounts: mgtFee,
+		})
+	}
+	if labWork.Gross != 0 || labWork.GST != 0 || labWork.Net != 0 {
+		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+			Name:    "Laboratory Work (GST Free)",
+			Amounts: labWork,
+		})
 	}
 
 	tGross := mgtFee.Gross + labWork.Gross
 	tGST := mgtFee.GST + labWork.GST
 	tNet := mgtFee.Net + labWork.Net
 
-	for _, name := range expenseOrder {
-		acc := expenseAccounts[name]
+	for _, key := range expenseOrder {
+		acc := expenseAccounts[key]
 		fAmts := finalize(acc.Amounts)
 
-		col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
-			Name:    acc.Name,
-			Amounts: fAmts,
-		})
-
+		if fAmts.Gross != 0 || fAmts.GST != 0 || fAmts.Net != 0 {
+			col.Sections.Expenses.Items = append(col.Sections.Expenses.Items, BASLineItem{
+				Name:    acc.Name,
+				Amounts: fAmts,
+			})
+		}
 		tGross += fAmts.Gross
 		tGST += fAmts.GST
 		tNet += fAmts.Net
@@ -566,11 +505,7 @@ func (s *service) mapToBASColumn(rows []*BASLineItemRow) BASColumn {
 		Net:   roundToTwo(tNet),
 	}
 
-	// --- Profit/Loss & GST Payable ---
-	col.Sections.NetProfitLoss.Items = []BASLineItem{
-		{Name: "Net Profit/Loss", Amounts: BASAmount{Net: roundToTwo(totalIncome.Net - subtotalExpenses.Net)}},
-	}
-	col.NetGSTPayable = roundToTwo(0 - b1.Gross)
+	col.NetGSTPayable = roundToTwo(totalIncome.GST - subtotalExpenses.GST)
 
 	return col
 }
@@ -580,41 +515,96 @@ func roundToTwo(val float64) float64 {
 	return math.Round(val*100) / 100
 }
 
-func ptrString(s string) *string {
-	return &s
-}
-
 type QuarterData struct {
 	Period PeriodInfo
 	Report *RsBASReport
 }
 
-func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID) (interface{}, string, error) {
+func (s *service) ExportActivityStatement(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, practitionerIDs []uuid.UUID, filterPractitionerID string) (interface{}, string, error) {
 	parsedActorID := actorID.String()
+
+	var fullName string
+	user, err := s.authRepo.FindByID(ctx, userID)
+	if err == nil {
+		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+	}
+
+	var entityName string
+	var practitionerABN string
+	targetID := ""
+	if filterPractitionerID != "" {
+		targetID = filterPractitionerID
+	} else if role == util.RolePractitioner {
+		targetID = actorID.String()
+	}
+
+	if targetID != "" {
+		pracUUID, err := uuid.Parse(targetID)
+		if err == nil {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+			if err == nil {
+				if prac.EntityName != nil {
+					entityName = *prac.EntityName
+				} else {
+					entityName = fullName
+				}
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		}
+	} else {
+		if role == util.RolePractitioner {
+			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+			entityName = fullName
+			if err == nil {
+				if prac.ABN != nil {
+					practitionerABN = *prac.ABN
+				}
+			}
+		} else {
+			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+			{
+				if err == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
+			}
+		}
+	}
 
 	var result interface{}
 	var contentType string
-	var err error
 
-	// 1. Branching Logic
-	if strings.ToLower(exportType) == "pdf" {
-		// Wrap data for template
-		data := struct {
-			Quarters []QuarterData
-			Prev     PeriodInfo
-		}{
-			Quarters: quarters,
-			Prev:     prevDates,
+	if strings.ToLower(exportType) == "excel" {
+		var exportQuarters []basexport.QuarterData
+		exportQuarters = make([]basexport.QuarterData, len(quarters))
+		for i, q := range quarters {
+			var report *basexport.RsBASReport
+			if q.Report != nil {
+				report = &basexport.RsBASReport{G1: q.Report.G1, A1: q.Report.A1, G11: q.Report.G11, B1: q.Report.B1}
+			}
+			exportQuarters[i] = basexport.QuarterData{
+				Period: basexport.PeriodInfo{From: q.Period.From, To: q.Period.To, Label: q.Period.Label},
+				Report: report,
+			}
 		}
 
-		result, err = s.generateActivityHTML(data)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to generate activity html: %w", err)
+		config := export.ExportConfig{
+			EntityName:     entityName,
+			EntityABN:      practitionerABN,
+			ExportType:     exportType,
+			ExportedByName: fullName,
+			GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 		}
-		contentType = "text/html"
-	} else {
-		// 2. Default to Excel logic
-		result, err = s.generateActivityExcelReport(ctx, quarters, prevDates)
+
+		result, err = basexport.GenerateActivityStatementExcelReport(exportQuarters, basexport.PeriodInfo{From: prevDates.From, To: prevDates.To, Label: prevDates.Label}, config)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to generate activity excel: %w", err)
 		}
@@ -630,7 +620,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionActivityStatementExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityActivityStatement),
+		EntityType: lo.ToPtr(auditctx.EntityActivityStatement),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type": "Activity Statement",
@@ -640,14 +630,8 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		UserAgent: meta.UserAgent,
 	})
 
-	// Record the Shared Event — only for accountants, never for practitioners.
+	// Record the Shared Event
 	if role == util.RoleAccountant && len(practitionerIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
 		for _, pID := range practitionerIDs {
 			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
 				ID:             uuid.New(),
@@ -669,308 +653,6 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	return result, contentType, nil
 }
 
-func (s *service) generateActivityExcelReport(ctx context.Context, quarters []QuarterData, prevDates PeriodInfo) (*bytes.Buffer, error) {
-
-	xl := excelize.NewFile()
-	defer xl.Close()
-
-	sheet := "Activity Statement"
-	dataSheet := "SourceData"
-	xl.SetSheetName("Sheet1", sheet)
-	xl.NewSheet(dataSheet)
-
-	// --- 1. Populate Hidden Data Sheet (The Lookup Table) ---
-	headers := []string{"Label", "G1", "1A", "G11", "1B", "Start", "End"}
-	for i, h := range headers {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-		xl.SetCellValue(dataSheet, cell, h)
-	}
-
-	for i, q := range quarters {
-		row := i + 2
-		g1, a1, g11, b1 := 0.0, 0.0, 0.0, 0.0
-		if q.Report != nil {
-			g1, a1, g11, b1 = q.Report.G1, q.Report.A1, q.Report.G11, q.Report.B1
-		}
-
-		xl.SetCellValue(dataSheet, fmt.Sprintf("A%d", row), q.Period.Label)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("B%d", row), g1)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("C%d", row), a1)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("D%d", row), g11)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("E%d", row), b1)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("F%d", row), q.Period.From)
-		xl.SetCellValue(dataSheet, fmt.Sprintf("G%d", row), q.Period.To)
-	}
-	xl.SetSheetVisible(dataSheet, false)
-
-	// --- 2. Styles ---
-	headerStyle, _ := xl.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
-	})
-	subHeaderStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1F0F2"}, Pattern: 1},
-	})
-	labelStyle, _ := xl.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
-	currencyStyle, _ := xl.NewStyle(&excelize.Style{CustomNumFmt: ptrString("$#,##0.00")})
-	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
-	})
-
-	// --- 3. Main Header & Quarter Dropdown (Simplified to single column) ---
-	xl.SetCellValue(sheet, "A1", "Activity Statement Information")
-	xl.SetCellValue(sheet, "B1", "BAS") // Renamed from "Current BAS"
-	xl.SetCellStyle(sheet, "A1", "B1", headerStyle)
-
-	// Create Dropdown in Cell B4
-	var qLabels []string
-	for _, q := range quarters {
-		qLabels = append(qLabels, q.Period.Label)
-	}
-	dv := excelize.NewDataValidation(true)
-	dv.Sqref = "B4"
-	dv.SetDropList(qLabels)
-	xl.AddDataValidation(sheet, dv)
-
-	if len(qLabels) > 0 {
-		xl.SetCellValue(sheet, "B4", qLabels[0])
-	}
-
-	// --- 4. Information Section ---
-	xl.SetCellValue(sheet, "A2", "Period start")
-	xl.SetCellFormula(sheet, "B2", fmt.Sprintf("=VLOOKUP(B4, %s!A:G, 6, FALSE)", dataSheet))
-
-	xl.SetCellValue(sheet, "A3", "Period end")
-	xl.SetCellFormula(sheet, "B3", fmt.Sprintf("=VLOOKUP(B4, %s!A:G, 7, FALSE)", dataSheet))
-
-	xl.SetCellValue(sheet, "A4", "Qtr")
-	xl.SetCellStyle(sheet, "A2", "A4", labelStyle)
-
-	// --- 5. GST Section ---
-	gstFields := []struct {
-		Label string
-		Col   int
-	}{
-		{"G1 (Total Sales)", 2},
-		{"1A (GST on Sales)", 3},
-		{"G11 (Total Purchases)", 4},
-		{"1B (GST on Purchases)", 5},
-	}
-
-	rowIdx := 6
-	for _, f := range gstFields {
-		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), f.Label)
-		xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), fmt.Sprintf("=VLOOKUP(B4, %s!A:G, %d, FALSE)", dataSheet, f.Col))
-		xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
-		rowIdx++
-	}
-
-	// --- 6. PAYG Tax Withheld Section ---
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "PAYG tax withheld")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), subHeaderStyle)
-	rowIdx++
-
-	paygWithheld := []string{
-		"Period start",
-		"Period end",
-		"W1 (Total Wages, salary and other payments)",
-		"W2 (Amount withheld from payments shown at W1)",
-		"W3 (Other amounts withheld)",
-		"W4 (Amount withheld where no ABN is quoted)",
-		"W5 (Total amounts withheld)",
-	}
-
-	for _, label := range paygWithheld {
-		xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), label)
-		if label == "Period start" {
-			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "B2")
-		} else if label == "Period end" {
-			xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "B3")
-		}
-		rowIdx++
-	}
-
-	// --- 7. PAYG Instalment Section ---
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "PAYG instalment")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), subHeaderStyle)
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "Option 1")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), labelStyle)
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "Option 2")
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), labelStyle)
-	rowIdx++
-
-	// --- 8. GST Refund/Payable ---
-	rowIdx++
-	xl.SetCellValue(sheet, "A"+strconv.Itoa(rowIdx), "GST Payable or (Refund)")
-	// Formula: 1A - 1B (Adjusted cells for single column layout)
-	// B7 is 1A, B9 is 1B based on rowIdx incrementing above
-	xl.SetCellFormula(sheet, "B"+strconv.Itoa(rowIdx), "=B7-B9")
-
-	xl.SetCellStyle(sheet, "A"+strconv.Itoa(rowIdx), "A"+strconv.Itoa(rowIdx), totalRowStyle)
-	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), currencyStyle)
-	xl.SetCellStyle(sheet, "B"+strconv.Itoa(rowIdx), "B"+strconv.Itoa(rowIdx), labelStyle)
-
-	xl.SetColWidth(sheet, "A", "A", 55)
-	xl.SetColWidth(sheet, "B", "B", 25)
-
-	return xl.WriteToBuffer()
-}
-
-const activityTemplate = `
-<html>
-<head>
-<style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10pt; padding: 20px; color: #000; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
-    th, td { border: 1px solid #bfbfbf; padding: 8px; word-wrap: break-word; }
-    
-    .header { background-color: #4EA7B3; color: white; font-weight: bold; text-align: center; }
-    .sub-header { background-color: #E1F0F2; font-weight: bold; color: #2A5D63; }
-    .label { font-weight: bold; width: 70%; }
-    .amount { text-align: right; width: 30%; font-family: 'Courier New', Courier, monospace; font-weight: bold;}
-    .total-row { background-color: #4EA7B3; color: white; font-weight: bold; }
-    
-    .indent { padding-left: 25px; font-weight: normal; }
-</style>
-</head>
-<body>
-    {{$q := index .Quarters 0}}
-    
-    <table>
-        <tr>
-            <td class="header">Activity Statement Information</td>
-            <td class="header">BAS</td>
-        </tr>
-        <tr>
-            <td class="label">Period start</td>
-            <td>{{$q.Period.From}}</td>
-        </tr>
-        <tr>
-            <td class="label">Period end</td>
-            <td>{{$q.Period.To}}</td>
-        </tr>
-        <tr>
-            <td class="label">Qtr</td>
-            <td>{{$q.Period.Label}}</td>
-        </tr>
-    </table>
-
-    <table>
-        <tr class="sub-header"><td colspan="2">GST Section</td></tr>
-        <tr>
-            <td class="label">G1 (Total Sales)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.G1}}</td>
-        </tr>
-        <tr>
-            <td class="label">1A (GST on Sales)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.A1}}</td>
-        </tr>
-        <tr>
-            <td class="label">G11 (Total Purchases)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.G11}}</td>
-        </tr>
-        <tr>
-            <td class="label">1B (GST on Purchases)</td>
-            <td class="amount">${{printf "%.2f" $q.Report.B1}}</td>
-        </tr>
-    </table>
-
-    <table>
-        <tr class="sub-header"><td colspan="2">PAYG tax withheld</td></tr>
-        <tr>
-            <td class="label">Period start</td>
-            <td>{{$q.Period.From}}</td>
-        </tr>
-        <tr>
-            <td class="label">Period end</td>
-            <td>{{$q.Period.To}}</td>
-        </tr>
-        <tr>
-            <td class="label">W1 (Total Wages, salary and other payments)</td>
-			<td>-</td>
-           
-        </tr>
-        <tr>
-            <td class="label">W2 (Amount withheld from payments shown at W1)</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">W3 (Other amounts withheld)</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">W4 (Amount withheld where no ABN is quoted)</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">W5 (Total amounts withheld)</td>
-			<td>-</td>
-           
-        </tr>
-    </table>
-
-    <table>
-        <tr class="sub-header"><td colspan="2">PAYG instalment</td></tr>
-        <tr>
-            <td class="label">Option 1</td>
-			<td>-</td>
-            
-        </tr>
-        <tr>
-            <td class="label">Option 2</td>
-			<td>-</td>
-            
-        </tr>
-    </table>
-
-    <table>
-        <tr class="total-row">
-            <td class="label">GST Payable or (Refund)</td>
-            <td class="amount">${{calcRefund $q.Report.A1 $q.Report.B1}}</td>
-        </tr>
-    </table>
-</body>
-</html>
-`
-
-func (s *service) generateActivityHTML(data interface{}) (string, error) {
-	tmpl, err := template.New("activity").Funcs(template.FuncMap{
-		"calcRefund": func(a1, b1 float64) string {
-			return fmt.Sprintf("%.2f", a1-b1)
-		},
-	}).Parse(activityTemplate)
-	if err != nil {
-		return "", err
-	}
-
-	var htmlBuf bytes.Buffer
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b := `<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`
-
-	if err := tmpl.Execute(&htmlBuf, data); err != nil {
-		return "", err
-	}
-
-	// Merge the button with the template content
-	finalHTML := strings.Replace(htmlBuf.String(), "<body>", b, 1)
-
-	return finalHTML, nil
-}
-
 type PeriodInfo struct {
 	From  string
 	To    string
@@ -980,7 +662,6 @@ type PeriodInfo struct {
 func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr, prev PeriodInfo, err error) {
 	var start, end time.Time
 
-	// 1. Get Current Range
 	if f.QuarterID != nil {
 		qID, _ := uuid.Parse(*f.QuarterID)
 		fromStr, toStr, err := s.repo.GetQuarterDates(ctx, qID)
@@ -996,8 +677,6 @@ func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr,
 		}
 	}
 
-	// 2. Custom Quarter Mapping for your project
-	// Jan-Mar: Q3 | Apr-Jun: Q4 | Jul-Sep: Q1 | Oct-Dec: Q2
 	getProjectQuarter := func(t time.Time) string {
 		month := t.Month()
 		var qNum int
@@ -1020,17 +699,12 @@ func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr,
 		return fmt.Sprintf("Q%d (%s) %d", qNum, qMonths, t.Year())
 	}
 
-	// 3. Set Current Period
 	curr.From = start.Format("02-Jan-06")
 	curr.To = end.Format("02-Jan-06")
 	curr.Label = getProjectQuarter(start)
 
-	// 4. Set Previous Period (Preceding Quarter = Current Start - 3 Months)
-	// Example: If current is April (Q4), prevStart becomes January (Q3)
 	prevStart := start.AddDate(0, -3, 0)
 
-	// We calculate the end of that previous quarter
-	// (3 months from prevStart, then minus 1 day)
 	prevEnd := prevStart.AddDate(0, 3, 0).Add(-time.Hour * 24)
 
 	prev.From = prevStart.Format("02-Jan-06")
@@ -1041,310 +715,149 @@ func (s *service) GetPeriodDates(ctx context.Context, f *BASReportFilter) (curr,
 }
 
 func (s *service) GetAllQuartersInYear(ctx context.Context, quarterID uuid.UUID) ([]BASQuarterInfo, error) {
-	// 1. Call the repository method to fetch all quarters in the same financial year
 	quarters, err := s.repo.GetAllQuartersInYear(ctx, quarterID)
 	if err != nil {
-		// Log the error if you have a logger, then return
 		return nil, fmt.Errorf("service: failed to fetch quarters for year: %w", err)
 	}
 
-	// 2. Return the list (it will contain Q1, Q2, Q3, Q4)
 	return quarters, nil
 }
 
-func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID) (interface{}, error) {
-	f := excelize.NewFile()
-	sheet := "Quarterly BAS REPORT"
-	f.NewSheet(sheet)
-	f.DeleteSheet("Sheet1")
-
+func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparation, actorID uuid.UUID, role string, userID uuid.UUID, filter *BASFilter, exportType string, PracIDs []uuid.UUID, filterPractitionerID string) (interface{}, error) {
 	parsedActorID := actorID.String()
 
-	// --- STYLES ---
+	var fullName string
+	var entityName string
+	var practitionerABN string
+	var FY *fy.FinancialYear
+	var targetPracIDs []uuid.UUID
 
-	// Top Headers (Q1, Q2, etc.) - Light Blue, Bold, Black Borders
-	styleHeaderBlue, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 11},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
+	err := util.RunInTransaction(ctx, s.repo.(*repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		var innerErr error
+
+		user, innerErr := s.authRepo.FindByID(ctx, userID)
+		if innerErr == nil {
+			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+		}
+
+		targetID := filterPractitionerID
+		if targetID == "" && role == util.RolePractitioner {
+			targetID = actorID.String()
+		}
+
+		if targetID != "" {
+			pracUUID, innerErr := uuid.Parse(targetID)
+			if innerErr == nil {
+				prac, innerErr := s.practitionerSvc.GetPractitioner(ctx, pracUUID)
+				if innerErr == nil {
+					if prac.EntityName != nil {
+						entityName = *prac.EntityName
+					} else {
+						entityName = fullName
+					}
+					if prac.ABN != nil {
+						practitionerABN = *prac.ABN
+					}
+				}
+			}
+		} else {
+			if role == util.RolePractitioner {
+				prac, innerErr := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
+				entityName = fullName
+				if innerErr == nil {
+					if prac.ABN != nil {
+						practitionerABN = *prac.ABN
+					}
+				}
+			} else {
+				acc, innerErr := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
+				if innerErr == nil {
+					if acc.EntityName != nil {
+						entityName = *acc.EntityName
+					} else {
+						entityName = fullName
+					}
+					if acc.ABN != nil {
+						practitionerABN = *acc.ABN
+					}
+				}
+			}
+		}
+
+		parsedID, innerErr := uuid.Parse(*filter.FinancialYearID)
+		if innerErr != nil {
+			return fmt.Errorf("invalid financial year id: %w", innerErr)
+		}
+
+		FY, innerErr = s.fyRepo.GetFinancialYearByID(ctx, parsedID)
+		if innerErr != nil {
+			return innerErr
+		}
+
+		if role == util.RoleAccountant && len(PracIDs) > 0 {
+			targetPracIDs = PracIDs
+			if len(filter.ParsedClinicIDs) > 0 {
+				uniqueOwners := make(map[uuid.UUID]bool)
+				for _, cID := range filter.ParsedClinicIDs {
+					clinic, innerErr := s.clinicRepo.GetClinicByID(ctx, tx, cID)
+					if innerErr == nil {
+						uniqueOwners[clinic.PractitionerID] = true
+					}
+				}
+				targetPracIDs = make([]uuid.UUID, 0, len(uniqueOwners))
+				for id := range uniqueOwners {
+					targetPracIDs = append(targetPracIDs, id)
+				}
+			}
+			for _, pID := range targetPracIDs {
+				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: pID,
+					AccountantID:   actorID,
+					ActorID:        userID,
+					ActorName:      &fullName,
+					ActorType:      role,
+					EventType:      "bas_report.exported",
+					EntityType:     "REPORT",
+					EntityID:       actorID,
+					Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
+					Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
+					CreatedAt:      time.Now(),
+				})
+				if innerErr != nil {
+					return fmt.Errorf("failed to log shared event: %w", innerErr)
+				}
+			}
+		}
+
+		return nil
 	})
 
-	// Standard Grid Style (Used for all data cells)
-	styleDataGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "left"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Standard Table Grid Style (Used for all table data cells)
-	styleTableGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00;$0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Section Titles (INCOME / EXPENSES) - Bold, Underline, Large
-	styleSectionTitle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
-	})
-
-	// Net Profit/Loss
-	styleNetProfit, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "000000"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Net Profit/Loss (Green cell background)
-	styleNetProfitCol, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Color: "28a745"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Net GST Payable
-	styleGSTTotal, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;[Red] $#,##0.00"; return &s }(),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// Net GST Payable (Red Text)
-	styleGSTPayableCol, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Color: "dc3545"},
-		CustomNumFmt: func() *string { s := "$#,##0.00;$#,##0.00"; return &s }(),
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-
-	// --- DATA PREPARATION ---
-	allCols := append(data.Columns, data.GrandTotal)
-
-	// Get Financial Year
-	parsedID, err := uuid.Parse(*filter.FinancialYearID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid financial year id: %w", err)
-	}
-
-	FY, err := s.fyRepo.GetFinancialYearByID(ctx, parsedID)
 	if err != nil {
 		return nil, err
 	}
 
-	// --- RENDER HEADERS ---
-	f.SetCellValue(sheet, "A2", FY.Label)
-	f.SetCellStyle(sheet, "A2", "A2", styleHeaderBlue)
-
-	for i := range allCols {
-		cIdx := 1 + (i * 4)
-		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		midCol, _ := excelize.ColumnNumberToName(cIdx + 2)
-		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-		// --- Quarter Name FORMATTING ---
-		headerValue := allCols[i].Quarter.Name
-
-		// Only attempt to format if it's an actual quarter (skip for the "Total" column)
-		if allCols[i].Quarter.StartDate != "" {
-			// Parse the year
-			t, err := time.Parse("2006-01-02", allCols[i].Quarter.StartDate)
-			yearStr := ""
-			if err == nil {
-				yearStr = fmt.Sprintf("%d", t.Year())
-			}
-
-			// Combine to: Quarter Name (Display Range) Year
-			headerValue = fmt.Sprintf("%s (%s) %s",
-				allCols[i].Quarter.Name,
-				allCols[i].Quarter.DisplayRange,
-				yearStr,
-			)
-		}
-
-		// Top Quarter Header
-		f.MergeCell(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol))
-		f.SetCellValue(sheet, fmt.Sprintf("%s5", startCol), headerValue)
-		f.SetCellStyle(sheet, fmt.Sprintf("%s5", startCol), fmt.Sprintf("%s5", endCol), styleHeaderBlue)
-
-		// Sub Headers
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", startCol), "Gross")
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", midCol), "GST")
-		f.SetCellValue(sheet, fmt.Sprintf("%s6", endCol), "Net")
-		f.SetCellStyle(sheet, fmt.Sprintf("%s6", startCol), fmt.Sprintf("%s6", endCol), styleHeaderBlue)
+	exportData := &basexport.RsBASPreparation{
+		Columns:    make([]basexport.BASColumn, len(data.Columns)),
+		GrandTotal: convertBASColumn(data.GrandTotal),
+	}
+	for i, col := range data.Columns {
+		exportData.Columns[i] = convertBASColumn(col)
 	}
 
-	// Helper to track range for dynamic calculations
-	type SectionMeta struct {
-		StartRow int
-		EndRow   int
-	}
-	var incomeMeta, expenseMeta SectionMeta
-
-	// --- INCOME SECTION ---
-	currentRow := 7
-	incomeHeaderRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "INCOME")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
-	currentRow++
-	incomeMeta.StartRow = currentRow
-
-	incomeRows := s.getUniqueNamesFromSection(allCols, "income")
-	for _, name := range incomeRows {
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), name)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataGrid)
-
-		for i := range allCols {
-			cIdx := 1 + (i * 4)
-			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-			// Always apply borders
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
-			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Income.Items, name, styleTableGrid)
-		}
-		currentRow++
-	}
-	incomeMeta.EndRow = currentRow - 1
-
-	// Create Income Table for Filtering
-	if len(incomeRows) > 0 {
-		// CHANGE: Range is now only Column A (A7 to A9)
-		tblRange := fmt.Sprintf("A%d:A%d", incomeHeaderRow, incomeMeta.EndRow)
-		showH := true
-
-		f.AddTable(sheet, &excelize.Table{
-			Range:         tblRange,
-			Name:          "IncomeTable",
-			StyleName:     "",
-			ShowHeaderRow: &showH,
-		})
+	config := export.ExportConfig{
+		EntityName:     entityName,
+		EntityABN:      practitionerABN,
+		ExportType:     exportType,
+		ExportedByName: fullName,
+		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	// --- EXPENSES SECTION ---
-	currentRow += 1
-	expenseHeaderRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "EXPENSES")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleSectionTitle)
-	currentRow++
-	expenseMeta.StartRow = currentRow
-
-	expenseRows := s.getUniqueNamesFromSection(allCols, "expenses")
-	for _, name := range expenseRows {
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), name)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleDataGrid)
-
-		for i := range allCols {
-			cIdx := 1 + (i * 4)
-			startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-			endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-			// Force $0.00 by initializing with 0
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleTableGrid)
-			s.writeFormattedAmounts(f, sheet, cIdx, currentRow, allCols[i].Sections.Expenses.Items, name, styleTableGrid)
-		}
-		currentRow++
-	}
-	expenseMeta.EndRow = currentRow - 1
-
-	// Create Expenses Table for Filtering
-	if len(expenseRows) > 0 {
-		// CHANGE: Range is now only Column A
-		tblRange := fmt.Sprintf("A%d:A%d", expenseHeaderRow, expenseMeta.EndRow)
-		showH := true
-
-		f.AddTable(sheet, &excelize.Table{
-			Range:         tblRange,
-			Name:          "ExpenseTable",
-			StyleName:     "",
-			ShowHeaderRow: &showH,
-		})
+	f, err := basexport.GenerateBASPreparationExcelReport(exportData, config, FY.Label)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate BAS preparation excel: %w", err)
 	}
 
-	// --- SUMMARY SECTION ---
-	currentRow += 2
-	netProfitRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net Profit/Loss")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleNetProfit)
-	for i, col := range allCols {
-		cIdx := 1 + (i * 4)
-		startCol, _ := excelize.ColumnNumberToName(cIdx + 1)
-		endCol, _ := excelize.ColumnNumberToName(cIdx + 3)
-
-		if len(col.Sections.NetProfitLoss.Items) > 0 {
-			// Force $0.00 by initializing with 0
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", startCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), 0)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", endCol, currentRow), col.Sections.NetProfitLoss.Items[0].Amounts.Net)
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, currentRow), fmt.Sprintf("%s%d", endCol, currentRow), styleNetProfitCol)
-		}
-	}
-
-	currentRow++
-	currentRow++
-	netGSTRow := currentRow
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Net GST Payable")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styleGSTTotal)
-
-	// Apply Dynamic Formulas for each Quarter Column
-	for i := range allCols {
-		cIdx := 1 + (i * 4)
-		gstCol, _ := excelize.ColumnNumberToName(cIdx + 2) // GST column
-		netCol, _ := excelize.ColumnNumberToName(cIdx + 3) // Net column
-
-		// Net Profit Formula (Net Income - Net Expenses)
-		incomeSum := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", netCol, incomeMeta.StartRow, netCol, incomeMeta.EndRow)
-		expenseSum := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", netCol, expenseMeta.StartRow, netCol, expenseMeta.EndRow)
-		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netProfitRow), fmt.Sprintf("%s-%s", incomeSum, expenseSum))
-		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netProfitRow), fmt.Sprintf("%s%d", netCol, netProfitRow), styleNetProfitCol)
-
-		// Net GST Payable Formula (GST Income - GST Expenses)
-		incomeGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, incomeMeta.StartRow, gstCol, incomeMeta.EndRow)
-		expenseGST := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", gstCol, expenseMeta.StartRow, gstCol, expenseMeta.EndRow)
-		f.SetCellFormula(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s-%s", incomeGST, expenseGST))
-		f.SetCellStyle(sheet, fmt.Sprintf("%s%d", netCol, netGSTRow), fmt.Sprintf("%s%d", netCol, netGSTRow), styleGSTPayableCol)
-	}
-
-	// --- FINAL DIMENSIONS ---
-	f.SetColWidth(sheet, "A", "A", 45)
-	for col := 2; col <= 1+(len(allCols)*4); col++ {
-		name, _ := excelize.ColumnNumberToName(col)
-		if (col-1)%4 == 0 {
-			f.SetColWidth(sheet, name, name, 3)
-		} else {
-			f.SetColWidth(sheet, name, name, 15)
-		}
-	}
-
-	// --- AUDIT LOG ---
 	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
@@ -1353,7 +866,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionBASReportExported,
 		Module:     auditctx.ModuleReport,
-		EntityType: strPtr(auditctx.EntityBASReport),
+		EntityType: lo.ToPtr(auditctx.EntityBASReport),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
 			"report_type":    "Quarterly BAS Report",
@@ -1364,284 +877,266 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		UserAgent: meta.UserAgent,
 	})
 
-	// Record the Shared Event — only for accountants, never for practitioners.
-	if role == util.RoleAccountant && len(PracIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		// If clinics are filtered, narrow notifications to only those clinic owners.
-		targetPracIDs := PracIDs
-		if len(filter.ParsedClinicIDs) > 0 {
-			uniqueOwners := make(map[uuid.UUID]bool)
-			for _, cID := range filter.ParsedClinicIDs {
-				clinic, err := s.clinicRepo.GetClinicByID(ctx, cID)
-				if err == nil {
-					uniqueOwners[clinic.PractitionerID] = true
-				}
-			}
-			targetPracIDs = make([]uuid.UUID, 0, len(uniqueOwners))
-			for id := range uniqueOwners {
-				targetPracIDs = append(targetPracIDs, id)
-			}
-		}
-		for _, pID := range targetPracIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "bas_report.exported",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
-
-	if exportType == "pdf" {
-		htmlContent, err := s.generateHTMLString(f, sheet, data, FY.Label)
-		if err != nil {
-			return nil, err
-		}
-		return htmlContent, nil
-	}
-
 	return f, nil
 }
 
-func (s *service) writeFormattedAmounts(f *excelize.File, sheet string, startIdx, row int, items []BASLineItem, name string, styleID int) {
-	for _, item := range items {
-		if item.Name == name {
-			g, _ := excelize.ColumnNumberToName(startIdx + 1)
-			t, _ := excelize.ColumnNumberToName(startIdx + 2)
-			n, _ := excelize.ColumnNumberToName(startIdx + 3)
-
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", g, row), item.Amounts.Gross)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", t, row), item.Amounts.GST)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", n, row), item.Amounts.Net)
-
-			f.SetCellStyle(sheet, fmt.Sprintf("%s%d", g, row), fmt.Sprintf("%s%d", n, row), styleID)
-			return
+func convertBASSection(section BASSection) basexport.BASSection {
+	items := make([]basexport.BASLineItem, len(section.Items))
+	for i, item := range section.Items {
+		items[i] = basexport.BASLineItem{
+			Name: item.Name,
+			Amounts: basexport.BASAmount{
+				Gross: item.Amounts.Gross,
+				GST:   item.Amounts.GST,
+				Net:   item.Amounts.Net,
+			},
 		}
+	}
+	return basexport.BASSection{Items: items}
+}
+
+func convertBASColumn(col BASColumn) basexport.BASColumn {
+	var sections basexport.BASColumn
+	sections.Sections.Income = convertBASSection(col.Sections.Income)
+	sections.Sections.Expenses = convertBASSection(col.Sections.Expenses)
+
+	return basexport.BASColumn{
+		Quarter: basexport.BASQuarterInfo{
+			ID:           col.Quarter.ID,
+			Name:         col.Quarter.Name,
+			StartDate:    col.Quarter.StartDate,
+			EndDate:      col.Quarter.EndDate,
+			DisplayRange: col.Quarter.DisplayRange,
+		},
+		Sections:      sections.Sections,
+		NetGSTPayable: col.NetGSTPayable,
 	}
 }
 
-func (s *service) getUniqueNamesFromSection(allCols []BASColumn, section string) []string {
-	m := make(map[string]bool)
-	var names []string
-	for _, col := range allCols {
-		var items []BASLineItem
-		if section == "income" {
-			items = col.Sections.Income.Items
-		} else {
-			items = col.Sections.Expenses.Items
-		}
-		for _, itm := range items {
-			if itm.Name != "" && !m[itm.Name] {
-				m[itm.Name] = true
-				names = append(names, itm.Name)
-			}
-		}
-	}
-	return names
-}
-
-func strPtr(s string) *string {
-	return &s
-}
-
-// Helper to convert the Excel file to PDF using HTML
-func (s *service) generateHTMLString(f *excelize.File, sheetName string, data *RsBASPreparation, FYLabel string) (string, error) {
-	rows, err := f.GetRows(sheetName)
+func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID, f *BASAnalyticsFilter) (*RsBASAnalytics, error) {
+	fyID, err := uuid.Parse(f.FinancialYearID)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("invalid financial year id: %w", err)
 	}
 
-	var b bytes.Buffer
-	b.WriteString("<html><head><style>")
-	b.WriteString(`
-		@page { size: A3 landscape; margin: 0.5cm; }
-		body { font-family: 'Calibri', sans-serif; margin: 0; padding: 10px; }
-		table { border-collapse: collapse; table-layout: fixed; width: 100%; border: 1.2pt solid #000; }
-		td { border: 1px solid #000; padding: 4px 2px; font-size: 8.5pt; height: 22px; text-align: center; }
-		.header-blue { background-color: #DAEEF3 !important; font-weight: bold; }
-		.fy-title { font-size: 16pt; font-weight: bold; background-color: #DAEEF3 !important; padding: 15px; border: 1.2pt solid #000; }
-		.section-title { font-weight: bold; font-size: 11pt; border: none; padding-top: 12px; text-align: left; }
-		.data-left { text-align: left; border: 1px solid #000; }
-		.text-right { text-align: right; }
-		.profit-green { background-color: #c4f0ce !important; font-weight: bold; color: #28a745; text-align: right; }
-		.gst-red { font-weight: bold; color: #dc3545; text-align: right; }
-		.income-blue td {background-color: #DAEEF3 !important; }
-		.expense-blue td {background-color: #DAEEF3 !important; }
-	`)
-	b.WriteString("</style></head><body>")
-
-	// Print button that only shows on screen, not on the PDF/Printout
-	b.WriteString(`<div class="no-print" style="width:100%;text-align:right;margin-bottom:15px;">
-	<button onclick="window.print()" style="padding:10px 20px;background:#DAEEF3;color:#000;border:1.2pt solid #000;border-radius:4px;cursor:pointer;font-weight:bold;font-family:sans-serif;">Print to PDF</button>
-	<style>@media print{.no-print{display:none}}</style></div>`)
-
-	b.WriteString("<table>")
-
-	// 16 columns: 1 Label + (4 Quarters * 3 Cols) + (1 Total * 3 Cols)
-	totalCols := 1 + (len(data.Columns)+1)*3 // +1 for Total
-
-	b.WriteString("<colgroup>")
-	b.WriteString("<col style='width: 16%;'>")
-
-	colWidth := 84.0 / float64(totalCols-1)
-
-	for i := 0; i < totalCols-1; i++ {
-		b.WriteString(fmt.Sprintf("<col style='width: %.2f%%;'>", colWidth))
+	fy, err := s.fyRepo.GetFinancialYearByID(ctx, fyID)
+	if err != nil {
+		return nil, fmt.Errorf("financial year not found: %w", err)
 	}
 
-	b.WriteString("</colgroup>")
+	now := time.Now()
+	var resolvedFrom, resolvedTo time.Time
 
-	formatCurr := func(v float64) string { return fmt.Sprintf("$%.2f", v) }
+	// Default to the financial year boundaries.
+	resolvedFrom, resolvedTo = fy.StartDate, fy.EndDate
+	period := strings.ToLower(f.Period)
 
-	for rIdx, row := range rows {
-		rowNum := rIdx + 1
+	//When quarter_ids are provided, shrink the boundaries to exactly that quarter's date range.
+	quarterSelected := f.QuarterIDs != nil && *f.QuarterIDs != ""
+	if quarterSelected {
+		idStrings := strings.Split(*f.QuarterIDs, ",")
+		var minStart, maxEnd time.Time
+		foundValidQuarter := false
 
-		// --- ROW 1: FINANCIAL YEAR ---
-		if rowNum == 1 {
-			// Render FY row BEFORE iterating Excel
-			b.WriteString("<tr>")
-			b.WriteString(fmt.Sprintf("<td colspan='%d' class='fy-title'>%s</td>", totalCols, FYLabel))
-			b.WriteString("</tr>")
-			continue
-		}
+		for _, sID := range idStrings {
+			uID, parseErr := uuid.Parse(strings.TrimSpace(sID))
+			if parseErr != nil {
+				continue
+			}
 
-		//  skip empty rows
-		if len(row) == 0 {
-			continue
-		}
+			qInfo, qErr := s.repo.GetQuarterInfoByID(ctx, uID)
+			if qErr == nil && qInfo != nil {
+				sTime, _ := time.Parse("2006-01-02", qInfo.StartDate)
+				eTime, _ := time.Parse("2006-01-02", qInfo.EndDate)
 
-		// --- ROW 5: QUARTERS ---
-		if rowNum == 5 {
-			b.WriteString("<tr>")
-
-			// Column A spacer (Particulars column)
-			b.WriteString("<td class='header-blue'></td>")
-
-			// Dynamic quarters from API
-			for _, col := range data.Columns {
-				// Extract the Year from the startDate
-				yearDisplay := ""
-				if col.Quarter.StartDate != "" {
-					// Parse the "2025-07-01" format
-					t, err := time.Parse("2006-01-02", col.Quarter.StartDate)
-					if err == nil {
-						yearDisplay = fmt.Sprintf(" %d", t.Year())
-					}
+				if minStart.IsZero() || sTime.Before(minStart) {
+					minStart = sTime
 				}
-
-				// Build the label: Quarter name (Display Range) Year
-				label := fmt.Sprintf("%s (%s) %s",
-					col.Quarter.Name,
-					col.Quarter.DisplayRange,
-					yearDisplay,
-				)
-				b.WriteString(fmt.Sprintf(
-					"<td class='header-blue' colspan='3' style='font-size:10pt;'>%s</td>",
-					label,
-				))
-			}
-
-			// Grand Total column (always last)
-			b.WriteString("<td class='header-blue' colspan='3' style='font-size:10pt;'>Total</td>")
-
-			b.WriteString("</tr>")
-			continue
-		}
-
-		// --- ROW 6: SUBHEADERS ---
-		if rowNum == 6 {
-			b.WriteString("<tr>")
-			b.WriteString("<td class='header-blue'>Particulars</td>")
-			totalBlocks := len(data.Columns) + 1 // +1 for Total
-			for i := 0; i < totalBlocks; i++ {
-				b.WriteString("<td class='header-blue'>Gross</td><td class='header-blue'>GST</td><td class='header-blue'>Net</td>")
-			}
-			b.WriteString("</tr>")
-			continue
-		}
-
-		// skip header rows completely
-		if rowNum <= 6 {
-			continue
-		}
-
-		// --- DATA ROWS ---
-		valA := ""
-		if len(row) > 0 {
-			valA = row[0]
-		}
-
-		classA := "data-left"
-		if valA == "INCOME" || valA == "EXPENSES" {
-			classA = "section-title"
-			b.WriteString("<tr>")
-			b.WriteString(fmt.Sprintf("<td colspan='%d' class='%s'>%s</td>", totalCols, classA, valA))
-			b.WriteString("</tr>")
-			continue
-		}
-
-		b.WriteString(fmt.Sprintf("<td class='%s'>%s</td>", classA, valA))
-
-		// Combine data columns (4 quarters + 1 grand total)
-		allColumns := append(data.Columns, data.GrandTotal)
-
-		for _, col := range allColumns {
-			var g, gst, n float64
-			found := false
-
-			// Match Account from API Data
-			for _, item := range append(col.Sections.Income.Items, col.Sections.Expenses.Items...) {
-				if item.Name == valA {
-					g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
-					found = true
-					break
+				if maxEnd.IsZero() || eTime.After(maxEnd) {
+					maxEnd = eTime
 				}
-			}
-
-			// Handle Special Rows
-			if valA == "Net Profit/Loss" && len(col.Sections.NetProfitLoss.Items) > 0 {
-				item := col.Sections.NetProfitLoss.Items[0]
-				g, gst, n = item.Amounts.Gross, item.Amounts.GST, item.Amounts.Net
-				found = true
-			} else if valA == "Net GST Payable" {
-				gst = col.NetGSTPayable
-				found = true
-			}
-
-			cellClass := "text-right"
-			if valA == "Net Profit/Loss" {
-				cellClass += " profit-green"
-			}
-			if valA == "Net GST Payable" {
-				cellClass += " gst-red"
-			}
-
-			if found {
-				b.WriteString(fmt.Sprintf("<td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>",
-					cellClass, formatCurr(g), cellClass, formatCurr(gst), cellClass, formatCurr(n)))
-			} else {
-				for i := 0; i < 3; i++ {
-					b.WriteString("<td class='text-right'>$0.00</td>")
-				}
+				foundValidQuarter = true
 			}
 		}
-		b.WriteString("</tr>")
+
+		if foundValidQuarter {
+			resolvedFrom = minStart
+			resolvedTo = maxEnd
+		}
+	} else if period != "" {
+		// Period is only applied when no quarter is selected.
+		switch period {
+		case "today":
+			resolvedFrom, resolvedTo = now, now
+		case "yesterday":
+			resolvedFrom = now.AddDate(0, 0, -1)
+			resolvedTo = resolvedFrom
+		case "this_week":
+			resolvedFrom = now.AddDate(0, 0, -int(now.Weekday()))
+			resolvedTo = now
+		case "last_week":
+			resolvedFrom = now.AddDate(0, 0, -int(now.Weekday())-7)
+			resolvedTo = resolvedFrom.AddDate(0, 0, 6)
+		case "last_28_days":
+			resolvedFrom = now.AddDate(0, 0, -28)
+			resolvedTo = now
+		case "last_30_days":
+			resolvedFrom = now.AddDate(0, 0, -30)
+			resolvedTo = now
+		case "last_month":
+			resolvedFrom = time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
+			resolvedTo = resolvedFrom.AddDate(0, 1, -1)
+		case "custom_range":
+			if f.FromDate != nil && *f.FromDate != "" {
+				resolvedFrom, _ = time.Parse("2006-01-02", *f.FromDate)
+			}
+			if f.ToDate != nil && *f.ToDate != "" {
+				resolvedTo, _ = time.Parse("2006-01-02", *f.ToDate)
+			}
+		case "custom_month":
+			if f.FromDate != nil && *f.FromDate != "" {
+				t, _ := time.Parse("2006-01", *f.FromDate)
+				resolvedFrom = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+				resolvedTo = resolvedFrom.AddDate(0, 1, -1)
+			}
+		}
 	}
 
-	b.WriteString("</table></body></html>")
+	// Boundary Clamping ensures the dates never escape the selected Financial Year.
+	if !resolvedFrom.IsZero() && resolvedFrom.Before(fy.StartDate) {
+		resolvedFrom = fy.StartDate
+	}
+	if !resolvedTo.IsZero() && resolvedTo.After(fy.EndDate) {
+		resolvedTo = fy.EndDate
+	}
 
-	return b.String(), err
+	// Prepare the repository filter.
+	fromStr, toStr := resolvedFrom.Format("2006-01-02"), resolvedTo.Format("2006-01-02")
+	repoFilter := &BASFilter{
+		FinancialYearID: &f.FinancialYearID,
+		QuarterIDs:      f.QuarterIDs,
+		FromDate:        &fromStr,
+		ToDate:          &toStr,
+	}
+	_ = repoFilter.MapToFilter()
+
+	// When no quarters are selected and a period filter is active, clear ParsedQuarterIDs so the repo uses the resolved date range instead of quarter-based filtering.
+	if !quarterSelected && period != "" {
+		repoFilter.ParsedQuarterIDs = nil
+	}
+
+	nilClinic := uuid.Nil
+	rows, err := s.repo.GetBASAnalytics(ctx, targetPracIDs, &nilClinic, repoFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	incomeMap := make(map[string]*BASAccountGroup)
+	expenseMap := make(map[string]*BASAccountGroup)
+	incomeTotalsByDate := make(map[string]BASValue)
+	expenseTotalsByDate := make(map[string]BASValue)
+	dateSet := make(map[string]bool)
+
+	selectedCoas := make(map[string]bool)
+	if f.SelectedCoaIDs != nil && *f.SelectedCoaIDs != "" {
+		for _, id := range strings.Split(*f.SelectedCoaIDs, ",") {
+			selectedCoas[strings.TrimSpace(id)] = true
+		}
+	}
+
+	for _, r := range rows {
+		if BASCategory(r.BasCategory) == BASCategoryBASExcluded {
+			continue
+		}
+
+		if r.PeriodQuarter.Before(resolvedFrom) || r.PeriodQuarter.After(resolvedTo) {
+			continue
+		}
+
+		if len(selectedCoas) > 0 && !selectedCoas[r.CoaID] {
+			continue
+		}
+
+		dateKey := r.PeriodQuarter.Format("2006-01-02")
+		dateSet[dateKey] = true
+		val := BASValue{
+			Date: dateKey, Gross: roundToTwo(r.GrossAmount),
+			GST: roundToTwo(r.GstAmount), Net: roundToTwo(r.NetAmount),
+		}
+
+		if r.AccountType != nil && strings.ToUpper(*r.AccountType) == "REVENUE" {
+			if _, ok := incomeMap[r.CoaID]; !ok {
+				incomeMap[r.CoaID] = &BASAccountGroup{ID: r.CoaID, Name: r.AccountName}
+			}
+			incomeMap[r.CoaID].Values = append(incomeMap[r.CoaID].Values, val)
+
+			t := incomeTotalsByDate[dateKey]
+			t.Date = dateKey
+			t.Gross += val.Gross
+			t.GST += val.GST
+			t.Net += val.Net
+			incomeTotalsByDate[dateKey] = t
+		} else {
+			if _, ok := expenseMap[r.CoaID]; !ok {
+				expenseMap[r.CoaID] = &BASAccountGroup{ID: r.CoaID, Name: r.AccountName}
+			}
+			expenseMap[r.CoaID].Values = append(expenseMap[r.CoaID].Values, val)
+
+			t := expenseTotalsByDate[dateKey]
+			t.Date = dateKey
+			t.Gross += val.Gross
+			t.GST += val.GST
+			t.Net += val.Net
+			expenseTotalsByDate[dateKey] = t
+		}
+	}
+
+	// Assemble the final response based on the categorized maps.
+	resp := &RsBASAnalytics{}
+	secStr := ""
+	if f.Sections != nil {
+		secStr = *f.Sections
+	}
+
+	sortedDates := make([]string, 0, len(dateSet))
+	for d := range dateSet {
+		sortedDates = append(sortedDates, d)
+	}
+	sort.Strings(sortedDates)
+
+	// Summary calculations for net profit and GST payable.
+	showIncome := strings.Contains(secStr, "income") || secStr == ""
+	showExpense := strings.Contains(secStr, "expense") || secStr == ""
+
+	if showIncome && len(incomeMap) > 0 {
+		for _, acc := range incomeMap {
+			resp.Income = append(resp.Income, *acc)
+		}
+		var tv []BASValue
+		for _, d := range sortedDates {
+			tv = append(tv, incomeTotalsByDate[d])
+		}
+		resp.Income = append(resp.Income, BASAccountGroup{Name: "total", Values: tv})
+	}
+
+	if showExpense && len(expenseMap) > 0 {
+		for _, acc := range expenseMap {
+			resp.Expense = append(resp.Expense, *acc)
+		}
+		var tv []BASValue
+		for _, d := range sortedDates {
+			tv = append(tv, expenseTotalsByDate[d])
+		}
+		resp.Expense = append(resp.Expense, BASAccountGroup{Name: "total", Values: tv})
+	}
+
+	if (strings.Contains(secStr, "gstPayable") || secStr == "") && len(dateSet) > 0 {
+		resp.GSTPayable = &BASAccountGroup{Name: "gstPayable"}
+		for _, d := range sortedDates {
+			inc, exp := incomeTotalsByDate[d], expenseTotalsByDate[d]
+			resp.GSTPayable.Values = append(resp.GSTPayable.Values, BASValue{Date: d, GST: roundToTwo(inc.GST - exp.GST)})
+		}
+	}
+
+	return resp, nil
 }

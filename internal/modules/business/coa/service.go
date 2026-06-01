@@ -2,6 +2,7 @@ package coa
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
@@ -9,6 +10,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type Service interface {
@@ -16,8 +18,7 @@ type Service interface {
 	GetAccountType(ctx context.Context, id int16) (*AccountType, error)
 	ListAccountTaxes(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
-
-	ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error)
+	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
@@ -87,8 +88,8 @@ func (s *service) GetAccountTax(ctx context.Context, id int16) (*AccountTax, err
 	return &rs, nil
 }
 
-func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, role string, f *Filter) (*util.RsList, error) {
-	if f.AccountType != nil {
+func (s *service) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error) {
+	if f.AccountType != nil && *f.AccountType != "" {
 		id, err := s.repo.GetAccountTypeByName(ctx, *f.AccountType)
 		if err != nil {
 			return nil, err
@@ -96,25 +97,55 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 		typeID := int16(id)
 		f.AccountTypeID = &typeID
 	}
+
+	for _, rawExclude := range f.ExcludeType {
+		if rawExclude == "" {
+			continue
+		}
+		for _, part := range strings.Split(rawExclude, ",") {
+			trimmedPart := strings.TrimSpace(part)
+			if trimmedPart == "" {
+				continue
+			}
+			excludeID, err := s.repo.GetAccountTypeByName(ctx, trimmedPart)
+			if err != nil {
+				return nil, err
+			}
+			f.ExcludeTypeIDs = append(f.ExcludeTypeIDs, int16(excludeID))
+		}
+	}
+
 	ft := f.MapToFilter()
 
-	// Logic for Practitioner vs Accountant
-	if role == util.RolePractitioner {
-		// PRACTITIONER: Force filter to their own ID to prevent seeing other's data
+	if f.AccountTypeID != nil {
+		ft.Where = append(ft.Where, common.Condition{
+			Field:    "account_type_id",
+			Operator: common.OpEq,
+			Value:    *f.AccountTypeID,
+		})
+	}
+
+	for _, targetExcludeID := range f.ExcludeTypeIDs {
+		ft.Where = append(ft.Where, common.Condition{
+			Field:    "account_type_id",
+			Operator: common.OpNotEq,
+			Value:    targetExcludeID,
+		})
+	}
+
+	switch role {
+	case util.RolePractitioner:
 		ft.Where = append(ft.Where, common.Condition{
 			Field:    "practitioner_id",
 			Operator: common.OpEq,
 			Value:    actorID,
 		})
-	} else if role == util.RoleAccountant {
-		// ACCOUNTANT:
-		// If they passed a practitioner_id in the query, use it.
-		// If not, SQL will return all COAs
-		if f.PractitionerID != nil && *f.PractitionerID != uuid.Nil {
+	case util.RoleAccountant:
+		if len(f.PractitionerID) > 0 {
 			ft.Where = append(ft.Where, common.Condition{
 				Field:    "practitioner_id",
-				Operator: common.OpEq,
-				Value:    *f.PractitionerID,
+				Operator: common.OpIn,
+				Value:    f.PractitionerID,
 			})
 		}
 	}
@@ -123,6 +154,7 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 	if err != nil {
 		return nil, err
 	}
+
 	total, err := s.repo.CountChartOfAccount(ctx, actorID, role, ft)
 	if err != nil {
 		return nil, err
@@ -135,7 +167,6 @@ func (s *service) ListChartOfAccount(ctx context.Context, actorID uuid.UUID, rol
 
 	var rsList util.RsList
 	rsList.MapToList(data, total, *ft.Offset, *ft.Limit)
-
 	return &rsList, nil
 }
 
@@ -150,8 +181,6 @@ func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitio
 
 func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error) {
 	targetID := actorID
-
-	// Accountants search globally by key
 	if role == util.RoleAccountant {
 		targetID = uuid.Nil
 	}
@@ -165,7 +194,6 @@ func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorI
 }
 
 func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error) {
-	// (code, practitionerID) must be unique per user
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, req.Code, practitionerID, nil)
 	if existing != nil {
 		return nil, ErrCodeExists
@@ -176,13 +204,11 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	if _, err := s.repo.GetAccountTax(ctx, req.AccountTaxID); err != nil {
 		return nil, err
 	}
+
 	isSystem := false
 	if req.IsSystem != nil {
 		isSystem = *req.IsSystem
 	}
-
-	// Auto-generate key from name
-	key := GenerateKeyFromName(req.Name)
 
 	chart := &ChartOfAccount{
 		PractitionerID: practitionerID,
@@ -190,29 +216,31 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		AccountTaxID:   req.AccountTaxID,
 		Code:           req.Code,
 		Name:           req.Name,
-		Key:            key,
+		Key:            GenerateKeyFromName(req.Name),
 		IsSystem:       isSystem,
+		Classification: ClassificationOperatingExpense,
 	}
-	var err error
-	var created *ChartOfAccount
-	util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		created, err = s.repo.CreateChartOfAccount(ctx, chart, tx)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	rs := created.ToRs()
 
-	// Audit log: COA created
+	var created *ChartOfAccount
+	err := util.RunInTransaction(ctx, s.db, func(txCtx context.Context, tx *sqlx.Tx) error {
+		var txErr error
+		created, txErr = s.repo.CreateChartOfAccount(txCtx, chart, tx)
+		return txErr
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rs := created.ToRs()
 	meta := auditctx.GetMetadata(ctx)
 	idStr := created.ID.String()
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionCOACreated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityCOA),
+		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
 		AfterState: rs,
 		IPAddress:  meta.IPAddress,
@@ -254,21 +282,22 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	if req.Name != nil {
 		existing.Name = *req.Name
 	}
+
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
 	if err != nil {
 		return nil, err
 	}
-	rs := updated.ToRs()
 
-	// Audit log: COA updated
+	rs := updated.ToRs()
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID: meta.PracticeID,
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionCOAUpdated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityCOA),
+		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
 		AfterState: rs,
 		IPAddress:  meta.IPAddress,
@@ -290,16 +319,16 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 		return err
 	}
 
-	// Audit log: COA deleted
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	rs := existing.ToRs()
+
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
 		UserID:      meta.UserID,
 		Action:      auditctx.ActionCOADeleted,
 		Module:      auditctx.ModuleBusiness,
-		EntityType:  strPtr(auditctx.EntityCOA),
+		EntityType:  lo.ToPtr(auditctx.EntityCOA),
 		EntityID:    &idStr,
 		BeforeState: rs,
 		IPAddress:   meta.IPAddress,
@@ -319,9 +348,6 @@ func (s *service) GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOf
 	if err != nil {
 		return nil, err
 	}
-
 	rs := c.ToRs()
 	return &rs, nil
 }
-
-func strPtr(s string) *string { return &s }

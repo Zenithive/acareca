@@ -12,14 +12,16 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type Service interface {
 	CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYear, error)
-	UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdateFYLabel) (*RsFinancialYear, error)
-	GetFinancialYears(ctx context.Context) ([]RsFinancialYear, error)
+	UpdateFY(ctx context.Context, id uuid.UUID, req *RqUpdateFY) (*RsFinancialYear, error)
+	GetFinancialYears(ctx context.Context) ([]RsFY, error)
 	GetFinancialQuarters(ctx context.Context, financialYearID uuid.UUID) ([]RsFinancialQuarter, error)
 	ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYear, error)
+	GetFinancialYearByID(ctx context.Context, id uuid.UUID) (*RsFY, error)
 }
 
 type service struct {
@@ -33,7 +35,6 @@ func NewService(repo Repository, db *sqlx.DB, auditSvc audit.Service) Service {
 }
 
 func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYear, error) {
-	// Parse fy_year (e.g., "2025-2026")
 	years := strings.Split(req.FYYear, "-")
 	if len(years) != 2 {
 		return nil, ErrInvalidFYYearFormat
@@ -42,30 +43,30 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 	startYear := years[0]
 	endYear := years[1]
 
-	// Create start_date: 01-07-startYear
 	startDate, err := time.Parse("02-01-2006", fmt.Sprintf("01-07-%s", startYear))
 	if err != nil {
 		return nil, ErrInvalidFYYearFormat
 	}
 
-	// Create end_date: 30-06-endYear
 	endDate, err := time.Parse("02-01-2006", fmt.Sprintf("30-06-%s", endYear))
 	if err != nil {
 		return nil, ErrInvalidFYYearFormat
 	}
 
-	// create transection
-
 	var createdFY *FinancialYear
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// If is_active is true, deactivate all other financial years
 		if req.IsActive {
-			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
+			if err := s.repo.DeactivateAllFinancialYearsExcept(ctx, tx, uuid.Nil); err != nil {
 				return fmt.Errorf("deactivate existing financial years: %w", err)
 			}
+		} else {
+			count, _ := s.repo.CountActiveFY(ctx, tx)
+			if count == 0 {
+				req.IsActive = true
+			}
 		}
-		// Create financial year
+
 		fy := &FinancialYear{
 			Label:     req.Label,
 			IsActive:  req.IsActive,
@@ -78,7 +79,7 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 			return fmt.Errorf("create financial year: %w", err)
 		}
 		createdFY = newFY
-		// Create 4 quarters
+
 		quarters := []struct {
 			label      string
 			startDate  string
@@ -134,7 +135,6 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 		EndDate:   createdFY.EndDate,
 	}
 
-	// Audit log: FY created
 	meta := auditctx.GetMetadata(ctx)
 	idStr := createdFY.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -142,7 +142,7 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionFYCreated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityFinancialYear),
+		EntityType: lo.ToPtr(auditctx.EntityFinancialYear),
 		EntityID:   &idStr,
 		AfterState: result,
 		IPAddress:  meta.IPAddress,
@@ -152,47 +152,96 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 	return result, nil
 }
 
-func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdateFYLabel) (*RsFinancialYear, error) {
-	// Validate that at least one field is provided
-	hasLabel := req.Label != nil && strings.TrimSpace(*req.Label) != ""
-	hasIsActive := req.IsActive != nil
-	if !hasLabel && !hasIsActive {
-		return nil, errors.New("label --or-- is_active is required in payload")
-	}
+func (s *service) UpdateFY(ctx context.Context, id uuid.UUID, req *RqUpdateFY) (*RsFinancialYear, error) {
 	fy, err := s.repo.GetFinancialYearByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	// Update label only if provided and not empty after trimming
-	if hasLabel {
+
+	if req.Label != nil && strings.TrimSpace(*req.Label) != "" {
 		fy.Label = strings.TrimSpace(*req.Label)
 	}
-	var updatedFY *FinancialYear
 
-	if err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		if req.IsActive != nil && *req.IsActive {
-			if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
-				// Log as error: multiple active financial years
-				s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.deactivation_failed",
-					err, "", id.String(), auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
-				return fmt.Errorf("deactivate existing financial years: %w", err)
-			}
-			fy.IsActive = true
-		} else if req.IsActive != nil {
-			fy.IsActive = *req.IsActive
+	var startYear, endYear string
+	datesChanged := false
+	if req.FYYear != "" {
+		years := strings.Split(req.FYYear, "-")
+		if len(years) != 2 {
+			return nil, ErrInvalidFYYearFormat
 		}
-		var txErr error
-		updatedFY, txErr = s.repo.UpdateFinancialYear(ctx, fy, tx)
-		if txErr != nil {
-			return fmt.Errorf("failed to update financial year: %w", txErr)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
+		startYear, endYear = years[0], years[1]
+
+		fy.StartDate, _ = time.Parse("02-01-2006", fmt.Sprintf("01-07-%s", startYear))
+		fy.EndDate, _ = time.Parse("02-01-2006", fmt.Sprintf("30-06-%s", endYear))
+		datesChanged = true
 	}
 
-	if updatedFY == nil {
-		return nil, fmt.Errorf("update financial year returned nil")
+	var updatedFY *FinancialYear
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if req.IsActive != nil {
+			if *req.IsActive {
+				if err := s.repo.DeactivateAllFinancialYearsExcept(ctx, tx, id); err != nil {
+					return err
+				}
+				fy.IsActive = true
+			} else {
+				count, err := s.repo.CountActiveFY(ctx, tx)
+				if err != nil {
+					return err
+				}
+				if fy.IsActive && count <= 1 {
+					return errors.New("cannot deactivate the only active financial year; at least one must be active")
+				}
+				fy.IsActive = false
+			}
+		}
+
+		updated, err := s.repo.UpdateFinancialYear(ctx, fy, tx)
+		if err != nil {
+			return err
+		}
+		updatedFY = updated
+
+		if datesChanged {
+			if err := s.repo.DeleteQuartersByFYID(ctx, id, tx); err != nil {
+				return err
+			}
+
+			quarters := []struct {
+				label  string
+				sD     string
+				eD     string
+				useEnd bool
+			}{
+				{"Q1", "01-07", "30-09", false},
+				{"Q2", "01-10", "31-12", false},
+				{"Q3", "01-01", "31-03", true},
+				{"Q4", "01-04", "30-06", true},
+			}
+
+			for _, q := range quarters {
+				year := startYear
+				if q.useEnd {
+					year = endYear
+				}
+				qS, _ := time.Parse("02-01-2006", fmt.Sprintf("%s-%s", q.sD, year))
+				qE, _ := time.Parse("02-01-2006", fmt.Sprintf("%s-%s", q.eD, year))
+
+				if _, err := s.repo.CreateFinancialQuarter(ctx, &FinancialQuarter{
+					FinancialYearID: id,
+					Label:           q.label,
+					StartDate:       qS,
+					EndDate:         qE,
+				}, tx); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	result := &RsFinancialYear{
@@ -202,7 +251,6 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 		EndDate:   updatedFY.EndDate,
 	}
 
-	// Audit log: FY updated
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -210,7 +258,7 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionFYUpdated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityFinancialYear),
+		EntityType: lo.ToPtr(auditctx.EntityFinancialYear),
 		EntityID:   &idStr,
 		AfterState: result,
 		IPAddress:  meta.IPAddress,
@@ -220,17 +268,19 @@ func (s *service) UpdateFYLabel(ctx context.Context, id uuid.UUID, req *RqUpdate
 	return result, nil
 }
 
-func (s *service) GetFinancialYears(ctx context.Context) ([]RsFinancialYear, error) {
+func (s *service) GetFinancialYears(ctx context.Context) ([]RsFY, error) {
 	years, err := s.repo.GetFinancialYears(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]RsFinancialYear, 0, len(years))
+	result := make([]RsFY, 0, len(years))
 	for _, year := range years {
-		result = append(result, RsFinancialYear{
+		result = append(result, RsFY{
 			ID:        year.ID,
 			Label:     year.Label,
+			FYYear:    fmt.Sprintf("%d-%d", year.StartDate.Year(), year.EndDate.Year()),
+			IsActive:  &year.IsActive,
 			StartDate: year.StartDate,
 			EndDate:   year.EndDate,
 		})
@@ -265,20 +315,17 @@ func (s *service) ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYea
 	var updatedFY *FinancialYear
 
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Deactivate everything currently active
-		if err := s.repo.DeactivateAllFinancialYears(ctx, tx); err != nil {
-			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.activation_failed",
-				err, "", id.String(), auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
-			return err
-		}
-
-		// Fetch the target FY to ensure it exists
 		fy, err := s.repo.GetFinancialYearByID(ctx, id)
 		if err != nil {
 			return err
 		}
 
-		// Set to active and update
+		if err := s.repo.DeactivateAllFinancialYearsExcept(ctx, tx, id); err != nil {
+			s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "fy.activation_failed",
+				err, "", id.String(), auditctx.EntityFinancialYear, auditctx.ModuleBusiness)
+			return err
+		}
+
 		fy.IsActive = true
 		updated, err := s.repo.UpdateFinancialYear(ctx, fy, tx)
 		if err != nil {
@@ -299,7 +346,6 @@ func (s *service) ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYea
 		EndDate:   updatedFY.EndDate,
 	}
 
-	// Success Audit Log
 	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -307,7 +353,7 @@ func (s *service) ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYea
 		UserID:     meta.UserID,
 		Action:     auditctx.ActionFYActivated,
 		Module:     auditctx.ModuleBusiness,
-		EntityType: strPtr(auditctx.EntityFinancialYear),
+		EntityType: lo.ToPtr(auditctx.EntityFinancialYear),
 		EntityID:   &idStr,
 		AfterState: result,
 	})
@@ -315,4 +361,20 @@ func (s *service) ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYea
 	return result, nil
 }
 
-func strPtr(s string) *string { return &s }
+func (s *service) GetFinancialYearByID(ctx context.Context, id uuid.UUID) (*RsFY, error) {
+	fy, err := s.repo.GetFinancialYearByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	fyYearStr := fmt.Sprintf("%d-%d", fy.StartDate.Year(), fy.EndDate.Year())
+
+	return &RsFY{
+		ID:        fy.ID,
+		Label:     fy.Label,
+		FYYear:    fyYearStr,
+		IsActive:  &fy.IsActive,
+		StartDate: fy.StartDate,
+		EndDate:   fy.EndDate,
+	}, nil
+}

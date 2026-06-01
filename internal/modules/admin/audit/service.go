@@ -101,7 +101,7 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 	entityLabel := s.repo.ResolveEntityLabel(resolveCtx, entityType, entityID)
 
 	// Build the HUMAN-READABLE message
-	detail := buildSystemIssueMessage(level, action, actorName, entityLabel, issueErr)
+	detail := buildSystemIssueMessage(action, actorName, entityLabel, issueErr)
 
 	// Determine notification event type
 	var eventType notification.EventType
@@ -145,7 +145,7 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 }
 
 // buildSystemIssueMessage produces the single human-readable string shown on the admin panel.
-func buildSystemIssueMessage(level, action, actorName, entityName string, err error) string {
+func buildSystemIssueMessage(action, actorName, entityName string, err error) string {
 	reason := err.Error()
 
 	if strings.Contains(reason, "attempted to access") {
@@ -243,7 +243,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	} else if entry.UserID != nil {
 		if entry.Action == "shared_event.recorded" {
 			userName, err = s.repo.GetAccountantNameForSharedEvents(ctx, *entry.UserID)
-			fmt.Printf("Accountant Name for shared events: %s", userName)
 		} else {
 			userName, err = s.repo.GetUserName(ctx, *entry.UserID)
 		}
@@ -271,21 +270,22 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"permission.revoked": "revoked permissions",
 
 		// Business
-		"clinic.created":  "created clinic",
-		"clinic.updated":  "updated clinic",
-		"clinic.deleted":  "deleted clinic",
-		"form.created":    "created form",
-		"form.updated":    "updated form",
-		"form.deleted":    "deleted form",
-		"entry.created":   "created entry",
-		"entry.updated":   "updated entry",
-		"entry.deleted":   "deleted entry",
-		"entry.confirmed": "confirmed entry",
-		"coa.created":     "created Chart of Accounts",
-		"coa.updated":     "updated Chart of Accounts",
-		"coa.deleted":     "deleted Chart of Accounts",
-		"fy.updated":      "updated Financial Year",
-		"fy.closed":       "closed Financial Year",
+		"clinic.created":    "created clinic",
+		"clinic.updated":    "updated clinic",
+		"clinic.deleted":    "deleted clinic",
+		"form.created":      "created form",
+		"form.updated":      "updated form",
+		"form.deleted":      "deleted form",
+		"entry.created":     "created entry",
+		"entry.updated":     "updated entry",
+		"entry.deleted":     "deleted entry",
+		"entry.confirmed":   "confirmed entry",
+		"coa.created":       "created Chart of Accounts",
+		"coa.updated":       "updated Chart of Accounts",
+		"coa.deleted":       "deleted Chart of Accounts",
+		"fy.updated":        "updated Financial Year",
+		"fy.closed":         "closed Financial Year",
+		"lock_date.updated": "updated lock date",
 
 		// Permissions / Invites
 		"accountant.invite_sent":      "sent an invitation to accountant",
@@ -305,35 +305,72 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"billing.activation_successful": "successfully activated subscription for",
 
 		// Report Generate and Export
-		"bas_report.exported":          "exported BAS Report",
-		"pl_report.exported":           "exported Profit and Loss Report",
-		"activity_statement.exported":  "exported Activity Statement",
-		"transactions.exported":        "exported Transactions",
+		"bas_report.exported":         "exported BAS Report",
+		"pl_report.exported":          "exported Profit and Loss Report",
+		"activity_statement.exported": "exported Activity Statement",
+		"transactions.exported":       "exported Transactions",
+		"balance_sheet.exported":      "exported Balance Sheet",
+
 		"bas_report.generated":         "generated BAS Report",
 		"pl_report.generated":          "generated Profit and Loss Report",
 		"activity_statement.generated": "generated Activity Statement",
 		"transactions.generated":       "generated Transactions",
-	}
-	formattedAction, exists := actionVerbs[entry.Action]
-	if !exists {
-		// Fallback: Replace dots/underscores and title case it
-		formattedAction = strings.NewReplacer(".", " ", "_", " ").Replace(entry.Action)
+		"balance_sheet.generated":      "generated Balance Sheet",
 	}
 
-	// Get Entity Name
-	var entityNamePtr *string
-	entityName := ""
-	if entry.EntityType != nil && entry.EntityID != nil {
-		entityNamePtr, err = s.repo.GetEntityName(ctx, *entry.EntityType, *entry.EntityID)
-
-		// If the pointer is not nil, use the value
-		if entityNamePtr != nil {
-			entityName = *entityNamePtr
-		}
-	}
-
+	var message string
 	title := "System Activity Alert"
-	message := fmt.Sprintf("%s %s %s", userName, formattedAction, entityName)
+	// Specialized logic for Lock Date messages
+	if entry.Action == auditctx.ActionLockDateUpdated {
+		getLockDate := func(state interface{}) *string {
+			if state == nil {
+				return nil
+			}
+
+			bytes, _ := json.Marshal(state)
+			var data map[string]interface{}
+			json.Unmarshal(bytes, &data)
+
+			val, ok := data["LockDate"]
+			if !ok {
+				val, ok = data["lock_date"]
+			}
+
+			if ok && val != nil {
+				str, isString := val.(string)
+				if isString && str != "" {
+					return &str
+				}
+			}
+			return nil
+		}
+
+		afterDate := getLockDate(entry.AfterState)
+
+		if afterDate == nil {
+			message = fmt.Sprintf("%s unset the lock date", userName)
+		} else {
+			message = fmt.Sprintf("%s changed lock date to \"%s\"", userName, *afterDate)
+		}
+	} else {
+		formattedAction, exists := actionVerbs[entry.Action]
+		if !exists {
+			// Fallback: Replace dots/underscores and title case it
+			formattedAction = strings.NewReplacer(".", " ", "_", " ").Replace(entry.Action)
+		}
+
+		// Get Entity Name
+		var entityNamePtr *string
+		entityName := ""
+		if entry.EntityType != nil && entry.EntityID != nil {
+			entityNamePtr, err = s.repo.GetEntityName(ctx, *entry.EntityType, *entry.EntityID)
+			// If the pointer is not nil, use the value
+			if entityNamePtr != nil {
+				entityName = *entityNamePtr
+			}
+		}
+		message = fmt.Sprintf("%s %s %s", userName, formattedAction, entityName)
+	}
 	message = strings.TrimSpace(message) // Clean up trailing spaces if name was nil
 
 	// Construct Payload
@@ -384,7 +421,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			CreatedAt:     time.Now(),
 		}
 
-		// Using a closure to capture 'req' correctly in goroutine
 		go func(r notification.RqNotification) {
 			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer pCancel()

@@ -165,6 +165,17 @@ func buildExpressionTree(nodes []*FormulaNodeWithKey) *ExprNode {
 }
 
 func buildExprNode(node *FormulaNodeWithKey, nodeMap map[uuid.UUID]*FormulaNodeWithKey) *ExprNode {
+	return buildExprNodeGuarded(node, nodeMap, make(map[uuid.UUID]bool))
+}
+
+func buildExprNodeGuarded(node *FormulaNodeWithKey, nodeMap map[uuid.UUID]*FormulaNodeWithKey, visited map[uuid.UUID]bool) *ExprNode {
+	if visited[node.ID] {
+		// Cycle detected — return a zero constant to break the loop
+		zero := 0.0
+		return &ExprNode{Type: "constant", Value: &zero}
+	}
+	visited[node.ID] = true
+
 	expr := &ExprNode{}
 	switch node.NodeType {
 	case "OPERATOR":
@@ -176,11 +187,14 @@ func buildExprNode(node *FormulaNodeWithKey, nodeMap map[uuid.UUID]*FormulaNodeW
 			if n.ParentID == nil || *n.ParentID != node.ID || n.Position == nil {
 				continue
 			}
+			// Copy visited map so sibling branches don't share state
+			visitedCopy := make(map[uuid.UUID]bool, len(visited))
+			maps.Copy(visitedCopy, visited)
 			switch *n.Position {
 			case 0:
-				expr.Left = buildExprNode(n, nodeMap)
+				expr.Left = buildExprNodeGuarded(n, nodeMap, visitedCopy)
 			case 1:
-				expr.Right = buildExprNode(n, nodeMap)
+				expr.Right = buildExprNodeGuarded(n, nodeMap, visitedCopy)
 			}
 		}
 	case "FIELD":
@@ -315,13 +329,9 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 			case "ZERO":
 				feedbackVal = val // No GST
 			case "MANUAL":
-				// For MANUAL, val is NET amount (e.g., 60% of something)
-				// We need to add the manually entered GST to get the gross amount for dependent formulas
-				if gst, hasGST := manualGSTByKey[fw.formula.FieldKey]; hasGST {
-					feedbackVal = val + gst // NET + GST = GROSS
-				} else {
-					feedbackVal = val // No GST provided, use NET
-				}
+				// For MANUAL, val is GROSS amount from formula calculation
+				// No need to add GST since formula already used GROSS
+				feedbackVal = val
 			}
 		}
 		vals[fw.formula.FieldKey] = feedbackVal
@@ -342,10 +352,14 @@ func evalNodes(nodes []*FormulaNodeWithKey, vals map[string]float64) (float64, e
 	if root == nil {
 		return 0, fmt.Errorf("formula has no root node")
 	}
-	return evalNode(root, byID, vals)
+	return evalNode(root, byID, vals, make(map[uuid.UUID]bool))
 }
 
-func evalNode(n *FormulaNodeWithKey, byID map[uuid.UUID]*FormulaNodeWithKey, vals map[string]float64) (float64, error) {
+func evalNode(n *FormulaNodeWithKey, byID map[uuid.UUID]*FormulaNodeWithKey, vals map[string]float64, visited map[uuid.UUID]bool) (float64, error) {
+	if visited[n.ID] {
+		return 0, fmt.Errorf("cycle detected in formula at node %s", n.ID)
+	}
+	visited[n.ID] = true
 	switch n.NodeType {
 	case "CONSTANT":
 		if n.ConstantValue == nil {
@@ -398,11 +412,11 @@ func evalNode(n *FormulaNodeWithKey, byID map[uuid.UUID]*FormulaNodeWithKey, val
 		if left == nil || right == nil {
 			return 0, fmt.Errorf("operator %q missing children", *n.Operator)
 		}
-		l, err := evalNode(left, byID, vals)
+		l, err := evalNode(left, byID, vals, visited)
 		if err != nil {
 			return 0, err
 		}
-		r, err := evalNode(right, byID, vals)
+		r, err := evalNode(right, byID, vals, visited)
 		if err != nil {
 			return 0, err
 		}

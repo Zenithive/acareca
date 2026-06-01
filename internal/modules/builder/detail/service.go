@@ -40,124 +40,106 @@ func NewService(db *sqlx.DB, repo IRepository, versionSvc version.IService, clin
 	return &Service{db: db, repo: repo, versionSvc: versionSvc, limitsSvc: limits.NewService(db), clinicRepo: clinicRepo, invitationSvc: invitationSvc}
 }
 
-// Create implements [IService].
 func (s *Service) Create(ctx context.Context, d *RqFormDetail, clinicID uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
-
 	isAccountant := meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant)
 
-	if isAccountant || practitionerID == uuid.Nil {
-
-		clinic, err := s.clinicRepo.GetClinicByID(ctx, clinicID)
-		if err != nil {
-
-			return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
-		}
-
-		// Overwrite the ID so we check the OWNER'S subscription, not the accountant's
-		practitionerID = clinic.PractitionerID
-
-	}
-
-	// 3. Now the limit check runs against the correct person (The Subscriber)
-
-	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
-
-		return nil, err
-	}
-
-	formDetail := d.ToDB(clinicID)
 	var result *RsFormDetail
+
 	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-
-		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
-
+		if isAccountant || practitionerID == uuid.Nil {
+			clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicID) // <-- Fixed: Pass tx down
+			if err != nil {
+				return fmt.Errorf("failed to resolve clinic owner: %w", err)
+			}
+			practitionerID = clinic.PractitionerID
+		}
+		if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
 			return err
 		}
 
-		_, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
+		formDetail := d.ToDB(clinicID)
+
+		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
+			return err
+		}
+
+		createdVersion, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, clinicID, &version.RqFormVersion{
 			Version:  1,
 			IsActive: true,
 		}, practitionerID)
 		if err != nil {
-
 			return err
 		}
+
+		formDetail.ActiveVersionID = &createdVersion.Id
 		result = formDetail.ToRs()
 		return nil
 	})
-	if err != nil {
 
+	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
 func (s *Service) CreateTx(ctx context.Context, tx *sqlx.Tx, d *RqFormDetail, clinicID *uuid.UUID, practitionerID uuid.UUID) (*RsFormDetail, error) {
-	// Only try to resolve the ID if we don't have a valid Practitioner ID yet
-	if practitionerID == uuid.Nil {
-		if clinicID != nil && *clinicID != uuid.Nil {
-			clinic, err := s.clinicRepo.GetClinicByID(ctx, *clinicID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+	execLogic := func(ctx context.Context, tx *sqlx.Tx, derivedPractitionerID uuid.UUID) (*RsFormDetail, error) {
+		if derivedPractitionerID == uuid.Nil {
+			if clinicID != nil && *clinicID != uuid.Nil {
+				clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, *clinicID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve clinic owner: %w", err)
+				}
+				derivedPractitionerID = clinic.PractitionerID
+			} else {
+				return nil, errors.New("practitionerID is required (directly or via clinicID)")
 			}
-			practitionerID = clinic.PractitionerID
-		} else {
-			return nil, errors.New("practitionerID is required (directly or via clinicID)")
 		}
-	}
+		if err := s.limitsSvc.Check(ctx, derivedPractitionerID, limits.KeyFormCreate); err != nil {
+			return nil, err
+		}
 
-	// Subscription limit check
-	if err := s.limitsSvc.Check(ctx, practitionerID, limits.KeyFormCreate); err != nil {
-		return nil, err
-	}
+		var actualClinicID uuid.UUID
+		if clinicID != nil {
+			actualClinicID = *clinicID
+		} else {
+			actualClinicID = uuid.Nil
+		}
 
-	// Handle nil clinicID for expense forms
-	var actualClinicID uuid.UUID
-	if clinicID != nil {
-		actualClinicID = *clinicID
-	} else {
-		actualClinicID = uuid.Nil
-	}
+		formDetail := d.ToDB(actualClinicID)
 
-	formDetail := d.ToDB(actualClinicID)
-
-	// Internal function to execute logic
-	execLogic := func(ctx context.Context, tx *sqlx.Tx) error {
 		if err := s.repo.CreateTx(ctx, tx, formDetail); err != nil {
-			return err
+			return nil, err
 		}
 
 		createdVersion, err := s.versionSvc.CreateTx(ctx, tx, formDetail.ID, actualClinicID, &version.RqFormVersion{
 			Version:  1,
 			IsActive: true,
-		}, practitionerID)
+		}, derivedPractitionerID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		// Set the active version ID on the form detail in-memory struct
 		formDetail.ActiveVersionID = &createdVersion.Id
 
-		return nil
+		return formDetail.ToRs(), nil
 	}
-
-	// If tx is provided by the caller (CreateWithFields), use it.
-	// Otherwise, start a new one (original Create behavior).
 	if tx != nil {
-		if err := execLogic(ctx, tx); err != nil {
-			return nil, err
-		}
-	} else {
-		err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-			return execLogic(ctx, tx)
-		})
-		if err != nil {
-			return nil, err
-		}
+		return execLogic(ctx, tx, practitionerID)
 	}
 
-	return formDetail.ToRs(), nil
+	var result *RsFormDetail
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, innerTx *sqlx.Tx) error {
+		var execErr error
+		result, execErr = execLogic(ctx, innerTx, practitionerID)
+		return execErr
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // Delete implements [IService].
@@ -278,20 +260,6 @@ func (s *Service) GetByID(ctx context.Context, formID uuid.UUID, actorID uuid.UU
 	formDetail, err := s.repo.GetByID(ctx, formID)
 	if err != nil {
 		return nil, err
-	}
-
-	// PERMISSION CHECK (Accountant Only)
-	if strings.EqualFold(role, util.RoleAccountant) {
-		// We call the invitation service to check for a DIRECT mapping to this FORM ID
-		// perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, formID)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("Authentication failed: %w", err)
-		// }
-
-		// Deny if no record exists OR if the JSON permissions don't allow 'read' or 'all'
-		// if perms == nil || (!perms.HasAccess("read") && !perms.HasAccess("all")) {
-		// 	return nil, errors.New("Access denied: you do not have permission to view this form")
-		// }
 	}
 
 	return formDetail.ToRs(), nil

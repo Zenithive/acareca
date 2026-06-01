@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"log"
+	"strings"
 
 	"net/http"
 
@@ -20,23 +21,29 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	businessEvents "github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bs"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
+	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
+	"github.com/iamarpitzala/acareca/internal/shared/upload"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/stripe/stripe-go/v82"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharednotification.Hub, notification.Repository) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *notification.Consumer) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -64,16 +71,53 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// notification (in-app list)
 	notificationRepo := notification.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
-	notificationSvc := notification.NewService(notificationRepo, notifier)
+	notificationSvc := notification.NewService(notificationRepo, events)
+
+	// Initialize notification consumer (separate from service)
+	notificationPublisher := notification.NewPublisher(events)
+	notificationConsumer := notification.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher)
+
+	// Wire stream manager to WebSocket hub for real-time delivery
+	if events != nil {
+		streamManager := notificationConsumer.GetStreamManager()
+		notifier.SetStreamManager(streamManager)
+		log.Println("✅ NATS stream manager connected to WebSocket hub")
+	}
 
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo, notificationSvc)
+	// ============ FILE UPLOAD MODULE ============
+	fileRepo := file.NewRepository(dbConn)
+
+	// Initialize storage provider (R2)
+	storage, err := upload.NewStorageProvider(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize storage provider: %v", err)
+	}
+
+	// Parse allowed MIME types from config
+	allowedTypes := strings.Split(cfg.FileUploadAllowedTypes, ",")
+	for i, t := range allowedTypes {
+		allowedTypes[i] = strings.TrimSpace(t)
+	}
+
+	// Initialize file validator
+	fileValidator := upload.NewFileValidator(cfg.FileUploadMaxSize, allowedTypes)
+
+	// Initialize file service
+	fileSvc := file.NewService(fileRepo, storage, fileValidator, cfg, dbConn, auditSvc)
+
+	// Initialize file handler
+	fileHandler := file.NewHandler(fileSvc)
+
+	// Register file routes
+	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
 
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
-	invitationHandler := invitation.NewHandler(invitationSvc, accountant.NewRepository(dbConn))
+	invitationHandler := invitation.NewHandler(invitationSvc)
 
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
@@ -102,12 +146,12 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	admin.RegisterRoutes(v1, adminHandler, cfg)
 
 	// Initialize events service first
-	eventsRepo := events.NewRepository(dbConn)
-	eventsSvc := events.NewService(eventsRepo, notificationSvc, auditSvc)
+	eventsRepo := businessEvents.NewRepository(dbConn)
+	eventsSvc := businessEvents.NewService(eventsRepo, notificationSvc, auditSvc)
 
 	// ============ CLINIC SERVICE (cross-module dependency) ============
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, auditSvc, eventsSvc)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, eventsSvc)
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
 
@@ -128,15 +172,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	accountantRepo := accountant.NewRepository(dbConn)
 	accountantSvc := accountant.NewService(accountantRepo)
 
-	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
-	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
-	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
-	practitionerSvc := practitioner.NewService(practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, invitationRepo)
-
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo)
-	authHandler := auth.NewHandler(authSvc)
-	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
-
 	// ============ FY MODULE ============
 	fyRepo := fy.NewRepository(dbConn)
 	fySvc := fy.NewService(fyRepo, dbConn, auditSvc)
@@ -144,14 +179,23 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	fyGroup := v1.Group("/", middleware.Auth(cfg))
 	fy.RegisterRoutes(fyGroup, fyHandler)
 
+	// Temporarily create practitioner service for auth (will be recreated in RegisterPractitionerRoutes)
+	adminSubscriptionRepo := adminSubscription.NewRepository(dbConn)
+	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
+	practitionerSvc := practitioner.NewService(dbConn, practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
+
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo, notificationSvc)
+	authHandler := auth.NewHandler(authSvc)
+	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
+
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)
 	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, eventsSvc)
-	plHandler := pl.NewHandler(plSvc, invitationSvc)
+	plHandler := pl.NewHandler(plSvc, invitationSvc, accountantRepo)
 	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
-	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo)
+	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo, practitionerSvc)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
 	bas.RegisterRoutes(v1, basHandler, cfg)
 
@@ -161,8 +205,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, *dbConn)
-	bsHandler := bs.NewHandler(bsSvc)
+	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, eventsSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc)
+	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 
 	// ============ SETTING MODULE ============
@@ -182,7 +226,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// Register accountant routes
 	RegisterAccountantRoutes(v1, cfg, accountantSvc)
 
-	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc)
+	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc)
 	// ============ USER SUBSCRIPTION ============
 	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
 	userSubscriptionGroup := v1.Group("/practitioner/subscription", middleware.Auth(cfg))
@@ -191,13 +235,22 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config) (audit.Service, *sharedno
 	// ============ NOTIFICATION ============
 	notificationHandler := notification.NewHandler(notificationSvc)
 	nft := v1.Group("/notification")
-	nft.GET("/ws", notifier.ServeWS(cfg))
+	nft.GET("/ws", middleware.Auth(cfg), notifier.ServeWS(cfg))
 	nft.Use(middleware.Auth(cfg))
 	notification.RegisterRoutes(nft, notificationHandler)
 
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
 
-	return auditSvc, notifier, notificationRepo
+	contactSvc := contact.NewService(contact.NewRepository(dbConn))
+	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
+	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
+
+	// ============ INVOICE MODULE ============
+	tmpRepo := template.NewRepository(dbConn)
+	tempSvc := template.NewService(tmpRepo, cfg)
+	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
+
+	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
 
 }

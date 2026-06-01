@@ -18,6 +18,8 @@ const (
 	OpLt     Operator = "lt"
 	OpNotEq  Operator = "neq"
 	OpIsNull Operator = "isnull"
+	OpGte    Operator = "gte"
+	OpLte    Operator = "lte"
 	OpRaw    Operator = "raw"
 )
 
@@ -28,7 +30,7 @@ type Condition struct {
 }
 
 type Filter struct {
-	PractitionerID *uuid.UUID `form:"practitioner_id"`
+	PractitionerID *uuid.UUID `form:"-"`
 	Search         *string    `form:"search"`
 	Where          []Condition
 	Limit          *int    `form:"limit"`
@@ -76,6 +78,13 @@ func BuildQuery(base string, f Filter, allowedColumns map[string]string, searchC
 
 		case OpIsNull:
 			conditions = append(conditions, fmt.Sprintf("%s IS NULL", col))
+
+		case OpGte:
+			conditions = append(conditions, fmt.Sprintf("%s >= ?", col))
+			args = append(args, c.Value)
+		case OpLte:
+			conditions = append(conditions, fmt.Sprintf("%s <= ?", col))
+			args = append(args, c.Value)
 
 		case OpRaw:
 			conditions = append(conditions, c.Field)

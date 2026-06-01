@@ -6,8 +6,6 @@ import (
 )
 
 func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.PermissionAdapter) {
-	// All entry operations - no permission checks
-	
 	// Version-based routes
 	versionGroup := rg.Group("/version/:version_id")
 	{
@@ -17,6 +15,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 
 	// Transaction routes
 	rg.GET("/transactions", h.ListTransactions)
+	rg.GET("/transactions/export", h.ExportTransactions)
 
 	// COA-grouped routes
 	coaGroup := rg.Group("/coa-entries")

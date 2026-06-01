@@ -123,7 +123,6 @@ type Filter struct {
 
 type RqExpense struct {
 	Name  string         `json:"name" validate:"required"`
-	Date  string         `json:"date" validate:"required"`
 	Items []*ExpenseItem `json:"items" validate:"required,min=1,dive"`
 }
 
@@ -131,14 +130,15 @@ type ExpenseItem struct {
 	Name        string    `json:"name" validate:"required"`
 	CoaID       uuid.UUID `json:"coa_id" validate:"required,uuid"`
 	BusinessUse float64   `json:"business_use" validate:"required,min=0,max=100"`
-	Amount      float64   `json:"amount" validate:"required,gt=0"`
+	Amount      float64   `json:"amount" validate:"required"`
+	Date        string    `json:"date" validate:"required"`
 	Description *string   `json:"description,omitempty"`
 	TaxType     *string   `json:"tax_type" validate:"omitempty"`
+	DocumentIDs []string  `json:"document_ids"`
 }
 
 type RqUpdateExpense struct {
 	Name   string               `json:"name" validate:"required"`
-	Date   string               `json:"date" validate:"required"`
 	Create []*ExpenseItem       `json:"create,omitempty" validate:"omitempty,dive"`
 	Update []*ExpenseItemUpdate `json:"update,omitempty" validate:"omitempty,dive"`
 	Delete []uuid.UUID          `json:"delete,omitempty" validate:"omitempty,dive,uuid"`
@@ -150,19 +150,32 @@ type ExpenseItemUpdate struct {
 	CoaID       *uuid.UUID `json:"coa_id,omitempty"`
 	BusinessUse *float64   `json:"business_use,omitempty" validate:"omitempty,min=0,max=100"`
 	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	Date        *string    `json:"date,omitempty"`
 	Description *string    `json:"description,omitempty"`
 	TaxType     *string    `json:"tax_type,omitempty" validate:"omitempty"`
+	DocumentIDs *struct {
+		Create []string `json:"create"`
+		Delete []string `json:"delete"`
+	} `json:"documents,omitempty"`
 }
 
 type RsExpense struct {
-	ID             uuid.UUID       `json:"id"`
-	Name           string          `json:"name"`
-	Date           string          `json:"date"`
-	TaxType        string          `json:"tax_type"`
-	PractitionerID uuid.UUID       `json:"practitioner_id"`
-	Items          []RsExpenseItem `json:"items"`
-	CreatedAt      string          `json:"created_at"`
-	UpdatedAt      *string         `json:"updated_at,omitempty"`
+	ID             uuid.UUID           `json:"id"`
+	Name           string              `json:"name"`
+	TaxType        string              `json:"tax_type"`
+	PractitionerID uuid.UUID           `json:"practitioner_id"`
+	Items          []RsExpenseItem     `json:"items"`
+	Documents      []RsExpenseDocument `json:"documents"`
+	CreatedAt      string              `json:"created_at"`
+	UpdatedAt      *string             `json:"updated_at,omitempty"`
+}
+
+type RsExpenseDocument struct {
+	ID           uuid.UUID `json:"id"`
+	OriginalName string    `json:"original_name"`
+	FileKey      string    `json:"file_key"`
+	UploadedAt   *string   `json:"uploaded_at,omitempty"`
+	CreatedAt    string    `json:"created_at"`
 }
 
 type RsExpenseItem struct {
@@ -175,5 +188,6 @@ type RsExpenseItem struct {
 	NetAmount   float64   `json:"net_amount"`
 	GstAmount   float64   `json:"gst_amount"`
 	GrossAmount float64   `json:"gross_amount"`
+	Date        string    `json:"date"`
 	Description *string   `json:"description,omitempty"`
 }

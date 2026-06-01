@@ -1,21 +1,20 @@
 package pl
 
 import (
-	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
-	"github.com/xuri/excelize/v2"
 )
 
-// IHandler declares all HTTP entry points for the P&L module.
 type IHandler interface {
 	GetMonthlySummary(c *gin.Context)
 	GetByAccount(c *gin.Context)
@@ -26,12 +25,13 @@ type IHandler interface {
 }
 
 type handler struct {
-	svc           Service
-	invitationSvc invitation.Service
+	svc            Service
+	invitationSvc  invitation.Service
+	accountantRepo accountant.Repository
 }
 
-func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
-	return &handler{svc: svc, invitationSvc: invitationSvc}
+func NewHandler(svc Service, invitationSvc invitation.Service, accountantRepo accountant.Repository) IHandler {
+	return &handler{svc: svc, invitationSvc: invitationSvc, accountantRepo: accountantRepo}
 }
 
 // GetMonthlySummary godoc
@@ -43,8 +43,9 @@ func NewHandler(svc Service, invitationSvc invitation.Service) IHandler {
 // @Param        from_date  query  string  false  "Start date filter (YYYY-MM-DD)"
 // @Param        to_date    query  string  false  "End date filter (YYYY-MM-DD)"
 // @Success      200  {array}   RsPLSummary
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/summary [get]
 func (h *handler) GetMonthlySummary(c *gin.Context) {
@@ -76,8 +77,9 @@ func (h *handler) GetMonthlySummary(c *gin.Context) {
 // @Param        from_date  query  string  false  "Start date filter (YYYY-MM-DD)"
 // @Param        to_date    query  string  false  "End date filter (YYYY-MM-DD)"
 // @Success      200  {array}   RsPLAccount
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/by-account [get]
 func (h *handler) GetByAccount(c *gin.Context) {
@@ -109,8 +111,9 @@ func (h *handler) GetByAccount(c *gin.Context) {
 // @Param        from_date  query  string  false  "Start date filter (YYYY-MM-DD)"
 // @Param        to_date    query  string  false  "End date filter (YYYY-MM-DD)"
 // @Success      200  {array}   RsPLResponsibility
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/by-responsibility [get]
 func (h *handler) GetByResponsibility(c *gin.Context) {
@@ -141,8 +144,9 @@ func (h *handler) GetByResponsibility(c *gin.Context) {
 // @Param        clinic_id          query  string  true   "Clinic UUID"
 // @Param        financial_year_id  query  string  false  "Filter to a single financial year (UUID)"
 // @Success      200  {array}   RsPLFYSummary
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/fy-summary [get]
 func (h *handler) GetFYSummary(c *gin.Context) {
@@ -177,46 +181,53 @@ func (h *handler) GetFYSummary(c *gin.Context) {
 // @Param        tax_type_id query  string  false  "Filter by tax type name (e.g. GST on Income)"
 // @Param        form_id     query  string  false  "Filter by form UUID"
 // @Success      200  {object}  response.RsBase
-// @Failure      400  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
+// @Failure      400  {object}  response.RsError "Bad Request"
+// @Failure      401  {object}  response.RsError "Unauthorized"
+// @Failure      403  {object}  response.RsError "Forbidden"
+// @Failure      500  {object}  response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/report [get]
 func (h *handler) GetReport(c *gin.Context) {
-	role := c.GetString("role")
-	actorID, ok := util.GetUserID(c)
-	if !ok {
+	actorID, role, ok := util.GetRoleBasedID(c)
+	userID, okUser := util.GetUserID(c)
+	if !ok || !okUser {
 		return
 	}
-
 	var f PLReportFilter
 	if err := c.ShouldBindQuery(&f); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
+	if f.PractitionerID != "" {
+		f.PractitionerID = cleanUUIDString(f.PractitionerID)
+	}
+	if f.ClinicID != nil {
+		cleaned := cleanUUIDString(*f.ClinicID)
+		f.ClinicID = &cleaned
+	}
+
 	var targetNotifIDs []uuid.UUID
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Scenario A: practitioner_id in query
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			f.PractitionerID = pracIDStr
-			if pID, err := uuid.Parse(pracIDStr); err == nil {
+		if f.PractitionerID != "" {
+			if pID, err := uuid.Parse(f.PractitionerID); err == nil {
 				targetNotifIDs = []uuid.UUID{pID}
 			}
-		} else {
-			// Scenario B: No practitioner_id -> Fetch all linked practitioners
-			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), actorID)
-			if err == nil {
-				targetNotifIDs = linked
+		} else if f.ClinicID == nil || *f.ClinicID == "" {
+			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
+			if err != nil || len(linked) == 0 {
+				response.Error(c, http.StatusBadRequest, fmt.Errorf("no linked practitioners found for aggregation"))
+				return
 			}
+			targetNotifIDs = linked
 		}
 	} else {
-		// Practitioner: Only notify self
-		targetNotifIDs = []uuid.UUID{actorID}
+		targetNotifIDs = []uuid.UUID{*actorID}
 		f.PractitionerID = actorID.String()
 	}
 
-	result, err := h.svc.GetReport(c.Request.Context(), actorID, &f, role, targetNotifIDs)
+	result, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, targetNotifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -229,7 +240,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Summary      Export P&L report to Excel
 // @Description  Generates and downloads a professional Excel file of the P&L report using the specified filters.
 // @Tags         engine/pl
-// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param        clinic_id    query    string  false  "Clinic UUID"
 // @Param        date_from    query    string  false  "Start date (YYYY-MM-DD)"
 // @Param        date_until   query    string  false  "End date (YYYY-MM-DD)"
@@ -238,8 +249,10 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Param        form_id      query    string  false  "Filter by form UUID"
 // @Param        export_type 	   query    string  true   "Export Type: PDF | Excel"
 // @Success      200          {file}   binary  "Profit_and_Loss_Report.xlsx"
-// @Failure      400          {object} response.RsError
-// @Failure      500          {object} response.RsError
+// @Failure      400          {object} response.RsError "Bad Request"
+// @Failure      401          {object} response.RsError "Unauthorized"
+// @Failure      403          {object} response.RsError "Forbidden"
+// @Failure      500          {object} response.RsError "Internal Server Error"
 // @Security     BearerToken
 // @Router       /pl/export [get]
 func (h *handler) ExportReport(c *gin.Context) {
@@ -249,7 +262,6 @@ func (h *handler) ExportReport(c *gin.Context) {
 		return
 	}
 
-	// Get the export type from query params (default to excel)
 	exportType := strings.ToLower(c.DefaultQuery("export_type", "excel"))
 
 	var f PLReportFilter
@@ -258,79 +270,47 @@ func (h *handler) ExportReport(c *gin.Context) {
 		return
 	}
 
-	// Resolve PracIDs (for data scoping) and notifIDs (for Shared Events).
-	// Scenario A: practitioner_id in query → scope + notify only that one.
-	// Scenario B: no practitioner_id → fetch all linked, notify all.
-	// Practitioner: scope to self, no shared events.
-	var PracIDs []uuid.UUID
 	var notifIDs []uuid.UUID
+	pracIDParam := c.Query("practitioner_id")
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
-			// Scenario A
-			pracUUID, err := uuid.Parse(pracIDStr)
-			if err != nil {
-				response.Error(c, http.StatusBadRequest, fmt.Errorf("invalid practitioner_id: must be a valid UUID"))
-				return
-			}
-			f.PractitionerID = pracIDStr
-			PracIDs = []uuid.UUID{pracUUID}
+		if pracIDParam != "" {
+			pracUUID := uuid.MustParse(pracIDParam)
 			notifIDs = []uuid.UUID{pracUUID}
+			f.PractitionerID = pracIDParam
 		} else {
-			// Scenario B
-			linked, err := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
-			if err != nil {
-				response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to fetch linked practitioners: %w", err))
-				return
-			}
-			if len(linked) == 0 {
-				response.Error(c, http.StatusForbidden, fmt.Errorf("accountant is not linked to any practitioners"))
-				return
-			}
-			PracIDs = linked
+			linked, _ := h.invitationSvc.GetPractitionersLinkedToAccountant(c.Request.Context(), *actorID)
 			notifIDs = linked
-			// f.PractitionerID left empty — service resolves via clinicRepo
 		}
-	} else {
-		PracIDs = []uuid.UUID{*actorID}
-		notifIDs = nil // practitioners never receive their own shared events
 	}
 
-	// Safely handle optional ClinicID
-	clinicIDParam := ""
-	if f.ClinicID != nil {
-		clinicIDParam = *f.ClinicID
-	}
-
-	// Fetch the structured data (service resolves and sets f.PractitionerID internally)
-	reportData, err := h.svc.GetReport(c.Request.Context(), userID, &f, role, notifIDs)
+	reportData, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, notifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Generate the Excel/PDF file
-	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, clinicIDParam)
+	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDParam)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	_ = PracIDs // used for scoping context; notifIDs drives notifications
-
-	switch v := excelFile.(type) {
-	case *excelize.File:
-		fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
-		c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		c.Header("Content-Disposition", "attachment; filename="+fileName)
-		v.Write(c.Writer)
-
-	case string:
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.Header("Content-Disposition", "inline")
-		c.String(http.StatusOK, v)
-
-	default:
-		response.Error(c, http.StatusInternalServerError, errors.New("unexpected export format"))
+	fileName := fmt.Sprintf("Profit_and_Loss_%s.xlsx", time.Now().Format("2006-01-02"))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename="+fileName)
+	if err := excelFile.Write(c.Writer); err != nil {
+		log.Printf("Error writing excel: %v", err)
 	}
+}
+
+func cleanUUIDString(s string) string {
+	if s == "" {
+		return ""
+	}
+	res := strings.NewReplacer("[", "", "]", "", "\"", "", " ", "").Replace(s)
+	if strings.Contains(res, ",") {
+		res = strings.Split(res, ",")[0]
+	}
+	return res
 }

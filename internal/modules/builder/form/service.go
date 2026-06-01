@@ -2,6 +2,7 @@ package form
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -72,7 +73,6 @@ type IService interface {
 	List(ctx context.Context, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	Delete(ctx context.Context, formID uuid.UUID) error
 	UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error)
-
 	CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error)
 	UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error)
 	GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error)
@@ -102,8 +102,6 @@ func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IServ
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
-
-	// Permission checks are now handled by middleware - no need to check here
 
 	// 1. Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
@@ -170,9 +168,9 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			if err := f.Validate(); err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &d.ClinicID, realOwnerID, f.ToRqFormField())
+			created, err := s.fieldSvc.Create(ctx, tx, activeVersionID, &d.ClinicID, realOwnerID, f.ToRqFormField())
 			if err != nil {
-				return err // Rollback everything including the Form
+				return err
 			}
 			keyToFieldID[f.FieldKey] = created.ID
 			syncResult.CreatedCount++
@@ -204,7 +202,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 				finalAccountantID = actorUserID
 			}
 
-			// Fetching user details exactly like your Clinic implementation
 			user, err := s.authRepo.FindByID(ctx, actorUserID)
 			if err == nil {
 				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
@@ -219,7 +216,7 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 					ActorType:      "ACCOUNTANT",
 					EventType:      "form.created",
 					EntityType:     "FORM",
-					EntityID:       created.ID, // Use 'created' from s.detailSvc.Create
+					EntityID:       created.ID,
 					Description:    fmt.Sprintf("Accountant %s created a new form: %s", fullName, created.Name),
 					Metadata:       events.JSONBMap{"form_name": created.Name},
 					CreatedAt:      time.Now(),
@@ -247,33 +244,18 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 
 func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFields, actorID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
-	// Permission checks are handled by middleware
-
 	req.Normalize()
 
 	if err := req.ValidateShares(); err != nil {
 		return nil, nil, err
 	}
 
+	// Get existing state for "BeforeState" and ownership resolution
 	existing, err := s.detailSvc.GetByID(ctx, *req.ID, uuid.Nil, "")
 	if err != nil {
 		return nil, nil, err
 	}
 	beforeState := *existing
-
-	// // PERMISSION CHECK (Accountant Only)
-	// if isAccountant {
-	// 	// Check if they have 'update' or 'all' permission for this FORM
-	// 	perms, err := s.invitationSvc.GetPermissionsForAccountant(ctx, actorID, existing.ID)
-	// 	if err != nil {
-	// 		return nil, nil, fmt.Errorf("Authentication error: %w", err)
-	// 	}
-
-	// 	// Deny if no direct mapping exists OR if permissions don't allow 'update'/'all'
-	// 	if perms == nil || (!perms.HasAccess("update") && !perms.HasAccess("all")) {
-	// 		return nil, nil, errors.New("Access denied: you do not have permission to update this form")
-	// 	}
-	// }
 
 	// Skip clinic resolution for expense forms
 	var realOwnerID uuid.UUID
@@ -291,7 +273,9 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 	var updated *detail.RsFormDetail
 	var syncResult *RsFormWithFieldsSyncResult
 
+	// Execute Updates in Transaction
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		// Update Metadata
 		updateReq := &detail.RqUpdateFormDetail{
 			ID:             *req.ID,
 			Name:           req.Name,
@@ -314,11 +298,8 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		}
 		syncResult = &RsFormWithFieldsSyncResult{ClinicID: clinicID}
 
-		existingClinicID := uuid.Nil
-		if existing.ClinicID != nil {
-			existingClinicID = *existing.ClinicID
-		}
-		versions, err := s.versionSvc.List(ctx, existing.ID, existingClinicID)
+		// Resolve Active Version
+		versions, err := s.versionSvc.List(ctx, existing.ID, clinicID)
 		if err != nil {
 			return err
 		}
@@ -333,37 +314,29 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return errors.New("cannot update fields: no active version found")
 		}
 
-		// Delete fields
+		// --- FIELD DELETION ---
 		forceDelete := req.ForceDelete != nil && *req.ForceDelete
-		for _, id := range req.Fields.Delete {
-			existingField, err := s.fieldSvc.GetByID(ctx, id)
-			if err != nil {
-				return fmt.Errorf("field %s not found for deletion: %w", id, err)
-			}
-
+		for _, id := range req.Delete {
 			if s.entryRepo != nil && !forceDelete {
 				has, err := s.entryRepo.HasSubmittedEntryValuesForField(ctx, id)
 				if err != nil {
 					return err
 				}
 				if has {
-					return fmt.Errorf("cannot delete field %q (key: %s): field has submitted entries. Use force_delete=true to override (warning: this will orphan entry data)", existingField.Label, existingField.FieldKey)
+					return fmt.Errorf("field %s has submitted entries; use force_delete to override", id)
 				}
 			}
-
-			if err := s.fieldSvc.DeleteTx(ctx, tx, id); err != nil {
-				return fmt.Errorf("failed to delete field %s: %w", id, err)
+			if err := s.fieldSvc.Delete(ctx, tx, id); err != nil {
+				return err
 			}
 			syncResult.DeletedCount++
 		}
 
-		// Build key→UUID map for formula resolution
+		// Build key mapping for Formulas
 		keyToFieldID := make(map[string]uuid.UUID)
-
-		// Create a set of deleted field IDs for quick lookup
-		deletedFieldIDs := make(map[uuid.UUID]bool, len(req.Fields.Delete))
-		for _, id := range req.Fields.Delete {
-			deletedFieldIDs[id] = true
+		deletedMap := make(map[uuid.UUID]bool)
+		for _, id := range req.Delete {
+			deletedMap[id] = true
 		}
 
 		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
@@ -373,40 +346,31 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			return err
 		}
 		for _, f := range existingFields {
-			// Skip fields that are being deleted in this transaction
-			if !deletedFieldIDs[f.ID] {
+			if !deletedMap[f.ID] {
 				keyToFieldID[f.FieldKey] = f.ID
 			}
 		}
 
-		// Update fields
-		for _, item := range req.Fields.Update {
+		// --- FIELD UPDATES ---
+		for _, item := range req.Update {
 			item.Sanitize()
-
-			// Verify the field exists before updating
-			existingField, err := s.fieldSvc.GetByID(ctx, item.ID)
+			fUpd, err := s.fieldSvc.Update(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
 			if err != nil {
-				return fmt.Errorf("field %s not found for update: %w", item.ID, err)
-			}
-
-			updated, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, req.ClinicID, realOwnerID, &item)
-			if err != nil {
-				return err
+				return fmt.Errorf("update failed for field %s: %w", item.ID, err)
 			}
 			// Use the existing field key (field_key is immutable)
 			// If duplicate keys exist, the last one wins
-			keyToFieldID[existingField.FieldKey] = updated.ID
+			keyToFieldID[fUpd.FieldKey] = fUpd.ID
 			syncResult.UpdatedCount++
 		}
 
-		// Create fields
-		for _, item := range req.Fields.Create {
+		// --- FIELD CREATION ---
+		for _, item := range req.Create {
 			item.Sanitize()
 			if err := item.Validate(); err != nil {
 				return fmt.Errorf("validation failed for field %s: %w", item.FieldKey, err)
 			}
-
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, actorID, item.ToRqFormField())
+			created, err := s.fieldSvc.Create(ctx, tx, activeVersionID, &req.ClinicID, actorID, item.ToRqFormField())
 			if err != nil {
 				return fmt.Errorf("failed to create field %s: %w", item.FieldKey, err)
 			}
@@ -415,7 +379,7 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			syncResult.CreatedCount++
 		}
 
-		// Sync formulas (full replace)
+		// --- FORMULA SYNC ---
 		// At this point, keyToFieldID contains all fields: existing (not deleted), updated, and newly created
 		// This ensures formulas can reference any field, including newly created calculated fields
 		if len(req.Formulas) > 0 {
@@ -426,13 +390,13 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 
 		return nil
 	})
+
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY) ---
+	// Shared Event Recording (Triggered only for successful Accountant actions)
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-
 		actorUserID, err := uuid.Parse(*meta.UserID)
 		if err == nil {
 			var finalAccountantID uuid.UUID
@@ -442,7 +406,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			} else {
 				finalAccountantID = actorUserID
 			}
-
 			user, err := s.authRepo.FindByID(ctx, actorUserID)
 			if err == nil {
 				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
@@ -467,12 +430,11 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 					},
 					CreatedAt: time.Now(),
 				})
-
 			}
 		}
 	}
 
-	//meta := auditctx.GetMetadata(ctx)
+	// Audit Logging
 	idStr := updated.ID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
 		PracticeID:  meta.PracticeID,
@@ -526,7 +488,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 					return errors.New("field has submitted entries")
 				}
 			}
-			if err := s.fieldSvc.DeleteTx(ctx, tx, fieldID); err != nil {
+			if err := s.fieldSvc.Delete(ctx, tx, fieldID); err != nil {
 				return err
 			}
 			result.Deleted = append(result.Deleted, fieldID)
@@ -534,7 +496,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 
 		for _, updateItem := range req.Update {
 			updateItem.Sanitize()
-			updated, err := s.fieldSvc.UpdateTx(ctx, tx, updateItem.ID, req.ClinicID, practitionerID, &updateItem)
+			updated, err := s.fieldSvc.Update(ctx, tx, updateItem.ID, req.ClinicID, practitionerID, &updateItem)
 			if err != nil {
 				return err
 			}
@@ -546,7 +508,7 @@ func (s *service) BulkSyncFields(ctx context.Context, practitionerID uuid.UUID, 
 			if err := createItem.Validate(); err != nil {
 				return err
 			}
-			created, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, &req.ClinicID, practitionerID, createItem.ToRqFormField())
+			created, err := s.fieldSvc.Create(ctx, tx, activeVersionID, &req.ClinicID, practitionerID, createItem.ToRqFormField())
 			if err != nil {
 				return err
 			}
@@ -639,20 +601,20 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Delete the Form
-		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
+		// Delete associated permissions for this Form
+		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
 			return err
 		}
 
-		// Delete associated permissions for this Form
-		if err := s.invitationSvc.DeletePermission(ctx, tx, formID); err != nil {
+		// Delete the Form
+		if err := s.detailSvc.Delete(ctx, tx, formDetail.ID); err != nil {
 			return err
 		}
 
 		return nil
 	})
 
-	// --- TRIGGER SHARED EVENT RECORD (ACCOUNTANTS ONLY, NON-EXPENSE FORMS ONLY) ---
+	// --- TRIGGER SHARED EVENT RECORD ---
 	meta := auditctx.GetMetadata(ctx)
 	if formDetail.Method != "EXPENSE_ENTRY" {
 		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
@@ -706,9 +668,7 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	return nil
 }
 
-// GetByID implements [IService].
 func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.RsFormDetail, error) {
-	// Permission checks are handled by middleware
 	detail, err := s.detailSvc.GetByID(ctx, formId, uuid.Nil, "")
 	if err != nil {
 		return detail, err
@@ -718,7 +678,6 @@ func (s *service) GetFormByID(ctx context.Context, formId uuid.UUID) (*detail.Rs
 
 func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status string) (*detail.RsFormDetail, error) {
 	// Fetch current state for audit log and validation
-	// Permission checks are handled by middleware
 	existing, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
 	if err != nil {
 		return nil, err
@@ -778,7 +737,6 @@ func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType strin
 	return util.Round(net, 2), util.Round(gst, 2), util.Round(gross, 2)
 }
 
-// CreateExpense implements [IService].
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 	var OwnerID uuid.UUID
@@ -794,48 +752,42 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
 				rq.Items[0].CoaID, actorId, err)
 		}
-		// This is the Practitioner ID for accountant
 		OwnerID = firstCoa.PractitionerID
 	default:
 		OwnerID = actorId
 	}
 
-	expenseDate, err := parseFlexibleDate(rq.Date)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction date format: %w", err)
-	}
-
-	// 1. Get the Financial Year ID
-	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine financial year: %w", err)
-	}
-
-	// 2. Fetch the Lock Date for this practitioner
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify lock date: %w", err)
-	}
-
-	// 3. Compare dates if a lock date exists
-	if lockDateStr != nil && *lockDateStr != "" {
-		// Parse the lock date
-		lockDate, err := parseFlexibleDate(*lockDateStr)
+	// Validate each item's date against FY and lock date
+	for idx, item := range rq.Items {
+		itemDate, err := parseFlexibleDate(item.Date)
 		if err != nil {
-			return nil, fmt.Errorf("invalid lock date format: %w", err)
+			return nil, fmt.Errorf("item %d: invalid date format: %w", idx, err)
 		}
 
-		// Check: If expense date is ON or BEFORE the lock date, block it
-		if !expenseDate.After(lockDate) {
-			return nil, fmt.Errorf("cannot create expense: the financial period for %s is locked", *lockDateStr)
+		fy, err := s.financialRepo.GetFinancialYearByDate(ctx, itemDate)
+		if err != nil {
+			return nil, fmt.Errorf("item %d: the date %s does not fall within an active financial year", idx, itemDate.Format("02-01-2006"))
+		}
+
+		lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, OwnerID, fy.ID)
+		if err != nil {
+			return nil, fmt.Errorf("item %d: failed to verify lock date: %w", idx, err)
+		}
+
+		if lockDateStr != nil && *lockDateStr != "" {
+			lockDate, err := parseFlexibleDate(*lockDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("item %d: invalid lock date format: %w", idx, err)
+			}
+			if !itemDate.After(lockDate) {
+				return nil, fmt.Errorf("item %d: cannot create expense: the financial period for %s is locked", idx, *lockDateStr)
+			}
 		}
 	}
 
 	var createdForm *detail.RsFormDetail
 
-	// For expense forms, we don't use a clinic, so we pass nil for clinicID
-	// and the actorId as the practitionerID
-	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		rqDetail := detail.RqFormDetail{
 			Name:        rq.Name,
 			ClinicShare: 0,
@@ -844,8 +796,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			Status:      "PUBLISHED",
 		}
 
-		// Pass nil for clinicID and OwnerID as practitionerID
-		// The detail service will use the practitionerID directly when clinicID is nil
 		form, err := s.detailSvc.CreateTx(ctx, tx, &rqDetail, nil, OwnerID)
 		if err != nil {
 			return fmt.Errorf("failed to create expense form: %w", err)
@@ -860,41 +810,37 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		var submittedAt *string
 		if status == EntryStatusSubmitted {
-			// Declare the string in a way that its life matches the pointer
 			nowStr := time.Now().UTC().Format(time.RFC3339)
 			submittedAt = &nowStr
 		}
-		// Create a single entry for this expense form
 		entryID := uuid.New()
+		firstItemDate := rq.Items[0].Date
 		formEntry := &entry.FormEntry{
 			ID:            entryID,
 			FormVersionID: *form.ActiveVersionID,
-			ClinicID:      uuid.Nil, // No clinic for expense entries
+			ClinicID:      uuid.Nil,
 			SubmittedBy:   &actorId,
 			Status:        status,
 			SubmittedAt:   submittedAt,
+			Date:          &firstItemDate,
 		}
 
 		var entryValues []*entry.FormEntryValue
+		var allDocIDs []uuid.UUID
 
-		// Process each expense item
 		for idx, item := range rq.Items {
-			// Get COA details to fetch tax information
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, OwnerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
 			}
 
-			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
 			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
 			}
 
-			// Determine tax rate from COA
 			taxRate := 0.0
 
-			// Get tax rate if COA has tax
 			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
 				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
 				if err == nil && taxDetail != nil {
@@ -903,7 +849,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			}
 
 			localBusinessUse := item.BusinessUse
-			// Calculate amounts based on tax type
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				item.Amount,
 				localBusinessUse,
@@ -924,12 +869,12 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				Amount:      &item.Amount,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
+			rsField, err := s.fieldSvc.Create(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
 			}
 
-			// Create entry value with calculated amounts
+			itemDate := item.Date
 			entryValue := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
@@ -938,16 +883,32 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
-				// TaxType:     &taxType,
-				// BusinessUse: &localBusinessUse,
+				Date:        &itemDate,
 			}
 
 			entryValues = append(entryValues, entryValue)
+
+			// Collect document IDs for the current expense item
+			if len(item.DocumentIDs) > 0 {
+				parsedIDs, parseErr := util.ParseUUIDs(item.DocumentIDs)
+				if parseErr != nil {
+					return fmt.Errorf("item %d: invalid document id structure: %w", idx, parseErr)
+				}
+				allDocIDs = append(allDocIDs, parsedIDs...)
+			}
 		}
 
 		// Create the entry with all values
-		if err := s.entryRepo.CreateTx(ctx, tx, formEntry, entryValues); err != nil {
+		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
+		}
+
+		// Link collected unique document links to this entry ID
+		if len(allDocIDs) > 0 {
+			allDocIDs = lo.Uniq(allDocIDs) // De-duplicate entries across elements
+			if linkErr := s.entryRepo.LinkDocuments(ctx, tx, entryID, allDocIDs); linkErr != nil {
+				return fmt.Errorf("failed to link batch documents for expense: %w", linkErr)
+			}
 		}
 
 		return nil
@@ -974,7 +935,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 	return createdForm, nil
 }
 
-// UpdateExpense implements [IService].
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
 	meta := auditctx.GetMetadata(ctx)
 
@@ -1001,35 +961,71 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		return nil, errors.New("could not determine practitioner for this expense")
 	}
 
-	expenseDate, err := parseFlexibleDate(rq.Date)
-	if err != nil {
-		return nil, fmt.Errorf("invalid transaction date format: %w", err)
+	// Extract date from the first item (update takes priority over create)
+	var rawDate string
+	if len(rq.Update) > 0 && rq.Update[0].Date != nil {
+		rawDate = *rq.Update[0].Date
+	} else if len(rq.Create) > 0 {
+		rawDate = rq.Create[0].Date
 	}
 
-	// 1. Get the Financial Year ID
-	fy, err := s.financialRepo.GetFinancialYearByDate(ctx, expenseDate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine financial year: %w", err)
-	}
-
-	// 2. Fetch the Lock Date for this practitioner
-	lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify lock date: %w", err)
-	}
-
-	// 3. Compare dates if a lock date exists
-	if lockDateStr != nil && *lockDateStr != "" {
-		// Parse the lock date
-		lockDate, err := parseFlexibleDate(*lockDateStr)
+	// Validate each update item's date
+	for idx, item := range rq.Update {
+		if item.Date == nil || *item.Date == "" {
+			continue
+		}
+		itemDate, err := parseFlexibleDate(*item.Date)
 		if err != nil {
-			return nil, fmt.Errorf("invalid lock date format: %w", err)
+			return nil, fmt.Errorf("update item %d: invalid date format: %w", idx, err)
 		}
-
-		if !expenseDate.After(lockDate) {
-			return nil, fmt.Errorf("cannot update expense: the financial period for %s is locked", *lockDateStr)
+		fy, err := s.financialRepo.GetFinancialYearByDate(ctx, itemDate)
+		if err != nil {
+			return nil, fmt.Errorf("update item %d: the date %s does not fall within an active financial year", idx, itemDate.Format("02-01-2006"))
+		}
+		lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
+		if err != nil {
+			return nil, fmt.Errorf("update item %d: failed to verify lock date: %w", idx, err)
+		}
+		if lockDateStr != nil && *lockDateStr != "" {
+			lockDate, err := parseFlexibleDate(*lockDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("update item %d: invalid lock date format: %w", idx, err)
+			}
+			if !itemDate.After(lockDate) {
+				return nil, fmt.Errorf("update item %d: cannot update expense: the financial period for %s is locked", idx, *lockDateStr)
+			}
 		}
 	}
+
+	// Validate each create item's date
+	for idx, item := range rq.Create {
+		if item.Date == "" {
+			continue
+		}
+		itemDate, err := parseFlexibleDate(item.Date)
+		if err != nil {
+			return nil, fmt.Errorf("create item %d: invalid date format: %w", idx, err)
+		}
+		fy, err := s.financialRepo.GetFinancialYearByDate(ctx, itemDate)
+		if err != nil {
+			return nil, fmt.Errorf("create item %d: the date %s does not fall within an active financial year", idx, itemDate.Format("02-01-2006"))
+		}
+		lockDateStr, err := s.practitionerSvc.GetLockDate(ctx, practitionerID, fy.ID)
+		if err != nil {
+			return nil, fmt.Errorf("create item %d: failed to verify lock date: %w", idx, err)
+		}
+		if lockDateStr != nil && *lockDateStr != "" {
+			lockDate, err := parseFlexibleDate(*lockDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("create item %d: invalid lock date format: %w", idx, err)
+			}
+			if !itemDate.After(lockDate) {
+				return nil, fmt.Errorf("create item %d: cannot update expense: the financial period for %s is locked", idx, *lockDateStr)
+			}
+		}
+	}
+
+	_ = rawDate // entry-level date updated below from first item if present
 
 	if existingForm.Method != "EXPENSE_ENTRY" {
 		return nil, errors.New("form is not an expense entry")
@@ -1086,13 +1082,13 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 		// Handle deletions
 		for _, fieldID := range rq.Delete {
-			if err := s.fieldSvc.DeleteTx(ctx, tx, fieldID); err != nil {
+			if err := s.fieldSvc.Delete(ctx, tx, fieldID); err != nil {
 				return fmt.Errorf("failed to delete field %s: %w", fieldID, err)
 			}
 		}
 
 		// Handle updates
-		for _, item := range rq.Update {
+		for idx, item := range rq.Update {
 			// Get existing field
 			existingField, err := s.fieldSvc.GetByID(ctx, item.ID)
 			if err != nil {
@@ -1147,8 +1143,10 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			taxType := "EXCLUSIVE"
 
 			// Use tax type from request if provided, otherwise use EXCLUSIVE as default
-			if item.TaxType != nil {
+			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
+			} else if existingField.TaxType != nil && *existingField.TaxType != "" {
+				taxType = *existingField.TaxType
 			}
 
 			// Get tax rate if COA has tax
@@ -1159,7 +1157,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				}
 			}
 
-			fmt.Printf("Calculating for Field %s: Amount=%f, TaxType=%s\n", item.ID, amount, taxType)
 			// Calculate new amounts
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				amount,
@@ -1184,14 +1181,29 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Amount:      &amount,
 			}
 
-			if _, err := s.fieldSvc.UpdateTx(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
+			if _, err := s.fieldSvc.Update(ctx, tx, item.ID, uuid.Nil, practitionerID, &updateFieldReq); err != nil {
 				return fmt.Errorf("failed to update field: %w", err)
+			}
+
+			// Find existing entry value for this field to preserve date if not provided
+			var existingDate *string
+			for _, ev := range existingValues {
+				if ev.FormFieldID != nil && *ev.FormFieldID == item.ID && ev.UpdatedAt == nil {
+					existingDate = ev.Date
+					break
+				}
 			}
 
 			// Update entry value - mark old as updated and insert new
 			markOldQuery := `UPDATE tbl_form_entry_value SET updated_at = now() WHERE form_field_id = $1 AND entry_id = $2 AND updated_at IS NULL`
 			if _, err := tx.ExecContext(ctx, markOldQuery, item.ID, existingEntry.ID); err != nil {
 				return fmt.Errorf("failed to mark old entry value: %w", err)
+			}
+
+			// Use new date if provided, otherwise preserve the existing item-level date
+			dateToUse := item.Date
+			if dateToUse == nil {
+				dateToUse = existingDate
 			}
 
 			newEntryValue := &entry.FormEntryValue{
@@ -1202,11 +1214,48 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: description,
+				Date:        dateToUse,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
+			}
+
+			// Document additions/removals specified on this individual updated item
+			if item.DocumentIDs != nil {
+				if len(item.DocumentIDs.Create) > 0 {
+					docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs.Create)
+					if parseErr != nil {
+						return fmt.Errorf("update item %d: invalid document link targets: %w", idx, parseErr)
+					}
+					if linkErr := s.entryRepo.LinkDocuments(ctx, tx, existingEntry.ID, docIDs); linkErr != nil {
+						return fmt.Errorf("failed to process update link document ops: %w", linkErr)
+					}
+				}
+				if len(item.DocumentIDs.Delete) > 0 {
+					docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs.Delete)
+					if parseErr != nil {
+						return fmt.Errorf("update item %d: invalid document unlink targets: %w", idx, parseErr)
+					}
+					if unlinkErr := s.entryRepo.UnlinkDocuments(ctx, tx, existingEntry.ID, docIDs); unlinkErr != nil {
+						return fmt.Errorf("failed to process update unlink document ops: %w", unlinkErr)
+					}
+				}
+			}
+		}
+
+		// Update the entry-level date from the first updated/created item (for filtering)
+		var entryDateStr *string
+		if len(rq.Update) > 0 && rq.Update[0].Date != nil && *rq.Update[0].Date != "" {
+			entryDateStr = rq.Update[0].Date
+		} else if len(rq.Create) > 0 && rq.Create[0].Date != "" {
+			entryDateStr = &rq.Create[0].Date
+		}
+		if entryDateStr != nil {
+			updateDateQuery := `UPDATE tbl_form_entry SET date = $1, updated_at = now() WHERE id = $2`
+			if _, err := tx.ExecContext(ctx, updateDateQuery, *entryDateStr, existingEntry.ID); err != nil {
+				return fmt.Errorf("failed to update entry date: %w", err)
 			}
 		}
 
@@ -1254,7 +1303,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				Amount:      &item.Amount,
 			}
 
-			rsField, err := s.fieldSvc.CreateTx(ctx, tx, activeVersionID, nil, practitionerID, formFields)
+			rsField, err := s.fieldSvc.Create(ctx, tx, activeVersionID, nil, practitionerID, formFields)
 			if err != nil {
 				return fmt.Errorf("failed to create new field: %w", err)
 			}
@@ -1268,11 +1317,23 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:   &gstAmount,
 				GrossAmount: &grossAmount,
 				Description: item.Description,
+				Date:        &item.Date,
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description); err != nil {
+			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
 				return fmt.Errorf("failed to insert new entry value: %w", err)
+			}
+
+			// Handle attachments supplied directly within the freshly appended item elements
+			if len(item.DocumentIDs) > 0 {
+				docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs)
+				if parseErr != nil {
+					return fmt.Errorf("create item %d: invalid document link configuration: %w", idx, parseErr)
+				}
+				if linkErr := s.entryRepo.LinkDocuments(ctx, tx, existingEntry.ID, docIDs); linkErr != nil {
+					return fmt.Errorf("failed to process creation document links: %w", linkErr)
+				}
 			}
 		}
 
@@ -1301,10 +1362,9 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 	return updatedForm, nil
 }
 
-// GetExpense implements [IService].
 func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid.UUID, role string) (*RsExpense, error) {
 	// Get form details
-	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
+	formDetail, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expense form: %w", err)
 	}
@@ -1355,7 +1415,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	// Get entry and entry values
-	formEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
+	existingEntry, entryValues, err := s.entryRepo.GetByVersionID(ctx, activeVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entry values: %w", err)
 	}
@@ -1364,9 +1424,9 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	response := &RsExpense{
 		ID:             formDetail.ID,
 		Name:           formDetail.Name,
-		Date:           formEntry.CreatedAt[:10], // Extract YYYY-MM-DD from timestamp string
 		PractitionerID: practitionerID,
 		Items:          []RsExpenseItem{},
+		Documents:      []RsExpenseDocument{},
 		CreatedAt:      formDetail.CreatedAt,
 	}
 
@@ -1396,6 +1456,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		// Find matching entry value
 		var netAmount, gstAmount, grossAmount float64
 		var description *string
+		var itemDate string
 		for _, ev := range entryValues {
 			if ev.FormFieldID != nil && *ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
 				if ev.NetAmount != nil {
@@ -1408,6 +1469,10 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 					grossAmount = *ev.GrossAmount
 				}
 				description = ev.Description
+				if ev.Date != nil && *ev.Date != "" {
+					// Use item-level date (primary source for expense entries)
+					itemDate = *ev.Date
+				}
 				break
 			}
 		}
@@ -1433,10 +1498,31 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			NetAmount:   netAmount,
 			GstAmount:   gstAmount,
 			GrossAmount: grossAmount,
+			Date:        itemDate,
 			Description: description,
 		}
 
 		response.Items = append(response.Items, item)
+	}
+
+	// Fetching Documents
+	if existingEntry != nil {
+		docs, docErr := s.entryRepo.GetDocumentsByEntryID(ctx, existingEntry.ID)
+		if docErr == nil && docs != nil {
+			response.Documents = make([]RsExpenseDocument, 0, len(docs))
+			for _, d := range docs {
+				if d != nil {
+					// Use JSON marshaling to safely translate types across package boundaries via common tags
+					var targetDoc RsExpenseDocument
+					bytes, err := json.Marshal(d)
+					if err == nil {
+						if err := json.Unmarshal(bytes, &targetDoc); err == nil {
+							response.Documents = append(response.Documents, targetDoc)
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return response, nil

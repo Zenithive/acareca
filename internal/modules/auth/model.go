@@ -4,19 +4,31 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 )
 
 type User struct {
-	ID        uuid.UUID  `db:"id"`
-	Email     string     `db:"email"`
-	Password  *string    `db:"password"`
-	FirstName string     `db:"first_name"`
-	LastName  string     `db:"last_name"`
-	Phone     *string    `db:"phone"`
-	Role      string     `db:"role"`
+	ID        uuid.UUID `db:"id"`
+	Email     string    `db:"email"`
+	Password  *string   `db:"password"`
+	FirstName string    `db:"first_name"`
+	LastName  string    `db:"last_name"`
+	Phone     *string   `db:"phone"`
+	Role      string    `db:"role"`
+
+	Document  *file.Document
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
+
+	// Role-specific fields (populated based on role)
+	ABN            *string `json:"abn,omitempty"`
+	TaxAgentNumber *string `json:"tax_agent_number,omitempty"`
+	EntityType     string  `json:"entity_type"`
+	EntityName     *string `json:"entity_name"`
+	ACN            *string `json:"acn,omitempty"`
+	Address        *string `json:"address,omitempty"`
+	Profession     *string `json:"profession,omitempty"`
 }
 
 type AuthProvider struct {
@@ -43,20 +55,93 @@ type Session struct {
 	DeletedAt    *time.Time `db:"deleted_at"`
 }
 
+type VerificationToken struct {
+	ID        uuid.UUID `db:"id"`
+	EntityID  uuid.UUID `db:"entity_id"`
+	Role      *string   `db:"role"`
+	Status    string    `db:"status"`
+	CreatedAt time.Time `db:"created_at"`
+	ExpiresAt time.Time `db:"expires_at"`
+}
+
 type RqUser struct {
-	Email     string  `json:"email"      validate:"required,email"`
-	Password  string  `json:"password"   validate:"required,min=8"`
-	FirstName string  `json:"first_name" validate:"required"`
-	LastName  string  `json:"last_name"  validate:"required"`
-	Phone     *string `json:"phone"      validate:"omitempty,e164"`
+	Email      string  `json:"email"       validate:"required,email"`
+	Password   string  `json:"password"    validate:"required,min=8"`
+	FirstName  string  `json:"first_name"  validate:"required"`
+	LastName   string  `json:"last_name"   validate:"required"`
+	Phone      *string `json:"phone"       validate:"omitempty,e164"`
+	DocumentId *string `json:"document_id" validate:"omitempty"`
+
+	// New Onboarding Fields
+	EntityType     string  `json:"entity_type" validate:"required,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName     *string `json:"entity_name" validate:"required"`
+	ABN            *string `json:"abn" validate:"required"`
+	ACN            *string `json:"acn"`              // Optional
+	Address        *string `json:"address"`          // Optional
+	Profession     *string `json:"profession"`       // Optional
+	TaxAgentNumber *string `json:"tax_agent_number"` // Optional
 }
 
 type RqUpdateUser struct {
-	Email     *string `json:"email"      validate:"omitempty,email"`
-	FirstName *string `json:"first_name" validate:"omitempty"`
-	LastName  *string `json:"last_name"  validate:"omitempty"`
-	Phone     *string `json:"phone"      validate:"omitempty,e164"`
-	ABN       *string `json:"abn"        validate:"omitempty"`
+	Email          *string `json:"email"       validate:"omitempty,email"`
+	FirstName      *string `json:"first_name"  validate:"omitempty"`
+	LastName       *string `json:"last_name"   validate:"omitempty"`
+	Phone          *string `json:"phone"       validate:"omitempty,e164"`
+	ABN            *string `json:"abn"         validate:"omitempty"`
+	DocumentId     *string `json:"document_id" validate:"omitempty"`
+	EntityType     string  `json:"entity_type" validate:"omitempty,oneof=SOLE_TRADER COMPANY TRUST"`
+	EntityName     string  `json:"entity_name" validate:"omitempty"`
+	ACN            *string `json:"acn" validate:"omitempty"`              // Optional
+	Address        *string `json:"address" validate:"omitempty"`          // Optional
+	Profession     *string `json:"profession" validate:"omitempty"`       // Optional
+	TaxAgentNumber *string `json:"tax_agent_number" validate:"omitempty"` // Optional
+}
+
+type RqLogin struct {
+	Email    string `json:"email"    validate:"required,email"`
+	Password string `json:"password" validate:"required"`
+}
+
+type RqLogout struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type RqChangePassword struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+type RqForgotPassword struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type RqResetPassword struct {
+	Token       string `json:"token"        validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+type RsToken struct {
+	AccessToken  string  `json:"access_token"`
+	RefreshToken string  `json:"refresh_token"`
+	Role         *string `json:"role"`
+}
+
+type RsUser struct {
+	ID             uuid.UUID        `json:"id"`
+	Email          string           `json:"email"`
+	FirstName      string           `json:"first_name"`
+	LastName       string           `json:"last_name"`
+	Phone          *string          `json:"phone,omitempty"`
+	Role           string           `json:"role"`
+	ABN            *string          `json:"abn,omitempty"`
+	TaxAgentNumber *string          `json:"tax_agent_number,omitempty"`
+	EntityType     string           `json:"entity_type"`
+	EntityName     *string          `json:"entity_name"`
+	ACN            *string          `json:"acn,omitempty"`
+	Address        *string          `json:"address,omitempty"`
+	Profession     *string          `json:"profession,omitempty"`
+	Document       *file.RsDocument `json:"document"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 func (r *RqUser) ToDBModel() *User {
@@ -68,43 +153,17 @@ func (r *RqUser) ToDBModel() *User {
 	}
 }
 
-type RqLogin struct {
-	Email    string `json:"email"         validate:"required,email"`
-	Password string `json:"password"      validate:"required"`
-}
-
-type RqLogout struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
-}
-
-type RqChangePassword struct {
-	NewPassword string `json:"new_password" validate:"required,min=8"`
-}
-
-// ── Response models ───────────────────────────────────────────────────────────
-
-type RsToken struct {
-	AccessToken  string  `json:"access_token"`
-	RefreshToken string  `json:"refresh_token"`
-	Role         *string `json:"role"`
-}
-
-type RsUser struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Phone     *string   `json:"phone,omitempty"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-
-	// Role-specific fields (populated based on role)
-	ABN       *string `json:"abn,omitempty"`
-	LicenseNo *string `json:"license_no,omitempty"`
-}
-
 func (u *User) ToRsUser() *RsUser {
+	var doc *file.RsDocument
+	if u.Document != nil {
+		doc = &file.RsDocument{
+			ID:           u.Document.ID,
+			OriginalName: u.Document.OriginalName,
+			FileKey:      u.Document.ObjectKey,
+			UploadedAt:   u.Document.UploadedAt,
+			CreatedAt:    u.Document.CreatedAt,
+		}
+	}
 	return &RsUser{
 		ID:        u.ID,
 		Email:     u.Email,
@@ -112,8 +171,10 @@ func (u *User) ToRsUser() *RsUser {
 		LastName:  u.LastName,
 		Phone:     u.Phone,
 		Role:      u.Role,
+		Document:  doc,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
+		ABN:       u.ABN,
 	}
 }
 
@@ -135,21 +196,3 @@ const (
 	TokenStatusExpired = "EXPIRED"
 	TokenStatusResent  = "RESENT"
 )
-
-type VerificationToken struct {
-	ID        uuid.UUID `db:"id"`
-	EntityID  uuid.UUID `db:"entity_id"`
-	Role      *string   `db:"role"`
-	Status    string    `db:"status"`
-	CreatedAt time.Time `db:"created_at"`
-	ExpiresAt time.Time `db:"expires_at"`
-}
-
-type RqForgotPassword struct {
-	Email string `json:"email" binding:"required,email"`
-}
-
-type RqResetPassword struct {
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=8"`
-}
