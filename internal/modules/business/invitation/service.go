@@ -127,19 +127,34 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		}
 	}(invite.Email, senderName, inviteLink, practitionerID, invite.ID)
 
-	common.PublishNotification(ctx, s.notification, invite.AccountantID, practitionerID, invite,
-		func(inv *Invitation) common.NotificationMeta {
-			return common.NotificationMeta{
-				EntityID:      inv.ID,
-				EntityKey:     "invite_id",
-				Title:         "Invitation received",
-				Body:          fmt.Sprintf(`"%s invited you to collaborate."`, senderName),
-				EventType:     notification.EventInviteSent,
-				EntityType:    notification.EntityInvite,
-				RecipientType: notification.ActorAccountant,
+	// Only send notification if accountant already exists
+	if invite.AccountantID != nil {
+		// Get accountant user ID
+		accountantUserID, err := s.repo.GetUserIDByEmail(ctx, invite.Email)
+		if err == nil && accountantUserID != nil {
+			recipients := []common.RecipientWithPreferences{
+				{
+					RecipientID:   *invite.AccountantID,
+					RecipientType: notification.ActorAccountant,
+					UserID:        *accountantUserID,
+				},
 			}
-		},
-	)
+			common.PublishNotification(
+				ctx,
+				s.notification,
+				recipients,
+				practitionerID,
+				notification.ActorPractitioner,
+				senderName,
+				notification.EventInviteSent,
+				notification.EntityInvite,
+				invite.ID,
+				"invite_id",
+				"Invitation received",
+				fmt.Sprintf("%s invited you to collaborate.", senderName),
+			)
+		}
+	}
 
 	meta := auditctx.GetMetadata(ctx)
 	pIDStr := practitionerID.String()

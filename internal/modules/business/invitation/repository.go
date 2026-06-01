@@ -37,6 +37,7 @@ type Repository interface {
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
+	GetAccountantsLinkedToPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]AccountantInfo, error)
 	DeleteAllPermissionsForAccountant(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatus(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, accountantID *uuid.UUID, expiresAt time.Time) error
 	CountPermission(ctx context.Context, f common.Filter) (int, error)
@@ -455,6 +456,23 @@ func (r *repository) GetPractitionersLinkedToAccountant(ctx context.Context, acc
 		return nil, fmt.Errorf("get linked practitioners: %w", err)
 	}
 	return practitionerIDs, nil
+}
+
+func (r *repository) GetAccountantsLinkedToPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]AccountantInfo, error) {
+	query := `
+		SELECT DISTINCT i.accountant_id, a.user_id
+		FROM tbl_invitation i
+		JOIN tbl_accountant a ON i.accountant_id = a.id
+		WHERE i.practitioner_id = $1 
+		  AND i.status = 'COMPLETED' 
+		  AND i.deleted_at IS NULL
+		  AND a.deleted_at IS NULL`
+
+	var accountants []AccountantInfo
+	if err := r.db.SelectContext(ctx, &accountants, query, practitionerID); err != nil {
+		return nil, fmt.Errorf("get linked accountants: %w", err)
+	}
+	return accountants, nil
 }
 
 func (r *repository) DeleteAllPermissionsForAccountant(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error {
