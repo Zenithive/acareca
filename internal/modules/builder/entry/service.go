@@ -1424,7 +1424,7 @@ func (s *Service) TransactionNotificationEvent(ctx context.Context, entityID uui
 		role,
 		clinic.PractitionerID,
 		req.ClinicID,
-		notification.EventTransactionCreated,
+		util.EventTransactionCreated,
 		"Transaction Created",
 		notificationSvc,
 	)
@@ -1450,7 +1450,7 @@ func (s *Service) TransactionNotificationEventUpdate(ctx context.Context, entity
 		role,
 		clinic.PractitionerID,
 		entry.ClinicID,
-		notification.EventTransactionUpdated,
+		util.EventTransactionUpdated,
 		"Transaction Updated",
 		notificationSvc,
 	)
@@ -1464,7 +1464,7 @@ func (s *Service) sendTransactionNotification(
 	role string,
 	practitionerID uuid.UUID,
 	clinicID uuid.UUID,
-	eventType notification.EventType,
+	eventType util.EventType,
 	title string,
 	notificationSvc notification.Service,
 ) error {
@@ -1476,7 +1476,7 @@ func (s *Service) sendTransactionNotification(
 
 	// Determine sender info
 	var senderName string
-	var senderType notification.ActorType
+	var senderType util.ActorType
 
 	switch role {
 	case util.RoleAccountant:
@@ -1485,7 +1485,7 @@ func (s *Service) sendTransactionNotification(
 			return fmt.Errorf("find accountant: %w", err)
 		}
 		senderName = fmt.Sprintf("%s %s", acc.FirstName, acc.LastName)
-		senderType = notification.ActorAccountant
+		senderType = util.ActorAccountant
 
 	case util.RolePractitioner:
 		prac, err := s.authRepo.FindByPractitionerID(ctx, entityID)
@@ -1493,7 +1493,7 @@ func (s *Service) sendTransactionNotification(
 			return fmt.Errorf("find practitioner: %w", err)
 		}
 		senderName = fmt.Sprintf("%s %s", prac.FirstName, prac.LastName)
-		senderType = notification.ActorPractitioner
+		senderType = util.ActorPractitioner
 
 	default:
 		return fmt.Errorf("invalid role: %s", role)
@@ -1510,7 +1510,7 @@ func (s *Service) sendTransactionNotification(
 		for _, adm := range admins {
 			recipients = append(recipients, common.RecipientWithPreferences{
 				RecipientID:   adm.ID,
-				RecipientType: notification.ActorAdmin,
+				RecipientType: util.ActorAdmin,
 				UserID:        adm.User.ID,
 			})
 		}
@@ -1520,7 +1520,7 @@ func (s *Service) sendTransactionNotification(
 	if !(role == util.RolePractitioner && practitionerID == entityID) {
 		recipients = append(recipients, common.RecipientWithPreferences{
 			RecipientID:   practitionerID,
-			RecipientType: notification.ActorPractitioner,
+			RecipientType: util.ActorPractitioner,
 			UserID:        practitionerUserID,
 		})
 	}
@@ -1548,7 +1548,7 @@ func (s *Service) sendTransactionNotification(
 			if permissions != nil && permissions.Has(invitation.PermReportsViewDownload, false) {
 				recipients = append(recipients, common.RecipientWithPreferences{
 					RecipientID:   acc.AccountantID,
-					RecipientType: notification.ActorAccountant,
+					RecipientType: util.ActorAccountant,
 					UserID:        acc.UserID,
 				})
 			}
@@ -1564,7 +1564,7 @@ func (s *Service) sendTransactionNotification(
 		senderType,
 		senderName,
 		eventType,
-		notification.EntityTransaction,
+		util.EntityTransaction,
 		clinicID,
 		"transaction_id",
 		title,

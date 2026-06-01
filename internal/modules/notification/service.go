@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
-	"github.com/iamarpitzala/acareca/internal/modules/worker"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -23,23 +22,22 @@ type Service interface {
 }
 
 type service struct {
-	repo      Repository
-	publisher *worker.Publisher
-	DB        *sqlx.DB
-	PrefRepo  preference.Repository
+	repo     Repository
+	events   sharedEvents.IEvent
+	DB       *sqlx.DB
+	PrefRepo preference.Repository
 }
 
 func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB, prefRepo preference.Repository) Service {
 	return &service{
-		repo:      repo,
-		publisher: worker.NewPublisher(events),
-		DB:        db,
-		PrefRepo:  prefRepo,
+		repo:     repo,
+		events:   events,
+		DB:       db,
+		PrefRepo: prefRepo,
 	}
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
-
 	event := NotificationEvent{
 		ID:            rq.ID,
 		RecipientID:   rq.RecipientID,
@@ -58,9 +56,17 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 	fmt.Printf("Publishing notification event_ID: %+v\n", event.ID)
 	fmt.Printf("Publishing notification event_Entity_Id: %+v\n", event.EntityID)
 	fmt.Printf("Publishing notification event_Recipient_Id: %+v\n", event.RecipientID)
-	return s.publisher.PublishNotification(ctx, event)
-}
 
+	if s.events == nil {
+		return fmt.Errorf("events system not configured")
+	}
+
+	if err := s.events.Publish(ctx, SubjectNotificationInApp, event); err != nil {
+		return fmt.Errorf("failed to publish notification event: %w", err)
+	}
+
+	return nil
+}
 func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error) {
 	notifications, total, err := s.repo.ListByRecipient(ctx, recipientID, filter)
 	if err != nil {

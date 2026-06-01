@@ -135,7 +135,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 			recipients := []common.RecipientWithPreferences{
 				{
 					RecipientID:   *invite.AccountantID,
-					RecipientType: notification.ActorAccountant,
+					RecipientType: util.ActorAccountant,
 					UserID:        *accountantUserID,
 				},
 			}
@@ -144,10 +144,10 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 				s.notification,
 				recipients,
 				practitionerID,
-				notification.ActorPractitioner,
+				util.ActorPractitioner,
 				senderName,
-				notification.EventInviteSent,
-				notification.EntityInvite,
+				util.EventInviteSent,
+				util.EntityInvite,
 				invite.ID,
 				"invite_id",
 				"Invitation received",
@@ -566,11 +566,11 @@ func (s *service) notifyInvitationAccepted(ctx context.Context, inv *Invitation,
 
 	payloadBytes, _ := json.Marshal(payload)
 
-	senderType := notification.ActorAccountant
+	senderType := util.ActorAccountant
 
 	// Default fallback channel
-	channels := []notification.Channel{
-		notification.ChannelInApp,
+	channels := []util.Channel{
+		util.ChannelInApp,
 	}
 
 	userID, err := s.repo.GetPractitionerUserIDByID(ctx, inv.PractitionerID)
@@ -579,40 +579,35 @@ func (s *service) notifyInvitationAccepted(ctx context.Context, inv *Invitation,
 		return
 	}
 
-	notis, err := s.notification.GetPreferences(ctx, userID)
+	noti, err := s.notification.GetPreferences(ctx, userID)
 	if err != nil {
 		fmt.Printf("failed to get notification preferences: %v\n", err)
 		return
 	}
 
-	for _, noti := range notis {
-		if string(noti.EventType) == string(notification.EventInviteAccepted) {
+	for _, event := range noti.EventType {
+		if string(event) == string(util.EventInviteAccepted) {
+			channels = []util.Channel{}
+			for ch := range noti.Channels {
 
-			channels = []notification.Channel{}
-
-			for ch, isEnabled := range noti.Channels {
-
-				if isEnabled {
-
-					channels = append(
-						channels,
-						notification.Channel(ch),
-					)
-				}
+				channels = append(
+					channels,
+					util.Channel(ch),
+				)
 			}
-			break
 		}
 	}
+
 	rq := notification.RqNotification{
 		ID:            uuid.New(),
 		RecipientID:   inv.PractitionerID,
-		RecipientType: notification.ActorPractitioner,
+		RecipientType: util.ActorPractitioner,
 		SenderID:      accountantID,
 		SenderType:    &senderType,
-		EventType:     notification.EventInviteAccepted,
-		EntityType:    notification.EntityInvite,
+		EventType:     util.EventInviteAccepted,
+		EntityType:    util.EntityInvite,
 		EntityID:      inv.ID,
-		Status:        notification.StatusUnread,
+		Status:        util.StatusUnread,
 		Payload:       payloadBytes,
 		Channels:      channels,
 		CreatedAt:     time.Now(),

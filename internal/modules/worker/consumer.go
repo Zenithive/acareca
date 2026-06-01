@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -25,13 +26,7 @@ type Consumer struct {
 	streamManager *StreamManager
 }
 
-func NewConsumer(
-	events sharedEvents.IEvent,
-	prefRepo preference.Repository,
-	notifier *sharednotification.Hub,
-	db *sqlx.DB,
-	publisher *Publisher,
-) *Consumer {
+func NewConsumer(events sharedEvents.IEvent,prefRepo preference.Repository,notifier *sharednotification.Hub,db *sqlx.DB,publisher *Publisher) *Consumer {
 	consumer := &Consumer{
 		events:    events,
 		notifier:  notifier,
@@ -49,55 +44,23 @@ func (c *Consumer) GetStreamManager() *StreamManager {
 	return c.streamManager
 }
 
-func (c *Consumer) StartNotificationCreateConsumer(ctx context.Context) error {
+func (c *Consumer) StartNotificationInAppConsumer(ctx context.Context) error {
 	if c.events == nil {
 		return fmt.Errorf("events system not configured")
 	}
 
-	log.Println("Starting notification create consumer...")
+	log.Println("Starting notification in-app consumer...")
 
 	return c.events.Consume(
 		ctx,
-		StreamNotification,
-		ConsumerNotificationInApp,
-		SubjectNotificationInApp,
-		c.handleNotificationCreate,
+		notification.StreamNotification,
+		notification.ConsumerNotificationInApp,
+		notification.SubjectNotificationInApp,
+		c.handleNotificationInApp,
 	)
 }
 
-func (c *Consumer) StartEmailConsumer(ctx context.Context) error {
-	if c.events == nil {
-		return fmt.Errorf("events system not configured")
-	}
-
-	log.Println("Starting email delivery consumer...")
-
-	return c.events.Consume(
-		ctx,
-		StreamNotification,
-		ConsumerNotificationEmail,
-		SubjectNotificationEmail,
-		c.handleEmailDelivery,
-	)
-}
-
-func (c *Consumer) StartPushConsumer(ctx context.Context) error {
-	if c.events == nil {
-		return fmt.Errorf("events system not configured")
-	}
-
-	log.Println("Starting push notification consumer...")
-
-	return c.events.Consume(
-		ctx,
-		StreamNotification,
-		ConsumerNotificationPush,
-		SubjectNotificationPush,
-		c.handlePushDelivery,
-	)
-}
-
-func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
+func (c *Consumer) handleNotificationInApp(msg jetstream.Msg) error {
 	ctx := context.Background()
 
 	var event notification.NotificationEvent
@@ -105,7 +68,7 @@ func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
 	}
 
-	if !c.shouldNotifyUser(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType) {
+	if err, _ := c.shouldNotifyUser(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType); err != nil {
 		log.Printf("User %s opted out of event type %s for entity %s", event.RecipientID, event.EventType, event.EntityID)
 		return nil
 	}
@@ -120,42 +83,8 @@ func (c *Consumer) handleNotificationCreate(msg jetstream.Msg) error {
 	return nil
 }
 
-func (c *Consumer) handleEmailDelivery(msg jetstream.Msg) error {
-	ctx := context.Background()
-
-	notificationID, err := c.parseDeliveryEvent(msg.Data())
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Processing email delivery for notification: %s", notificationID)
-
-	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, util.ChannelEmail); err != nil {
-		return fmt.Errorf("failed to mark email as delivered: %w", err)
-	}
-
-	return nil
-}
-
-func (c *Consumer) handlePushDelivery(msg jetstream.Msg) error {
-	ctx := context.Background()
-
-	notificationID, err := c.parseDeliveryEvent(msg.Data())
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Processing push delivery for notification: %s", notificationID)
-
-	if err := c.repo.MarkDeliveryDelivered(ctx, notificationID, util.ChannelPush); err != nil {
-		return fmt.Errorf("failed to mark push as delivered: %w", err)
-	}
-
-	return nil
-}
-
 func (c *Consumer) createNotification(ctx context.Context, event notification.NotificationEvent, channels []util.Channel) (uuid.UUID, error) {
-	notification := notification.Notification{
+	notif := notification.Notification{
 		ID:            event.ID,
 		RecipientID:   event.RecipientID,
 		RecipientType: event.RecipientType,
@@ -172,7 +101,7 @@ func (c *Consumer) createNotification(ctx context.Context, event notification.No
 	var notificationID uuid.UUID
 	err := util.RunInTransaction(ctx, c.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
-		notificationID, txErr = c.repo.CreateNotificationWithDeliveries(ctx, tx, notification, channels)
+		notificationID, txErr = c.repo.CreateNotificationWithDeliveries(ctx, tx, notif, channels)
 		return txErr
 	})
 
@@ -183,20 +112,16 @@ func (c *Consumer) createNotification(ctx context.Context, event notification.No
 	return notificationID, nil
 }
 
-func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UUID, event NotificationEvent, channels []util.Channel) {
+func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UUID, event notification.NotificationEvent, channels []util.Channel) {
 	for _, ch := range channels {
 		switch ch {
 		case util.ChannelInApp:
 			c.deliverInApp(ctx, notificationID, event)
-		case util.ChannelEmail:
-			c.queueEmailDelivery(ctx, notificationID, event)
-		case util.ChannelPush:
-			c.queuePushDelivery(ctx, notificationID, event)
-		}
+			
 	}
 }
 
-func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
+func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, event notification.NotificationEvent) {
 	pushedToWebSocket := false
 
 	if c.streamManager != nil && c.streamManager.IsUserStreamActive(event.RecipientID) {
@@ -234,24 +159,6 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 	}
 }
 
-func (c *Consumer) queueEmailDelivery(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
-	if err := c.publisher.PublishEmailDelivery(ctx, notificationID, event.RecipientID, event.EventType, event.Payload); err != nil {
-		log.Printf("Failed to queue email for notification %s: %v", notificationID, err)
-		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, util.ChannelEmail, "failed to publish to NATS")
-	} else {
-		log.Printf("Email delivery queued for notification %s", notificationID)
-	}
-}
-
-func (c *Consumer) queuePushDelivery(ctx context.Context, notificationID uuid.UUID, event NotificationEvent) {
-	if err := c.publisher.PublishPushDelivery(ctx, notificationID, event.RecipientID, event.EventType, event.Payload); err != nil {
-		log.Printf("Failed to queue push for notification %s: %v", notificationID, err)
-		_ = c.repo.MarkDeliveryFailed(ctx, notificationID, util.ChannelPush, "failed to publish to NATS")
-	} else {
-		log.Printf("Push delivery queued for notification %s", notificationID)
-	}
-}
-
 func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
 	var event map[string]interface{}
 	if err := json.Unmarshal(data, &event); err != nil {
@@ -277,11 +184,13 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 		return err, true
 	}
 
-	notificationEventType := MapEventTypeToNotificationEventType(eventType)
+	notificationEventType := common.MapEventTypeToNotificationEventType(eventType)
 
 	if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-		if pref.EventType == notificationEventType {
-			return nil, true
+		for _, pref := range pref.EventType {
+			if pref == notificationEventType {
+				return nil, true
+			}
 		}
 		return nil, false
 	}

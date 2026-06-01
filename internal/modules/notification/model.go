@@ -92,6 +92,7 @@ type RqBulkDismiss struct {
 	IDs []uuid.UUID `json:"ids" validate:"required,min=1"`
 }
 
+// Event subjects
 const (
 	SubjectNotificationInApp = "notification.in_app"
 	SubjectNotificationEmail = "notification.email"
@@ -104,6 +105,7 @@ const (
 	ConsumerNotificationPush  = "notification_push_consumer"
 )
 
+// NotificationEvent represents a notification event to be published
 type NotificationEvent struct {
 	ID            uuid.UUID       `json:"id"`
 	RecipientID   uuid.UUID       `json:"recipient_id"`

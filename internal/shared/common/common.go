@@ -14,19 +14,19 @@ import (
 
 type NotificationEventTypes []util.NotificationEventType
 
-// func MapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
-// 	switch eventType {
-// 	case util.EventTransactionCreated, util.EventTransactionUpdated:
-// 		return util.EventNewTransaction
-// 	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded,
-// 		util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
-// 		return util.EventAccountantActivityAlert
-// 	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
-// 		return util.EventSystemActivityAlert
-// 	default:
-// 		return util.EventSystemActivityAlert
-// 	}
-// }
+func MapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
+	switch eventType {
+	case util.EventTransactionCreated, util.EventTransactionUpdated:
+		return util.EventNewTransaction
+	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded,
+		util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
+		return util.EventAccountantActivityAlert
+	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
+		return util.EventSystemActivityAlert
+	default:
+		return util.EventSystemActivityAlert
+	}
+}
 
 type NotificationMeta struct {
 	EntityID      uuid.UUID
@@ -52,7 +52,7 @@ func PublishNotification(ctx context.Context, notificationSvc notification.Servi
 		return
 	}
 
-	notificationEventType := notification.MapEventTypeToNotificationEventType(eventType)
+	notificationEventType := MapEventTypeToNotificationEventType(eventType)
 
 	for _, recipient := range recipients {
 		// Get user preferences

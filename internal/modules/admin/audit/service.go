@@ -104,11 +104,11 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 	detail := buildSystemIssueMessage(action, actorName, entityLabel, issueErr)
 
 	// Determine notification event type
-	var eventType notification.EventType
+	var eventType util.EventType
 	if level == auditctx.ActionSystemError {
-		eventType = notification.EventSystemError
+		eventType = util.EventSystemError
 	} else {
-		eventType = notification.EventSystemWarning
+		eventType = util.EventSystemWarning
 	}
 
 	// Deduplication Check (Prevent spamming admins with the same error)
@@ -135,9 +135,9 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 
 	// Notify Admins
 	if s.notificationService != nil {
-		eventType := notification.EventSystemWarning
+		eventType := util.EventSystemWarning
 		if level == auditctx.ActionSystemError {
-			eventType = notification.EventSystemError
+			eventType = util.EventSystemError
 		}
 		// Send the clean 'detail' string as the notification body
 		go s.publishSystemIssueNotification(level, action, detail, parsedEntityID, eventType)
@@ -161,7 +161,7 @@ func buildSystemIssueMessage(action, actorName, entityName string, err error) st
 }
 
 // publishSystemIssueNotification fans out system error/warning notifications to all admins.
-func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType notification.EventType) {
+func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType util.EventType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -184,19 +184,19 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		return
 	}
 
-	senderType := notification.ActorSystem
+	senderType := util.ActorSystem
 	for _, adminID := range adminIDs {
 		req := notification.RqNotification{
 			ID:            uuid.New(),
 			RecipientID:   adminID,
-			RecipientType: notification.ActorAdmin,
+			RecipientType: util.ActorAdmin,
 			SenderType:    &senderType,
 			EventType:     eventType,
-			EntityType:    notification.EntitySystem,
+			EntityType:    util.EntitySystem,
 			EntityID:      entityID,
-			Status:        notification.StatusUnread,
+			Status:        util.StatusUnread,
 			Payload:       payloadBytes,
-			Channels:      []notification.Channel{notification.ChannelInApp},
+			Channels:      []util.Channel{util.ChannelInApp},
 			CreatedAt:     time.Now(),
 		}
 		go func(r notification.RqNotification) {
@@ -400,7 +400,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 
 	// Send to each admin
-	senderType := notification.ActorSystem
+	senderType := util.ActorSystem
 	var entityID uuid.UUID
 	if entry.EntityID != nil {
 		parsed, err := uuid.Parse(*entry.EntityID)
@@ -412,14 +412,14 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		req := notification.RqNotification{
 			ID:            uuid.New(),
 			RecipientID:   adminID,
-			RecipientType: notification.ActorAdmin,
+			RecipientType: util.ActorAdmin,
 			SenderType:    &senderType,
-			EventType:     notification.EventAuditLogCreated,
-			EntityType:    notification.EntityAuditLog,
+			EventType:     util.EventAuditLogCreated,
+			EntityType:    util.EntityAuditLog,
 			EntityID:      entityID,
-			Status:        notification.StatusUnread,
+			Status:        util.StatusUnread,
 			Payload:       payloadBytes,
-			Channels:      []notification.Channel{notification.ChannelInApp},
+			Channels:      []util.Channel{util.ChannelInApp},
 			CreatedAt:     time.Now(),
 		}
 
