@@ -1,6 +1,8 @@
 package invoice
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
@@ -184,7 +186,10 @@ type RsInvoice struct {
 }
 
 type Filter struct {
-	Name *string `form:"name,omitempty"`
+	Name      *string    `form:"name,omitempty"`
+	Status    *string    `form:"status,omitempty"`
+	ContactID *uuid.UUID `form:"contact_id,omitempty"`
+	IssueDate *string    `form:"date_range,omitempty"`
 	common.Filter
 }
 
@@ -192,10 +197,54 @@ func (filter *Filter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	operators := map[string]common.Operator{}
 
-	// Name filter - partial match on full name
 	if filter.Name != nil && *filter.Name != "" {
 		filters["name"] = "%" + *filter.Name + "%"
 		operators["name"] = common.OpLike
+	}
+	if filter.Status != nil && *filter.Status != "" {
+		filters["status"] = *filter.Status
+		operators["status"] = common.OpEq
+	}
+	if filter.ContactID != nil && *filter.ContactID != uuid.Nil {
+		filters["contact_id"] = *filter.ContactID
+		operators["contact_id"] = common.OpEq
+	}
+
+	if filter.IssueDate != nil && *filter.IssueDate != "" {
+		now := time.Now().UTC()
+
+		switch *filter.IssueDate {
+		case "last_7":
+			sevenDaysAgo := now.AddDate(0, 0, -7)
+			startTime := time.Date(sevenDaysAgo.Year(), sevenDaysAgo.Month(), sevenDaysAgo.Day(), 0, 0, 0, 0, time.UTC)
+
+			filters["date_range_start"] = startTime.Format("2006-01-02")
+			operators["date_range_start"] = common.OpGte
+
+		case "last_30":
+			thirtyDaysAgo := now.AddDate(0, 0, -30)
+			startTime := time.Date(thirtyDaysAgo.Year(), thirtyDaysAgo.Month(), thirtyDaysAgo.Day(), 0, 0, 0, 0, time.UTC)
+
+			filters["date_range_start"] = startTime.Format("2006-01-02")
+			operators["date_range_start"] = common.OpGte
+
+		case "this_month":
+			firstDayOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+			filters["date_range_start"] = firstDayOfThisMonth.Format("2006-01-02")
+			operators["date_range_start"] = common.OpGte
+
+		case "last_month":
+			firstDayOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+			firstDayOfLastMonth := firstDayOfThisMonth.AddDate(0, -1, 0)
+			lastDayOfLastMonth := firstDayOfThisMonth.AddDate(0, 0, -1)
+
+			filters["date_range_start"] = firstDayOfLastMonth.Format("2006-01-02")
+			operators["date_range_start"] = common.OpGte
+
+			filters["date_range_end"] = lastDayOfLastMonth.Format("2006-01-02")
+			operators["date_range_end"] = common.OpLte
+		}
 	}
 
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
