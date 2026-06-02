@@ -220,21 +220,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		UserAgent:  meta.UserAgent,
 	})
 
-	// Send creation notification
-	// var actorType util.ActorType
-	// switch role {
-	// case "PRACTITIONER":
-	// 	actorType = util.ActorPractitioner
-	// case "ACCOUNTANT":
-	// 	actorType = util.ActorAccountant
-	// case "ADMIN":
-	// 	actorType = util.ActorAdmin
-	// default:
-	// 	log.Printf("Unknown role %s for notification, defaulting to practitioner", role)
-	// 	actorType = util.ActorPractitioner
-	// }
-
-	if err = s.notifyTransaction(ctx, entityID, util.ActorPractitioner, util.EventTransactionCreated, "Transaction Created"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created"); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -382,22 +368,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		UserAgent:   meta.UserAgent,
 	})
 
-	fmt.Printf("rrrrrrrrrrrrrrrrr", role)
-
-	var actorType util.ActorType
-	switch role {
-	case "PRACTITIONER":
-		actorType = util.ActorPractitioner
-	case "ACCOUNTANT":
-		actorType = util.ActorAccountant
-	case "ADMIN":
-		actorType = util.ActorAdmin
-	default:
-		log.Printf("Unknown role %s for notification, defaulting to practitioner", role)
-		actorType = util.ActorPractitioner
-	}
 	// Send update notification
-	if err = s.notifyTransaction(ctx, entityID, actorType, util.EventTransactionUpdated, "Transaction Updated"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated"); err != nil {
 		log.Printf("failed to send transaction update notification event: %v", err.Error())
 	}
 
