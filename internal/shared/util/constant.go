@@ -26,9 +26,10 @@ const (
 type EventType string
 
 const (
-	EventInviteSent     EventType = "invite.sent"
-	EventInviteAccepted EventType = "invite.accepted"
-	EventInviteDeclined EventType = "invite.declined"
+	EventInviteSent        EventType = "invite.sent"
+	EventInviteAccepted    EventType = "invite.accepted"
+	EventInviteDeclined    EventType = "invite.declined"
+	EventPermissionUpdated EventType = "permission.updated"
 
 	EventClinicUpdated      EventType = "clinic.updated"
 	EventFormSubmitted      EventType = "form.submitted"

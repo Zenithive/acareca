@@ -11,6 +11,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
+	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -176,23 +177,27 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 }
 
 func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType util.ActorType, eventType util.EventType) bool {
-	// fmt.Printf("userId: %s, entityId: %s, entityType: %s, eventType: %s", userID, entityID, entityType, eventType)
-
-	uId, err := c.authSvc.GetUserByID(ctx, userID, string(entityType))
-	if err != nil {
-		fmt.Println("errrrrrrrrrrrrrrrrrrrrrrrrrrrr")
-		return false
+	var entityTypeStr string
+	switch entityType {
+	case util.ActorPractitioner:
+		entityTypeStr = auditctx.EntityPractitioner
+	case util.ActorAccountant:
+		entityTypeStr = auditctx.EntityAccountant
+	case util.ActorAdmin:
+		entityTypeStr = auditctx.EntityAdmin
+	default:
+		entityTypeStr = auditctx.EntityUser
 	}
 
-	fmt.Printf("User ID: %s", uId.ID)
+	uId, err := c.authSvc.GetUserByID(ctx, userID, entityTypeStr)
+	if err != nil {
+		return false
+	}
 
 	pref, err := c.prefRepo.GetPreferencesByUserID(ctx, uId.ID)
 	if err != nil {
 		return false
 	}
-
-	fmt.Println("User preferences:", pref.EventType)
-	fmt.Println("Event type:", eventType)
 
 	notificationEventType := mapEventTypeToNotificationEventType(eventType)
 
