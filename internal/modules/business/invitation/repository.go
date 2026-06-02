@@ -264,13 +264,13 @@ func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uui
 }
 
 func (r *repository) ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error) {
-	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.accountant_id, i.email, i.status, i.created_at, i.updated_at, i.deleted_at, i.expires_at
+	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, p.entity_name, i.accountant_id, i.email, i.status, i.created_at, i.updated_at, i.deleted_at, i.expires_at
 	          FROM tbl_invitation i
 	          JOIN tbl_practitioner p ON i.practitioner_id = p.id
 	          JOIN tbl_user u ON p.user_id = u.id
-	          WHERE i.email = $1 AND i.status::text != $2`
+	          WHERE i.email = $1`
 
-	args := []interface{}{accountantEmail, string(StatusResent)}
+	args := []interface{}{accountantEmail}
 
 	if f.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *f.Limit)
