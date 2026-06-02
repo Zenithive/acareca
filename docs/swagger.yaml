@@ -914,56 +914,6 @@ definitions:
           $ref: '#/definitions/bas.BASValue'
         type: array
     type: object
-  bas.BASAmount:
-    properties:
-      gross:
-        type: number
-      gst:
-        type: number
-      net:
-        type: number
-    type: object
-  bas.BASColumn:
-    properties:
-      net_gst_payable:
-        type: number
-      quarter:
-        $ref: '#/definitions/bas.BASQuarterInfo'
-      sections:
-        properties:
-          expenses:
-            $ref: '#/definitions/bas.BASSection'
-          income:
-            $ref: '#/definitions/bas.BASSection'
-        type: object
-    type: object
-  bas.BASLineItem:
-    properties:
-      amounts:
-        $ref: '#/definitions/bas.BASAmount'
-      name:
-        type: string
-    type: object
-  bas.BASQuarterInfo:
-    properties:
-      displayRange:
-        type: string
-      endDate:
-        type: string
-      id:
-        type: string
-      name:
-        type: string
-      startDate:
-        type: string
-    type: object
-  bas.BASSection:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/bas.BASLineItem'
-        type: array
-    type: object
   bas.BASValue:
     properties:
       date:
@@ -1040,26 +990,6 @@ definitions:
       total_sales_net:
         type: number
     type: object
-  bas.RsBASPreparation:
-    properties:
-      columns:
-        items:
-          $ref: '#/definitions/bas.BASColumn'
-        type: array
-      grand_total:
-        $ref: '#/definitions/bas.BASColumn'
-    type: object
-  bas.RsBASReport:
-    properties:
-      1A:
-        type: number
-      1B:
-        type: number
-      G1:
-        type: number
-      G11:
-        type: number
-    type: object
   bas.RsBASSummary:
     properties:
       g1_total_sales_gross:
@@ -1079,44 +1009,6 @@ definitions:
       total_purchases_net:
         type: number
       total_sales_net:
-        type: number
-    type: object
-  bs.RsAccount:
-    properties:
-      balance:
-        type: number
-      coa_id:
-        type: string
-      code:
-        type: integer
-      name:
-        type: string
-    type: object
-  bs.RsBalanceSheet:
-    properties:
-      assets:
-        items:
-          $ref: '#/definitions/bs.RsAccount'
-        type: array
-      current_year_profit:
-        type: number
-      end_date:
-        type: string
-      equity:
-        items:
-          $ref: '#/definitions/bs.RsAccount'
-        type: array
-      liabilities:
-        items:
-          $ref: '#/definitions/bs.RsAccount'
-        type: array
-      total_assets:
-        type: number
-      total_equity:
-        type: number
-      total_liabilities:
-        type: number
-      total_liabilities_and_equity:
         type: number
     type: object
   calculation.PreviewSummary:
@@ -2440,6 +2332,114 @@ definitions:
     - new_password
     - token
     type: object
+  internal_modules_engine_bas.BASAmount:
+    properties:
+      gross:
+        type: number
+      gst:
+        type: number
+      net:
+        type: number
+    type: object
+  internal_modules_engine_bas.BASColumn:
+    properties:
+      net_gst_payable:
+        type: number
+      quarter:
+        $ref: '#/definitions/internal_modules_engine_bas.BASQuarterInfo'
+      sections:
+        properties:
+          expenses:
+            $ref: '#/definitions/internal_modules_engine_bas.BASSection'
+          income:
+            $ref: '#/definitions/internal_modules_engine_bas.BASSection'
+        type: object
+    type: object
+  internal_modules_engine_bas.BASLineItem:
+    properties:
+      amounts:
+        $ref: '#/definitions/internal_modules_engine_bas.BASAmount'
+      name:
+        type: string
+    type: object
+  internal_modules_engine_bas.BASQuarterInfo:
+    properties:
+      displayRange:
+        type: string
+      endDate:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      startDate:
+        type: string
+    type: object
+  internal_modules_engine_bas.BASSection:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_engine_bas.BASLineItem'
+        type: array
+    type: object
+  internal_modules_engine_bas.RsBASPreparation:
+    properties:
+      columns:
+        items:
+          $ref: '#/definitions/internal_modules_engine_bas.BASColumn'
+        type: array
+      grand_total:
+        $ref: '#/definitions/internal_modules_engine_bas.BASColumn'
+    type: object
+  internal_modules_engine_bas.RsBASReport:
+    properties:
+      1A:
+        type: number
+      1B:
+        type: number
+      G1:
+        type: number
+      G11:
+        type: number
+    type: object
+  internal_modules_engine_bs.RsAccount:
+    properties:
+      balance:
+        type: number
+      coa_id:
+        type: string
+      code:
+        type: integer
+      name:
+        type: string
+    type: object
+  internal_modules_engine_bs.RsBalanceSheet:
+    properties:
+      assets:
+        items:
+          $ref: '#/definitions/internal_modules_engine_bs.RsAccount'
+        type: array
+      current_year_profit:
+        type: number
+      end_date:
+        type: string
+      equity:
+        items:
+          $ref: '#/definitions/internal_modules_engine_bs.RsAccount'
+        type: array
+      liabilities:
+        items:
+          $ref: '#/definitions/internal_modules_engine_bs.RsAccount'
+        type: array
+      net_assets:
+        type: number
+      total_assets:
+        type: number
+      total_equity:
+        type: number
+      total_liabilities:
+        type: number
+    type: object
   invitation.AccessLevel:
     properties:
       read:
@@ -2999,6 +2999,7 @@ definitions:
     - CANCELLED
     - PAUSED
     - EXPIRED
+    - INACTIVE
     type: string
     x-enum-varnames:
     - StatusActive
@@ -3006,6 +3007,7 @@ definitions:
     - StatusCancelled
     - StatusPaused
     - StatusExpired
+    - StatusInactive
   template.RqTemplate:
     properties:
       clinic_id:
@@ -4860,7 +4862,7 @@ paths:
       summary: Update user profile
       tags:
       - auth
-  /auth/verify:
+  /auth/verify-email:
     get:
       description: Validates the UUID token sent via email and marks the user as verified
       parameters:
@@ -4912,7 +4914,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/bs.RsBalanceSheet'
+            $ref: '#/definitions/internal_modules_engine_bs.RsBalanceSheet'
         "400":
           description: Bad Request
           schema:
@@ -5129,7 +5131,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/bas.RsBASPreparation'
+            $ref: '#/definitions/internal_modules_engine_bas.RsBASPreparation'
         "400":
           description: Bad Request
           schema:
@@ -5350,7 +5352,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/bas.RsBASReport'
+            $ref: '#/definitions/internal_modules_engine_bas.RsBASReport'
         "400":
           description: Bad Request
           schema:
