@@ -3,8 +3,10 @@ package contact
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
@@ -14,8 +16,7 @@ type Repository interface {
 	Update(ctx context.Context, contact Contact) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (Contact, error)
-	List(ctx context.Context) ([]Contact, error)
-
+	List(ctx context.Context, clinicID uuid.UUID, f common.Filter) ([]Contact, int64, error)
 	DeleteAddressByID(ctx context.Context, id uuid.UUID) error
 }
 
@@ -271,38 +272,43 @@ func (r *repository) getAddressesByContactID(ctx context.Context, contactID uuid
 	return addresses, rows.Err()
 }
 
-func (r *repository) List(ctx context.Context) ([]Contact, error) {
+func (r *repository) List(ctx context.Context, clinicID uuid.UUID, f common.Filter) ([]Contact, int64, error) {
+	allowedColumns := map[string]string{
+		"id":         "id",
+		"fname":      "fname",
+		"email":      "email",
+		"phone":      "phone",
+		"abn":        "abn",
+		"created_at": "created_at",
+	}
 
-	rows, err := r.db.QueryContext(ctx,
-		`
-		SELECT
-			id,
-			clinic_id,
-			fname,
-			lname,
-			COALESCE(phone, ''),
-			email,
-			COALESCE(website, ''),
-			COALESCE(abn, ''),
-			COALESCE(note, ''),
-			created_at,
-			updated_at
-		FROM tbl_clinic_contact_person
-		WHERE deleted_at IS NULL
-		ORDER BY created_at DESC
-		`,
-	)
+	searchCols := []string{"fname", "lname", "email", "phone", "abn"}
+
+	baseQuery := `FROM tbl_clinic_contact_person WHERE deleted_at IS NULL AND clinic_id = ?`
+	baseArgs := []interface{}{clinicID}
+
+	countQueryPart, countArgsPart := common.BuildQuery(baseQuery, f, allowedColumns, searchCols, true)
+	countArgs := append(baseArgs, countArgsPart...)
+
+	var total int64
+	err := r.db.GetContext(ctx, &total, sqlx.Rebind(sqlx.DOLLAR, countQueryPart), countArgs...)
 	if err != nil {
-		return nil, err
+		return nil, 0, fmt.Errorf("count contacts: %w", err)
+	}
+
+	selectQueryBase := `SELECT id, clinic_id, fname, lname, COALESCE(phone, ''), email, COALESCE(website, ''), COALESCE(abn, ''), COALESCE(note, ''), created_at, updated_at ` + baseQuery
+	itemsQuery, itemsArgsPart := common.BuildQuery(selectQueryBase, f, allowedColumns, searchCols, false)
+	itemsArgs := append(baseArgs, itemsArgsPart...)
+
+	rows, err := r.db.QueryContext(ctx, sqlx.Rebind(sqlx.DOLLAR, itemsQuery), itemsArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("select contacts items: %w", err)
 	}
 	defer rows.Close()
 
 	var contacts []Contact
-
 	for rows.Next() {
-
 		var contact Contact
-
 		err := rows.Scan(
 			&contact.ID,
 			&contact.ClinicId,
@@ -317,20 +323,18 @@ func (r *repository) List(ctx context.Context) ([]Contact, error) {
 			&contact.UpdatedAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		addresses, err := r.getAddressesByContactID(ctx, contact.ID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-
 		contact.Address = addresses
-
 		contacts = append(contacts, contact)
 	}
 
-	return contacts, rows.Err()
+	return contacts, total, rows.Err()
 }
 
 func (r *repository) Update(ctx context.Context, contact Contact) error {

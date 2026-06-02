@@ -1,6 +1,7 @@
 package contact
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -118,12 +119,18 @@ func (h *handler) Get(c *gin.Context) {
 // @Security BearerToken
 // @Router /clinic/contact [get]
 func (h *handler) List(c *gin.Context) {
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!"))
+		return
+	}
+
 	var ft Filter
 	if err := util.BindAndValidate(c, &ft); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	contacts, err := h.svc.List(c, &ft)
+	contacts, err := h.svc.List(c, clinicId, &ft)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

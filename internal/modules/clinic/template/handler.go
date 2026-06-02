@@ -164,7 +164,13 @@ func (h *Handler) Get(c *gin.Context) {
 // @Security BearerToken
 // @Router /template [get]
 func (h *Handler) List(c *gin.Context) {
-	rs, err := h.svc.List(c.Request.Context())
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found"))
+		return
+	}
+
+	rs, err := h.svc.List(c.Request.Context(), clinicId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

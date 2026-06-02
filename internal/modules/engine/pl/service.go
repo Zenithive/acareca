@@ -15,6 +15,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/export"
+	plexport "github.com/iamarpitzala/acareca/internal/shared/export/pl"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -360,84 +362,6 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-type reportStyles struct {
-	HeaderBlue   int
-	SectionTitle int
-	DataLeft     int
-	DataGrid     int
-	GroupTotal   int
-	Profit       int
-	ProfitGreen  int
-}
-
-func applyReportStyles(f *excelize.File) reportStyles {
-	hBlue, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 14},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-	})
-	sTitle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 12},
-	})
-	dLeft, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Family: "Calibri", Size: 10},
-		Alignment: &excelize.Alignment{Horizontal: "left"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-	dGrid, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Family: "Calibri", Size: 10},
-		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-	gTotal, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
-		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1}, {Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1}, {Type: "right", Color: "000000", Style: 1},
-		},
-	})
-	profit, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri"},
-		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
-			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
-		},
-	})
-	profitGreen, _ := f.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true, Family: "Calibri", Color: "28a745"},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#c4f0ce"}, Pattern: 1},
-		CustomNumFmt: lo.ToPtr("$#,##0.00;$#,##0.00;$0.00"),
-		Alignment:    &excelize.Alignment{Horizontal: "right"},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 2}, {Type: "top", Color: "000000", Style: 2},
-			{Type: "bottom", Color: "000000", Style: 2}, {Type: "right", Color: "000000", Style: 2},
-		},
-	})
-
-	return reportStyles{
-		HeaderBlue:   hBlue,
-		SectionTitle: sTitle,
-		DataLeft:     dLeft,
-		DataGrid:     dGrid,
-		GroupTotal:   gTotal,
-		Profit:       profit,
-		ProfitGreen:  profitGreen,
-	}
-}
-
 func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error) {
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
@@ -490,112 +414,68 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		}
 	}
 
-	f := excelize.NewFile()
-	sheet := "Profit and Loss"
-	f.NewSheet(sheet)
-	f.DeleteSheet("Sheet1")
-
-	styles := applyReportStyles(f)
-
-	setMetaRow := func(cell string, label string, value string) {
-		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
-			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
-			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
-		})
-	}
-
-	f.SetCellValue(sheet, "A1", "Profit and Loss Report")
-	f.MergeCell(sheet, "A1", "B1")
-	f.SetCellStyle(sheet, "A1", "B1", styles.HeaderBlue)
-
-	currentRow := 2
-
-	setMetaRow(fmt.Sprintf("A%d", currentRow), "Exported by:", entityName)
-	currentRow++
-
-	if practitionerABN != "" {
-		setMetaRow(fmt.Sprintf("A%d", currentRow), "ABN:", practitionerABN)
-		currentRow++
-	}
-
+	periodText := ""
 	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
-		setMetaRow(fmt.Sprintf("A%d", currentRow), "Period:", fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil)))
-		currentRow++
+		periodText = fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil))
 	}
 
-	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
-	setMetaRow(fmt.Sprintf("A%d", currentRow), "Generated:", currentTimeStr)
-	currentRow++
-	currentRow++
-
-	var totalIncomeCell, totalCOSCell, totalOtherCostsCell string
-
-	renderGroup := func(title string, group RsReportGroup) string {
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.SectionTitle)
-
-		if len(group.Accounts) > 0 {
-			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(group.Accounts))
-			tableName := strings.ReplaceAll(title, " ", "_") + fmt.Sprintf("_%d", currentRow)
-			showHeaders := true
-			f.AddTable(sheet, &excelize.Table{
-				Range:         tableRange,
-				Name:          tableName,
-				StyleName:     "",
-				ShowHeaderRow: &showHeaders,
-			})
-		}
-
-		currentRow++
-		dataStartRow := currentRow
-		for _, acc := range group.Accounts {
-			f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), acc.CoaName)
-			f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.DataLeft)
-
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), acc.TotalValue)
-			f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.DataGrid)
-			currentRow++
-		}
-		dataEndRow := currentRow - 1
-
-		totalCell := fmt.Sprintf("B%d", currentRow)
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL "+title)
-
-		if len(group.Accounts) > 0 {
-			formula := fmt.Sprintf("SUBTOTAL(109, B%d:B%d)", dataStartRow, dataEndRow)
-			f.SetCellFormula(sheet, totalCell, formula)
-		} else {
-			f.SetCellValue(sheet, totalCell, 0)
-		}
-
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.GroupTotal)
-		currentRow += 2
-
-		return totalCell
+	config := export.ExportConfig{
+		EntityName:     entityName,
+		EntityABN:      practitionerABN,
+		Period:         periodText,
+		ExportType:     exportType,
+		ExportedByName: fullName,
+		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	totalIncomeCell = renderGroup("INCOME", data.Income)
-	totalCOSCell = renderGroup("COST OF SALES", data.CostOfSales)
+	exportData := &plexport.RsReport{
+		ReportMetadata: plexport.RsReportMetadata{
+			DateFrom:         data.ReportMetadata.DateFrom,
+			DateUntil:        data.ReportMetadata.DateUntil,
+			OverallNetProfit: data.ReportMetadata.OverallNetProfit,
+		},
+		Income: plexport.RsReportGroup{
+			GroupTotal: data.Income.GroupTotal,
+			Accounts:   make([]plexport.RsReportAccount, len(data.Income.Accounts)),
+		},
+		CostOfSales: plexport.RsReportGroup{
+			GroupTotal: data.CostOfSales.GroupTotal,
+			Accounts:   make([]plexport.RsReportAccount, len(data.CostOfSales.Accounts)),
+		},
+		GrossProfit: data.GrossProfit,
+		OtherCosts: plexport.RsReportGroup{
+			GroupTotal: data.OtherCosts.GroupTotal,
+			Accounts:   make([]plexport.RsReportAccount, len(data.OtherCosts.Accounts)),
+		},
+		NetProfit: data.NetProfit,
+	}
 
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "GROSS PROFIT")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
+	for i, acc := range data.Income.Accounts {
+		exportData.Income.Accounts[i] = plexport.RsReportAccount{
+			CoaID:      acc.CoaID,
+			CoaName:    acc.CoaName,
+			TotalValue: acc.TotalValue,
+		}
+	}
+	for i, acc := range data.CostOfSales.Accounts {
+		exportData.CostOfSales.Accounts[i] = plexport.RsReportAccount{
+			CoaID:      acc.CoaID,
+			CoaName:    acc.CoaName,
+			TotalValue: acc.TotalValue,
+		}
+	}
+	for i, acc := range data.OtherCosts.Accounts {
+		exportData.OtherCosts.Accounts[i] = plexport.RsReportAccount{
+			CoaID:      acc.CoaID,
+			CoaName:    acc.CoaName,
+			TotalValue: acc.TotalValue,
+		}
+	}
 
-	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("%s-%s", totalIncomeCell, totalCOSCell))
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.ProfitGreen)
-	grossProfitCell := fmt.Sprintf("B%d", currentRow)
-	currentRow += 2
-
-	totalOtherCostsCell = renderGroup("OTHER COSTS", data.OtherCosts)
-
-	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "NET PROFIT")
-	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
-
-	f.SetCellFormula(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("%s-%s", grossProfitCell, totalOtherCostsCell))
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.ProfitGreen)
-
-	f.SetColWidth(sheet, "A", "A", 45)
-	f.SetColWidth(sheet, "B", "B", 20)
-	f.UpdateLinkedValue()
+	f, err := plexport.GenerateExcelReport(exportData, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate profit and loss excel: %w", err)
+	}
 
 	finalNotifIDs := notifIDs
 	if filterPractitionerID != "" {

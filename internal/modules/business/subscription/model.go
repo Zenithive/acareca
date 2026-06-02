@@ -15,6 +15,7 @@ const (
 	StatusCancelled Status = "CANCELLED"
 	StatusPaused    Status = "PAUSED"
 	StatusExpired   Status = "EXPIRED"
+	StatusInactive  Status = "INACTIVE"
 )
 
 type PractitionerSubscription struct {

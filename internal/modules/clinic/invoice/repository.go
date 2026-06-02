@@ -12,7 +12,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
-	"github.com/samber/lo"
 )
 
 var ErrNotFound = errors.New("invoice not found")
@@ -22,7 +21,7 @@ type IRepository interface {
 	Update(ctx context.Context, invoice *Invoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*Invoice, error)
-	List(ctx context.Context, filter common.Filter) ([]*Invoice, error)
+	List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, int64, error)
 }
 
 type Repository struct {
@@ -152,7 +151,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	`, id).Scan(
 		&invoice.ID,
 		&invoice.ClinicID,
-		lo.ToPtr(invoice.ContactID),
+		&invoice.ContactID,
 		&invoice.TemplateID,
 		&invoice.Name,
 		&invoice.InvoiceNumber,
@@ -172,6 +171,15 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		return nil, err
 	}
 
+	if invoice.ContactID != nil {
+		contact, err := r.contactRepo.Get(ctx, *invoice.ContactID)
+		if err != nil {
+			return nil, err
+		}
+
+		invoice.ContactTo = &contact
+	}
+
 	items, err := r.itemRepo.GetByInvoiceID(ctx, nil, invoice.ID)
 	if err != nil {
 		return nil, err
@@ -182,9 +190,33 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 }
 
 // List implements [IRepository].
-func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT
+func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, int64, error) {
+	allowedColumns := map[string]string{
+		"id":               "id",
+		"name":             "name",
+		"status":           "status",
+		"contact_id":       "contact_id",
+		"invoice_number":   "invoice_number",
+		"amount":           "amount",
+		"date_range_start": "issue_date",
+		"date_range_end":   "issue_date",
+		"created_at":       "created_at",
+	}
+
+	searchCols := []string{"name", "invoice_number"}
+
+	baseQuery := `FROM tbl_invoice WHERE deleted_at IS NULL AND clinic_id = ?`
+	baseArgs := []interface{}{clinicID}
+
+	countQueryPart, countArgsPart := common.BuildQuery(baseQuery, filter, allowedColumns, searchCols, true)
+	countArgs := append(baseArgs, countArgsPart...)
+
+	var total int64
+	if err := r.db.GetContext(ctx, &total, sqlx.Rebind(sqlx.DOLLAR, countQueryPart), countArgs...); err != nil {
+		return nil, 0, fmt.Errorf("count invoices failed: %w", err)
+	}
+
+	selectQueryBase := `SELECT 
 			id,
 			clinic_id,
 			contact_id::text,
@@ -198,23 +230,25 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			issue_date::text,
 			due_date::text,
 			created_at::text,
-			updated_at::text
-		FROM tbl_invoice
-		WHERE deleted_at IS NULL
-		ORDER BY created_at DESC
-	`)
+			updated_at::text ` + baseQuery
+
+	itemsQuery, itemsArgsPart := common.BuildQuery(selectQueryBase, filter, allowedColumns, searchCols, false)
+	itemsArgs := append(baseArgs, itemsArgsPart...)
+
+	rows, err := r.db.QueryContext(ctx, sqlx.Rebind(sqlx.DOLLAR, itemsQuery), itemsArgs...)
 	if err != nil {
-		return nil, err
+		return nil, 0, fmt.Errorf("select invoices failed: %w", err)
 	}
 	defer rows.Close()
 
 	invoices := make([]*Invoice, 0)
 	for rows.Next() {
 		var invoice Invoice
+
 		if err := rows.Scan(
 			&invoice.ID,
 			&invoice.ClinicID,
-			lo.ToPtr(&invoice.ContactID),
+			&invoice.ContactID,
 			&invoice.TemplateID,
 			&invoice.Name,
 			&invoice.InvoiceNumber,
@@ -227,17 +261,17 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			&invoice.CreatedAt,
 			&invoice.UpdatedAt,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		invoice.Items, err = r.itemRepo.GetByInvoiceID(ctx, r.db, invoice.ID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		invoices = append(invoices, &invoice)
 	}
 
-	return invoices, rows.Err()
+	return invoices, total, rows.Err()
 }
 
 // Update implements [IRepository].
