@@ -200,18 +200,20 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 
 	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
+	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
-		EndDate:           displayEnd,
-		Assets:            assets,
-		TotalAssets:       totalAssets,
-		Liabilities:       liabilities,
-		TotalLiabilities:  totalLiabilities,
-		NetAssets:         math.Round(netAssets*100) / 100,
-		Equity:            equitySect,
-		CurrentYearProfit: totalOwnerEquity.CurrentYearProfit,
-		TotalEquity:       math.Round(totalEquity*100) / 100,
+		EndDate:                   displayEnd,
+		Assets:                    assets,
+		TotalAssets:               totalAssets,
+		Liabilities:               liabilities,
+		TotalLiabilities:          totalLiabilities,
+		NetAssets:                 math.Round(netAssets*100) / 100,
+		Equity:                    equitySect,
+		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
+		TotalEquity:               math.Round(totalEquity*100) / 100,
+		TotalLiabilitiesAndEquity: math.Round(totalLiabilitiesAndEquity*100) / 100,
 	}
 
 	meta := auditctx.GetMetadata(ctx)
