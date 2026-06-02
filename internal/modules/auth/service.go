@@ -54,6 +54,8 @@ type Service interface {
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
 	ForgotPassword(ctx context.Context, req *RqForgotPassword) error
 	ResetPassword(ctx context.Context, req *RqResetPassword) error
+
+	GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType string) (*User, error)
 }
 
 type service struct {
@@ -876,4 +878,37 @@ func sanitizeUser(u *User) map[string]interface{} {
 		"last_name":  u.LastName,
 		"phone":      u.Phone,
 	}
+}
+
+// GetUserByID implements [Service].
+func (s *service) GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType string) (*User, error) {
+
+	fmt.Printf("fetching user for entityID: %s, EntityType: %s\n", entityID, EntityType)
+
+	var user *User
+	var err error
+
+	switch EntityType {
+	case auditctx.EntityPractitioner:
+		user, err = s.repo.FindByPractitionerID(ctx, entityID)
+		if err != nil {
+			fmt.Println("Error fetching user by practitioner ID:", err)
+			return nil, err
+		}
+	case auditctx.EntityAccountant:
+		user, err = s.repo.FindByAccountantID(ctx, entityID)
+		if err != nil {
+			fmt.Println("Error fetching user by accountant ID:", err)
+			return nil, err
+		}
+	case auditctx.EntityAdmin:
+		user, err = s.repo.FindByAdminID(ctx, entityID)
+		if err != nil {
+			fmt.Println("Error fetching user by admin ID:", err)
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unknown entity type: %s", EntityType)
+	}
+	return user, nil
 }

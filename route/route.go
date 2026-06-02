@@ -78,17 +78,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	preferenceSvc := preference.NewService(notificationPrefRepo, dbConn)
 
-	// Initialize notification consumer (separate from service)
-	notificationPublisher := worker.NewPublisher(events)
-	notificationConsumer := worker.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher, notificationPrefRepo)
-
-	// Wire stream manager to WebSocket hub for real-time delivery
-	if events != nil {
-		streamManager := notificationConsumer.GetStreamManager()
-		notifier.SetStreamManager(streamManager)
-		log.Println("✅ NATS stream manager connected to WebSocket hub")
-	}
-
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
 	auditSvc := audit.NewService(auditRepo, notificationSvc)
@@ -255,6 +244,17 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	tmpRepo := template.NewRepository(dbConn)
 	tempSvc := template.NewService(tmpRepo, cfg)
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
+
+	// Initialize notification consumer (separate from service)
+	notificationPublisher := worker.NewPublisher(events)
+	notificationConsumer := worker.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher, notificationPrefRepo, authSvc)
+
+	// Wire stream manager to WebSocket hub for real-time delivery
+	if events != nil {
+		streamManager := notificationConsumer.GetStreamManager()
+		notifier.SetStreamManager(streamManager)
+		log.Println("✅ NATS stream manager connected to WebSocket hub")
+	}
 
 	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
 

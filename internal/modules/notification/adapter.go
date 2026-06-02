@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 // ServiceAdapter adapts the notification.Service to sharednotification.NotificationService interface
@@ -45,10 +46,9 @@ func (a *ServiceAdapter) GetPreferences(ctx context.Context, userID uuid.UUID) (
 		return sharednotification.NotificationPreferences{}, err
 	}
 
-	// Convert []Channel to map[string]bool
-	channelsMap := make(map[string]bool)
+	channelsMap := make([]util.Channel, 0, len(prefs.Channels))
 	for _, ch := range prefs.Channels {
-		channelsMap[string(ch)] = true
+		channelsMap = append(channelsMap, util.Channel(ch))
 	}
 
 	// Convert preference.Preference to sharednotification.NotificationPreferences

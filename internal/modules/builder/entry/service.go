@@ -1460,7 +1460,7 @@ func (s *Service) sendTransactionNotification(ctx context.Context, entityID uuid
 
 	switch role {
 	case util.RoleAccountant:
-		acc, err := s.authRepo.FindByAccountentId(ctx, entityID)
+		acc, err := s.authRepo.FindByAccountantID(ctx, entityID)
 		if err != nil {
 			return fmt.Errorf("find accountant: %w", err)
 		}

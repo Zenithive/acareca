@@ -23,7 +23,8 @@ type Repository interface {
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 	FindByPractitionerID(ctx context.Context, pracID uuid.UUID) (*User, error)
-	FindByAccountentId(ctx context.Context, accID uuid.UUID) (*User, error)
+	FindByAccountantID(ctx context.Context, accID uuid.UUID) (*User, error)
+	FindByAdminID(ctx context.Context, adminID uuid.UUID) (*User, error)
 	UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error
 
 	// Auth provider
@@ -188,16 +189,30 @@ func (r *repository) FindByPractitionerID(ctx context.Context, pracID uuid.UUID)
 	}
 	return &u, nil
 }
-func (r *repository) FindByAccountentId(ctx context.Context, accID uuid.UUID) (*User, error) {
+func (r *repository) FindByAccountantID(ctx context.Context, accID uuid.UUID) (*User, error) {
 
 	query := `
 		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone 
 		FROM tbl_user u
-		JOIN tbl_accountant a ON p.user_id = u.id
+		JOIN tbl_accountant a ON a.user_id = u.id
 		WHERE a.id = $1 AND u.deleted_at IS NULL
 	`
 	var u User
 	if err := r.db.GetContext(ctx, &u, query, accID); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *repository) FindByAdminID(ctx context.Context, adminID uuid.UUID) (*User, error) {
+	query := `
+		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone 
+		FROM tbl_user u
+		JOIN tbl_admin a ON a.user_id = u.id
+		WHERE a.id = $1 AND u.deleted_at IS NULL
+	`
+	var u User
+	if err := r.db.GetContext(ctx, &u, query, adminID); err != nil {
 		return nil, err
 	}
 	return &u, nil

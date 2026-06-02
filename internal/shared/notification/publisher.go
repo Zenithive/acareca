@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,7 +40,7 @@ type NotificationRequest struct {
 
 type NotificationPreferences struct {
 	EventType []util.NotificationEventType
-	Channels  map[string]bool
+	Channels  []util.Channel
 }
 
 type NotificationPayload struct {
@@ -76,32 +77,35 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 	if p.notificationSvc == nil {
 		return fmt.Errorf("notification service is nil")
 	}
-	notificationEventType := mapEventTypeToNotificationEventType(req.EventType)
+
 	for _, recipient := range req.Recipients {
 		prefs, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
 		if err != nil {
 			log.Printf("[ERROR] failed to get preferences for user %s: %v", recipient.UserID, err)
 			continue
 		}
-		channels := []util.Channel{}
-		for _, event := range prefs.EventType {
-			if event == notificationEventType {
-				for ch := range prefs.Channels {
-					channels = append(channels, util.Channel(ch))
-				}
-				break
+
+		notificationEventType := make([]util.NotificationEventType, 0, len(prefs.EventType))
+		for _, et := range prefs.EventType {
+			notificationEventType = append(notificationEventType, mapEventTypeToNotificationEventType(util.EventType(et)))
+		}
+
+		channels := make([]util.Channel, 0, len(prefs.Channels))
+		if len(notificationEventType) > 0 {
+			for _, ch := range prefs.Channels {
+				channels = append(channels, ch)
 			}
 		}
+
 		if len(channels) == 0 {
 			log.Printf("[INFO] no enabled channels for user %s, event %s", recipient.UserID, req.EventType)
 			continue
 		}
 		extraData := map[string]interface{}{req.EntityKey: req.EntityID.String()}
 		if req.ExtraData != nil {
-			for k, v := range req.ExtraData {
-				extraData[k] = v
-			}
+			maps.Copy(extraData, req.ExtraData)
 		}
+
 		payload := NotificationPayload{
 			Title:      req.Title,
 			Body:       json.RawMessage(fmt.Sprintf(`"%s"`, req.Body)),

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
@@ -24,9 +26,10 @@ type Consumer struct {
 	db            *sqlx.DB
 	publisher     *Publisher
 	streamManager *StreamManager
+	authSvc       auth.Service
 }
 
-func NewConsumer(events sharedEvents.IEvent, repo notification.Repository, notifier *sharednotification.Hub, db *sqlx.DB, publisher *Publisher, prefRepo preference.Repository) *Consumer {
+func NewConsumer(events sharedEvents.IEvent, repo notification.Repository, notifier *sharednotification.Hub, db *sqlx.DB, publisher *Publisher, prefRepo preference.Repository, authSvc auth.Service) *Consumer {
 	consumer := &Consumer{
 		events:    events,
 		repo:      repo,
@@ -34,6 +37,7 @@ func NewConsumer(events sharedEvents.IEvent, repo notification.Repository, notif
 		db:        db,
 		publisher: publisher,
 		prefRepo:  prefRepo,
+		authSvc:   authSvc,
 	}
 
 	consumer.streamManager = NewStreamManager(events, consumer)
@@ -64,20 +68,31 @@ func (c *Consumer) StartNotificationInAppConsumer(ctx context.Context) error {
 func (c *Consumer) handleNotificationInApp(msg jetstream.Msg) error {
 	ctx := context.Background()
 
+	// Log incoming NATS message
+	// log.Printf("📨 [NATS] Received message on subject: %s", msg.Subject())
+
 	var event notification.NotificationEvent
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
+		log.Printf("❌ [NATS] Failed to unmarshal message: %v", err)
 		return fmt.Errorf("failed to unmarshal notification event: %w", err)
 	}
 
-	if err, _ := c.shouldNotifyUser(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType); err != nil {
-		log.Printf("User %s opted out of event type %s for entity %s", event.RecipientID, event.EventType, event.EntityID)
+	// Log event details
+	// log.Printf("📋 [NATS] Event: %s | Recipient: %s | Entity: %s | Channels: %v",
+	// event.EventType, event.RecipientID, event.EntityID, event.Channels)
+
+	if !c.shouldNotifyUser(ctx, event.RecipientID, event.EntityID, event.RecipientType, event.EventType) {
+		// log.Printf("User %s opted out of event type %s for entity %s", event.RecipientID, event.EventType, event.EntityID)
 		return nil
 	}
 
 	notificationID, err := c.createNotification(ctx, event, event.Channels)
 	if err != nil {
+		log.Printf("❌ [NATS] Failed to create notification: %v", err)
 		return err
 	}
+
+	log.Printf("✅ [NATS] Notification created: %s", notificationID)
 
 	c.deliverToChannels(ctx, notificationID, event, event.Channels)
 
@@ -145,7 +160,7 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 
 		if c.notifier.Push(event.RecipientID, payload) {
 			pushedToWebSocket = true
-			log.Printf("Notification pushed to active WebSocket via hub: %s", notificationID)
+			// log.Printf("Notification pushed to active WebSocket via hub: %s", notificationID)
 		}
 	}
 
@@ -160,43 +175,35 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 	}
 }
 
-func (c *Consumer) parseDeliveryEvent(data []byte) (uuid.UUID, error) {
-	var event map[string]interface{}
-	if err := json.Unmarshal(data, &event); err != nil {
-		return uuid.Nil, fmt.Errorf("failed to unmarshal delivery event: %w", err)
-	}
+func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType util.ActorType, eventType util.EventType) bool {
+	// fmt.Printf("userId: %s, entityId: %s, entityType: %s, eventType: %s", userID, entityID, entityType, eventType)
 
-	notificationIDStr, ok := event["notification_id"].(string)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("invalid notification_id in delivery event")
-	}
-
-	notificationID, err := uuid.Parse(notificationIDStr)
+	uId, err := c.authSvc.GetUserByID(ctx, userID, string(entityType))
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("failed to parse notification_id: %w", err)
+		fmt.Println("errrrrrrrrrrrrrrrrrrrrrrrrrrrr")
+		return false
 	}
 
-	return notificationID, nil
-}
+	fmt.Printf("User ID: %s", uId.ID)
 
-func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType util.ActorType, eventType util.EventType) (error, bool) {
-	pref, err := c.prefRepo.GetPreferencesByUserID(ctx, userID)
+	pref, err := c.prefRepo.GetPreferencesByUserID(ctx, uId.ID)
 	if err != nil {
-		return err, true
+		return false
 	}
+
+	fmt.Println("User preferences:", pref.EventType)
+	fmt.Println("Event type:", eventType)
 
 	notificationEventType := mapEventTypeToNotificationEventType(eventType)
 
 	if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-		for _, pref := range pref.EventType {
-			if pref == notificationEventType {
-				return nil, true
-			}
+		if slices.Contains(pref.EventType, notificationEventType) {
+			return true
 		}
-		return nil, false
+		return false
 	}
 
-	return nil, true
+	return true
 }
 
 // mapEventTypeToNotificationEventType maps event types to notification event types

@@ -78,17 +78,45 @@ func (s *service) PreferenceSetting(ctx context.Context, tx *sqlx.Tx, userID uui
 		return fmt.Errorf("failed to get existing preferences: %w", err)
 	}
 
-	for _, et := range existingPrefs {
+	// If user has existing preferences, copy them to the new entity
+	if len(existingPrefs) > 0 {
+		for _, et := range existingPrefs {
+			pref := Preference{
+				UserID:     userID,
+				EntityID:   entityID,
+				EntityType: entityType,
+				EventType:  et.EventType,
+				Channels:   et.Channels,
+				CreatedAt:  time.Now(),
+			}
+			if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
+				return fmt.Errorf("failed to create preference: %w", err)
+			}
+		}
+		return nil
+	}
+
+	defaultEventTypes := []util.NotificationEventType{
+		util.EventNewTransaction,
+		util.EventAccountantActivityAlert,
+		util.EventSystemActivityAlert,
+	}
+
+	defaultChannels := []util.Channel{
+		util.ChannelInApp,
+	}
+
+	for _, eventType := range defaultEventTypes {
 		pref := Preference{
 			UserID:     userID,
 			EntityID:   entityID,
 			EntityType: entityType,
-			EventType:  et.EventType,
-			Channels:   et.Channels,
+			EventType:  []util.NotificationEventType{eventType},
+			Channels:   defaultChannels,
 			CreatedAt:  time.Now(),
 		}
 		if err := s.repo.CreatePreference(ctx, pref, tx); err != nil {
-			return fmt.Errorf("failed to create preference: %w", err)
+			return fmt.Errorf("failed to create default preference for %s: %w", eventType, err)
 		}
 	}
 
