@@ -75,7 +75,7 @@ func (s *ClinicRepositoryTestSuite) createTestClinicAddress(ctx context.Context,
 		Address:   lo.ToPtr("123 Test Street"),
 		City:      lo.ToPtr("Testville"),
 		State:     lo.ToPtr("Test State"),
-		Postcode:  lo.ToPtr("99999"),
+		Postcode:  lo.ToPtr("9999"),
 		IsPrimary: true,
 	})
 	s.Require().NoError(err)
