@@ -659,10 +659,17 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			COALESCE(f.name, '')                                           AS form_name,
 			COALESCE(f.method::text, '')                                   AS form_method,
 			COALESCE(c.name, '')                                           AS clinic_name,
-			COALESCE(v.normal_balance, '')                          AS transaction_type,
-			ROUND(ABS(COALESCE(v.net_amount, 0))::numeric, 2)::float8   AS net_amount,
-			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8   AS gst_amount, 
-			ROUND(ABS(COALESCE(v.gross_amount, 0))::numeric, 2)::float8 AS gross_amount,
+			COALESCE(v.normal_balance, '')                                 AS transaction_type,
+			-- Determine income/expense based on COA account type, not section_type
+			-- Income COAs (Revenue): show negative net when it's a balancing/reuse entry (net < 0)
+			-- Expense/Asset COAs: show negative net when it's a balancing/reuse entry (net < 0)
+			ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8   AS net_amount,
+			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8   AS gst_amount,
+			ROUND(
+				CASE
+					WHEN COALESCE(v.net_amount, 0) < 0 THEN -ABS(COALESCE(v.gross_amount, 0))
+					ELSE ABS(COALESCE(v.gross_amount, 0))
+				END::numeric, 2)::float8 AS gross_amount,
 			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')              AS created_at
 		FROM vw_double_entry_line_items v
 		LEFT JOIN tbl_form f        ON f.id = v.form_id
@@ -709,11 +716,11 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
-		method := ""
-		if row.FormMethod != nil {
-			method = *row.FormMethod
-		}
-		isExpense := method == "EXPENSE_ENTRY"
+		// Determine income vs expense based on COA account type (normal_balance from view),
+		// not section_type or form_method — this is the correct accounting approach.
+		// DEBIT normal balance = Asset/Expense accounts = expense entries
+		// CREDIT normal balance = Liability/Equity/Revenue accounts = income entries
+		isExpense := strings.EqualFold(row.TransactionType, "DEBIT")
 
 		netVal := row.NetAmount
 		gstVal := row.GstAmount

@@ -857,7 +857,16 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				taxType,
 			)
 
-			// Create form field for this expense item
+			// Determine section type based on COA account type (for display grouping)
+			// Income COAs (Revenue/Income account types) → COLLECTION
+			// All other COAs (Expense, Asset, etc.) → OTHER_COST
+			sectionType := "OTHER_COST" // Default
+			accountTypeLower := strings.ToLower(coaDetail.AccountTypeName)
+			if strings.Contains(accountTypeLower, "revenue") || strings.Contains(accountTypeLower, "income") {
+				sectionType = "COLLECTION"
+			}
+
+			// Create form field for this expense/income item
 			formFields := &field.RqFormField{
 				FieldKey:    fmt.Sprintf("E%d", idx+1),
 				Label:       item.Name,
@@ -866,7 +875,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				SortOrder:   idx,
 				BusinessUse: &localBusinessUse,
 				TaxType:     &taxType,
-				SectionType: "EXPENSE_ENTRY",
+				SectionType: sectionType,
 				Amount:      &item.Amount,
 			}
 
@@ -905,20 +914,38 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		}
 
 		// Now add auto-balancing entry for Bank Account
-		// Calculate total ledger impact from all expense entries
-		var totalLedgerImpact float64
-		for _, ev := range entryValues {
+		// Calculate total amount and determine the bank account direction
+		var totalAmount float64
+		var hasIncome bool
+		var hasExpense bool
+		
+		for idx, ev := range entryValues {
 			if ev.NetAmount != nil {
-				// Expenses are debits, so positive amounts increase the impact
-				totalLedgerImpact += *ev.NetAmount
+				totalAmount += *ev.NetAmount
+				
+				// Check account type to determine transaction nature
+				itemCOA, err := s.coaSvc.GetChartOfAccount(ctx, rq.Items[idx].CoaID, OwnerID)
+				if err != nil {
+					return fmt.Errorf("failed to get COA for balancing: %w", err)
+				}
+				
+				accountTypeLower := strings.ToLower(itemCOA.AccountTypeName)
+				if strings.Contains(accountTypeLower, "revenue") || strings.Contains(accountTypeLower, "income") {
+					hasIncome = true
+				} else {
+					hasExpense = true
+				}
 			}
 		}
 
 		// Round to avoid floating point issues
-		totalLedgerImpact = math.Round(totalLedgerImpact*100) / 100
+		totalAmount = math.Round(totalAmount*100) / 100
 
-		// If there's an imbalance, create a Bank Account balancing entry
-		if totalLedgerImpact != 0 {
+		// Create Bank Account balancing entry
+		// Bank (Asset) is stored with:
+		// - NEGATIVE for expenses (credit = money out)
+		// - POSITIVE for income (debit = money in)
+		if totalAmount != 0 {
 			// Get Bank Account (COA code 600) directly from database
 			var bankAccountID uuid.UUID
 			bankQuery := `SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 AND code = 600 AND deleted_at IS NULL LIMIT 1`
@@ -926,16 +953,29 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				return fmt.Errorf("failed to find Bank Account (COA 600) for auto-balancing: %w", err)
 			}
 
-			// Create balancing entry (credit to Bank Account)
-			counterBalance := -totalLedgerImpact
+			// Determine bank amount based on transaction type
+			var bankAmount float64
+			if hasIncome && !hasExpense {
+				// Pure income: bank increases (debit), store as positive
+				bankAmount = totalAmount
+			} else if hasExpense && !hasIncome {
+				// Pure expense: bank decreases (credit), store as negative
+				bankAmount = -totalAmount
+			} else {
+				// Mixed transaction: should not happen in this simple entry system
+				// but if it does, treat the net effect
+				// This case shouldn't occur in single-entry forms
+				bankAmount = totalAmount
+			}
+			
 			balancingEntry := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
 				FormFieldID: nil, // System-generated, no form field
 				CoaID:       &bankAccountID,
-				NetAmount:   &counterBalance,
+				NetAmount:   &bankAmount,
 				GstAmount:   nil,
-				GrossAmount: &counterBalance,
+				GrossAmount: &bankAmount,
 				Description: nil,
 			}
 
@@ -1339,6 +1379,14 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				taxType,
 			)
 
+			// Determine section type based on COA account type
+			// Income COAs (Revenue/Income) → COLLECTION, all others → OTHER_COST
+			sectionType := "OTHER_COST"
+			accountTypeLower := strings.ToLower(coaDetail.AccountTypeName)
+			if strings.Contains(accountTypeLower, "revenue") || strings.Contains(accountTypeLower, "income") {
+				sectionType = "COLLECTION"
+			}
+
 			// Create new field
 			formFields := &field.RqFormField{
 				FieldKey:    fmt.Sprintf("N%d", idx+1),
@@ -1347,7 +1395,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				IsComputed:  false,
 				BusinessUse: &item.BusinessUse,
 				TaxType:     &taxType,
-				SectionType: "OTHER_COST",
+				SectionType: sectionType,
 				Amount:      &item.Amount,
 			}
 
@@ -1392,27 +1440,52 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			return fmt.Errorf("failed to delete old balancing entries: %w", err)
 		}
 
-		// Get all current active entry values to recalculate balance
-		var currentValues []*entry.FormEntryValue
-		selectQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description FROM tbl_form_entry_value WHERE entry_id = $1 AND updated_at IS NULL`
-		if err := tx.SelectContext(ctx, &currentValues, selectQuery, existingEntry.ID); err != nil {
+		// Get all current active entry values with their COA account type
+		type entryWithCOAType struct {
+			entry.FormEntryValue
+			AccountTypeName *string `db:"account_type_name"`
+		}
+		var currentValuesWithCOA []entryWithCOAType
+		selectQuery := `
+			SELECT fev.id, fev.entry_id, fev.form_field_id, fev.coa_id,
+			       fev.net_amount, fev.gst_amount, fev.gross_amount, fev.description,
+			       at.name AS account_type_name
+			FROM tbl_form_entry_value fev
+			LEFT JOIN tbl_form_field ff  ON ff.id = fev.form_field_id
+			LEFT JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(fev.coa_id, ff.coa_id)
+			LEFT JOIN tbl_account_type at ON at.id = coa.account_type_id
+			WHERE fev.entry_id = $1 AND fev.updated_at IS NULL`
+		if err := tx.SelectContext(ctx, &currentValuesWithCOA, selectQuery, existingEntry.ID); err != nil {
 			return fmt.Errorf("failed to get current entry values: %w", err)
 		}
 
-		// Calculate total ledger impact from all active expense entries
-		var totalLedgerImpact float64
-		for _, ev := range currentValues {
-			if ev.NetAmount != nil && ev.FormFieldID != nil {
-				// Expenses are debits, so positive amounts increase the impact
-				totalLedgerImpact += *ev.NetAmount
+		// Calculate total amount and classify by COA account type (not section_type)
+		var totalAmount float64
+		var hasIncome bool
+		var hasExpense bool
+		for _, evs := range currentValuesWithCOA {
+			if evs.NetAmount != nil && evs.FormFieldID != nil {
+				totalAmount += *evs.NetAmount
+
+				// Use COA account type: Revenue/Income = income, everything else = expense
+				if evs.AccountTypeName != nil {
+					t := strings.ToLower(*evs.AccountTypeName)
+					if strings.Contains(t, "revenue") || strings.Contains(t, "income") {
+						hasIncome = true
+					} else {
+						hasExpense = true
+					}
+				} else {
+					hasExpense = true
+				}
 			}
 		}
 
 		// Round to avoid floating point issues
-		totalLedgerImpact = math.Round(totalLedgerImpact*100) / 100
+		totalAmount = math.Round(totalAmount*100) / 100
 
-		// If there's an imbalance, create a Bank Account balancing entry
-		if totalLedgerImpact != 0 {
+		// Create Bank Account balancing entry
+		if totalAmount != 0 {
 			// Get Bank Account (COA code 600) directly from database
 			var bankAccountID uuid.UUID
 			bankQuery := `SELECT id FROM tbl_chart_of_accounts WHERE practitioner_id = $1 AND code = 600 AND deleted_at IS NULL LIMIT 1`
@@ -1420,16 +1493,27 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				return fmt.Errorf("failed to find Bank Account (COA 600) for auto-balancing: %w", err)
 			}
 
-			// Create balancing entry (credit to Bank Account)
-			counterBalance := -totalLedgerImpact
+			// Determine bank amount based on transaction type
+			var bankAmount float64
+			if hasIncome && !hasExpense {
+				// Pure income: bank increases (debit), store as positive
+				bankAmount = totalAmount
+			} else if hasExpense && !hasIncome {
+				// Pure expense: bank decreases (credit), store as negative
+				bankAmount = -totalAmount
+			} else {
+				// Mixed transaction: net effect
+				bankAmount = totalAmount
+			}
+
 			balancingEntry := &entry.FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     existingEntry.ID,
 				FormFieldID: nil, // System-generated, no form field
 				CoaID:       &bankAccountID,
-				NetAmount:   &counterBalance,
+				NetAmount:   &bankAmount,
 				GstAmount:   nil,
-				GrossAmount: &counterBalance,
+				GrossAmount: &bankAmount,
 				Description: nil,
 			}
 
