@@ -11,7 +11,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
-	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -177,19 +176,8 @@ func (c *Consumer) deliverInApp(ctx context.Context, notificationID uuid.UUID, e
 }
 
 func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.UUID, entityType util.ActorType, eventType util.EventType) bool {
-	var entityTypeStr string
-	switch entityType {
-	case util.ActorPractitioner:
-		entityTypeStr = auditctx.EntityPractitioner
-	case util.ActorAccountant:
-		entityTypeStr = auditctx.EntityAccountant
-	case util.ActorAdmin:
-		entityTypeStr = auditctx.EntityAdmin
-	default:
-		entityTypeStr = auditctx.EntityUser
-	}
 
-	uId, err := c.authSvc.GetUserByID(ctx, userID, entityTypeStr)
+	uId, err := c.authSvc.GetUserByID(ctx, userID, entityType)
 	if err != nil {
 		return false
 	}

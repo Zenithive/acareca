@@ -45,6 +45,7 @@ func RegisterBuilderRoutes(
 	invitationRepo invitation.Repository,
 	notificationSvc notification.Service,
 	adminRepo admin.Repository,
+	authSvc auth.Service,
 ) {
 	// Create permission adapter for feature-based permissions
 	// Wrap the service methods to convert *Permissions to FeaturePermissions interface
@@ -82,7 +83,7 @@ func RegisterBuilderRoutes(
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, invitationRepo, detailRepo, fyRepo, practitionerSvc, coaRepo, notificationSvc, adminRepo)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, invitationRepo, detailRepo, fyRepo, practitionerSvc, coaRepo, notificationSvc, adminRepo, authSvc)
 	entriesHandler := entry.NewHandler(entriesSvc, invitationSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())

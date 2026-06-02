@@ -74,9 +74,10 @@ type Service struct {
 	notificationSvc notification.Service
 	notificationPub *sharednotification.Publisher
 	adminRepo       admin.Repository
+	authSvc         auth.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository) IService {
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
 	return &Service{
 		repo:            repo,
 		fieldRepo:       fieldRepo,
@@ -101,6 +102,7 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 		notificationSvc: notificationSvc,
 		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
 		adminRepo:       adminRepo,
+		authSvc:         authSvc,
 	}
 }
 
@@ -218,7 +220,21 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		UserAgent:  meta.UserAgent,
 	})
 
-	if err = s.sendTransactionNotification(ctx, entityID, role, result.ClinicID, util.EventTransactionCreated, "Transaction Created"); err != nil {
+	// Send creation notification
+	// var actorType util.ActorType
+	// switch role {
+	// case "PRACTITIONER":
+	// 	actorType = util.ActorPractitioner
+	// case "ACCOUNTANT":
+	// 	actorType = util.ActorAccountant
+	// case "ADMIN":
+	// 	actorType = util.ActorAdmin
+	// default:
+	// 	log.Printf("Unknown role %s for notification, defaulting to practitioner", role)
+	// 	actorType = util.ActorPractitioner
+	// }
+
+	if err = s.notifyTransaction(ctx, entityID, util.ActorPractitioner, util.EventTransactionCreated, "Transaction Created"); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -366,8 +382,22 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		UserAgent:   meta.UserAgent,
 	})
 
+	fmt.Printf("rrrrrrrrrrrrrrrrr", role)
+
+	var actorType util.ActorType
+	switch role {
+	case "PRACTITIONER":
+		actorType = util.ActorPractitioner
+	case "ACCOUNTANT":
+		actorType = util.ActorAccountant
+	case "ADMIN":
+		actorType = util.ActorAdmin
+	default:
+		log.Printf("Unknown role %s for notification, defaulting to practitioner", role)
+		actorType = util.ActorPractitioner
+	}
 	// Send update notification
-	if err = s.sendTransactionNotification(ctx, entityID, role, result.ClinicID, util.EventTransactionUpdated, "Transaction Updated"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, actorType, util.EventTransactionUpdated, "Transaction Updated"); err != nil {
 		log.Printf("failed to send transaction update notification event: %v", err.Error())
 	}
 
@@ -1432,95 +1462,49 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-func (s *Service) sendTransactionNotification(ctx context.Context, entityID uuid.UUID, role string, clinicID uuid.UUID, eventType util.EventType, title string) error {
+func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
 
-	// Get clinic to find practitioner
-	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
-	if err != nil {
-		return fmt.Errorf("get clinic: %w", err)
-	}
-	if clinic == nil {
-		return fmt.Errorf("clinic not found")
-	}
+	fmt.Printf("entityId %s recipettype %s", entityID, recipientType)
 
-	practitionerID := clinic.PractitionerID
-
-	// Get practitioner user ID
-	practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+	practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, entityID)
 	if err != nil {
 		return fmt.Errorf("get practitioner user ID: %w", err)
 	}
 
-	// Determine sender info
+	user, err := s.authSvc.GetUserByID(ctx, entityID, recipientType)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	// Determine sender info based on who triggered the transaction
 	var senderName string
 	var senderType util.ActorType
+	senderName = user.FirstName + " " + user.LastName
+	senderType = recipientType
 
-	switch role {
-	case util.RoleAccountant:
-		acc, err := s.authRepo.FindByAccountantID(ctx, entityID)
-		if err != nil {
-			return fmt.Errorf("find accountant: %w", err)
-		}
-		senderName = fmt.Sprintf("%s %s", acc.FirstName, acc.LastName)
-		senderType = util.ActorAccountant
-
-	case util.RolePractitioner:
-		prac, err := s.authRepo.FindByPractitionerID(ctx, entityID)
-		if err != nil {
-			return fmt.Errorf("find practitioner: %w", err)
-		}
-		senderName = fmt.Sprintf("%s %s", prac.FirstName, prac.LastName)
-		senderType = util.ActorPractitioner
-
-	default:
-		return fmt.Errorf("invalid role: %s", role)
+	accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+	if err != nil {
+		log.Printf("[WARN] failed to get linked accountants: %v", err)
 	}
 
 	// Build recipients list
 	recipients := []sharednotification.RecipientWithPreferences{}
 
-	admins, err := s.adminRepo.GetAllAdmins(ctx)
-	if err != nil {
-		log.Printf("[WARN] failed to get admins: %v", err)
-	} else {
-		for _, adm := range admins {
-			recipients = append(recipients, sharednotification.RecipientWithPreferences{
-				RecipientID:   adm.ID,
-				RecipientType: util.ActorAdmin,
-				UserID:        adm.User.ID,
-			})
-		}
-	}
-
-	if !(role == util.RolePractitioner && practitionerID == entityID) {
-		recipients = append(recipients, sharednotification.RecipientWithPreferences{
-			RecipientID:   practitionerID,
-			RecipientType: util.ActorPractitioner,
-			UserID:        practitionerUserID,
-		})
-	}
-
-	accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, practitionerID)
-	if err != nil {
-		log.Printf("[WARN] failed to get linked accountants: %v", err)
-	} else {
+	switch recipientType {
+	case util.ActorPractitioner:
+		// If the sender is a practitioner, notify their linked accountants
 		for _, acc := range accountants {
-			// Skip if sender is this accountant
-			if role == util.RoleAccountant && acc.AccountantID == entityID {
-				continue
-			}
-
 			// Check if accountant has notification access permission
-			permissions, err := s.invitationSvc.GetPermissionsForAccountant(ctx, acc.AccountantID, practitionerID)
+			permissions, err := s.invitationSvc.GetPermissionsForAccountant(ctx, acc.AccountantID, entityID)
 			if err != nil {
 				log.Printf("[WARN] failed to get permissions for accountant %s: %v", acc.AccountantID, err)
 				continue
 			}
 
-			// Only add if accountant has notification access (reports_view_download permission with read access)
+			// Only notify accountants with reports view/download permission
 			if permissions != nil && permissions.Has(invitation.PermReportsViewDownload, false) {
 				recipients = append(recipients, sharednotification.RecipientWithPreferences{
 					RecipientID:   acc.AccountantID,
@@ -1529,6 +1513,15 @@ func (s *Service) sendTransactionNotification(ctx context.Context, entityID uuid
 				})
 			}
 		}
+	case util.ActorAccountant:
+		// If the sender is an accountant, notify the practitioner
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   entityID,
+			RecipientType: util.ActorPractitioner,
+			UserID:        practitionerUserID,
+		})
+	default:
+		return fmt.Errorf("unsupported recipient type: %s", recipientType)
 	}
 
 	// Send notifications with preferences using the new publisher
@@ -1539,7 +1532,7 @@ func (s *Service) sendTransactionNotification(ctx context.Context, entityID uuid
 		SenderName: senderName,
 		EventType:  eventType,
 		EntityType: util.EntityTransaction,
-		EntityID:   clinicID,
+		EntityID:   entityID,
 		EntityKey:  "transaction_id",
 		Title:      title,
 		Body:       fmt.Sprintf("%s by %s", title, senderName),
