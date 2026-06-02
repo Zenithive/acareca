@@ -143,12 +143,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	eventsRepo := businessEvents.NewRepository(dbConn)
 	eventsSvc := businessEvents.NewService(eventsRepo, notificationSvc, auditSvc)
 
-	// ============ CLINIC SERVICE (cross-module dependency) ============
-	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, eventsSvc)
-	clinicHandler := clinic.NewHandler(clinicSvc)
-	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
-
 	// ============ COA SERVICE (cross-module dependency) ============
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
@@ -181,6 +175,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo, preferenceSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
+
+	// ============ CLINIC SERVICE (cross-module dependency) ============
+	clinicRepo := clinic.NewRepository(dbConn)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, eventsSvc, notificationSvc, authSvc, invitationRepo, invitationSvc)
+
+	clinicHandler := clinic.NewHandler(clinicSvc)
+	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
 
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)

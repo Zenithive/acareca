@@ -1439,28 +1439,13 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 		return fmt.Errorf("notification publisher is nil")
 	}
 
-	fmt.Printf("entityId %s recipettype %s", entityID, recipientType)
-
-	practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, entityID)
-	if err != nil {
-		return fmt.Errorf("get practitioner user ID: %w", err)
-	}
-
 	user, err := s.authSvc.GetUserByID(ctx, entityID, recipientType)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
 
-	// Determine sender info based on who triggered the transaction
-	var senderName string
-	var senderType util.ActorType
-	senderName = user.FirstName + " " + user.LastName
-	senderType = recipientType
-
-	accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
-	if err != nil {
-		log.Printf("[WARN] failed to get linked accountants: %v", err)
-	}
+	senderName := user.FirstName + " " + user.LastName
+	senderType := recipientType
 
 	// Build recipients list
 	recipients := []sharednotification.RecipientWithPreferences{}
@@ -1468,6 +1453,12 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 	switch recipientType {
 	case util.ActorPractitioner:
 		// If the sender is a practitioner, notify their linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", entityID, err)
+			return nil // Don't fail transaction if notification fails
+		}
+
 		for _, acc := range accountants {
 			// Check if accountant has notification access permission
 			permissions, err := s.invitationSvc.GetPermissionsForAccountant(ctx, acc.AccountantID, entityID)
@@ -1485,15 +1476,39 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 				})
 			}
 		}
+
 	case util.ActorAccountant:
-		// If the sender is an accountant, notify the practitioner
-		recipients = append(recipients, sharednotification.RecipientWithPreferences{
-			RecipientID:   entityID,
-			RecipientType: util.ActorPractitioner,
-			UserID:        practitionerUserID,
-		})
+		// If the sender is an accountant, we need to find which practitioners to notify
+		// Get all practitioners linked to this accountant
+		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+			return nil // Don't fail transaction if notification fails
+		}
+
+		// Notify each linked practitioner
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
 	default:
 		return fmt.Errorf("unsupported recipient type: %s", recipientType)
+	}
+
+	// If no recipients, don't send notification
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for transaction notification")
+		return nil
 	}
 
 	// Send notifications with preferences using the new publisher
