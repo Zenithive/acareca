@@ -334,6 +334,12 @@ type RsExportData struct {
 	Items []*RsCoaExportItem `json:"items"`
 }
 
+// EntryValueWithAccountType is used internally for rebalancing calculations.
+type EntryValueWithAccountType struct {
+	FormEntryValue
+	AccountTypeName *string `db:"account_type_name"`
+}
+
 type RsCoaExportItem struct {
 	CoaID            string              `json:"coa_id"`
 	CoaName          string              `json:"coa_name"`

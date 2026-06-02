@@ -40,6 +40,14 @@ type IRepository interface {
 	GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUID) ([]*RsEntryDocument, error)
 	// Ledger integrity verification
 	AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error
+	// Expense-specific helpers (keep raw SQL in repo, not service)
+	InsertBalancingEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error
+	InsertEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error
+	MarkEntryValueUpdated(ctx context.Context, tx *sqlx.Tx, fieldID uuid.UUID, entryID uuid.UUID) error
+	DeleteSystemBalancingValues(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error
+	GetBankAccountID(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) (uuid.UUID, error)
+	GetActiveEntryValuesWithAccountType(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) ([]*EntryValueWithAccountType, error)
+	UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, date string) error
 }
 
 type Repository struct {
@@ -644,7 +652,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	base := `
 		SELECT
-			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id, 
+			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
 			v.entry_id                                                     AS entry_id,
 			v.form_field_id                                                AS form_field_id,
 			v.coa_id                                                       AS coa_id,
@@ -659,24 +667,34 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			COALESCE(f.name, '')                                           AS form_name,
 			COALESCE(f.method::text, '')                                   AS form_method,
 			COALESCE(c.name, '')                                           AS clinic_name,
-			COALESCE(v.normal_balance, '')                                 AS transaction_type,
-			-- Determine income/expense based on COA account type, not section_type
-			-- Income COAs (Revenue): show negative net when it's a balancing/reuse entry (net < 0)
-			-- Expense/Asset COAs: show negative net when it's a balancing/reuse entry (net < 0)
-			ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8   AS net_amount,
-			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8   AS gst_amount,
+			-- transaction_type reflects the actual movement direction of money for this row:
+			-- A normal-balance DEBIT account with positive net_amount = DEBIT (money in/used)
+			-- A normal-balance DEBIT account with negative net_amount = CREDIT (money returned/reversed)
+			-- A normal-balance CREDIT account with positive net_amount = CREDIT (income received)
+			-- A normal-balance CREDIT account with negative net_amount = DEBIT (expense against income)
+			CASE
+				WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) >= 0 THEN 'DEBIT'
+				WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) <  0 THEN 'CREDIT'
+				WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) >= 0 THEN 'CREDIT'
+				WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) <  0 THEN 'DEBIT'
+				ELSE 'UNKNOWN'
+			END                                                            AS transaction_type,
+			-- account_type used to classify is_expense via COA, not section_type or form_method
+			COALESCE(v.account_type, '')                                   AS account_type,
+			ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8          AS net_amount,
+			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8     AS gst_amount,
 			ROUND(
 				CASE
 					WHEN COALESCE(v.net_amount, 0) < 0 THEN -ABS(COALESCE(v.gross_amount, 0))
 					ELSE ABS(COALESCE(v.gross_amount, 0))
-				END::numeric, 2)::float8 AS gross_amount,
-			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')              AS created_at
+				END::numeric, 2)::float8                                   AS gross_amount,
+			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
 		FROM vw_double_entry_line_items v
 		LEFT JOIN tbl_form f        ON f.id = v.form_id
 		LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
 		LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
 		LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
-		
+
 		WHERE v.account_name = ?` + permissionClause
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
@@ -702,6 +720,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		FormMethod      *string    `db:"form_method"`
 		ClinicName      string     `db:"clinic_name"`
 		TransactionType string     `db:"transaction_type"`
+		AccountType     string     `db:"account_type"`
 		NetAmount       float64    `db:"net_amount"`
 		GstAmount       float64    `db:"gst_amount"`
 		GrossAmount     float64    `db:"gross_amount"`
@@ -716,11 +735,11 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
-		// Determine income vs expense based on COA account type (normal_balance from view),
-		// not section_type or form_method — this is the correct accounting approach.
-		// DEBIT normal balance = Asset/Expense accounts = expense entries
-		// CREDIT normal balance = Liability/Equity/Revenue accounts = income entries
-		isExpense := strings.EqualFold(row.TransactionType, "DEBIT")
+		// is_expense = COA account type is Expense or Asset (not Revenue/Income/Liability/Equity)
+		// This is the proper accounting classification via COA, not section_type or form_method.
+		accountTypeLower := strings.ToLower(row.AccountType)
+		isExpense := strings.Contains(accountTypeLower, "expense") ||
+			strings.Contains(accountTypeLower, "asset")
 
 		netVal := row.NetAmount
 		gstVal := row.GstAmount
@@ -940,7 +959,93 @@ func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx,
 	return nil
 }
 
-// // ============================================================================
+// InsertBalancingEntryValue inserts a system-generated balancing row (form_field_id = NULL).
+func (r *Repository) InsertBalancingEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error {
+	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.CoaID, ev.NetAmount, ev.GstAmount, ev.GrossAmount)
+	if err != nil {
+		return fmt.Errorf("insert balancing entry value: %w", err)
+	}
+	return nil
+}
+
+// InsertEntryValue inserts a new active entry value row for a field.
+func (r *Repository) InsertEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error {
+	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.NetAmount, ev.GstAmount, ev.GrossAmount, ev.Description, ev.Date)
+	if err != nil {
+		return fmt.Errorf("insert entry value: %w", err)
+	}
+	return nil
+}
+
+// MarkEntryValueUpdated marks all active values for a given field+entry as superseded.
+func (r *Repository) MarkEntryValueUpdated(ctx context.Context, tx *sqlx.Tx, fieldID uuid.UUID, entryID uuid.UUID) error {
+	query := `UPDATE tbl_form_entry_value SET updated_at = now()
+		WHERE form_field_id = $1 AND entry_id = $2 AND updated_at IS NULL`
+	_, err := tx.ExecContext(ctx, query, fieldID, entryID)
+	if err != nil {
+		return fmt.Errorf("mark entry value updated: %w", err)
+	}
+	return nil
+}
+
+// DeleteSystemBalancingValues removes auto-generated balancing rows (form_field_id IS NULL) for an entry.
+func (r *Repository) DeleteSystemBalancingValues(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
+	query := `DELETE FROM tbl_form_entry_value WHERE entry_id = $1 AND form_field_id IS NULL AND updated_at IS NULL`
+	_, err := tx.ExecContext(ctx, query, entryID)
+	if err != nil {
+		return fmt.Errorf("delete system balancing values: %w", err)
+	}
+	return nil
+}
+
+// GetBankAccountID returns the ID of COA code 600 (Business Bank Account) for the given practitioner.
+func (r *Repository) GetBankAccountID(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	query := `SELECT id FROM tbl_chart_of_accounts
+		WHERE practitioner_id = $1 AND code = 600 AND deleted_at IS NULL LIMIT 1`
+	if err := tx.QueryRowContext(ctx, query, practitionerID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return uuid.Nil, fmt.Errorf("Bank Account (COA 600) not found for practitioner %s", practitionerID)
+		}
+		return uuid.Nil, fmt.Errorf("get bank account id: %w", err)
+	}
+	return id, nil
+}
+
+// GetActiveEntryValuesWithAccountType fetches all active entry value rows with their COA account type name.
+// Used for rebalancing to determine income vs expense classification via COA, not section_type.
+func (r *Repository) GetActiveEntryValuesWithAccountType(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) ([]*EntryValueWithAccountType, error) {
+	query := `
+		SELECT fev.id, fev.entry_id, fev.form_field_id, fev.coa_id,
+		       fev.net_amount, fev.gst_amount, fev.gross_amount, fev.description,
+		       at.name AS account_type_name
+		FROM tbl_form_entry_value fev
+		LEFT JOIN tbl_form_field ff    ON ff.id = fev.form_field_id
+		LEFT JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(fev.coa_id, ff.coa_id)
+		LEFT JOIN tbl_account_type at  ON at.id = coa.account_type_id
+		WHERE fev.entry_id = $1 AND fev.updated_at IS NULL`
+	var rows []*EntryValueWithAccountType
+	if err := tx.SelectContext(ctx, &rows, query, entryID); err != nil {
+		return nil, fmt.Errorf("get active entry values with account type: %w", err)
+	}
+	return rows, nil
+}
+
+// UpdateEntryDate updates the date field on the parent entry row.
+func (r *Repository) UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, date string) error {
+	query := `UPDATE tbl_form_entry SET date = $1, updated_at = now() WHERE id = $2`
+	_, err := tx.ExecContext(ctx, query, date, entryID)
+	if err != nil {
+		return fmt.Errorf("update entry date: %w", err)
+	}
+	return nil
+}
+
+
 // // AssertLedgerGroupBalances implements institutional-grade ledger verification
 // // This method runs a SUM query grouped by entry_id right before tx.Commit()
 // // If the algebraic sum of entries does not equal 0.00 (within 0.01 threshold),
