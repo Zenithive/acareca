@@ -20,52 +20,42 @@ func NewPublisher(events sharedEvents.IEvent) *Publisher {
 	}
 }
 
-func (p *Publisher) PublishNotification(ctx context.Context, event notification.NotificationEvent) error {
+// PublishEvent publishes an event to the specified subject
+func (p *Publisher) PublishEvent(ctx context.Context, subject string, event interface{}) error {
 	if p.events == nil {
 		return fmt.Errorf("events system not configured")
 	}
 
-	if err := p.events.Publish(ctx, notification.SubjectNotificationInApp, event); err != nil {
-		return fmt.Errorf("failed to publish notification event: %w", err)
+	if err := p.events.Publish(ctx, subject, event); err != nil {
+		return fmt.Errorf("failed to publish event to %s: %w", subject, err)
 	}
 
 	return nil
 }
 
-func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
-	if p.events == nil {
-		return fmt.Errorf("events system not configured")
-	}
+// PublishNotification publishes a notification event to the in-app channel
+func (p *Publisher) PublishNotification(ctx context.Context, event notification.NotificationEvent) error {
+	return p.PublishEvent(ctx, notification.SubjectNotificationInApp, event)
+}
 
+// PublishEmailDelivery publishes a notification to the email delivery channel
+func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
 	emailEvent := map[string]interface{}{
 		"notification_id": notificationID,
 		"recipient_id":    recipientID,
 		"event_type":      eventType,
 		"payload":         payload,
 	}
-
-	if err := p.events.Publish(ctx, notification.SubjectNotificationEmail, emailEvent); err != nil {
-		return fmt.Errorf("failed to publish email event: %w", err)
-	}
-
-	return nil
+	return p.PublishEvent(ctx, notification.SubjectNotificationEmail, emailEvent)
 }
 
+// PublishPushDelivery publishes a notification to the push delivery channel
 func (p *Publisher) PublishPushDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
-	if p.events == nil {
-		return fmt.Errorf("events system not configured")
-	}
-
 	pushEvent := map[string]interface{}{
 		"notification_id": notificationID,
 		"recipient_id":    recipientID,
 		"event_type":      eventType,
 		"payload":         payload,
 	}
-
-	if err := p.events.Publish(ctx, notification.SubjectNotificationPush, pushEvent); err != nil {
-		return fmt.Errorf("failed to publish push event: %w", err)
-	}
-
-	return nil
+	return p.PublishEvent(ctx, notification.SubjectNotificationPush, pushEvent)
 }

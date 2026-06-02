@@ -14,6 +14,7 @@ import (
 
 type Service interface {
 	Publish(ctx context.Context, rq RqNotification) error
+	PublishEvent(ctx context.Context, subject string, event interface{}) error
 	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
@@ -38,6 +39,10 @@ func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB, prefRe
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
+	if s.events == nil {
+		return fmt.Errorf("events system not configured")
+	}
+
 	event := NotificationEvent{
 		ID:            rq.ID,
 		RecipientID:   rq.RecipientID,
@@ -51,15 +56,6 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		Channels:      rq.Channels,
 		CreatedAt:     rq.CreatedAt,
 	}
-	fmt.Printf("Publishing notification event_Channel: %+v\n", event.Channels)
-	fmt.Printf("Publishing notification event_Type: %+v\n", event.EventType)
-	fmt.Printf("Publishing notification event_ID: %+v\n", event.ID)
-	fmt.Printf("Publishing notification event_Entity_Id: %+v\n", event.EntityID)
-	fmt.Printf("Publishing notification event_Recipient_Id: %+v\n", event.RecipientID)
-
-	if s.events == nil {
-		return fmt.Errorf("events system not configured")
-	}
 
 	if err := s.events.Publish(ctx, SubjectNotificationInApp, event); err != nil {
 		return fmt.Errorf("failed to publish notification event: %w", err)
@@ -67,6 +63,20 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 
 	return nil
 }
+
+// PublishEvent publishes an event to the specified subject
+func (s *service) PublishEvent(ctx context.Context, subject string, event interface{}) error {
+	if s.events == nil {
+		return fmt.Errorf("events system not configured")
+	}
+
+	if err := s.events.Publish(ctx, subject, event); err != nil {
+		return fmt.Errorf("failed to publish event to %s: %w", subject, err)
+	}
+
+	return nil
+}
+
 func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error) {
 	notifications, total, err := s.repo.ListByRecipient(ctx, recipientID, filter)
 	if err != nil {

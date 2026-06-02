@@ -31,6 +31,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/engine/pl"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
+	"github.com/iamarpitzala/acareca/internal/modules/worker"
 	"github.com/iamarpitzala/acareca/internal/shared/db"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -43,7 +45,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *notification.Consumer) {
+func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEvent) (audit.Service, *sharednotification.Hub, notification.Repository, notification.Service, *worker.Consumer) {
 
 	// Initialize Stripe SDK
 	if cfg.StripeSecretKey == "" {
@@ -70,12 +72,13 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// notification (in-app list)
 	notificationRepo := notification.NewRepository(dbConn)
+	notificationPrefRepo := preference.NewRepository(dbConn)
 	notifier := sharednotification.NewNotifier(dbConn)
-	notificationSvc := notification.NewService(notificationRepo, events, dbConn)
+	notificationSvc := notification.NewService(notificationRepo, events, dbConn, notificationPrefRepo)
 
 	// Initialize notification consumer (separate from service)
-	notificationPublisher := notification.NewPublisher(events)
-	notificationConsumer := notification.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher)
+	notificationPublisher := worker.NewPublisher(events)
+	notificationConsumer := worker.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher, notificationPrefRepo)
 
 	// Wire stream manager to WebSocket hub for real-time delivery
 	if events != nil {
@@ -226,7 +229,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Register accountant routes
 	RegisterAccountantRoutes(v1, cfg, accountantSvc)
 
-	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo)
+	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo)
 	// ============ USER SUBSCRIPTION ============
 	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
 	userSubscriptionGroup := v1.Group("/practitioner/subscription", middleware.Auth(cfg))

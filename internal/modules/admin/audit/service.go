@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
@@ -28,6 +29,7 @@ type service struct {
 	logChan             chan *LogEntry
 	done                chan struct{}
 	notificationService notification.Service
+	notificationPub     *sharednotification.Publisher
 }
 
 func NewService(repo Repository, notificationService notification.Service) Service {
@@ -36,6 +38,7 @@ func NewService(repo Repository, notificationService notification.Service) Servi
 		logChan:             make(chan *LogEntry, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService)),
 	}
 
 	// Start async worker
@@ -175,38 +178,22 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		title = "System Error"
 	}
 
-	body, _ := json.Marshal(detail)
 	extraData := map[string]interface{}{"action": action}
-	notifPayload := notification.BuildNotificationPayload(title, body, nil, nil, &extraData)
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		log.Printf("ERROR: [SystemIssue] marshal payload: %v", err)
-		return
-	}
-
 	senderType := util.ActorSystem
-	for _, adminID := range adminIDs {
-		req := notification.RqNotification{
-			ID:            uuid.New(),
-			RecipientID:   adminID,
-			RecipientType: util.ActorAdmin,
-			SenderType:    &senderType,
-			EventType:     eventType,
-			EntityType:    util.EntitySystem,
-			EntityID:      entityID,
-			Status:        util.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []util.Channel{util.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
-		go func(r notification.RqNotification) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := s.notificationService.Publish(pCtx, r); err != nil {
-				log.Printf("ERROR: [SystemIssue] publish to admin %s: %v", r.RecipientID, err)
-			}
-		}(req)
-	}
+
+	_ = s.notificationPub.PublishToMultiple(
+		ctx,
+		adminIDs,
+		util.ActorAdmin,
+		nil,
+		&senderType,
+		eventType,
+		util.EntitySystem,
+		entityID,
+		title,
+		detail,
+		&extraData,
+	)
 }
 
 // This runs in its own goroutine to avoid blocking the audit worker
@@ -382,23 +369,6 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"entity_id": entry.EntityID,
 	}
 
-	// Simplification: Direct JSON message for the body
-	msgJson, _ := json.Marshal(message)
-
-	notifPayload := notification.BuildNotificationPayload(
-		title,
-		msgJson,
-		nil,
-		nil,
-		&extraData,
-	)
-
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		log.Printf("ERROR: [Audit-Notification] Marshal failed: %v", err)
-		return
-	}
-
 	// Send to each admin
 	senderType := util.ActorSystem
 	var entityID uuid.UUID
@@ -408,29 +378,20 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			entityID = parsed
 		}
 	}
-	for _, adminID := range adminIDs {
-		req := notification.RqNotification{
-			ID:            uuid.New(),
-			RecipientID:   adminID,
-			RecipientType: util.ActorAdmin,
-			SenderType:    &senderType,
-			EventType:     util.EventAuditLogCreated,
-			EntityType:    util.EntityAuditLog,
-			EntityID:      entityID,
-			Status:        util.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []util.Channel{util.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
 
-		go func(r notification.RqNotification) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := s.notificationService.Publish(pCtx, r); err != nil {
-				log.Printf("ERROR: [Audit-Notification] Publish failed for admin %s: %v", r.RecipientID, err)
-			}
-		}(req)
-	}
+	_ = s.notificationPub.PublishToMultiple(
+		ctx,
+		adminIDs,
+		util.ActorAdmin,
+		nil,
+		&senderType,
+		util.EventAuditLogCreated,
+		util.EntityAuditLog,
+		entityID,
+		title,
+		message,
+		&extraData,
+	)
 }
 
 // Shutdown drains the log channel and waits for the worker to finish.

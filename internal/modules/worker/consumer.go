@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
-	"github.com/iamarpitzala/acareca/internal/shared/common"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -19,6 +18,7 @@ import (
 
 type Consumer struct {
 	events        sharedEvents.IEvent
+	repo          notification.Repository
 	prefRepo      preference.Repository
 	notifier      *sharednotification.Hub
 	db            *sqlx.DB
@@ -26,13 +26,14 @@ type Consumer struct {
 	streamManager *StreamManager
 }
 
-func NewConsumer(events sharedEvents.IEvent,prefRepo preference.Repository,notifier *sharednotification.Hub,db *sqlx.DB,publisher *Publisher) *Consumer {
+func NewConsumer(events sharedEvents.IEvent, repo notification.Repository, notifier *sharednotification.Hub, db *sqlx.DB, publisher *Publisher, prefRepo preference.Repository) *Consumer {
 	consumer := &Consumer{
 		events:    events,
+		repo:      repo,
 		notifier:  notifier,
 		db:        db,
-		prefRepo:  prefRepo,
 		publisher: publisher,
+		prefRepo:  prefRepo,
 	}
 
 	consumer.streamManager = NewStreamManager(events, consumer)
@@ -117,7 +118,7 @@ func (c *Consumer) deliverToChannels(ctx context.Context, notificationID uuid.UU
 		switch ch {
 		case util.ChannelInApp:
 			c.deliverInApp(ctx, notificationID, event)
-			
+		}
 	}
 }
 
@@ -184,7 +185,7 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 		return err, true
 	}
 
-	notificationEventType := common.MapEventTypeToNotificationEventType(eventType)
+	notificationEventType := mapEventTypeToNotificationEventType(eventType)
 
 	if pref.EntityID == entityID && pref.EntityType == string(entityType) {
 		for _, pref := range pref.EventType {
@@ -196,4 +197,19 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 	}
 
 	return nil, true
+}
+
+// mapEventTypeToNotificationEventType maps event types to notification event types
+func mapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
+	switch eventType {
+	case util.EventTransactionCreated, util.EventTransactionUpdated:
+		return util.EventNewTransaction
+	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded,
+		util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
+		return util.EventAccountantActivityAlert
+	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
+		return util.EventSystemActivityAlert
+	default:
+		return util.EventSystemActivityAlert
+	}
 }

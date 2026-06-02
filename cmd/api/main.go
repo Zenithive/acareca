@@ -97,24 +97,24 @@ func main() {
 	if events != nil {
 		go func() {
 			log.Println("🚀 Starting notification create consumer...")
-			if err := notificationConsumer.StartNotificationCreateConsumer(context.Background()); err != nil {
+			if err := notificationConsumer.StartNotificationInAppConsumer(context.Background()); err != nil {
 				log.Printf("❌ Notification create consumer stopped: %v", err)
 			}
 		}()
 
-		go func() {
-			log.Println("🚀 Starting email delivery consumer...")
-			if err := notificationConsumer.StartEmailConsumer(context.Background()); err != nil {
-				log.Printf("❌ Email consumer stopped: %v", err)
-			}
-		}()
+		// go func() {
+		// 	log.Println("🚀 Starting email delivery consumer...")
+		// 	if err := notificationConsumer.StartEmailConsumer(context.Background()); err != nil {
+		// 		log.Printf("❌ Email consumer stopped: %v", err)
+		// 	}
+		// }()
 
-		go func() {
-			log.Println("🚀 Starting push notification consumer...")
-			if err := notificationConsumer.StartPushConsumer(context.Background()); err != nil {
-				log.Printf("❌ Push consumer stopped: %v", err)
-			}
-		}()
+		// go func() {
+		// 	log.Println("🚀 Starting push notification consumer...")
+		// 	if err := notificationConsumer.StartPushConsumer(context.Background()); err != nil {
+		// 		log.Printf("❌ Push consumer stopped: %v", err)
+		// 	}
+		// }()
 
 		log.Println("✅ All NATS consumers started")
 	}
