@@ -11,7 +11,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
-	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -134,27 +133,26 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		// Get accountant user ID
 		accountantUserID, err := s.repo.GetUserIDByEmail(ctx, invite.Email)
 		if err == nil && accountantUserID != nil {
-			recipients := []common.RecipientWithPreferences{
+			recipients := []sharednotification.RecipientWithPreferences{
 				{
 					RecipientID:   *invite.AccountantID,
 					RecipientType: util.ActorAccountant,
 					UserID:        *accountantUserID,
 				},
 			}
-			common.PublishNotification(
-				ctx,
-				s.notification,
-				recipients,
-				practitionerID,
-				util.ActorPractitioner,
-				senderName,
-				util.EventInviteSent,
-				util.EntityInvite,
-				invite.ID,
-				"invite_id",
-				"Invitation received",
-				fmt.Sprintf("%s invited you to collaborate.", senderName),
-			)
+
+			s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+				Recipients: recipients,
+				SenderID:   practitionerID,
+				SenderType: util.ActorPractitioner,
+				SenderName: senderName,
+				EventType:  util.EventInviteSent,
+				EntityType: util.EntityInvite,
+				EntityID:   invite.ID,
+				EntityKey:  "invite_id",
+				Title:      "New Collaboration Invitation",
+				Body:       fmt.Sprintf("%s invited you to collaborate.", senderName),
+			})
 		}
 	}
 

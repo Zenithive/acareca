@@ -10,12 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
-	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/detail"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
@@ -217,7 +217,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		IPAddress:  meta.IPAddress,
 		UserAgent:  meta.UserAgent,
 	})
-	fmt.Println("============================")
+
 	if err = s.sendTransactionNotification(ctx, entityID, role, result.ClinicID, util.EventTransactionCreated, "Transaction Created"); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
@@ -253,7 +253,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	var result *RsFormEntry
-	var beforeState interface{}
+	var beforeState any
 
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
@@ -1432,16 +1432,7 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-// sendTransactionNotification is a reusable helper that sends notifications to all relevant parties
-// based on their preferences and permissions
-func (s *Service) sendTransactionNotification(
-	ctx context.Context,
-	entityID uuid.UUID,
-	role string,
-	clinicID uuid.UUID,
-	eventType util.EventType,
-	title string,
-) error {
+func (s *Service) sendTransactionNotification(ctx context.Context, entityID uuid.UUID, role string, clinicID uuid.UUID, eventType util.EventType, title string) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
@@ -1491,7 +1482,6 @@ func (s *Service) sendTransactionNotification(
 	// Build recipients list
 	recipients := []sharednotification.RecipientWithPreferences{}
 
-	// 1. Add all admins (always notified as observers)
 	admins, err := s.adminRepo.GetAllAdmins(ctx)
 	if err != nil {
 		log.Printf("[WARN] failed to get admins: %v", err)

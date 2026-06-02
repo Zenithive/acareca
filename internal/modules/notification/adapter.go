@@ -34,7 +34,7 @@ func (a *ServiceAdapter) Publish(ctx context.Context, rq sharednotification.Noti
 		Channels:      rq.Channels,
 		CreatedAt:     rq.CreatedAt,
 	}
-	
+
 	return a.svc.Publish(ctx, notifReq)
 }
 
@@ -44,13 +44,13 @@ func (a *ServiceAdapter) GetPreferences(ctx context.Context, userID uuid.UUID) (
 	if err != nil {
 		return sharednotification.NotificationPreferences{}, err
 	}
-	
+
 	// Convert []Channel to map[string]bool
 	channelsMap := make(map[string]bool)
 	for _, ch := range prefs.Channels {
 		channelsMap[string(ch)] = true
 	}
-	
+
 	// Convert preference.Preference to sharednotification.NotificationPreferences
 	return sharednotification.NotificationPreferences{
 		EventType: prefs.EventType,

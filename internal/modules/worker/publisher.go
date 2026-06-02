@@ -40,7 +40,7 @@ func (p *Publisher) PublishNotification(ctx context.Context, event notification.
 
 // PublishEmailDelivery publishes a notification to the email delivery channel
 func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
-	emailEvent := map[string]interface{}{
+	emailEvent := map[string]any{
 		"notification_id": notificationID,
 		"recipient_id":    recipientID,
 		"event_type":      eventType,
@@ -51,7 +51,7 @@ func (p *Publisher) PublishEmailDelivery(ctx context.Context, notificationID, re
 
 // PublishPushDelivery publishes a notification to the push delivery channel
 func (p *Publisher) PublishPushDelivery(ctx context.Context, notificationID, recipientID uuid.UUID, eventType util.EventType, payload interface{}) error {
-	pushEvent := map[string]interface{}{
+	pushEvent := map[string]any{
 		"notification_id": notificationID,
 		"recipient_id":    recipientID,
 		"event_type":      eventType,

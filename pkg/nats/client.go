@@ -11,7 +11,6 @@ import (
 )
 
 func NewNats(url string) (*nats.Conn, sharedEvents.IEvent, error) {
-	var events sharedEvents.IEvent
 	nc, err := nats.Connect(
 		url,
 		nats.Name("acareca-notification-service"),
@@ -30,32 +29,29 @@ func NewNats(url string) (*nats.Conn, sharedEvents.IEvent, error) {
 	if err != nil {
 		log.Printf("⚠️  Warning: Failed to connect to NATS: %v", err)
 		log.Println("💡 To enable NATS: Set NATS_URL in .env")
-		events = nil
-	} else {
-		defer nc.Close()
-		log.Printf("✅ Connected to NATS at %s", url)
-
-		events, err = sharedEvents.NewEvent(
-			nc,
-			5,
-			100,
-			512,
-			30*time.Second,
-			"DLQ",
-			notification.StreamNotification,
-			[]string{
-				notification.SubjectNotificationInApp,
-				notification.SubjectNotificationEmail,
-				notification.SubjectNotificationPush,
-			},
-		)
-		if err != nil {
-			log.Printf("⚠️  Warning: Failed to setup JetStream: %v", err)
-			events = nil
-		} else {
-			log.Println("✅ JetStream initialized successfully")
-		}
+		return nil, nil, err // return the error; let the caller decide
 	}
 
+	log.Printf("✅ Connected to NATS at %s", url)
+
+	events, err := sharedEvents.NewEvent(
+		nc,
+		5, 100, 512,
+		30*time.Second,
+		"DLQ",
+		notification.StreamNotification,
+		[]string{
+			notification.SubjectNotificationInApp,
+			notification.SubjectNotificationEmail,
+			notification.SubjectNotificationPush,
+		},
+	)
+	if err != nil {
+		nc.Close() // clean up since we can't use this connection
+		log.Printf("⚠️  Warning: Failed to setup JetStream: %v", err)
+		return nil, nil, err
+	}
+
+	log.Println("✅ JetStream initialized successfully")
 	return nc, events, nil
 }

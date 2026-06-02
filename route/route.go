@@ -76,6 +76,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	notifier := sharednotification.NewNotifier(dbConn)
 	notificationSvc := notification.NewService(notificationRepo, events, dbConn, notificationPrefRepo)
 
+	preferenceSvc := preference.NewService(notificationPrefRepo, dbConn)
+
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := worker.NewPublisher(events)
 	notificationConsumer := worker.NewConsumer(events, notificationRepo, notifier, dbConn, notificationPublisher, notificationPrefRepo)
@@ -187,7 +189,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	adminSubscriptionSvc := adminSubscription.NewService(dbConn, adminSubscriptionRepo, auditSvc, stripeClient)
 	practitionerSvc := practitioner.NewService(dbConn, practitionerRepo, adminSubscriptionSvc, userSubscriptionSvc, coaRepo, auditSvc, fyRepo, invitationRepo)
 
-	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo, notificationSvc)
+	authSvc := auth.NewService(authRepo, cfg, dbConn, practitionerSvc, auditSvc, invitationSvc, practitionerRepo, accountantSvc, adminSvc, invitationRepo, fileRepo, preferenceSvc)
 	authHandler := auth.NewHandler(authSvc)
 	auth.RegisterRoutes(v1, authHandler, middleware.Auth(cfg))
 

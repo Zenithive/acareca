@@ -75,11 +75,6 @@ func main() {
 		}
 	}
 
-	if nc != nil {
-		nc.Drain()
-		nc.Close()
-	}
-
 	ginMode := os.Getenv("GIN_MODE")
 	if ginMode == "" {
 		ginMode = gin.DebugMode
@@ -152,5 +147,12 @@ func main() {
 	}
 
 	auditSvc.Shutdown()
+	log.Println("✅ Server exited gracefully")
+
+	if nc != nil {
+		log.Println("🔌 Draining NATS connection...")
+		nc.Drain() // Drain waits for in-flight messages; no need to call Close() after
+	}
+
 	log.Println("✅ Server exited gracefully")
 }
