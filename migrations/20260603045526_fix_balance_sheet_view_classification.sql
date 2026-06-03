@@ -3,6 +3,25 @@
 DROP VIEW IF EXISTS vw_balance_sheet_summary CASCADE;
 DROP VIEW IF EXISTS vw_balance_sheet_line_items CASCADE;
 
+ALTER TABLE tbl_form_entry_value
+ALTER COLUMN form_field_id DROP NOT NULL;
+
+ALTER TABLE tbl_form_entry_value
+DROP CONSTRAINT IF EXISTS tbl_form_entry_value_form_field_id_fkey;
+
+ALTER TABLE tbl_form_entry_value
+ADD CONSTRAINT tbl_form_entry_value_form_field_id_fkey
+FOREIGN KEY (form_field_id) REFERENCES tbl_form_field(id);
+
+ALTER TABLE tbl_form_entry_value
+DROP CONSTRAINT IF EXISTS chk_form_entry_value_field_or_coa;
+
+ALTER TABLE tbl_form_entry_value
+ADD CONSTRAINT chk_form_entry_value_field_or_coa
+CHECK (
+    (form_field_id IS NOT NULL) OR (coa_id IS NOT NULL)
+);
+
 CREATE OR REPLACE VIEW vw_balance_sheet_line_items AS
 SELECT fe.clinic_id,
     COALESCE(cfv.practitioner_id, p.id) AS practitioner_id,
@@ -98,6 +117,20 @@ ORDER BY account_type,
 
 -- +goose Down
 -- +goose StatementBegin
+ALTER TABLE tbl_form_entry_value
+DROP CONSTRAINT IF EXISTS chk_form_entry_value_field_or_coa;
+
+ALTER TABLE tbl_form_entry_value
+DROP CONSTRAINT IF EXISTS tbl_form_entry_value_form_field_id_fkey;
+
+ALTER TABLE tbl_form_entry_value
+ALTER COLUMN form_field_id SET NOT NULL;
+
+ALTER TABLE tbl_form_entry_value
+ADD CONSTRAINT tbl_form_entry_value_form_field_id_fkey
+FOREIGN KEY (form_field_id) REFERENCES tbl_form_field(id) ON DELETE CASCADE;
+
+
 DROP VIEW IF EXISTS vw_balance_sheet_summary CASCADE;
 DROP VIEW IF EXISTS vw_balance_sheet_line_items CASCADE;
 -- +goose StatementEnd
