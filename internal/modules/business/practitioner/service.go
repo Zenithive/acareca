@@ -13,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -43,6 +44,7 @@ type service struct {
 	invitationModel  *ModelInvitationRepo
 	auditSvc         audit.Service
 	fyrepo           fy.Repository
+	notificationSvc  notification.Service
 }
 
 func NewService(db *sqlx.DB, repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo ...interface{}) IService {

@@ -79,6 +79,8 @@ const (
 	EntityAuthProvider           = "tbl_auth_provider"
 	EntitySubscription           = "tbl_subscription"
 	EntityPractitioner           = "tbl_practitioner"
+	EntityAccountant             = "tbl_accountant"
+	EntityAdmin                  = "tbl_admin"
 	EntityClinic                 = "tbl_clinic"
 	EntityClinicAddress          = "tbl_clinic_address"
 	EntityClinicContact          = "tbl_clinic_contact"

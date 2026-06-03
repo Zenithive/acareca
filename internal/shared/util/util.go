@@ -317,3 +317,22 @@ func ParseUUIDs(ids []string) ([]uuid.UUID, error) {
 	}
 	return result, nil
 }
+
+var (
+	ErrNotFound           = errors.New("not found")
+	ErrInvalidTransition  = errors.New("invalid status transition")
+	ErrMaxRetriesExceeded = errors.New("max retry count exceeded")
+)
+
+func HandleTransitionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		response.Error(c, http.StatusNotFound, err)
+	case errors.Is(err, ErrInvalidTransition):
+		response.Error(c, http.StatusConflict, err)
+	case errors.Is(err, ErrMaxRetriesExceeded):
+		response.Error(c, http.StatusUnprocessableEntity, err)
+	default:
+		response.Error(c, http.StatusInternalServerError, err)
+	}
+}

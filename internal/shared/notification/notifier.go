@@ -160,7 +160,7 @@ func (h *Hub) register(cl *client) {
 func (h *Hub) unregister(cl *client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	list := h.clients[cl.entityID]
 	for i, c := range list {
 		if c == cl {
@@ -168,11 +168,11 @@ func (h *Hub) unregister(cl *client) {
 			break
 		}
 	}
-	
+
 	// Clean up map entry to prevent memory leak.
 	if len(h.clients[cl.entityID]) == 0 {
 		delete(h.clients, cl.entityID)
-		
+
 		// Detach NATS stream when last client disconnects with proper synchronization
 		h.streamMu.RLock()
 		sm := h.streamManager
@@ -183,7 +183,7 @@ func (h *Hub) unregister(cl *client) {
 			log.Printf("notifier: detached NATS stream for user %s", cl.entityID)
 		}
 	}
-	
+
 	// Closing the channel signals writePump to exit cleanly.
 	close(cl.send)
 }

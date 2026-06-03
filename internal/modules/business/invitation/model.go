@@ -264,3 +264,9 @@ type PractitionerEmailPair struct {
 	Email          string           `db:"email"`
 	Status         InvitationStatus `db:"status"`
 }
+
+// AccountantInfo holds accountant details for notification purposes
+type AccountantInfo struct {
+	AccountantID uuid.UUID `db:"accountant_id"`
+	UserID       uuid.UUID `db:"user_id"`
+}

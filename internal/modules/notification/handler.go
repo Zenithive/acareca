@@ -1,7 +1,6 @@
 package notification
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,8 +15,6 @@ type IHandler interface {
 	MarkAllRead(c *gin.Context)
 	MarkDismissed(c *gin.Context)
 	MarkAllDismissed(c *gin.Context)
-	GetPreferences(c *gin.Context)
-	UpdatePreference(c *gin.Context)
 }
 
 type handler struct {
@@ -85,7 +82,7 @@ func (h *handler) MarkRead(c *gin.Context) {
 	}
 
 	if err := h.svc.MarkRead(c.Request.Context(), id, entityID); err != nil {
-		h.handleTransitionError(c, err)
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, nil, "marked as read")
@@ -141,7 +138,7 @@ func (h *handler) MarkDismissed(c *gin.Context) {
 	}
 
 	if err := h.svc.MarkDismissed(c.Request.Context(), []uuid.UUID{id}, entityID); err != nil {
-		h.handleTransitionError(c, err)
+		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 	response.JSON(c, http.StatusOK, nil, "dismissed")
@@ -174,79 +171,8 @@ func (h *handler) MarkAllDismissed(c *gin.Context) {
 	}
 
 	if err := h.svc.MarkDismissed(c.Request.Context(), req.IDs, entityID); err != nil {
-		h.handleTransitionError(c, err)
-		return
-	}
-	response.JSON(c, http.StatusOK, nil, "dismissed")
-}
-
-// @Summary      Get notification preferences
-// @Description  Returns the current channel preferences for the authenticated user.
-// @Tags         notification
-// @Success      200  {object}  response.RsBase
-// @Failure      401  {object}  response.RsError
-// @Failure      404  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
-// @Security     BearerToken
-// @Router       /notification/preferences [get]
-func (h *handler) GetPreferences(c *gin.Context) {
-	userID, ok := util.GetUserID(c)
-	if !ok {
-		return
-	}
-
-	prefs, err := h.svc.GetPreferences(c.Request.Context(), userID)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-	response.JSON(c, http.StatusOK, prefs, "Notification preferences fetched successfully")
-}
-
-// @Summary      Update notification preference
-// @Description  Updates or creates a preference for a specific event type.
-// @Tags         notification
-// @Param        body  body  RqUpdatePreference  true  "Preference Update"
-// @Success      200  {object}  response.RsBase
-// @Failure      400  {object}  response.RsError
-// @Failure      401  {object}  response.RsError
-// @Failure      404  {object}  response.RsError
-// @Failure      500  {object}  response.RsError
-// @Security     BearerToken
-// @Router       /notification/preferences [put]
-func (h *handler) UpdatePreference(c *gin.Context) {
-	userID, okUser := util.GetUserID(c)
-	actorID, okEntity := util.GetEntityID(c)
-	if !okUser || !okEntity {
-		return
-	}
-
-	role := c.GetString("role")
-
-	var rq RqUpdatePreference
-	if err := c.ShouldBindJSON(&rq); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-
-	err := h.svc.UpdatePreference(c.Request.Context(), userID, actorID, role, rq)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	response.JSON(c, http.StatusOK, nil, "Notification preferences updated successfully")
-}
-
-func (h *handler) handleTransitionError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, ErrNotFound):
-		response.Error(c, http.StatusNotFound, err)
-	case errors.Is(err, ErrInvalidTransition):
-		response.Error(c, http.StatusConflict, err)
-	case errors.Is(err, ErrMaxRetriesExceeded):
-		response.Error(c, http.StatusUnprocessableEntity, err)
-	default:
-		response.Error(c, http.StatusInternalServerError, err)
-	}
+	response.JSON(c, http.StatusOK, nil, "dismissed")
 }

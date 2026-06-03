@@ -2,7 +2,6 @@ package invitation
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,8 +11,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
-	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
@@ -47,24 +46,26 @@ const (
 )
 
 type service struct {
-	repo         Repository
-	cfg          *config.Config
-	inviteConfig util.InvitationConfig
-	notification notification.Service
-	auditSvc     audit.Service
-	db           *sqlx.DB
-	mailer       *mail.Client
+	repo            Repository
+	cfg             *config.Config
+	inviteConfig    util.InvitationConfig
+	notification    notification.Service
+	notificationPub *sharednotification.Publisher
+	auditSvc        audit.Service
+	db              *sqlx.DB
+	mailer          *mail.Client
 }
 
-func NewService(repo Repository, cfg *config.Config, notification notification.Service, auditSvc audit.Service, db *sqlx.DB) Service {
+func NewService(repo Repository, cfg *config.Config, notificationSvc notification.Service, auditSvc audit.Service, db *sqlx.DB) Service {
 	return &service{
-		repo:         repo,
-		cfg:          cfg,
-		inviteConfig: util.InviteDefaultConfig(),
-		notification: notification,
-		auditSvc:     auditSvc,
-		db:           db,
-		mailer:       mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		repo:            repo,
+		cfg:             cfg,
+		inviteConfig:    util.InviteDefaultConfig(),
+		notification:    notificationSvc,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		auditSvc:        auditSvc,
+		db:              db,
+		mailer:          mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
 	}
 }
 
@@ -127,19 +128,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 		}
 	}(invite.Email, senderName, inviteLink, practitionerID, invite.ID)
 
-	common.PublishNotification(ctx, s.notification, invite.AccountantID, practitionerID, invite,
-		func(inv *Invitation) common.NotificationMeta {
-			return common.NotificationMeta{
-				EntityID:      inv.ID,
-				EntityKey:     "invite_id",
-				Title:         "Invitation received",
-				Body:          fmt.Sprintf(`"%s invited you to collaborate."`, senderName),
-				EventType:     notification.EventInviteSent,
-				EntityType:    notification.EntityInvite,
-				RecipientType: notification.ActorAccountant,
-			}
-		},
-	)
+	s.notifyInvitation(ctx, invite, invite.AccountantID, util.EventInviteSent, invite.ID, util.ActorPractitioner, "invite_id", "New Collaboration Invitation", fmt.Sprintf("%s invited you to collaborate.", senderName))
 
 	meta := auditctx.GetMetadata(ctx)
 	pIDStr := practitionerID.String()
@@ -267,7 +256,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		}
 
 		res.Status = targetStatus
-		s.notifyInvitationAccepted(ctx, inv, accountantID)
+		s.notifyInvitation(ctx, inv, accountantID, util.EventInviteAccepted, inv.ID, util.ActorAccountant, "invite_id", "Invitation Accepted", fmt.Sprintf("%s accepted your invitation.", inv.Email))
 		s.logInvitationAction(ctx, inv, auditctx.ActionInviteAccepted, beforeState)
 		return res, nil
 	}
@@ -531,6 +520,13 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		entityID = req.Email
 	}
 
+	inv := &Invitation{
+		PractitionerID: practitionerID,
+		AccountantID:   accountantID,
+		Email:          req.Email,
+	}
+	s.notifyInvitation(ctx, inv, accountantID, util.EventPermissionUpdated, uuid.Nil, util.ActorAccountant, "permission_update", "Permissions Updated", fmt.Sprintf("Your permissions for practitioner %s have been updated.", pIDStr))
+
 	s.submitAuditLog(*meta, &pIDStr, auditctx.ActionPermissionUpdated, auditctx.EntityPermission, entityID, oldPerms, req.Permissions)
 	return req.Permissions, nil
 }
@@ -546,33 +542,57 @@ func (s *service) checkInvitationLimit(ctx context.Context, pID uuid.UUID, email
 	return nil
 }
 
-func (s *service) notifyInvitationAccepted(ctx context.Context, inv *Invitation, accountantID *uuid.UUID) {
+func (s *service) notifyInvitation(ctx context.Context, inv *Invitation, accountantID *uuid.UUID, eventType util.EventType, entityID uuid.UUID, recipientType util.ActorType, entityKey string, title string, body string) {
 	if s.notification == nil {
 		return
 	}
 
-	body := json.RawMessage(fmt.Sprintf(`"%s accepted your invitation."`, inv.Email))
-	extraData := map[string]interface{}{"invite_id": inv.ID.String()}
-	payload := notification.BuildNotificationPayload("Invitation Accepted", body, nil, nil, &extraData)
-	payloadBytes, _ := json.Marshal(payload)
-	senderType := notification.ActorAccountant
+	userID, err := s.repo.GetPractitionerUserIDByID(ctx, inv.PractitionerID)
+	if err != nil {
+		return
+	}
 
-	rq := notification.RqNotification{
-		ID:            uuid.New(),
-		RecipientID:   inv.PractitionerID,
-		RecipientType: notification.ActorPractitioner,
-		SenderID:      accountantID,
-		SenderType:    &senderType,
-		EventType:     notification.EventInviteAccepted,
-		EntityType:    notification.EntityInvite,
-		EntityID:      inv.ID,
-		Status:        notification.StatusUnread,
-		Payload:       payloadBytes,
-		CreatedAt:     time.Now(),
+	var recipients []sharednotification.RecipientWithPreferences
+
+	switch recipientType {
+	case util.ActorPractitioner:
+		recipients = []sharednotification.RecipientWithPreferences{
+			{
+				RecipientID:   inv.PractitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        userID,
+			},
+		}
+	case util.ActorAccountant:
+		recipients = []sharednotification.RecipientWithPreferences{
+			{
+				RecipientID:   *accountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        userID,
+			},
+		}
+	default:
+		return
 	}
-	if err := s.notification.Publish(ctx, rq); err != nil {
-		fmt.Printf("[ERROR] failed to publish invite.accepted notification: %v\n", err)
+
+	senderName := inv.Email
+	senderID := uuid.Nil
+	if accountantID != nil {
+		senderID = *accountantID
 	}
+
+	_ = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   senderID,
+		SenderType: util.ActorAccountant,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityInvite,
+		EntityID:   entityID,
+		EntityKey:  entityKey,
+		Title:      title,
+		Body:       body,
+	})
 }
 
 func (s *service) logInvitationAction(ctx context.Context, inv *Invitation, action string, beforeState interface{}) {
