@@ -188,6 +188,7 @@ func (r *repository) GetRecentTransactions(ctx context.Context, accountantID str
 		INNER JOIN tbl_form f ON cfv.form_id = f.id
 		INNER JOIN tbl_invitation i ON i.practitioner_id = c.practitioner_id
 		%s AND i.status = 'COMPLETED' AND fe.deleted_at IS NULL AND c.deleted_at IS NULL AND f.deleted_at IS NULL
+		AND fev.form_field_id IS NOT NULL
 		GROUP BY fev.id, fe.clinic_id, c.name, fev.gross_amount, fev.date, fe.date, fev.created_at, fe.status
 		ORDER BY date DESC`, conditions["entry"])
 

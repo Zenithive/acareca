@@ -1570,6 +1570,8 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
+      classification:
+        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
@@ -4908,6 +4910,10 @@ paths:
         in: query
         name: end_date
         type: string
+      - description: Submitted-by User UUID
+        in: query
+        name: user_id
+        type: string
       produces:
       - application/json
       responses:
@@ -4944,6 +4950,10 @@ paths:
       - description: Practitioner UUID (Required for Accountants to filter)
         in: query
         name: practitioner_id
+        type: string
+      - description: Submitted-by User UUID
+        in: query
+        name: user_id
         type: string
       - description: Start Date (YYYY-MM-DD)
         in: query

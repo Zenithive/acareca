@@ -218,7 +218,10 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		Name:           req.Name,
 		Key:            GenerateKeyFromName(req.Name),
 		IsSystem:       isSystem,
-		Classification: ClassificationOperatingExpense,
+		Classification: defaultClassificationForAccountType(req.AccountTypeID),
+	}
+	if req.Classification != "" {
+		chart.Classification = req.Classification
 	}
 
 	var created *ChartOfAccount
@@ -269,6 +272,9 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 			return nil, err
 		}
 		existing.AccountTypeID = *req.AccountTypeID
+		if req.Classification == nil {
+			existing.Classification = defaultClassificationForAccountType(*req.AccountTypeID)
+		}
 	}
 	if req.AccountTaxID != nil {
 		if _, err := s.repo.GetAccountTax(ctx, *req.AccountTaxID); err != nil {
@@ -281,6 +287,10 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	}
 	if req.Name != nil {
 		existing.Name = *req.Name
+		existing.Key = GenerateKeyFromName(*req.Name)
+	}
+	if req.Classification != nil {
+		existing.Classification = *req.Classification
 	}
 
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
@@ -305,6 +315,23 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	})
 
 	return &rs, nil
+}
+
+func defaultClassificationForAccountType(accountTypeID int16) AccountClassification {
+	switch accountTypeID {
+	case 1:
+		return ClassificationCurrentAsset
+	case 2:
+		return ClassificationCurrentLiability
+	case 3:
+		return ClassificationEquity
+	case 4:
+		return ClassificationOperatingRevenue
+	case 5:
+		return ClassificationOperatingExpense
+	default:
+		return ClassificationOperatingExpense
+	}
 }
 
 func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error {

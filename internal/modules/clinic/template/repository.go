@@ -100,6 +100,7 @@ func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Set
 	const q = `SELECT * FROM tbl_template_setting WHERE template_id = $1 AND deleted_at IS NULL`
 	var st Setting
 	if err := r.db.GetContext(ctx, &st, q, templateId); err != nil {
+		// Return nil if no settings found (not an error - settings are optional)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}

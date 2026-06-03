@@ -306,31 +306,38 @@ type RsCoaEntry struct {
 }
 
 type RsCoaEntryDetail struct {
-	ID            string   `json:"id"`
-	EntryID       string   `json:"entry_id"`
-	FormFieldID   string   `json:"form_field_id"`
-	CoaID         string   `json:"coa_id"`
-	TaxTypeID     *int16   `json:"tax_type_id"`
-	FormID        string   `json:"form_id"`
-	ClinicID      *string  `json:"clinic_id,omitempty"`
-	VersionID     string   `json:"version_id"`
-	FormFieldName string   `json:"form_field_name"`
-	CoaName       string   `json:"coa_name"`
-	TaxTypeName   *string  `json:"tax_type_name"`
-	FormName      *string  `json:"form_name,omitempty"`
-	ClinicName    *string  `json:"clinic_name,omitempty"`
-	SupplierName  *string  `json:"supplier_name,omitempty"`
-	IsExpense     bool     `json:"is_expense"`
-	NetAmount     *float64 `json:"net_amount"`
-	GstAmount     *float64 `json:"gst_amount"`
-	GrossAmount   *float64 `json:"gross_amount"`
-	CreatedAt     string   `json:"created_at"`
-	UpdatedAt     *string  `json:"updated_at,omitempty"`
-	Date          *string  `json:"date,omitempty"`
+	ID              string   `json:"id"`
+	EntryID         string   `json:"entry_id"`
+	FormFieldID     string   `json:"form_field_id"`
+	CoaID           string   `json:"coa_id"`
+	TaxTypeID       *int16   `json:"tax_type_id"`
+	FormID          string   `json:"form_id"`
+	ClinicID        *string  `json:"clinic_id,omitempty"`
+	VersionID       string   `json:"version_id"`
+	FormFieldName   string   `json:"form_field_name"`
+	CoaName         string   `json:"coa_name"`
+	TaxTypeName     *string  `json:"tax_type_name"`
+	FormName        *string  `json:"form_name,omitempty"`
+	ClinicName      *string  `json:"clinic_name,omitempty"`
+	SupplierName    *string  `json:"supplier_name,omitempty"`
+	IsExpense       bool     `json:"is_expense"`
+	TransactionType string   `json:"transaction_type"`
+	NetAmount       *float64 `json:"net_amount"`
+	GstAmount       *float64 `json:"gst_amount"`
+	GrossAmount     *float64 `json:"gross_amount"`
+	CreatedAt       string   `json:"created_at"`
+	UpdatedAt       *string  `json:"updated_at,omitempty"`
+	Date            *string  `json:"date,omitempty"`
 }
 
 type RsExportData struct {
 	Items []*RsCoaExportItem `json:"items"`
+}
+
+// EntryValueWithAccountType is used internally for rebalancing calculations.
+type EntryValueWithAccountType struct {
+	FormEntryValue
+	AccountTypeName *string `db:"account_type_name"`
 }
 
 type RsCoaExportItem struct {

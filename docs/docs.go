@@ -2907,6 +2907,12 @@ const docTemplate = `{
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2964,6 +2970,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Practitioner UUID (Required for Accountants to filter)",
                         "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
                         "in": "query"
                     },
                     {
@@ -12867,6 +12879,9 @@ const docTemplate = `{
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
