@@ -1373,8 +1373,8 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 					exportDetails[j] = &entryexport.CoaDetail{
 						FormFieldName: d.FormFieldName,
 						TaxTypeName:   d.TaxTypeName,
-						FormName:      *d.FormName,
-						ClinicName:    *d.ClinicName,
+						FormName:      lo.FromPtrOr(d.FormName, "-"),
+						ClinicName:    lo.FromPtrOr(d.ClinicName, "-"),
 						NetAmount:     d.NetAmount,
 						GstAmount:     d.GstAmount,
 						GrossAmount:   d.GrossAmount,
