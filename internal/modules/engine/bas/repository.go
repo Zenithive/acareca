@@ -181,8 +181,8 @@ func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, fr
 			), 0) AS label_1b_gst_on_purchases
 		FROM vw_bas_line_items
 		WHERE practitioner_id = $1
-		  AND submitted_at::DATE >= $2::DATE
-		  AND submitted_at::DATE <= $3::DATE
+		  AND entry_date::DATE >= $2::DATE
+		  AND entry_date::DATE <= $3::DATE
 	`
 	var row BASReportRow
 	if err := r.db.QueryRowxContext(ctx, query, practitionerID, from, to).StructScan(&row); err != nil {
@@ -293,7 +293,7 @@ func (r *repository) GetAllQuartersInYear(ctx context.Context, financialYearID u
 func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid.UUID, clinicID *uuid.UUID, f *BASFilter) ([]*BASLineItemRow, error) {
 	query := `
 		SELECT 
-			submitted_at AS period_quarter,
+			entry_date AS period_quarter,
 			account_type,
 			bas_category,
 			coa_id,
@@ -312,16 +312,16 @@ func (r *repository) GetBASAnalytics(ctx context.Context, practitionerIDs []uuid
 	}
 
 	if f.FromDate != nil && *f.FromDate != "" {
-		query += " AND submitted_at >= ?"
+		query += " AND entry_date >= ?"
 		args = append(args, *f.FromDate)
 	}
 	if f.ToDate != nil && *f.ToDate != "" {
-		query += " AND submitted_at <= ?"
+		query += " AND entry_date <= ?"
 		args = append(args, *f.ToDate)
 	}
 
-	query += ` GROUP BY submitted_at, account_type, bas_category, coa_id, account_name
-			   ORDER BY submitted_at ASC`
+	query += ` GROUP BY entry_date, account_type, bas_category, coa_id, account_name
+			   ORDER BY entry_date ASC`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {
