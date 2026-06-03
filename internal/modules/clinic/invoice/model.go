@@ -186,10 +186,10 @@ type RsInvoice struct {
 }
 
 type Filter struct {
-	Name      *string    `form:"name,omitempty"`
-	Status    *string    `form:"status,omitempty"`
-	ContactID *uuid.UUID `form:"contact_id,omitempty"`
-	IssueDate *string    `form:"date_range,omitempty"`
+	Name      *string `form:"name,omitempty"`
+	Status    *string `form:"status,omitempty"`
+	ContactID *string `form:"contact_id,omitempty"`
+	IssueDate *string `form:"date_range,omitempty"`
 	common.Filter
 }
 
@@ -205,9 +205,11 @@ func (filter *Filter) MapToFilter() common.Filter {
 		filters["status"] = *filter.Status
 		operators["status"] = common.OpEq
 	}
-	if filter.ContactID != nil && *filter.ContactID != uuid.Nil {
-		filters["contact_id"] = *filter.ContactID
-		operators["contact_id"] = common.OpEq
+	if filter.ContactID != nil && *filter.ContactID != "" {
+		if parsedUUID, err := uuid.Parse(*filter.ContactID); err == nil && parsedUUID != uuid.Nil {
+			filters["contact_id"] = parsedUUID
+			operators["contact_id"] = common.OpEq
+		}
 	}
 
 	if filter.IssueDate != nil && *filter.IssueDate != "" {

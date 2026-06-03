@@ -83,17 +83,18 @@ type RsInviteProcess struct {
 }
 
 type RsInvitationListItem struct {
-	ID                uuid.UUID        `json:"id" db:"id"`
-	PractitionerID    uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
-	PractitionerEmail string           `json:"practitioner_email" db:"practitioner_email"`
-	AccountantID      *uuid.UUID       `json:"accountant_id" db:"accountant_id"`
-	Email             string           `json:"email" db:"email"`
-	Status            InvitationStatus `json:"status" db:"status"`
-	InviteLink        string           `json:"invite_link"`
-	CreatedAt         time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt         *time.Time       `json:"updated_at" db:"updated_at"`
-	DeletedAt         *time.Time       `json:"deleted_at" db:"deleted_at"`
-	ExpiresAt         time.Time        `json:"expires_at" db:"expires_at"`
+	ID                 uuid.UUID        `json:"id" db:"id"`
+	PractitionerID     uuid.UUID        `json:"practitioner_id" db:"practitioner_id"`
+	PractitionerEmail  string           `json:"practitioner_email" db:"practitioner_email"`
+	AccountantID       *uuid.UUID       `json:"accountant_id" db:"accountant_id"`
+	Email              string           `json:"email" db:"email"`
+	BusinessEntityName string           `json:"business_entity_name" db:"entity_name"`
+	Status             InvitationStatus `json:"status" db:"status"`
+	InviteLink         string           `json:"invite_link"`
+	CreatedAt          time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt          *time.Time       `json:"updated_at" db:"updated_at"`
+	DeletedAt          *time.Time       `json:"deleted_at" db:"deleted_at"`
+	ExpiresAt          time.Time        `json:"expires_at" db:"expires_at"`
 }
 
 type RqProcessAction struct {

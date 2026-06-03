@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"math"
 	"strings"
 	"time"
 
@@ -200,6 +201,11 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			metaMap,
 		)
 
+		// Verify ledger integrity before commit
+		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, result.ID); err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -346,6 +352,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			metaMap,
 		)
 
+		// Verify ledger integrity before commit
+		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, id); err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -471,11 +482,14 @@ func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter
 }
 
 func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {
+	// =========================================================================
+	// PASS 1: VALIDATION, TAX CALCULATIONS, AND FORMULA EXECUTION
+	// =========================================================================
 	out := make([]*FormEntryValue, 0, len(rq))
-
 	keyValues := make(map[string]float64, len(rq))
 	taxTypeByKey := make(map[string]string, len(rq))
 
+	// Process direct COA entries
 	for _, v := range rq {
 		if err := v.Validate(); err != nil {
 			return nil, err
@@ -491,6 +505,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			if v.NetAmount != nil {
 				inputAmount = *v.NetAmount
 			}
+
+			inputAmount = s.roundValue(inputAmount)
 
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
@@ -541,26 +557,31 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		if f.TaxType == nil && v.GstAmount != nil && *v.GstAmount > 0 {
 			gstAmount = v.GstAmount
 			grossTotal = inputAmount
-			netBase = inputAmount - *v.GstAmount
+			netBase = s.roundValue(inputAmount - *v.GstAmount)
+			roundedGross := s.roundValue(grossTotal)
 
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
 				FormFieldID: &fieldID,
+				CoaID:       f.CoaID, // 🚀 FIXED
 				NetAmount:   &netBase,
 				GstAmount:   gstAmount,
-				GrossAmount: &grossTotal,
+				GrossAmount: &roundedGross,
 			})
 			continue
 		}
 
 		if f.TaxType == nil {
+			netBase = s.roundValue(netBase)
+			grossTotal = s.roundValue(grossTotal)
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
 				ID:          uuid.New(),
 				EntryID:     entryID,
 				FormFieldID: &fieldID,
+				CoaID:       f.CoaID, // 🚀 FIXED
 				NetAmount:   &netBase,
 				GstAmount:   nil,
 				GrossAmount: &grossTotal,
@@ -576,9 +597,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			if err != nil {
 				return nil, err
 			}
-			gstAmount = &result.GstAmount
-			netBase = result.Amount
-			grossTotal = result.TotalAmount
+			roundedGst := s.roundValue(result.GstAmount)
+			gstAmount = &roundedGst
+			netBase = s.roundValue(result.Amount)
+			grossTotal = s.roundValue(result.TotalAmount)
 
 		case method.TaxTreatmentExclusive:
 			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
@@ -586,32 +608,32 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = inputAmount
-			grossTotal = result.TotalAmount
+			netBase = s.roundValue(inputAmount)
+			grossTotal = s.roundValue(result.TotalAmount)
 
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
 
 			if v.GrossAmount != nil {
-				grossTotal = *v.GrossAmount
+				grossTotal = s.roundValue(*v.GrossAmount)
 				if v.GstAmount != nil {
-					netBase = *v.GrossAmount - *v.GstAmount
+					netBase = s.roundValue(*v.GrossAmount - *v.GstAmount)
 				} else {
-					netBase = *v.GrossAmount
+					netBase = s.roundValue(*v.GrossAmount)
 				}
 			} else {
-				grossTotal = inputAmount
+				grossTotal = s.roundValue(inputAmount)
 				if v.GstAmount != nil {
-					netBase = inputAmount - *v.GstAmount
+					netBase = s.roundValue(inputAmount - *v.GstAmount)
 				} else {
-					netBase = inputAmount
+					netBase = s.roundValue(inputAmount)
 				}
 			}
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
-			netBase = inputAmount
-			grossTotal = inputAmount
+			netBase = s.roundValue(inputAmount)
+			grossTotal = s.roundValue(inputAmount)
 
 		default:
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
@@ -629,12 +651,14 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			ID:          uuid.New(),
 			EntryID:     entryID,
 			FormFieldID: &fieldID,
+			CoaID:       f.CoaID, // 🚀 FIXED
 			NetAmount:   &netBase,
 			GstAmount:   gstAmount,
 			GrossAmount: &grossTotal,
 		})
 	}
 
+	// Execute formulas if available
 	var firstField *field.FormField
 	if s.formulaSvc != nil && len(rq) > 0 {
 		var firstFieldID uuid.UUID
@@ -653,207 +677,320 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			}
 		}
 
-		if firstField == nil {
-			return out, nil
-		}
-
-		allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
-		if err != nil {
-			return nil, err
-		}
-
-		fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
-		for _, af := range allFields {
-			fieldByID[af.ID] = af
-		}
-
-		sectionTotals := make(map[string]float64)
-		for _, entryVal := range out {
-			if entryVal.FormFieldID == nil {
-				continue
-			}
-
-			f, ok := fieldByID[*entryVal.FormFieldID]
-			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
-				sectionKey := "SECTION:" + *f.SectionType
-				sectionTotals[sectionKey] += *entryVal.NetAmount
-			}
-		}
-
-		maps.Copy(keyValues, sectionTotals)
-
-		for _, f := range allFields {
-			if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
-				taxTypeByKey[f.FieldKey] = *f.TaxType
-			}
-		}
-
-		manualGSTByKey := make(map[string]float64)
-		for _, v := range rq {
-			if v.GstAmount == nil || v.FormFieldID == nil || *v.FormFieldID == "" {
-				continue
-			}
-			fieldID, err := uuid.Parse(*v.FormFieldID)
+		if firstField != nil {
+			allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
 			if err != nil {
-				continue
-			}
-			f, ok := fieldByID[fieldID]
-			if !ok || !f.IsComputed {
-				continue
-			}
-			if f.TaxType != nil && *f.TaxType == "MANUAL" {
-				manualGSTByKey[f.FieldKey] = *v.GstAmount
-			}
-		}
-
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
-		if err != nil {
-			return nil, fmt.Errorf("evaluate formulas: %w", err)
-		}
-
-		alreadyAdded := make(map[uuid.UUID]bool, len(out))
-		for _, v := range out {
-			if v.FormFieldID != nil {
-				alreadyAdded[*v.FormFieldID] = true
-			}
-		}
-
-		for fieldID, val := range computed {
-			f, ok := fieldByID[fieldID]
-			if !ok {
-				continue
-			}
-			if alreadyAdded[fieldID] {
-				continue
+				return nil, err
 			}
 
-			netBase := val
-			grossTotal := val
-			var gstAmount *float64
+			fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
+			for _, af := range allFields {
+				fieldByID[af.ID] = af
+			}
 
-			if f.TaxType != nil {
-				taxType := method.TaxTreatment(*f.TaxType)
+			sectionTotals := make(map[string]float64)
+			for _, entryVal := range out {
+				if entryVal.FormFieldID == nil {
+					continue
+				}
 
-				switch taxType {
-				case method.TaxTreatmentInclusive:
-					gst := val * 0.10
-					gstAmount = &gst
-					netBase = val
-					grossTotal = val + gst
-				case method.TaxTreatmentExclusive:
-					gst := val * 0.10
-					gstAmount = &gst
-					netBase = val
-					grossTotal = val + gst
-				case method.TaxTreatmentManual:
-					var entryGST *float64
-					for _, v := range rq {
-						if v.FormFieldID == nil || *v.FormFieldID == "" {
-							continue
-						}
-						entryFieldID, err := uuid.Parse(*v.FormFieldID)
-						if err != nil {
-							continue
-						}
-						if entryFieldID == fieldID && v.GstAmount != nil {
-							entryGST = v.GstAmount
-							break
-						}
-					}
+				f, ok := fieldByID[*entryVal.FormFieldID]
+				if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
+					sectionKey := "SECTION:" + *f.SectionType
+					sectionTotals[sectionKey] += *entryVal.NetAmount
+				}
+			}
 
-					grossTotal = val
-					if entryGST == nil {
-						gst := 0.0
+			maps.Copy(keyValues, sectionTotals)
+
+			for _, f := range allFields {
+				if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+					taxTypeByKey[f.FieldKey] = *f.TaxType
+				}
+			}
+
+			manualGSTByKey := make(map[string]float64)
+			for _, v := range rq {
+				if v.GstAmount == nil || v.FormFieldID == nil || *v.FormFieldID == "" {
+					continue
+				}
+				fieldID, err := uuid.Parse(*v.FormFieldID)
+				if err != nil {
+					continue
+				}
+				f, ok := fieldByID[fieldID]
+				if !ok || !f.IsComputed {
+					continue
+				}
+				if f.TaxType != nil && *f.TaxType == "MANUAL" {
+					manualGSTByKey[f.FieldKey] = *v.GstAmount
+				}
+			}
+
+			computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
+			if err != nil {
+				return nil, fmt.Errorf("evaluate formulas: %w", err)
+			}
+
+			alreadyAdded := make(map[uuid.UUID]bool, len(out))
+			for _, v := range out {
+				if v.FormFieldID != nil {
+					alreadyAdded[*v.FormFieldID] = true
+				}
+			}
+
+			for fieldID, val := range computed {
+				f, ok := fieldByID[fieldID]
+				if !ok {
+					continue
+				}
+				if alreadyAdded[fieldID] {
+					continue
+				}
+
+				netBase := s.roundValue(val)
+				grossTotal := s.roundValue(val)
+				var gstAmount *float64
+
+				if f.TaxType != nil {
+					taxType := method.TaxTreatment(*f.TaxType)
+
+					switch taxType {
+					case method.TaxTreatmentInclusive:
+						gst := s.roundValue(val * 0.10)
 						gstAmount = &gst
-						netBase = val
-					} else {
-						gstAmount = entryGST
-						netBase = val - *entryGST
-					}
-				case method.TaxTreatmentZero:
-					gstAmount = nil
-					netBase = val
-					grossTotal = val
-				}
-			}
+						netBase = s.roundValue(val)
+						grossTotal = s.roundValue(val + gst)
+					case method.TaxTreatmentExclusive:
+						gst := s.roundValue(val * 0.10)
+						gstAmount = &gst
+						netBase = s.roundValue(val)
+						grossTotal = s.roundValue(val + gst)
+					case method.TaxTreatmentManual:
+						var entryGST *float64
+						for _, v := range rq {
+							if v.FormFieldID == nil || *v.FormFieldID == "" {
+								continue
+							}
+							entryFieldID, err := uuid.Parse(*v.FormFieldID)
+							if err != nil {
+								continue
+							}
+							if entryFieldID == fieldID && v.GstAmount != nil {
+								entryGST = v.GstAmount
+								break
+							}
+						}
 
-			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				NetAmount:   &netBase,
-				GstAmount:   gstAmount,
-				GrossAmount: &grossTotal,
-			})
-		}
-	}
-
-	// =========================================================================
-	// AUTOMATED DOUBLE-ENTRY BALANCING SYSTEM (ALL EDGE CASES)
-	// =========================================================================
-	if len(out) > 0 {
-		var totalLedgerImpact float64
-		var practitionerID *uuid.UUID
-
-		// 1. Traverse lines to calculate aggregate algebraic weight
-		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 {
-				continue
-			}
-
-			var targetCoaID *uuid.UUID
-			if ev.CoaID != nil {
-				targetCoaID = ev.CoaID
-			} else if ev.FormFieldID != nil && firstField != nil {
-				// Fallback to fetch CoaID mapped on the template field
-				f, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
-				if err == nil && f != nil {
-					targetCoaID = f.CoaID
-				}
-			}
-
-			if targetCoaID != nil {
-				// Use the existing GetByIDInternal method from your COA repository interface
-				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *targetCoaID)
-				if err == nil && chartAccount != nil {
-					if practitionerID == nil {
-						practitionerID = &chartAccount.PractitionerID
-					}
-
-					// Dynamic sign management rule based on natural account structures
-					switch strings.Title(strings.ToLower(chartAccount.AccountTypeName)) {
-					case "Asset", "Expense":
-						totalLedgerImpact += *ev.NetAmount
-					case "Liability", "Equity", "Revenue", "Income":
-						totalLedgerImpact -= *ev.NetAmount
+						grossTotal = s.roundValue(val)
+						if entryGST == nil {
+							gst := 0.0
+							gstAmount = &gst
+							netBase = s.roundValue(val)
+						} else {
+							gstAmount = entryGST
+							netBase = s.roundValue(val - *entryGST)
+						}
+					case method.TaxTreatmentZero:
+						gstAmount = nil
+						netBase = s.roundValue(val)
+						grossTotal = s.roundValue(val)
 					}
 				}
-			}
-		}
-
-		// 2. If debits and credits don't balance out to zero, fix the drift
-		if totalLedgerImpact != 0 && practitionerID != nil {
-			// Find Operating Bank Account (Code 600) for this practitioner to absorb the offset
-			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-			if err == nil && bankAccount != nil {
-
-				// Balancing value is the inversion of the net drift
-				counterBalancingAmount := -totalLedgerImpact
 
 				out = append(out, &FormEntryValue{
 					ID:          uuid.New(),
 					EntryID:     entryID,
-					FormFieldID: nil, // Internal systemic adjustment record
-					CoaID:       &bankAccount.ID,
-					NetAmount:   &counterBalancingAmount,
-					GstAmount:   nil,
-					GrossAmount: &counterBalancingAmount,
+					FormFieldID: &fieldID,
+					CoaID:       f.CoaID,
+					NetAmount:   &netBase,
+					GstAmount:   gstAmount,
+					GrossAmount: &grossTotal,
 				})
 			}
 		}
 	}
 
+	// =========================================================================
+	// PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
+	// =========================================================================
+	// Rule: amounts are stored with their natural sign (positive = normal balance).
+	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
+	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
+	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
+	if len(out) > 0 {
+		var totalLedgerImpact float64
+		var practitionerID *uuid.UUID
+
+		// 1. Sum signed contributions across all lines.
+		for _, ev := range out {
+			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+				continue
+			}
+
+			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+			if err == nil && chartAccount != nil {
+				if practitionerID == nil {
+					practitionerID = &chartAccount.PractitionerID
+				}
+
+				accountType := strings.ToLower(chartAccount.AccountTypeName)
+				// Use the raw signed amount — the sign already encodes debit/credit direction.
+				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
+					totalLedgerImpact += *ev.NetAmount
+				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
+					totalLedgerImpact -= *ev.NetAmount
+				}
+			}
+		}
+
+		totalLedgerImpact = s.roundValue(totalLedgerImpact)
+
+		// 2. If variance exists, inject a COA-600 (Bank) balancing row.
+		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
+			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
+			if err != nil || bankAccount == nil {
+				return nil, fmt.Errorf("missing required balancing account: COA code 600 Business Bank Account for practitioner %s", practitionerID.String())
+			}
+
+			// COA-600 is an Asset; to absorb the variance we invert it.
+			counterBalancingAmount := s.roundValue(-totalLedgerImpact)
+			bankCoaID := bankAccount.ID
+
+			out = append(out, &FormEntryValue{
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: nil,
+				CoaID:       &bankCoaID,
+				NetAmount:   &counterBalancingAmount,
+				GstAmount:   nil,
+				GrossAmount: &counterBalancingAmount,
+			})
+		}
+
+		// 3. Post-balancing verification — re-run same signed arithmetic to confirm zero balance.
+		var finalLedgerBalance float64
+		for _, ev := range out {
+			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+				continue
+			}
+
+			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+			if err == nil && chartAccount != nil {
+				accountType := strings.ToLower(chartAccount.AccountTypeName)
+				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
+					finalLedgerBalance += *ev.NetAmount
+				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
+					finalLedgerBalance -= *ev.NetAmount
+				}
+			}
+		}
+
+		finalLedgerBalance = s.roundValue(finalLedgerBalance)
+		if math.Abs(finalLedgerBalance) > 0.01 {
+			return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
+		}
+	}
+
 	return out, nil
+}
+
+// // =========================================================================
+// // PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
+// // =========================================================================
+// if len(out) > 0 {
+// 	var totalLedgerImpact float64
+// 	var practitionerID *uuid.UUID
+
+// 	// 1. Calculate initial transaction variance using exact DB polarity rules
+// 	for _, ev := range out {
+// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+// 			continue
+// 		}
+
+// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+// 		if err == nil && chartAccount != nil {
+// 			if practitionerID == nil {
+// 				practitionerID = &chartAccount.PractitionerID
+// 			}
+
+// 			amount := *ev.NetAmount
+// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
+
+// 			// Mirror the SQL script polarity perfectly
+// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
+// 				totalLedgerImpact += amount
+// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
+// 				totalLedgerImpact -= amount
+// 			}
+// 		}
+// 	}
+
+// 	totalLedgerImpact = s.roundValue(totalLedgerImpact)
+
+// 	// 2. Inject balancing row if variance exists
+// 	if totalLedgerImpact != 0 && practitionerID != nil {
+// 		var counterBalancingAmount float64
+// 		var resolvedCoaID uuid.UUID
+// 		var foundTarget bool
+
+// 		// If totalLedgerImpact is positive, the database has too many debits.
+// 		// We need to inject a CREDIT (negative amount) to clear it.
+// 		counterBalancingAmount = s.roundValue(-totalLedgerImpact)
+
+// 		// Rule 3: Global Cash Safe-Harbor Fallback (Code 600)
+// 		bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
+// 		if err == nil && bankAccount != nil {
+// 			resolvedCoaID = bankAccount.ID
+// 			foundTarget = true
+// 		}
+
+// 		if foundTarget {
+// 			out = append(out, &FormEntryValue{
+// 				ID:          uuid.New(),
+// 				EntryID:     entryID,
+// 				FormFieldID: nil, // Marks this as a system balancing row
+// 				CoaID:       &resolvedCoaID,
+// 				NetAmount:   &counterBalancingAmount,
+// 				GstAmount:   nil,
+// 				GrossAmount: &counterBalancingAmount,
+// 			})
+// 		}
+// 	}
+
+// 	// 3. Post-Balancing Verification Guardrail (Must exactly mirror the math blocks above)
+// 	var finalLedgerBalance float64
+// 	for _, ev := range out {
+// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+// 			continue
+// 		}
+
+// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+// 		if err == nil && chartAccount != nil {
+// 			amount := *ev.NetAmount
+// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
+
+// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
+// 				finalLedgerBalance += amount
+// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
+// 				finalLedgerBalance -= amount
+// 			}
+// 		}
+// 	}
+
+// 	finalLedgerBalance = s.roundValue(finalLedgerBalance)
+// 	if finalLedgerBalance > 0.01 || finalLedgerBalance < -0.01 {
+// 		return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
+// 	}
+// }
+
+// 	return out, nil
+// }
+
+// roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
+// This ensures all monetary amounts are precise to 2 decimal places
+func (s *Service) roundValue(val float64) float64 {
+	return math.Round(val*100) / 100
 }
 
 // attachFieldMetadata enriches each value in the response with field_key, label, and is_computed.

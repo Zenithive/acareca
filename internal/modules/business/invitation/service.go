@@ -207,11 +207,9 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 	}
 
 	switch inv.Status {
-	case StatusResent:
-		return nil, ErrInvitationInvalidated
 	case StatusRevoked:
 		return nil, ErrInvitatationRevoked
-	case StatusAccepted, StatusRejected, StatusCompleted:
+	case StatusRejected, StatusCompleted:
 		return nil, ErrInvitationAlreadyUsed
 	}
 
@@ -248,7 +246,7 @@ func (s *service) ProcessInvitation(ctx context.Context, req *RqProcessAction) (
 		}
 
 		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, targetStatus, inv.AccountantID, inv.ExpiresAt); err != nil {
+			if err := s.repo.UpdateStatus(ctx, tx, inv.ID, targetStatus, accountantID, inv.ExpiresAt); err != nil {
 				return err
 			}
 			return nil
@@ -271,20 +269,40 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 	if err != nil {
 		return err
 	}
-	if inv == nil || (inv.Status != StatusAccepted && inv.Status != StatusSent) {
+
+	if inv == nil {
 		return nil
 	}
 
-	if err := s.repo.UpdateStatus(ctx, tx, inv.ID, StatusCompleted, &entityID, inv.ExpiresAt); err != nil {
+	if time.Now().After(inv.ExpiresAt) {
+		return ErrInvitationExpired
+	}
+
+	var targetStatus InvitationStatus
+	var dbAccountantID *uuid.UUID
+	switch inv.Status {
+	case StatusAccepted:
+		targetStatus = StatusCompleted
+		dbAccountantID = &entityID
+	case StatusSent:
+		targetStatus = StatusSent
+		dbAccountantID = nil
+	default:
+		return nil
+	}
+
+	if err := s.repo.UpdateStatus(ctx, tx, inv.ID, targetStatus, dbAccountantID, inv.ExpiresAt); err != nil {
 		return err
 	}
 
-	afterState := *inv
-	afterState.Status = StatusCompleted
+	if targetStatus == StatusCompleted {
+		afterState := *inv
+		afterState.Status = StatusCompleted
 
-	meta := auditctx.GetMetadata(ctx)
-	pIDStr := inv.PractitionerID.String()
-	s.submitAuditLog(*meta, &pIDStr, auditctx.ActionInviteCompleted, auditctx.EntityInvitation, inv.ID.String(), inv, afterState)
+		meta := auditctx.GetMetadata(ctx)
+		pIDStr := inv.PractitionerID.String()
+		s.submitAuditLog(*meta, &pIDStr, auditctx.ActionInviteCompleted, auditctx.EntityInvitation, inv.ID.String(), inv, afterState)
+	}
 	return nil
 }
 

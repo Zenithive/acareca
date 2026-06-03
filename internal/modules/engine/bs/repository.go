@@ -32,6 +32,15 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 		args = append(args, *f.EndDate)
 		idx++
 	}
+	if f.UserID != nil && *f.UserID != "" {
+		userID, err := uuid.Parse(*f.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user_id: %w", err)
+		}
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", idx))
+		args = append(args, userID)
+		idx++
+	}
 
 	innerQuery := fmt.Sprintf("%s WHERE %s", base, strings.Join(conditions, " AND "))
 
@@ -39,13 +48,14 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 		SELECT
 			practitioner_id,
 			account_type,
+			account_classification,
 			account_code,
 			account_name,
 			coa_id,
 			SUM(signed_amount) AS balance
 		FROM (%s) AS filtered
-		GROUP BY practitioner_id, account_type, account_code, account_name, coa_id
-		ORDER BY account_type, account_code
+		GROUP BY practitioner_id, account_type, account_classification, account_code, account_name, coa_id
+		ORDER BY account_type, account_classification, account_code
 	`, innerQuery)
 
 	var rows []*BSRow
