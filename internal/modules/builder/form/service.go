@@ -927,7 +927,11 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			}
 			totalAmount += *ev.NetAmount
 			t := strings.ToLower(coaDetails[i].AccountTypeName)
-			if strings.Contains(t, "revenue") || strings.Contains(t, "income") {
+			// Credit-normal accounts (liability, equity, revenue, income) are treated the same
+			// as income for sign purposes — they reduce the balancing bank offset.
+			// This must mirror the polarity used in AssertLedgerGroupBalances.
+			if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
+				strings.Contains(t, "liability") || strings.Contains(t, "equity") {
 				hasIncome = true
 			} else {
 				hasExpense = true
@@ -1373,7 +1377,10 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			totalAmount += *evs.NetAmount
 			if evs.AccountTypeName != nil {
 				t := strings.ToLower(*evs.AccountTypeName)
-				if strings.Contains(t, "revenue") || strings.Contains(t, "income") {
+				// Credit-normal accounts (liability, equity, revenue, income) are treated the same
+				// as income for sign purposes — mirrors AssertLedgerGroupBalances polarity.
+				if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
+					strings.Contains(t, "liability") || strings.Contains(t, "equity") {
 					hasIncome = true
 				} else {
 					hasExpense = true
