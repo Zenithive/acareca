@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -48,6 +49,9 @@ type Repository interface {
 	// password reset
 	SaveResetToken(ctx context.Context, clinicID string, tokenHash string, expiresAt time.Time) error
 	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
+
+	// Document
+	GetDocumentByID(ctx context.Context, documentID string) (*file.Document, error)
 }
 
 type repository struct {
@@ -473,4 +477,28 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 		return errors.New("invalid or expired reset link")
 	}
 	return nil
+}
+
+func (r *repository) GetDocumentByID(ctx context.Context, documentID string) (*file.Document, error) {
+	docUUID, err := uuid.Parse(documentID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid document ID: %w", err)
+	}
+
+	query := `
+		SELECT id, owner_id, owner_role, object_key, bucket, original_name, extension,
+		       mime_type, size_bytes, checksum, status, is_public, uploaded_at,
+		       created_at, updated_at, deleted_at
+		FROM tbl_document
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	var doc file.Document
+	if err := r.db.GetContext(ctx, &doc, query, docUUID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // Document not found, return nil without error
+		}
+		return nil, fmt.Errorf("get document by id: %w", err)
+	}
+	return &doc, nil
 }

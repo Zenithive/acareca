@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -185,7 +186,15 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		UserAgent:  meta.UserAgent,
 	})
 
-	return toRsClinicDetail(createdClinic, createdAddresses, createdContacts), nil
+	var document *file.Document
+	if createdClinic.DocumentID != nil && *createdClinic.DocumentID != "" {
+		document, err = s.repo.GetDocumentByID(ctx, *createdClinic.DocumentID)
+		if err != nil {
+			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *createdClinic.DocumentID, err)
+		}
+	}
+
+	return toRsClinicDetail(createdClinic, createdAddresses, createdContacts, document), nil
 }
 
 func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, error) {
@@ -293,7 +302,15 @@ func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic
 		return nil, err
 	}
 
-	return toRsClinicDetail(clinic, addresses, contacts), nil
+	var document *file.Document
+	if clinic.DocumentID != nil && *clinic.DocumentID != "" {
+		document, err = s.repo.GetDocumentByID(ctx, *clinic.DocumentID)
+		if err != nil {
+			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *clinic.DocumentID, err)
+		}
+	}
+
+	return toRsClinicDetail(clinic, addresses, contacts, document), nil
 }
 
 func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
@@ -347,7 +364,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 // HELPERS
 // ==========================================
 
-func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *RsClinicDetail {
+func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact, doc *file.Document) *RsClinicDetail {
 	rsAddrs := make([]RsClinicAddress, 0, len(addrs))
 	for _, a := range addrs {
 		rsAddrs = append(rsAddrs, RsClinicAddress{
@@ -371,6 +388,17 @@ func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *
 		})
 	}
 
+	var rsDocument *file.RsDocument
+	if doc != nil {
+		rsDocument = &file.RsDocument{
+			ID:           doc.ID,
+			OriginalName: doc.OriginalName,
+			FileKey:      doc.ObjectKey,
+			UploadedAt:   doc.UploadedAt,
+			CreatedAt:    doc.CreatedAt,
+		}
+	}
+
 	return &RsClinicDetail{
 		ID:          c.ID,
 		ClinicName:  c.ClinicName,
@@ -379,6 +407,7 @@ func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *
 		Verified:    c.Verified,
 		Description: c.Description,
 		DocumentID:  c.DocumentID,
+		Document:    rsDocument,
 		ABN:         c.ABN,
 		ACN:         c.ACN,
 		Addresses:   rsAddrs,
@@ -670,6 +699,14 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 	addresses, _ := s.repo.ListAddressesByClinicID(ctx, clinicID)
 	contacts, _ := s.repo.ListContactsByClinicID(ctx, clinicID)
 
+	var document *file.Document
+	if updatedClinic.DocumentID != nil && *updatedClinic.DocumentID != "" {
+		document, err = s.repo.GetDocumentByID(ctx, *updatedClinic.DocumentID)
+		if err != nil {
+			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *updatedClinic.DocumentID, err)
+		}
+	}
+
 	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinicID.String()
 	s.auditSvc.LogAsync(&audit.LogEntry{
@@ -683,7 +720,7 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 		UserAgent:  meta.UserAgent,
 	})
 
-	return toRsClinicDetail(updatedClinic, addresses, contacts), nil
+	return toRsClinicDetail(updatedClinic, addresses, contacts, document), nil
 }
 
 // validateAddressChangeset checks primary-field rules before the transaction.
