@@ -2,7 +2,6 @@ package practitioner
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -33,7 +32,6 @@ type IService interface {
 	UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error
 	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
-	VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error
 }
 
 type service struct {
@@ -227,27 +225,6 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 		IPAddress:   meta.IPAddress,
 		UserAgent:   meta.UserAgent,
 	})
-
-	return nil
-}
-
-func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
-	if s.invitationModel == nil {
-		return errors.New("invitation repository not available")
-	}
-
-	perms, err := s.invitationModel.InternalRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
-	if err != nil || perms == nil {
-		if err != nil {
-			return fmt.Errorf("failed to get permissions: %w", err)
-		}
-		return errors.New("accountant does not have access to this practitioner")
-	}
-
-	lockDatePerms, exists := (*perms)[invitationPkg.PermLockDates]
-	if !exists || !lockDatePerms.Read {
-		return errors.New("accountant does not have read permission for lock dates")
-	}
 
 	return nil
 }

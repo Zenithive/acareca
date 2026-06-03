@@ -2,7 +2,6 @@ package practitioner
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -99,7 +98,7 @@ func (h *Handler) ListPractitioners(c *gin.Context) {
 // @Security BearerToken
 // @Router /practitioner/lock-date [get]
 func (h *Handler) GetLockDate(c *gin.Context) {
-	actorID, role, err := h.getActorContext(c)
+	_, role, err := h.getActorContext(c)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, err)
 		return
@@ -126,10 +125,6 @@ func (h *Handler) GetLockDate(c *gin.Context) {
 		for _, idStr := range pIDStrs {
 			pID, err := h.parseUUID(c, idStr, "invalid ID format")
 			if err != nil {
-				return
-			}
-			if err = h.svc.VerifyAccountantAccessToPractitioner(c.Request.Context(), *actorID, pID); err != nil {
-				response.Error(c, http.StatusForbidden, fmt.Errorf("no access to practitioner: %s", idStr))
 				return
 			}
 			practitionerID = pID

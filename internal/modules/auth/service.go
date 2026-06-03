@@ -211,7 +211,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			s.logSystemError(context.Background(), "auth.send_verification_email", err, created.ID.String(), entityID.String())
 			return
 		}
-		link := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
+		link := fmt.Sprintf("%s/auth/verify-email?token=%s", baseUrl, tokenID)
 		if err := s.mailer.SendVerificationEmail(created.Email, created.FirstName, link); err != nil {
 			fmt.Printf("[AUTH ERROR] Failed to send verification email: %v\n", err)
 			s.logSystemError(context.Background(), "auth.send_verification_email", err, created.ID.String(), entityID.String())
