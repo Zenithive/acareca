@@ -618,7 +618,9 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, role stri
 			clinic.IsActive = *req.IsActive
 		}
 
-		clinic.PractitionerID = actorID
+		if role == "PRACTITIONER" {
+			clinic.PractitionerID = actorID
+		}
 
 		if req.EntityID != uuid.Nil {
 			clinic.EntityID = req.EntityID
