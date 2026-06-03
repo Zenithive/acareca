@@ -26,6 +26,7 @@ type Repository interface {
 	CountDailyInvitesByEmail(ctx context.Context, practitionerID uuid.UUID, email string) (int, error)
 	GetEmailByAccountantID(ctx context.Context, accountantID uuid.UUID) (string, error)
 	GetPractitionerEmailByID(ctx context.Context, practitionerID uuid.UUID) (string, error)
+	GetPractitionerUserIDByID(ctx context.Context, practitionerID uuid.UUID) (uuid.UUID, error)
 	ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error)
 	ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error)
 	CountByEmail(ctx context.Context, email string, f common.Filter) (int, error)
@@ -36,6 +37,7 @@ type Repository interface {
 	DeletePermission(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) error
 	IsAccountantLinkedToPractitioner(ctx context.Context, practitionerID, accountantID uuid.UUID) (bool, error)
 	GetPractitionersLinkedToAccountant(ctx context.Context, accountantID uuid.UUID) ([]uuid.UUID, error)
+	GetAccountantsLinkedToPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]AccountantInfo, error)
 	DeleteAllPermissionsForAccountant(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error
 	UpdateStatus(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, status InvitationStatus, accountantID *uuid.UUID, expiresAt time.Time) error
 	CountPermission(ctx context.Context, f common.Filter) (int, error)
@@ -247,6 +249,17 @@ func (r *repository) GetPractitionerEmailByID(ctx context.Context, practitionerI
 	}
 	return email, nil
 }
+func (r *repository) GetPractitionerUserIDByID(ctx context.Context, practitionerID uuid.UUID) (uuid.UUID, error) {
+	var userID uuid.UUID
+	query := `
+		SELECT p.user_id FROM tbl_practitioner p
+		JOIN tbl_user u ON p.user_id = u.id
+		WHERE p.id = $1 AND p.deleted_at IS NULL`
+	if err := r.db.GetContext(ctx, &userID, query, practitionerID); err != nil {
+		return uuid.Nil, fmt.Errorf("get user id by practitioner id: %w", err)
+	}
+	return userID, nil
+}
 
 func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uuid.UUID, f common.Filter) ([]*RsInvitationListItem, error) {
 	base := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.accountant_id, i.email, i.status, i.created_at, i.updated_at, i.deleted_at, i.expires_at
@@ -264,13 +277,13 @@ func (r *repository) ListForPractitioner(ctx context.Context, practitionerID uui
 }
 
 func (r *repository) ListForAccountant(ctx context.Context, accountantEmail string, f common.Filter) ([]*RsInvitationListItem, error) {
-	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, i.accountant_id, i.email, i.status, i.created_at, i.updated_at, i.deleted_at, i.expires_at
+	query := `SELECT i.id, i.practitioner_id, u.email AS practitioner_email, p.entity_name, i.accountant_id, i.email, i.status, i.created_at, i.updated_at, i.deleted_at, i.expires_at
 	          FROM tbl_invitation i
 	          JOIN tbl_practitioner p ON i.practitioner_id = p.id
 	          JOIN tbl_user u ON p.user_id = u.id
-	          WHERE i.email = $1 AND i.status::text != $2`
+	          WHERE i.email = $1`
 
-	args := []interface{}{accountantEmail, string(StatusResent)}
+	args := []interface{}{accountantEmail}
 
 	if f.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *f.Limit)
@@ -443,6 +456,23 @@ func (r *repository) GetPractitionersLinkedToAccountant(ctx context.Context, acc
 		return nil, fmt.Errorf("get linked practitioners: %w", err)
 	}
 	return practitionerIDs, nil
+}
+
+func (r *repository) GetAccountantsLinkedToPractitioner(ctx context.Context, practitionerID uuid.UUID) ([]AccountantInfo, error) {
+	query := `
+		SELECT DISTINCT i.accountant_id, a.user_id
+		FROM tbl_invitation i
+		JOIN tbl_accountant a ON i.accountant_id = a.id
+		WHERE i.practitioner_id = $1 
+		  AND i.status = 'COMPLETED' 
+		  AND i.deleted_at IS NULL
+		  AND a.deleted_at IS NULL`
+
+	var accountants []AccountantInfo
+	if err := r.db.SelectContext(ctx, &accountants, query, practitionerID); err != nil {
+		return nil, fmt.Errorf("get linked accountants: %w", err)
+	}
+	return accountants, nil
 }
 
 func (r *repository) DeleteAllPermissionsForAccountant(ctx context.Context, tx *sqlx.Tx, practitionerID, accountantID uuid.UUID) error {

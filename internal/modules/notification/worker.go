@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 const (
@@ -53,7 +54,7 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 		push := map[string]any{
 			"id":             d.NotificationID,
 			"recipient_id":   d.RecipientID,
-			"recipient_type": "PRACTITIONER",
+			"recipient_type": d.RecepientType,
 			"sender_id":      nil,
 			"sender_type":    nil,
 			"event_type":     d.EventType,
@@ -69,7 +70,7 @@ func retryFailed(ctx context.Context, repo Repository, hub *sharednotification.H
 			log.Printf("retry worker: pushed to active WebSocket for user %s", d.RecipientID)
 		}
 
-		if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, ChannelInApp); err != nil {
+		if err := repo.MarkDeliveryDelivered(ctx, d.NotificationID, util.ChannelInApp); err != nil {
 			log.Printf("retry worker: failed to mark delivered %s: %v", d.NotificationID, err)
 		} else {
 			if pushedToWebSocket {

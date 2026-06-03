@@ -2830,7 +2830,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/verify": {
+        "/auth/verify-email": {
             "get": {
                 "description": "Validates the UUID token sent via email and marks the user as verified",
                 "produces": [
@@ -2907,13 +2907,19 @@ const docTemplate = `{
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/bs.RsBalanceSheet"
+                            "$ref": "#/definitions/internal_modules_engine_bs.RsBalanceSheet"
                         }
                     },
                     "400": {
@@ -2964,6 +2970,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Practitioner UUID (Required for Accountants to filter)",
                         "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
                         "in": "query"
                     },
                     {
@@ -3234,7 +3246,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/bas.RsBASPreparation"
+                            "$ref": "#/definitions/internal_modules_engine_bas.RsBASPreparation"
                         }
                     },
                     "400": {
@@ -3565,7 +3577,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/bas.RsBASReport"
+                            "$ref": "#/definitions/internal_modules_engine_bas.RsBASReport"
                         }
                     },
                     "400": {
@@ -11904,84 +11916,6 @@ const docTemplate = `{
                 }
             }
         },
-        "bas.BASAmount": {
-            "type": "object",
-            "properties": {
-                "gross": {
-                    "type": "number"
-                },
-                "gst": {
-                    "type": "number"
-                },
-                "net": {
-                    "type": "number"
-                }
-            }
-        },
-        "bas.BASColumn": {
-            "type": "object",
-            "properties": {
-                "net_gst_payable": {
-                    "type": "number"
-                },
-                "quarter": {
-                    "$ref": "#/definitions/bas.BASQuarterInfo"
-                },
-                "sections": {
-                    "type": "object",
-                    "properties": {
-                        "expenses": {
-                            "$ref": "#/definitions/bas.BASSection"
-                        },
-                        "income": {
-                            "$ref": "#/definitions/bas.BASSection"
-                        }
-                    }
-                }
-            }
-        },
-        "bas.BASLineItem": {
-            "type": "object",
-            "properties": {
-                "amounts": {
-                    "$ref": "#/definitions/bas.BASAmount"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "bas.BASQuarterInfo": {
-            "type": "object",
-            "properties": {
-                "displayRange": {
-                    "type": "string"
-                },
-                "endDate": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "startDate": {
-                    "type": "string"
-                }
-            }
-        },
-        "bas.BASSection": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bas.BASLineItem"
-                    }
-                }
-            }
-        },
         "bas.BASValue": {
             "type": "object",
             "properties": {
@@ -12098,37 +12032,6 @@ const docTemplate = `{
                 }
             }
         },
-        "bas.RsBASPreparation": {
-            "type": "object",
-            "properties": {
-                "columns": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bas.BASColumn"
-                    }
-                },
-                "grand_total": {
-                    "$ref": "#/definitions/bas.BASColumn"
-                }
-            }
-        },
-        "bas.RsBASReport": {
-            "type": "object",
-            "properties": {
-                "1A": {
-                    "type": "number"
-                },
-                "1B": {
-                    "type": "number"
-                },
-                "G1": {
-                    "type": "number"
-                },
-                "G11": {
-                    "type": "number"
-                }
-            }
-        },
         "bas.RsBASSummary": {
             "type": "object",
             "properties": {
@@ -12157,64 +12060,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_sales_net": {
-                    "type": "number"
-                }
-            }
-        },
-        "bs.RsAccount": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "number"
-                },
-                "coa_id": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "bs.RsBalanceSheet": {
-            "type": "object",
-            "properties": {
-                "assets": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bs.RsAccount"
-                    }
-                },
-                "current_year_profit": {
-                    "type": "number"
-                },
-                "end_date": {
-                    "type": "string"
-                },
-                "equity": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bs.RsAccount"
-                    }
-                },
-                "liabilities": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bs.RsAccount"
-                    }
-                },
-                "total_assets": {
-                    "type": "number"
-                },
-                "total_equity": {
-                    "type": "number"
-                },
-                "total_liabilities": {
-                    "type": "number"
-                },
-                "total_liabilities_and_equity": {
                     "type": "number"
                 }
             }
@@ -13034,6 +12879,9 @@ const docTemplate = `{
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "classification": {
+                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
@@ -14154,6 +14002,173 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_engine_bas.BASAmount": {
+            "type": "object",
+            "properties": {
+                "gross": {
+                    "type": "number"
+                },
+                "gst": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASColumn": {
+            "type": "object",
+            "properties": {
+                "net_gst_payable": {
+                    "type": "number"
+                },
+                "quarter": {
+                    "$ref": "#/definitions/internal_modules_engine_bas.BASQuarterInfo"
+                },
+                "sections": {
+                    "type": "object",
+                    "properties": {
+                        "expenses": {
+                            "$ref": "#/definitions/internal_modules_engine_bas.BASSection"
+                        },
+                        "income": {
+                            "$ref": "#/definitions/internal_modules_engine_bas.BASSection"
+                        }
+                    }
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASLineItem": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/internal_modules_engine_bas.BASAmount"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASQuarterInfo": {
+            "type": "object",
+            "properties": {
+                "displayRange": {
+                    "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASSection": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bas.BASLineItem"
+                    }
+                }
+            }
+        },
+        "internal_modules_engine_bas.RsBASPreparation": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bas.BASColumn"
+                    }
+                },
+                "grand_total": {
+                    "$ref": "#/definitions/internal_modules_engine_bas.BASColumn"
+                }
+            }
+        },
+        "internal_modules_engine_bas.RsBASReport": {
+            "type": "object",
+            "properties": {
+                "1A": {
+                    "type": "number"
+                },
+                "1B": {
+                    "type": "number"
+                },
+                "G1": {
+                    "type": "number"
+                },
+                "G11": {
+                    "type": "number"
+                }
+            }
+        },
+        "internal_modules_engine_bs.RsAccount": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "number"
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_engine_bs.RsBalanceSheet": {
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bs.RsAccount"
+                    }
+                },
+                "current_year_profit": {
+                    "type": "number"
+                },
+                "end_date": {
+                    "type": "string"
+                },
+                "equity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bs.RsAccount"
+                    }
+                },
+                "liabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bs.RsAccount"
+                    }
+                },
+                "net_assets": {
+                    "type": "number"
+                },
+                "total_assets": {
+                    "type": "number"
+                },
+                "total_equity": {
+                    "type": "number"
+                },
+                "total_liabilities": {
+                    "type": "number"
+                }
+            }
+        },
         "invitation.AccessLevel": {
             "type": "object",
             "properties": {
@@ -14982,14 +14997,16 @@ const docTemplate = `{
                 "PAST_DUE",
                 "CANCELLED",
                 "PAUSED",
-                "EXPIRED"
+                "EXPIRED",
+                "INACTIVE"
             ],
             "x-enum-varnames": [
                 "StatusActive",
                 "StatusPastDue",
                 "StatusCancelled",
                 "StatusPaused",
-                "StatusExpired"
+                "StatusExpired",
+                "StatusInactive"
             ]
         },
         "template.RqTemplate": {

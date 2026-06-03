@@ -10,7 +10,7 @@ CREATE TYPE entry_status AS ENUM ('DRAFT', 'SUBMITTED');
 
 CREATE TABLE IF NOT EXISTS tbl_form_field(
     id UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
-    form_version_id UUID NOT NULL REFERENCES tbl_custom_form_version(id) ON DELETE CASCADE,
+    form_version_id UUID NOT NULL REFERENCES tbl_custom_form_version(id),
     label VARCHAR(255) NOT NULL,
     section_type section_type NOT NULL,
 

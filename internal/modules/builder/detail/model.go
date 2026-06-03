@@ -26,23 +26,20 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.PractitionerID != nil {
 		id, err := uuid.Parse(*filter.PractitionerID)
 		if err == nil {
-			filters["practitioner_id"] = id // Pass as uuid.UUID type to common.Filter
+			filters["practitioner_id"] = id
 		}
 	}
 	if filter.ClinicIDs != nil && *filter.ClinicIDs != "" {
-		// Split the string by commas
 		rawIDs := strings.Split(*filter.ClinicIDs, ",")
 		parsedIDs := make([]uuid.UUID, 0, len(rawIDs))
 
 		for _, idStr := range rawIDs {
-			// Trim whitespace and parse each UUID
 			if id, err := uuid.Parse(strings.TrimSpace(idStr)); err == nil {
 				parsedIDs = append(parsedIDs, id)
 			}
 		}
 
 		if len(parsedIDs) > 0 {
-			// Use "clinic_ids" as the key to match the repository's allowedColumns
 			filters["clinic_ids"] = parsedIDs
 		}
 	}

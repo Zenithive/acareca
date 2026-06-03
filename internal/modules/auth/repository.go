@@ -23,6 +23,8 @@ type Repository interface {
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 	FindByPractitionerID(ctx context.Context, pracID uuid.UUID) (*User, error)
+	FindByAccountantID(ctx context.Context, accID uuid.UUID) (*User, error)
+	FindByAdminID(ctx context.Context, adminID uuid.UUID) (*User, error)
 	UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error
 
 	// Auth provider
@@ -38,7 +40,7 @@ type Repository interface {
 	CreateVerificationToken(ctx context.Context, tx *sqlx.Tx, token *VerificationToken) error
 	DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)
-	MarkUserVerified(ctx context.Context, token *VerificationToken) error
+	MarkUserVerified(ctx context.Context, token *VerificationToken, tx *sqlx.Tx) (string, error)
 
 	// password reset
 	SaveResetToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
@@ -187,6 +189,34 @@ func (r *repository) FindByPractitionerID(ctx context.Context, pracID uuid.UUID)
 	}
 	return &u, nil
 }
+func (r *repository) FindByAccountantID(ctx context.Context, accID uuid.UUID) (*User, error) {
+
+	query := `
+		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone 
+		FROM tbl_user u
+		JOIN tbl_accountant a ON a.user_id = u.id
+		WHERE a.id = $1 AND u.deleted_at IS NULL
+	`
+	var u User
+	if err := r.db.GetContext(ctx, &u, query, accID); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *repository) FindByAdminID(ctx context.Context, adminID uuid.UUID) (*User, error) {
+	query := `
+		SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.phone 
+		FROM tbl_user u
+		JOIN tbl_admin a ON a.user_id = u.id
+		WHERE a.id = $1 AND u.deleted_at IS NULL
+	`
+	var u User
+	if err := r.db.GetContext(ctx, &u, query, adminID); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
 
 func (r *repository) UpsertAuthProvider(ctx context.Context, p *AuthProvider, tx *sqlx.Tx) (*AuthProvider, error) {
 	const returning = `RETURNING id, user_id, provider, access_token, refresh_token, token_expires_at, created_at, updated_at`
@@ -306,45 +336,82 @@ func (r *repository) GetToken(ctx context.Context, tokenID uuid.UUID) (*Verifica
 	return &t, nil
 }
 
-func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationToken) error {
-	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Identify the target table based on the role stored in the token
-		var table string
-		if token.Role == nil {
-			return errors.New("token role is missing")
+func (r *repository) MarkUserVerified(ctx context.Context, token *VerificationToken, tx *sqlx.Tx) (string, error) {
+
+	// Identify the target table based on the role stored in the token
+	var table string
+
+	if token.Role == nil {
+		return "", errors.New("token role is missing")
+	}
+
+	switch *token.Role {
+	case util.RolePractitioner:
+		table = "tbl_practitioner"
+
+	case util.RoleAccountant:
+		table = "tbl_accountant"
+
+	default:
+		return "", fmt.Errorf(
+			"unsupported role for verification: %s",
+			*token.Role,
+		)
+	}
+
+	// Update verified status and return email
+	verifyQuery := fmt.Sprintf(`
+		UPDATE %s
+		SET verified = true,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING user_id
+	`, table)
+
+	var user_id string
+
+	err := tx.QueryRowContext(
+		ctx,
+		verifyQuery,
+		token.EntityID,
+	).Scan(&user_id)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf(
+				"entity %s not found in %s",
+				token.EntityID,
+				table,
+			)
 		}
 
-		switch *token.Role {
-		case util.RolePractitioner:
-			table = "tbl_practitioner"
-		case util.RoleAccountant:
-			table = "tbl_accountant"
-		default:
-			return fmt.Errorf("unsupported role for verification: %s", *token.Role)
-		}
+		return "", fmt.Errorf(
+			"failed to update %s verification: %w",
+			table,
+			err,
+		)
+	}
 
-		// Update the role-specific table's verified status
-		verifyQuery := fmt.Sprintf("UPDATE %s SET verified = true, updated_at = NOW() WHERE id = $1", table)
-		res, err := tx.ExecContext(ctx, verifyQuery, token.EntityID)
-		if err != nil {
-			return fmt.Errorf("failed to update %s verification: %w", table, err)
-		}
+	// Mark token as USED
+	tokenUpdateQuery := `
+		UPDATE tbl_verification_token
+		SET status = 'USED'
+		WHERE id = $1
+	`
 
-		// Check if the row actually existed
-		rows, _ := res.RowsAffected()
-		if rows == 0 {
-			return fmt.Errorf("Entity %s not found in %s", token.EntityID, table)
-		}
+	if _, err := tx.ExecContext(
+		ctx,
+		tokenUpdateQuery,
+		token.ID,
+	); err != nil {
+		return "", fmt.Errorf(
+			"failed to update token status: %w",
+			err,
+		)
+	}
 
-		// Mark the verification token as USED so it can't be reused
-		tokenUpdateQuery := `UPDATE tbl_verification_token SET status = 'USED' WHERE id = $1`
-		if _, err := tx.ExecContext(ctx, tokenUpdateQuery, token.ID); err != nil {
-			return fmt.Errorf("failed to update token status: %w", err)
-		}
-		return nil
-	})
+	return user_id, nil
 }
-
 func (r *repository) UpdatePassword(ctx context.Context, userID uuid.UUID, hashedPassword string) error {
 	query := `UPDATE tbl_user SET password = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL`
 	result, err := r.db.ExecContext(ctx, query, hashedPassword, userID)

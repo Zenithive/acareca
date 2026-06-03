@@ -49,7 +49,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error) {
 func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) (*util.RsList, error) {
 	ft := filter.MapToFilter()
 
-	invoices, err := s.repo.List(ctx, clinicID, ft)
+	invoices, total, err := s.repo.List(ctx, clinicID, ft)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) 
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, len(rsInvoices), *ft.Offset, *ft.Limit)
+	rsList.MapToList(rsInvoices, int(total), *ft.Offset, *ft.Limit)
 	return &rsList, nil
 }
 

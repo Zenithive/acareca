@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
@@ -28,6 +29,7 @@ type service struct {
 	logChan             chan *LogEntry
 	done                chan struct{}
 	notificationService notification.Service
+	notificationPub     *sharednotification.Publisher
 }
 
 func NewService(repo Repository, notificationService notification.Service) Service {
@@ -36,6 +38,7 @@ func NewService(repo Repository, notificationService notification.Service) Servi
 		logChan:             make(chan *LogEntry, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService)),
 	}
 
 	// Start async worker
@@ -104,11 +107,11 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 	detail := buildSystemIssueMessage(action, actorName, entityLabel, issueErr)
 
 	// Determine notification event type
-	var eventType notification.EventType
+	var eventType util.EventType
 	if level == auditctx.ActionSystemError {
-		eventType = notification.EventSystemError
+		eventType = util.EventSystemError
 	} else {
-		eventType = notification.EventSystemWarning
+		eventType = util.EventSystemWarning
 	}
 
 	// Deduplication Check (Prevent spamming admins with the same error)
@@ -135,9 +138,9 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 
 	// Notify Admins
 	if s.notificationService != nil {
-		eventType := notification.EventSystemWarning
+		eventType := util.EventSystemWarning
 		if level == auditctx.ActionSystemError {
-			eventType = notification.EventSystemError
+			eventType = util.EventSystemError
 		}
 		// Send the clean 'detail' string as the notification body
 		go s.publishSystemIssueNotification(level, action, detail, parsedEntityID, eventType)
@@ -161,7 +164,7 @@ func buildSystemIssueMessage(action, actorName, entityName string, err error) st
 }
 
 // publishSystemIssueNotification fans out system error/warning notifications to all admins.
-func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType notification.EventType) {
+func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType util.EventType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -175,38 +178,22 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		title = "System Error"
 	}
 
-	body, _ := json.Marshal(detail)
 	extraData := map[string]interface{}{"action": action}
-	notifPayload := notification.BuildNotificationPayload(title, body, nil, nil, &extraData)
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		log.Printf("ERROR: [SystemIssue] marshal payload: %v", err)
-		return
-	}
+	senderType := util.ActorSystem
 
-	senderType := notification.ActorSystem
-	for _, adminID := range adminIDs {
-		req := notification.RqNotification{
-			ID:            uuid.New(),
-			RecipientID:   adminID,
-			RecipientType: notification.ActorAdmin,
-			SenderType:    &senderType,
-			EventType:     eventType,
-			EntityType:    notification.EntitySystem,
-			EntityID:      entityID,
-			Status:        notification.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []notification.Channel{notification.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
-		go func(r notification.RqNotification) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := s.notificationService.Publish(pCtx, r); err != nil {
-				log.Printf("ERROR: [SystemIssue] publish to admin %s: %v", r.RecipientID, err)
-			}
-		}(req)
-	}
+	_ = s.notificationPub.PublishToMultiple(
+		ctx,
+		adminIDs,
+		util.ActorAdmin,
+		nil,
+		&senderType,
+		eventType,
+		util.EntitySystem,
+		entityID,
+		title,
+		detail,
+		&extraData,
+	)
 }
 
 // This runs in its own goroutine to avoid blocking the audit worker
@@ -319,7 +306,9 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 
 	var message string
+
 	title := "System Activity Alert"
+
 	// Specialized logic for Lock Date messages
 	if entry.Action == auditctx.ActionLockDateUpdated {
 		getLockDate := func(state interface{}) *string {
@@ -380,25 +369,8 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"entity_id": entry.EntityID,
 	}
 
-	// Simplification: Direct JSON message for the body
-	msgJson, _ := json.Marshal(message)
-
-	notifPayload := notification.BuildNotificationPayload(
-		title,
-		msgJson,
-		nil,
-		nil,
-		&extraData,
-	)
-
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		log.Printf("ERROR: [Audit-Notification] Marshal failed: %v", err)
-		return
-	}
-
 	// Send to each admin
-	senderType := notification.ActorSystem
+	senderType := util.ActorSystem
 	var entityID uuid.UUID
 	if entry.EntityID != nil {
 		parsed, err := uuid.Parse(*entry.EntityID)
@@ -406,29 +378,20 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			entityID = parsed
 		}
 	}
-	for _, adminID := range adminIDs {
-		req := notification.RqNotification{
-			ID:            uuid.New(),
-			RecipientID:   adminID,
-			RecipientType: notification.ActorAdmin,
-			SenderType:    &senderType,
-			EventType:     notification.EventAuditLogCreated,
-			EntityType:    notification.EntityAuditLog,
-			EntityID:      entityID,
-			Status:        notification.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []notification.Channel{notification.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
 
-		go func(r notification.RqNotification) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := s.notificationService.Publish(pCtx, r); err != nil {
-				log.Printf("ERROR: [Audit-Notification] Publish failed for admin %s: %v", r.RecipientID, err)
-			}
-		}(req)
-	}
+	_ = s.notificationPub.PublishToMultiple(
+		ctx,
+		adminIDs,
+		util.ActorAdmin,
+		nil,
+		&senderType,
+		util.EventAuditLogCreated,
+		util.EntityAuditLog,
+		entityID,
+		title,
+		message,
+		&extraData,
+	)
 }
 
 // Shutdown drains the log channel and waits for the worker to finish.

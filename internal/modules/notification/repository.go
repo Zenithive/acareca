@@ -7,19 +7,14 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
-)
-
-var (
-	ErrNotFound           = errors.New("notification not found")
-	ErrInvalidTransition  = errors.New("invalid status transition")
-	ErrMaxRetriesExceeded = errors.New("max retry count exceeded")
 )
 
 const maxRetries = 5
 
 type Repository interface {
-	CreateNotificationWithDeliveries(ctx context.Context, tx *sqlx.Tx, notification Notification, channels []Channel) (uuid.UUID, error)
+	CreateNotificationWithDeliveries(ctx context.Context, tx *sqlx.Tx, notification Notification, channels []util.Channel) (uuid.UUID, error)
 	ListByRecipient(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) ([]Notification, int, error)
 	GetUnreadCount(ctx context.Context, recipientID uuid.UUID) (int, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
@@ -27,13 +22,11 @@ type Repository interface {
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
 	// Delivery worker methods
 	ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error)
-	MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error
-	MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel Channel, errMsg string) error
-	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error
+	MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel util.Channel) error
+	MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel util.Channel, errMsg string) error
+	RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel util.Channel) error
 	// Deduplication check for system error/warning notifications
-	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error)
-	GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
-	CreatePreference(ctx context.Context, pref NotificationPreference) error
+	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType util.EventType) (bool, error)
 }
 
 type repository struct {
@@ -44,7 +37,7 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) CreateNotificationWithDeliveries(ctx context.Context, tx *sqlx.Tx, notification Notification, channels []Channel) (uuid.UUID, error) {
+func (r *repository) CreateNotificationWithDeliveries(ctx context.Context, tx *sqlx.Tx, notification Notification, channels []util.Channel) (uuid.UUID, error) {
 	const insertNotificationQuery = `
 		INSERT INTO tbl_notification (
 			id, recipient_id, recipient_type, sender_id, sender_type,
@@ -149,7 +142,7 @@ func (r *repository) MarkRead(ctx context.Context, id uuid.UUID, recipientID uui
 	if err != nil {
 		return err
 	}
-	return requireOneRow(res, ErrInvalidTransition)
+	return requireOneRow(res, errors.New("notification not found or already read/dismissed"))
 }
 
 func (r *repository) MarkAllRead(ctx context.Context, recipientID uuid.UUID) error {
@@ -190,7 +183,7 @@ func (r *repository) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipie
 		return err
 	}
 
-	return requireOneRow(res, ErrInvalidTransition)
+	return requireOneRow(res, errors.New("notification not found or already dismissed"))
 }
 
 func (r *repository) ListFailedInAppDeliveries(ctx context.Context, limit int) ([]FailedDelivery, error) {
@@ -213,7 +206,7 @@ func (r *repository) ListFailedInAppDeliveries(ctx context.Context, limit int) (
 	return rows, nil
 }
 
-func (r *repository) MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel Channel) error {
+func (r *repository) MarkDeliveryDelivered(ctx context.Context, notificationID uuid.UUID, channel util.Channel) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification_delivery
 		 SET status = 'DELIVERED', delivered_at = NOW(), last_attempted_at = NOW()
@@ -223,10 +216,10 @@ func (r *repository) MarkDeliveryDelivered(ctx context.Context, notificationID u
 	if err != nil {
 		return err
 	}
-	return requireOneRow(res, ErrInvalidTransition)
+	return requireOneRow(res, errors.New("delivery not found or already delivered"))
 }
 
-func (r *repository) MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel Channel, errMsg string) error {
+func (r *repository) MarkDeliveryFailed(ctx context.Context, notificationID uuid.UUID, channel util.Channel, errMsg string) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification_delivery
 		 SET status = 'FAILED', retry_count = retry_count + 1,
@@ -237,10 +230,10 @@ func (r *repository) MarkDeliveryFailed(ctx context.Context, notificationID uuid
 	if err != nil {
 		return err
 	}
-	return requireOneRow(res, ErrInvalidTransition)
+	return requireOneRow(res, errors.New("delivery not found or already failed"))
 }
 
-func (r *repository) RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel Channel) error {
+func (r *repository) RetryDelivery(ctx context.Context, notificationID uuid.UUID, channel util.Channel) error {
 	var retryCount int
 	err := r.db.QueryRowContext(ctx,
 		`SELECT retry_count FROM tbl_notification_delivery
@@ -248,10 +241,10 @@ func (r *repository) RetryDelivery(ctx context.Context, notificationID uuid.UUID
 		notificationID, channel,
 	).Scan(&retryCount)
 	if err != nil {
-		return ErrNotFound
+		return errors.New("delivery not found or not in failed state")
 	}
 	if retryCount >= maxRetries {
-		return ErrMaxRetriesExceeded
+		return errors.New("maximum retry attempts reached for this delivery")
 	}
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE tbl_notification_delivery SET status = 'PENDING'
@@ -261,21 +254,10 @@ func (r *repository) RetryDelivery(ctx context.Context, notificationID uuid.UUID
 	if err != nil {
 		return err
 	}
-	return requireOneRow(res, ErrInvalidTransition)
+	return requireOneRow(res, errors.New("delivery not found or already retried"))
 }
 
-func requireOneRow(res interface{ RowsAffected() (int64, error) }, errIfZero error) error {
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return errIfZero
-	}
-	return nil
-}
-
-func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType EventType) (bool, error) {
+func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType util.EventType) (bool, error) {
 	var count int
 	const q = `
 		SELECT COUNT(*) FROM tbl_notification
@@ -290,57 +272,13 @@ func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID u
 	return count > 0, nil
 }
 
-func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error) {
-	prefs := make([]NotificationPreference, 0)
-	const q = `
-		SELECT id, user_id, entity_id, entity_type, event_type, channels, created_at, updated_at
-		FROM tbl_notification_preferences
-		WHERE user_id = $1 AND deleted_at IS NULL`
-
-	rows, err := r.db.QueryxContext(ctx, q, userID)
+func requireOneRow(res interface{ RowsAffected() (int64, error) }, errIfZero error) error {
+	n, err := res.RowsAffected()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var p NotificationPreference
-		if err := rows.StructScan(&p); err != nil {
-			return nil, err
-		}
-		prefs = append(prefs, p)
+	if n == 0 {
+		return errIfZero
 	}
-	return prefs, nil
-}
-
-func (r *repository) CreatePreference(ctx context.Context, p NotificationPreference) error {
-	const q = `
-		INSERT INTO tbl_notification_preferences (
-			user_id,
-			entity_id,
-			entity_type,
-			event_type,
-			channels,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, NOW())
-		ON CONFLICT (user_id, entity_id, event_type)
-		DO UPDATE SET
-			channels = EXCLUDED.channels,
-			entity_type = EXCLUDED.entity_type,
-			updated_at = NOW(),
-			deleted_at = NULL
-	`
-
-	_, err := r.db.ExecContext(
-		ctx,
-		q,
-		p.UserID,
-		p.EntityID,
-		p.EntityType,
-		p.EventType,
-		p.Channels,
-	)
-
-	return err
+	return nil
 }

@@ -332,7 +332,7 @@ func (h *handler) DeleteUser(c *gin.Context) {
 // @Failure 400 {object} response.RsError
 // @Failure 410 {object} response.RsError
 // @Failure 500 {object} response.RsError
-// @Router /auth/verify [get]
+// @Router /auth/verify-email [get]
 func (h *handler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {

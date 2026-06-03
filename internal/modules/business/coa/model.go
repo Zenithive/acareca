@@ -85,11 +85,12 @@ type RqCreateChartOfAccountOfAccount struct {
 }
 
 type RqUpdateCharOfAccountOfAccount struct {
-	PractitionerID *uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
-	AccountTypeID  *int16     `json:"account_type_id" validate:"omitempty,min=1"`
-	AccountTaxID   *int16     `json:"account_tax_id" validate:"omitempty,min=1"`
-	Code           *int16     `json:"code" validate:"omitempty,gte=100,lte=9999"`
-	Name           *string    `json:"name" validate:"omitempty,max=255"`
+	PractitionerID *uuid.UUID             `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  *int16                 `json:"account_type_id" validate:"omitempty,min=1"`
+	AccountTaxID   *int16                 `json:"account_tax_id" validate:"omitempty,min=1"`
+	Code           *int16                 `json:"code" validate:"omitempty,gte=100,lte=9999"`
+	Name           *string                `json:"name" validate:"omitempty,max=255"`
+	Classification *AccountClassification `json:"classification"`
 }
 
 type RqCheckCodeUnique struct {
@@ -134,6 +135,7 @@ type Filter struct {
 	AccountTypeID  *int16      `form:"-"`
 	ExcludeTypeIDs []int16     `form:"-"`
 	AccountTaxID   *int16      `form:"account_tax_id"`
+	Classification *string     `form:"classification"`
 	common.Filter
 }
 
@@ -155,6 +157,9 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 	if filter.AccountTaxID != nil {
 		filters["account_tax_id"] = filter.AccountTaxID
+	}
+	if filter.Classification != nil {
+		filters["classification"] = filter.Classification
 	}
 
 	return common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)

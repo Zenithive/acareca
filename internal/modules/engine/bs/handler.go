@@ -38,6 +38,7 @@ func NewHandler(svc Service, invitationSvc invitation.Service) Handler {
 // @Produce      json
 // @Param        start_date query string false "Start Date (YYYY-MM-DD)"
 // @Param        end_date   query string false "End Date (YYYY-MM-DD)"
+// @Param        user_id    query string false "Submitted-by User UUID"
 // @Success      200 {object} RsBalanceSheet
 // @Failure      400 {object} response.RsError "Bad Request"
 // @Failure      401 {object} response.RsError "Unauthorized"
@@ -73,6 +74,7 @@ func (h *handler) GetBalanceSheet(c *gin.Context) {
 // @Tags         Balance Sheet
 // @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param        practitioner_id  query  string   false  "Practitioner UUID (Required for Accountants to filter)"
+// @Param        user_id          query  string   false  "Submitted-by User UUID"
 // @Param        start_date       query  string   false  "Start Date (YYYY-MM-DD)"
 // @Param        end_date         query  string   false  "End Date (YYYY-MM-DD)"
 // @Param        export_type 	  query  string   true   "Export Type: pdf | excel"

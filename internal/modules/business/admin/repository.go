@@ -13,6 +13,7 @@ type Repository interface {
 	CreateUser(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) (*Admin, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*RsAdminDetail, error)
+	GetAllAdmins(ctx context.Context) ([]RsAdminDetail, error)
 }
 
 type repository struct {
@@ -87,4 +88,24 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*RsAdminDetail
 		return nil, err
 	}
 	return &detail, nil
+}
+
+func (r *repository) GetAllAdmins(ctx context.Context) ([]RsAdminDetail, error) {
+	var admins []RsAdminDetail
+	query := `
+		SELECT 
+			a.id          AS "id", 
+			u.id          AS "user.id", 
+			u.email       AS "user.email", 
+			u.first_name  AS "user.first_name", 
+			u.last_name   AS "user.last_name", 
+			u.phone       AS "user.phone"
+		FROM tbl_admin a
+		JOIN tbl_user u ON a.user_id = u.id
+		WHERE a.deleted_at IS NULL AND u.deleted_at IS NULL
+	`
+	if err := r.db.SelectContext(ctx, &admins, query); err != nil {
+		return nil, err
+	}
+	return admins, nil
 }

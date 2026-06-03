@@ -29,6 +29,8 @@ func (r *repoImpl) getLimit(ctx context.Context, practitionerID uuid.UUID, key s
 		JOIN tbl_plan_permission pp ON pp.id = sp.permission_id
 		WHERE ps.practitioner_id = $1
 		  AND ps.status = 'ACTIVE'
+		  AND ps.start_date <= NOW()
+		  AND ps.end_date >= NOW()
 		  AND ps.deleted_at IS NULL
 		  AND pp.key = $2
 		  AND sp.is_enabled = TRUE
