@@ -564,6 +564,9 @@ func (s *service) notifyInvitation(ctx context.Context, inv *Invitation, account
 			},
 		}
 	case util.ActorAccountant:
+		if accountantID == nil {
+			return
+		}
 		recipients = []sharednotification.RecipientWithPreferences{
 			{
 				RecipientID:   *accountantID,
