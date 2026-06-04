@@ -63,18 +63,15 @@ type AccKey struct {
 
 func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error) {
 	var targetPracIDs []uuid.UUID
-	var practitionerID uuid.UUID
 
 	switch role {
 	case util.RolePractitioner:
-		practitionerID = actorID
 		targetPracIDs = []uuid.UUID{actorID}
 
 	case util.RoleAccountant:
 		if f.PractitionerID != nil && *f.PractitionerID != "" {
 			pID, err := uuid.Parse(*f.PractitionerID)
 			if err == nil {
-				practitionerID = pID
 				targetPracIDs = []uuid.UUID{pID}
 			}
 		}
@@ -90,7 +87,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		targetPracIDs = linked
 
 		if len(linked) > 0 {
-			practitionerID = linked[0]
+			// no-op: targetPracIDs already set above
 		}
 	}
 
@@ -105,25 +102,22 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		return nil, err
 	}
 
-	var totalOwnerEquity equity.OwnerEquityCalculation
+	// CurrentYearProfit comes from P&L (vw_pl_line_items), not the balance sheet view.
+	// All other equity balances now come directly from the view rows above.
+	var currentYearProfit float64
 	for _, pID := range targetPracIDs {
 		pracEquity, err := s.equitySvc.CalculateOwnerEquity(ctx, pID, nil, "", endDate)
 		if err != nil {
 			return nil, fmt.Errorf("calculate owner equity: %w", err)
 		}
-		totalOwnerEquity.ShareCapital += pracEquity.ShareCapital
-		totalOwnerEquity.FundsIntroduced += pracEquity.FundsIntroduced
-		totalOwnerEquity.Drawings += pracEquity.Drawings
-		totalOwnerEquity.RetainedEarnings += pracEquity.RetainedEarnings
-		totalOwnerEquity.CurrentYearProfit += pracEquity.CurrentYearProfit
-		totalOwnerEquity.TotalEquity += pracEquity.TotalEquity
+		currentYearProfit += pracEquity.CurrentYearProfit
 	}
 
 	assetMap := make(map[AccKey]RsAccount)
 	liabMap := make(map[AccKey]RsAccount)
-	otherEquityMap := make(map[AccKey]RsAccount)
+	equityMap := make(map[AccKey]RsAccount)
 
-	var totalAssets, totalLiabilities, totalOtherEquity float64
+	var totalAssets, totalLiabilities float64
 
 	for _, row := range rows {
 		key := AccKey{Code: row.AccountCode, Name: row.AccountName}
@@ -144,14 +138,12 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			totalLiabilities += row.Balance
 
 		case "Equity":
-			if row.AccountCode != 880 && row.AccountCode != 881 &&
-				row.AccountCode != 960 && row.AccountCode != 970 {
-				acc := otherEquityMap[key]
-				acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
-				acc.Balance += row.Balance
-				otherEquityMap[key] = acc
-				totalOtherEquity += row.Balance
-			}
+			// All equity accounts — including 880/881/960/970 — come from the view.
+			// No hardcoded codes. Same pattern as Assets and Liabilities.
+			acc := equityMap[key]
+			acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
+			acc.Balance += row.Balance
+			equityMap[key] = acc
 		}
 	}
 
@@ -165,41 +157,17 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		liabilities = append(liabilities, v)
 	}
 
+	// Build equity section purely from view rows — dynamic, no hardcoded codes.
+	// Current Year Profit is appended separately as it comes from P&L, not the BS view.
 	equitySect := []RsAccount{}
-	for _, v := range otherEquityMap {
+	var totalViewEquity float64
+	for _, v := range equityMap {
 		equitySect = append(equitySect, v)
+		totalViewEquity += v.Balance
 	}
-
-	addEquityItem := func(code int16, name string, balance float64) {
-		if balance == 0 {
-			return
-		}
-		var coaId *uuid.UUID
-		err = util.RunInTransaction(ctx, s.db, func(Ctx context.Context, tx *sqlx.Tx) error {
-			var err error
-			coaId, err = s.getCoaIDByAccountCode(Ctx, tx, practitionerID, code)
-			return err
-		})
-		if err != nil {
-			return
-		}
-
-		if coaId != nil {
-			equitySect = append(equitySect, RsAccount{
-				CoaId:   *coaId,
-				Code:    code,
-				Name:    name,
-				Balance: balance,
-			})
-		}
-	}
-	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
-	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
-	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
-	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
 	netAssets := totalAssets - totalLiabilities
-	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
+	totalEquity := totalViewEquity + currentYearProfit
 	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
 	displayEnd := formatDateForDisplay(endDate)
 
@@ -211,7 +179,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		TotalLiabilities:          totalLiabilities,
 		NetAssets:                 math.Round(netAssets*100) / 100,
 		Equity:                    equitySect,
-		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
+		CurrentYearProfit:         currentYearProfit,
 		TotalEquity:               math.Round(totalEquity*100) / 100,
 		TotalLiabilitiesAndEquity: math.Round(totalLiabilitiesAndEquity*100) / 100,
 	}

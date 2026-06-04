@@ -930,22 +930,30 @@ func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUI
 }
 
 func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
+	// Resolve COA via COALESCE(fev.coa_id, ff.coa_id) — mirrors the view exactly.
+	// Use LEFT JOINs so rows are never silently dropped; unresolvable COA rows
+	// contribute 0 to the sum (ELSE 0 branch) and don't cause a false pass/fail.
 	query := `
 		SELECT
 			fev.entry_id,
 			COALESCE(SUM(
 				CASE
-					WHEN LOWER(at.name) LIKE '%asset%' OR LOWER(at.name) LIKE '%expense%' 
+					WHEN LOWER(at.name) LIKE '%asset%' OR LOWER(at.name) LIKE '%expense%'
 						THEN COALESCE(fev.net_amount, 0)
-					WHEN LOWER(at.name) LIKE '%liability%' OR LOWER(at.name) LIKE '%equity%' OR LOWER(at.name) LIKE '%revenue%' OR LOWER(at.name) LIKE '%income%' 
+					WHEN LOWER(at.name) LIKE '%liability%' OR LOWER(at.name) LIKE '%equity%'
+					     OR LOWER(at.name) LIKE '%revenue%'  OR LOWER(at.name) LIKE '%income%'
 						THEN -COALESCE(fev.net_amount, 0)
 					ELSE 0
 				END
-			), 0) as ledger_balance
+			), 0) AS ledger_balance
 		FROM tbl_form_entry_value fev
-		-- Use a single unified join path to fetch the account type name
-		INNER JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(fev.coa_id, (SELECT coa_id FROM tbl_form_field WHERE id = fev.form_field_id)) AND coa.deleted_at IS NULL
-		INNER JOIN tbl_account_type at ON coa.account_type_id = at.id
+		LEFT JOIN tbl_form_field ff
+			ON ff.id = fev.form_field_id
+		LEFT JOIN tbl_chart_of_accounts coa
+			ON coa.id = COALESCE(fev.coa_id, ff.coa_id)
+			AND coa.deleted_at IS NULL
+		LEFT JOIN tbl_account_type at
+			ON at.id = coa.account_type_id
 		WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
 		GROUP BY fev.entry_id`
 
