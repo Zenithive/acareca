@@ -87,7 +87,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 
 		notificationEventType := make([]util.NotificationEventType, 0, len(prefs.EventType))
 		for _, et := range prefs.EventType {
-			notificationEventType = append(notificationEventType, mapEventTypeToNotificationEventType(util.EventType(et)))
+			notificationEventType = append(notificationEventType, util.MapEventTypeToNotificationEventType(util.EventType(et)))
 		}
 
 		channels := make([]util.Channel, 0, len(prefs.Channels))
@@ -170,17 +170,4 @@ func (p *Publisher) PublishToMultiple(ctx context.Context, recipients []uuid.UUI
 		}(req)
 	}
 	return nil
-}
-
-func mapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
-	switch eventType {
-	case util.EventTransactionCreated, util.EventTransactionUpdated:
-		return util.EventNewTransaction
-	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded, util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
-		return util.EventAccountantActivityAlert
-	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
-		return util.EventSystemActivityAlert
-	default:
-		return util.EventSystemActivityAlert
-	}
 }

@@ -369,3 +369,26 @@ func ParseFlexibleDate(dateStr string) (time.Time, error) {
 
 	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
 }
+
+func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
+	switch eventType {
+	case EventTransactionCreated, EventTransactionUpdated:
+		return EventNewTransaction
+	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
+		return EventAccountantActivityAlert
+	case EventSystemError:
+		return EventSystemErrorAlert
+	case EventSystemWarning:
+		return EventSystemWarningAlert
+	case EventBillingPaymentSuccess, EventBillingPaymentFailed:
+		return EventBillingAlert
+	case EventSubscriptionCreated, EventSubscriptionUpdated, EventSubscriptionDeleted:
+		return EventSubscriptionAlert
+	case EventUserRegistered, EventPractitionerCreated:
+		return EventUserRegistrationAlert
+	case EventAuditLogCreated:
+		return EventSystemActivityAlert
+	default:
+		return EventSystemActivityAlert
+	}
+}

@@ -96,10 +96,25 @@ func (s *service) PreferenceSetting(ctx context.Context, tx *sqlx.Tx, userID uui
 		return nil
 	}
 
-	defaultEventTypes := []util.NotificationEventType{
-		util.EventNewTransaction,
-		util.EventAccountantActivityAlert,
-		util.EventSystemActivityAlert,
+	var defaultEventTypes []util.NotificationEventType
+
+	if entityType == util.RoleAdmin {
+		// Admin receives platform-wide operational notifications
+		defaultEventTypes = []util.NotificationEventType{
+			util.EventSystemErrorAlert,      // Critical system failures
+			util.EventSystemWarningAlert,    // Non-critical system warnings
+			util.EventSystemActivityAlert,   // General audit log activity
+			util.EventBillingAlert,          // Payment success / failure
+			util.EventSubscriptionAlert,     // Subscription plan changes
+			util.EventUserRegistrationAlert, // New practitioner registrations
+		}
+	} else {
+		// Practitioner and Accountant defaults
+		defaultEventTypes = []util.NotificationEventType{
+			util.EventNewTransaction,
+			util.EventAccountantActivityAlert,
+			util.EventSystemActivityAlert,
+		}
 	}
 
 	defaultChannels := []util.Channel{

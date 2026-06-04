@@ -285,11 +285,15 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"invite.permission_updated":   "updated permissions for accountant",
 
 		// Billing & Subscriptions (Success)
-		"subscription.created":          "created a new subscription plan",
-		"subscription.updated":          "updated subscription plan",
-		"subscription.deleted":          "deleted subscription plan",
-		"billing.payment_success":       "successfully processed payment for",
-		"billing.activation_successful": "successfully activated subscription for",
+		"subscription.created":                          "created a new subscription plan",
+		"subscription.updated":                          "updated subscription plan",
+		"subscription.deleted":                          "deleted subscription plan",
+		auditctx.ActionBillingPaymentSuccess:            "successfully processed payment for",
+		auditctx.ActionBillingActivationSuccess:         "successfully activated subscription for",
+		auditctx.ActionBillingPaymentFailed:             "payment failed for",
+		auditctx.ActionBillingActivationFailed:          "failed to activate subscription for",
+		auditctx.ActionBillingWebhookSigInvalid:         "received invalid billing webhook signature",
+		auditctx.ActionBillingStatusUpdateFailed:        "failed to update subscription status for",
 
 		// Report Generate and Export
 		"bas_report.exported":         "exported BAS Report",
@@ -378,6 +382,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			entityID = parsed
 		}
 	}
+	eventType := resolveAdminEventType(entry.Action)
 
 	_ = s.notificationPub.PublishToMultiple(
 		ctx,
@@ -385,13 +390,34 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		util.ActorAdmin,
 		nil,
 		&senderType,
-		util.EventAuditLogCreated,
+		eventType,
 		util.EntityAuditLog,
 		entityID,
 		title,
 		message,
 		&extraData,
 	)
+}
+
+// resolveAdminEventType maps an audit action string to the appropriate admin EventType
+// so that admin notification preferences can be controlled at a granular level.
+func resolveAdminEventType(action string) util.EventType {
+	switch action {
+	case auditctx.ActionBillingPaymentSuccess, auditctx.ActionBillingActivationSuccess:
+		return util.EventBillingPaymentSuccess
+	case auditctx.ActionBillingPaymentFailed:
+		return util.EventBillingPaymentFailed
+	case auditctx.ActionSubscriptionCreated:
+		return util.EventSubscriptionCreated
+	case auditctx.ActionSubscriptionUpdated:
+		return util.EventSubscriptionUpdated
+	case auditctx.ActionSubscriptionDeleted:
+		return util.EventSubscriptionDeleted
+	case auditctx.ActionUserRegistered, auditctx.ActionPractitionerCreated:
+		return util.EventPractitionerCreated
+	default:
+		return util.EventAuditLogCreated
+	}
 }
 
 // Shutdown drains the log channel and waits for the worker to finish.
