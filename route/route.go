@@ -99,15 +99,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Initialize file validator
 	fileValidator := upload.NewFileValidator(cfg.FileUploadMaxSize, allowedTypes)
 
-	// Initialize file service
-	fileSvc := file.NewService(fileRepo, storage, fileValidator, cfg, dbConn, auditSvc)
-
-	// Initialize file handler
-	fileHandler := file.NewHandler(fileSvc)
-
-	// Register file routes
-	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
-
 	// invitation (cross-module dependency)
 	invitationRepo := invitation.NewRepository(dbConn)
 	invitationSvc := invitation.NewService(invitationRepo, cfg, notificationSvc, auditSvc, dbConn)
@@ -221,7 +212,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Register accountant routes
 	RegisterAccountantRoutes(v1, cfg, accountantSvc)
 
-	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
+	// Builder routes will be registered after notificationPublisher is initialized
+
 	// ============ USER SUBSCRIPTION ============
 	userSubscriptionHandler := userSubscription.NewHandler(userSubscriptionSvc, dbConn)
 	userSubscriptionGroup := v1.Group("/practitioner/subscription", middleware.Auth(cfg))
@@ -256,6 +248,18 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 		notifier.SetStreamManager(streamManager)
 		log.Println("✅ NATS stream manager connected to WebSocket hub")
 	}
+
+	// ============ FILE SERVICE (requires authSvc, notificationPublisher, invitationRepo) ============
+	// Initialize file service with all required dependencies
+	fileAuthAdapter := NewFileAuthServiceAdapter(authSvc)
+	fileSvc := file.NewService(fileRepo, storage, fileValidator, cfg, dbConn, auditSvc, invitationRepo, fileAuthAdapter, notificationSvc)
+	fileHandler := file.NewHandler(fileSvc)
+
+	// Register file routes
+	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
+
+	// ============ BUILDER ROUTES (requires notificationPublisher) ============
+	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
 
 	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
 
