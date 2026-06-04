@@ -76,7 +76,8 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	notifier := sharednotification.NewNotifier(dbConn)
 	notificationSvc := notification.NewService(notificationRepo, events, dbConn, notificationPrefRepo)
 
-	preferenceSvc := preference.NewService(notificationPrefRepo, dbConn)
+	preferenceRepo := preference.NewRepository(dbConn)
+	preferenceSvc := preference.NewService(preferenceRepo, dbConn)
 
 	// Initialize audit service (used across modules)
 	auditRepo := audit.NewRepository(dbConn)
@@ -233,6 +234,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	nft.GET("/ws", middleware.Auth(cfg), notifier.ServeWS(cfg))
 	nft.Use(middleware.Auth(cfg))
 	notification.RegisterRoutes(nft, notificationHandler)
+
+	preferenceHandler := preference.NewHandler(preferenceSvc)
+	preference.RegisterRoutes(nft, preferenceHandler)
 
 	// ============ BILLING MODULE ============
 	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
