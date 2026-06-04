@@ -1218,6 +1218,23 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 
 	f := filter.ToCommonFilter()
 
+	// Capture what the client sent (Page Index)
+	incomingPageIndex := 0
+	if f.Offset != nil {
+		incomingPageIndex = *f.Offset
+	}
+
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	// Translate the Page Index into a real database Row Skip Offset
+	// Page 0 -> (0 * 10) = OFFSET 0  (Gets rows 1 to 10)
+	// Page 1 -> (1 * 10) = OFFSET 10 (Gets rows 11 to 20)
+	calculatedDbOffset := incomingPageIndex * pageSize
+	f.Offset = &calculatedDbOffset
+
 	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1228,7 +1245,7 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, incomingPageIndex, pageSize)
 	return &rs, nil
 }
 

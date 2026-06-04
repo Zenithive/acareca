@@ -850,6 +850,8 @@ definitions:
         type: string
       description:
         type: string
+      document:
+        $ref: '#/definitions/file.RsDocument'
       document_id:
         type: string
       email:
@@ -1996,40 +1998,6 @@ definitions:
     - date
     - name
     type: object
-  form.ExpenseItemUpdate:
-    properties:
-      amount:
-        type: number
-      business_use:
-        maximum: 100
-        minimum: 0
-        type: number
-      coa_id:
-        type: string
-      date:
-        type: string
-      description:
-        type: string
-      documents:
-        properties:
-          create:
-            items:
-              type: string
-            type: array
-          delete:
-            items:
-              type: string
-            type: array
-        type: object
-      id:
-        type: string
-      name:
-        type: string
-      tax_type:
-        type: string
-    required:
-    - id
-    type: object
   form.RqCreateFormWithFields:
     properties:
       clinic_id:
@@ -2104,25 +2072,6 @@ definitions:
         items:
           $ref: '#/definitions/field.RqUpdateFormField'
         type: array
-    type: object
-  form.RqUpdateExpense:
-    properties:
-      create:
-        items:
-          $ref: '#/definitions/form.ExpenseItem'
-        type: array
-      delete:
-        items:
-          type: string
-        type: array
-      name:
-        type: string
-      update:
-        items:
-          $ref: '#/definitions/form.ExpenseItemUpdate'
-        type: array
-    required:
-    - name
     type: object
   form.RqUpdateFormStatus:
     properties:
@@ -2441,6 +2390,8 @@ definitions:
         type: number
       total_liabilities:
         type: number
+      total_liabilities_and_equity:
+        type: number
     type: object
   invitation.AccessLevel:
     properties:
@@ -2682,20 +2633,6 @@ definitions:
       unit_price:
         type: number
     type: object
-  notification.NotificationChannels:
-    additionalProperties:
-      type: boolean
-    type: object
-  notification.NotificationEventType:
-    enum:
-    - new.transaction
-    - accountant.activity.alert
-    - system.activity.alert
-    type: string
-    x-enum-varnames:
-    - EventNewTransaction
-    - EventAccountantActivityAlert
-    - EventSystemActivityAlert
   notification.RqBulkDismiss:
     properties:
       ids:
@@ -2705,18 +2642,6 @@ definitions:
         type: array
     required:
     - ids
-    type: object
-  notification.RqUpdatePreference:
-    properties:
-      channels:
-        $ref: '#/definitions/notification.NotificationChannels'
-      event_type:
-        items:
-          $ref: '#/definitions/notification.NotificationEventType'
-        type: array
-    required:
-    - channels
-    - event_type
     type: object
   pl.RsPLAccount:
     properties:
@@ -2840,6 +2765,20 @@ definitions:
         type: string
     required:
     - financial_year_id
+    type: object
+  preference.RqUpdatePreference:
+    properties:
+      channels:
+        items:
+          $ref: '#/definitions/util.Channel'
+        type: array
+      event_type:
+        items:
+          $ref: '#/definitions/util.NotificationEventType'
+        type: array
+    required:
+    - channels
+    - event_type
     type: object
   response.RsBase:
     properties:
@@ -3027,6 +2966,26 @@ definitions:
       name:
         type: string
     type: object
+  util.Channel:
+    enum:
+    - in_app
+    - push
+    - email
+    type: string
+    x-enum-varnames:
+    - ChannelInApp
+    - ChannelPush
+    - ChannelEmail
+  util.NotificationEventType:
+    enum:
+    - new.transaction
+    - accountant.activity.alert
+    - system.activity.alert
+    type: string
+    x-enum-varnames:
+    - EventNewTransaction
+    - EventAccountantActivityAlert
+    - EventSystemActivityAlert
   util.RsList:
     properties:
       items: {}
@@ -7107,7 +7066,7 @@ paths:
       parameters:
       - description: Zero-based page index
         in: query
-        name: page
+        name: offset
         type: integer
       - description: Page size (default 10, max 100)
         in: query
@@ -8031,42 +7990,6 @@ paths:
       summary: Get expense by ID
       tags:
       - form/expense
-    patch:
-      consumes:
-      - application/json
-      description: Update an existing expense form
-      parameters:
-      - description: Form ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Expense update request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/form.RqUpdateExpense'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Update expense
-      tags:
-      - form/expense
   /invite:
     get:
       description: Retrieve a paginated list of invitations. If logged in as a Practitioner,
@@ -8557,7 +8480,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/notification.RqUpdatePreference'
+          $ref: '#/definitions/preference.RqUpdatePreference'
       responses:
         "200":
           description: OK
