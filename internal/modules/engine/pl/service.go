@@ -152,7 +152,6 @@ func parseAndValidate(f *PLFilter) (uuid.UUID, error) {
 }
 
 func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error) {
-	meta := auditctx.GetMetadata(ctx)
 	isAccountant := strings.EqualFold(role, util.RoleAccountant)
 
 	var targetPracIDs []uuid.UUID
@@ -268,7 +267,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPLReportGenerated,
@@ -278,8 +277,6 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		AfterState: map[string]interface{}{
 			"report_type": "Profit and Loss Report",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return buildReport(f, rows, summary), nil
@@ -482,11 +479,10 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		finalNotifIDs = []uuid.UUID{uuid.MustParse(filterPractitionerID)}
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPLReportExported,
@@ -497,8 +493,6 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 			"report_type": "Profit and Loss Report",
 			"export_type": exportType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	if role == util.RoleAccountant && len(finalNotifIDs) > 0 {

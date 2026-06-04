@@ -105,11 +105,9 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 	}
 
 	// LOG SUCCESS AUDIT (Payment Successful)
-	meta := auditctx.GetMetadata(ctx)
 	pIDStr := practitionerID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &pIDStr,
-		UserID:     meta.UserID,
 		Action:     auditctx.ActionBillingPaymentSuccess,
 		Module:     auditctx.ModuleBilling,
 		EntityType: lo.ToPtr(auditctx.EntitySubscription),
@@ -148,15 +146,15 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 	}
 
 	// Log payment failure as a billing event so admins with billing.alert preference are notified
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionBillingPaymentFailed,
 		Module:     auditctx.ModuleBilling,
 		EntityType: lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:   &stripeSubID,
 		AfterState: map[string]interface{}{
-			"invoice_id":      invoiceID,
-			"stripe_sub_id":   stripeSubID,
-			"status":          subscription.StatusPastDue,
+			"invoice_id":    invoiceID,
+			"stripe_sub_id": stripeSubID,
+			"status":        subscription.StatusPastDue,
 		},
 	})
 

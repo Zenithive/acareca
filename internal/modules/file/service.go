@@ -284,11 +284,10 @@ func (s *service) canAccessDocument(doc *Document, userID uuid.UUID) bool {
 // Audit logging helpers
 
 func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.UUID) {
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionFileUploaded,
 		Module:     auditctx.ModuleFile,
@@ -299,17 +298,14 @@ func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.
 			"size":      doc.SizeBytes,
 			"mime_type": doc.MimeType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 }
 
 func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.UUID, beforeState map[string]interface{}) {
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionFileUpdated,
 		Module:      auditctx.ModuleFile,
@@ -320,17 +316,14 @@ func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.
 			"filename":  doc.OriginalName,
 			"is_public": doc.IsPublic,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 }
 
 func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.UUID) {
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionFileDeleted,
 		Module:     auditctx.ModuleFile,
@@ -340,8 +333,6 @@ func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.
 			"filename":   doc.OriginalName,
 			"object_key": doc.ObjectKey,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 }
 

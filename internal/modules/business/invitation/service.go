@@ -130,13 +130,12 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 
 	s.notifyInvitation(ctx, invite, invite.AccountantID, util.EventInviteSent, invite.ID, util.ActorPractitioner, "invite_id", "New Collaboration Invitation", fmt.Sprintf("%s invited you to collaborate.", senderName))
 
-	meta := auditctx.GetMetadata(ctx)
 	pIDStr := practitionerID.String()
 	invIDStr := invite.ID.String()
 
-	s.submitAuditLog(*meta, &pIDStr, auditctx.ActionInviteSent, auditctx.EntityInvitation, invIDStr, nil, invite)
+	s.submitAuditLog(ctx, &pIDStr, auditctx.ActionInviteSent, auditctx.EntityInvitation, invIDStr, nil, invite)
 	if req.Permissions != nil {
-		s.submitAuditLog(*meta, &pIDStr, auditctx.ActionPermissionAssigned, auditctx.EntityPermission, invIDStr, nil, req.Permissions)
+		s.submitAuditLog(ctx, &pIDStr, auditctx.ActionPermissionAssigned, auditctx.EntityPermission, invIDStr, nil, req.Permissions)
 	}
 
 	return &RsInvitation{
@@ -299,9 +298,8 @@ func (s *service) FinalizeRegistrationInternal(ctx context.Context, tx *sqlx.Tx,
 		afterState := *inv
 		afterState.Status = StatusCompleted
 
-		meta := auditctx.GetMetadata(ctx)
 		pIDStr := inv.PractitionerID.String()
-		s.submitAuditLog(*meta, &pIDStr, auditctx.ActionInviteCompleted, auditctx.EntityInvitation, inv.ID.String(), inv, afterState)
+		s.submitAuditLog(ctx, &pIDStr, auditctx.ActionInviteCompleted, auditctx.EntityInvitation, inv.ID.String(), inv, afterState)
 	}
 	return nil
 }
@@ -410,8 +408,8 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 	}(oldInv.Email, senderName, inviteLink, practitionerID, oldInv.ID)
 
 	if err == nil {
-		meta := auditctx.GetMetadata(ctx)
-		s.submitAuditLog(*meta, meta.PracticeID, auditctx.ActionInviteSent, auditctx.EntityInvitation, oldInv.ID.String(), nil, nil)
+		pIDStr := practitionerID.String()
+		s.submitAuditLog(ctx, &pIDStr, auditctx.ActionInviteSent, auditctx.EntityInvitation, oldInv.ID.String(), nil, nil)
 	}
 
 	return &RsInvitation{
@@ -511,7 +509,6 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 		return nil, fmt.Errorf("failed to update permissions: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	pIDStr := practitionerID.String()
 	var entityID string
 	if accountantID != nil {
@@ -527,7 +524,7 @@ func (s *service) UpdatePermissions(ctx context.Context, practitionerID uuid.UUI
 	}
 	s.notifyInvitation(ctx, inv, accountantID, util.EventPermissionUpdated, uuid.Nil, util.ActorAccountant, "permission_update", "Permissions Updated", fmt.Sprintf("Your permissions for practitioner %s have been updated.", pIDStr))
 
-	s.submitAuditLog(*meta, &pIDStr, auditctx.ActionPermissionUpdated, auditctx.EntityPermission, entityID, oldPerms, req.Permissions)
+	s.submitAuditLog(ctx, &pIDStr, auditctx.ActionPermissionUpdated, auditctx.EntityPermission, entityID, oldPerms, req.Permissions)
 	return req.Permissions, nil
 }
 
@@ -602,29 +599,22 @@ func (s *service) logInvitationAction(ctx context.Context, inv *Invitation, acti
 	if s.auditSvc == nil {
 		return
 	}
-	meta := auditctx.GetMetadata(ctx)
 	pIDStr := inv.PractitionerID.String()
 	updatedInv, _ := s.repo.GetByID(ctx, inv.ID)
 
-	s.submitAuditLog(*meta, &pIDStr, action, auditctx.EntityInvitation, inv.ID.String(), beforeState, updatedInv)
+	s.submitAuditLog(ctx, &pIDStr, action, auditctx.EntityInvitation, inv.ID.String(), beforeState, updatedInv)
 }
 
-func (s *service) submitAuditLog(meta auditctx.Metadata, practiceID *string, action, entityType, entityID string, before, after interface{}) {
+func (s *service) submitAuditLog(ctx context.Context, practiceID *string, action, entityType, entityID string, before, after interface{}) {
 	if s.auditSvc == nil {
 		return
 	}
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  practiceID,
-		UserID:      meta.UserID,
-		Module:      auditctx.ModuleBusiness,
-		Action:      action,
-		EntityType:  &entityType,
-		EntityID:    &entityID,
-		BeforeState: before,
-		AfterState:  after,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
-	})
+	entry := audit.NewEntry(action, auditctx.ModuleBusiness, entityType, entityID)
+	if practiceID != nil {
+		entry.WithPractice(*practiceID)
+	}
+	entry.WithBefore(before).WithAfter(after)
+	s.auditSvc.LogAsync(ctx, entry)
 }
 
 func (s *service) GetInvitationByEmailInternal(ctx context.Context, email string) (*Invitation, error) {
@@ -671,3 +661,4 @@ func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filte
 	}
 	return results, nil
 }
+

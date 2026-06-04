@@ -269,16 +269,12 @@ func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role stri
 	}
 
 	idStr := result.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionClinicCreated,
 		Module:     auditctx.ModuleClinic,
 		EntityType: lo.ToPtr(auditctx.EntityClinic),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	if err := s.notifyClinic(ctx, actorID, util.ActorType(role), util.EventClinicUpdated, "New clinic created"); err != nil {
@@ -565,16 +561,12 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		}
 
 		idStr := id.String()
-		s.auditSvc.LogAsync(&audit.LogEntry{
-			PracticeID:  meta.PracticeID,
-			UserID:      meta.UserID,
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 			Action:      auditctx.ActionClinicDeleted,
 			Module:      auditctx.ModuleClinic,
 			EntityType:  lo.ToPtr(auditctx.EntityClinic),
 			EntityID:    &idStr,
 			BeforeState: existing,
-			IPAddress:   meta.IPAddress,
-			UserAgent:   meta.UserAgent,
 		})
 
 		return nil
@@ -786,17 +778,13 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, role stri
 	// Audit log: clinic updated (Async - for both Practitioner and Accountant)
 
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionClinicUpdated,
 		Module:      auditctx.ModuleClinic,
 		EntityType:  lo.ToPtr(auditctx.EntityClinic),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	if err := s.notifyClinic(ctx, actorID, util.ActorType(role), util.EventClinicUpdated, "Clinic updated"); err != nil {

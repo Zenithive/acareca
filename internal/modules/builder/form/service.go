@@ -208,16 +208,12 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	}
 
 	idStr := created.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: created,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	// Send notification
@@ -437,17 +433,13 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 
 	// Audit Logging
 	idStr := updated.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updated,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	// Send notification
@@ -669,16 +661,12 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	}
 	// Audit log: form deleted
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormDeleted,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: formDetail,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	// Send notification (form deletion is communicated as EventFormUpdated)
@@ -732,17 +720,13 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 	// Audit log: Status Updated
 	meta := auditctx.GetMetadata(ctx)
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: map[string]string{"status": existing.Status},
 		AfterState:  map[string]string{"status": status},
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	// Send notification - use EventFormSubmitted if publishing, otherwise EventFormUpdated
@@ -812,7 +796,6 @@ func resolveTaxRate(ctx context.Context, coaSvc coa.Service, coaDetail *coa.RsCh
 }
 
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
 	var OwnerID uuid.UUID
 
 	switch role {
@@ -1033,23 +1016,18 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	// Audit log
 	idStr := createdForm.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: createdForm,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return createdForm, nil
 }
 
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
 
 	// Get existing form first (we need this to find the practitioner)
 	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
@@ -1477,17 +1455,13 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 	// Audit log
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updatedForm,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return updatedForm, nil
