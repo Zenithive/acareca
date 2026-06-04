@@ -930,16 +930,21 @@ func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUI
 }
 
 func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
-	// Resolve COA via COALESCE(fev.coa_id, ff.coa_id) — mirrors the view exactly.
-	// Use LEFT JOINs so rows are never silently dropped; unresolvable COA rows
-	// contribute 0 to the sum (ELSE 0 branch) and don't cause a false pass/fail.
+	// Mirrors PASS 2 ledgerSign: classification checked first, then account type.
+	// Contra-Equity / Contra-Asset = debit-normal (+net_amount).
+	// Asset / Expense = debit-normal (+net_amount).
+	// Liability / Equity / Revenue / Income = credit-normal (-net_amount).
+	// LEFT JOINs so no rows silently disappear when COA is NULL.
 	query := `
 		SELECT
 			fev.entry_id,
 			COALESCE(SUM(
 				CASE
+					WHEN LOWER(coa.classification::text) LIKE '%contra-equity%'
+					  OR LOWER(coa.classification::text) LIKE '%contra-asset%'
+						THEN  COALESCE(fev.net_amount, 0)
 					WHEN LOWER(at.name) LIKE '%asset%' OR LOWER(at.name) LIKE '%expense%'
-						THEN COALESCE(fev.net_amount, 0)
+						THEN  COALESCE(fev.net_amount, 0)
 					WHEN LOWER(at.name) LIKE '%liability%' OR LOWER(at.name) LIKE '%equity%'
 					     OR LOWER(at.name) LIKE '%revenue%'  OR LOWER(at.name) LIKE '%income%'
 						THEN -COALESCE(fev.net_amount, 0)

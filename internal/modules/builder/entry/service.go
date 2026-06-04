@@ -825,189 +825,112 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	}
 
 	// =========================================================================
+	// =========================================================================
 	// PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
 	// =========================================================================
-	// Rule: amounts are stored with their natural sign (positive = normal balance).
-	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
-	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
-	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
+	// COA resolution: COALESCE(fev.coa_id, ff.coa_id) — mirrors vw_double_entry_line_items.
+	// Classification takes precedence over account type for contra accounts:
+	//   Contra-Equity (880 Drawings) → debit-normal (+1): bank goes negative when drawing posted
+	//   Contra-Asset  (depreciation) → debit-normal (+1)
+	//   Asset / Expense              → debit-normal (+1)
+	//   Equity / Liability / Revenue / Income → credit-normal (-1)
 
-	fmt.Println("==================================", len(out))
+	resolveCOA := func(ev *FormEntryValue) *coa.ChartOfAccount {
+		if ev.CoaID != nil {
+			ca, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+			if err == nil && ca != nil {
+				return ca
+			}
+		}
+		if ev.FormFieldID != nil {
+			f, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+			if err == nil && f != nil && f.CoaID != nil {
+				ca, err := s.coaRepo.GetByIDInternal(ctx, *f.CoaID)
+				if err == nil && ca != nil {
+					return ca
+				}
+			}
+		}
+		return nil
+	}
+
+	ledgerSign := func(ca *coa.ChartOfAccount) float64 {
+		cl := strings.ToLower(string(ca.Classification))
+		if strings.Contains(cl, "contra-equity") || strings.Contains(cl, "contra-asset") {
+			return 1
+		}
+		if strings.Contains(cl, "contra-liability") {
+			return -1
+		}
+		t := strings.ToLower(ca.AccountTypeName)
+		if strings.Contains(t, "asset") || strings.Contains(t, "expense") {
+			return 1
+		}
+		if strings.Contains(t, "liability") || strings.Contains(t, "equity") ||
+			strings.Contains(t, "revenue") || strings.Contains(t, "income") {
+			return -1
+		}
+		return 0
+	}
+
 	if len(out) > 0 {
 		var totalLedgerImpact float64
 		var practitionerID *uuid.UUID
 
-		fmt.Println("initial ledger impact calculation:")
-
-		// 1. Sum signed contributions across all lines.
 		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+			if ev.NetAmount == nil || *ev.NetAmount == 0 {
 				continue
 			}
-
-			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-			if err == nil && chartAccount != nil {
-				if practitionerID == nil {
-					practitionerID = &chartAccount.PractitionerID
-				}
-
-				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				fmt.Println("==================", accountType)
-				fmt.Println("===================", *ev.NetAmount)
-				fmt.Println("===========================", *ev.CoaID)
-				// Use the raw signed amount — the sign already encodes debit/credit direction.
-				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-					totalLedgerImpact += *ev.NetAmount
-				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-					totalLedgerImpact -= *ev.NetAmount
-				}
+			ca := resolveCOA(ev)
+			if ca == nil {
+				continue
 			}
+			if practitionerID == nil {
+				practitionerID = &ca.PractitionerID
+			}
+			totalLedgerImpact += ledgerSign(ca) * *ev.NetAmount
 		}
 
 		totalLedgerImpact = s.roundValue(totalLedgerImpact)
 
-		// 2. If variance exists, inject a COA-600 (Bank) balancing row.
 		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
 			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
 			if err != nil || bankAccount == nil {
-				return nil, fmt.Errorf("missing required balancing account: COA code 600 Business Bank Account for practitioner %s", practitionerID.String())
+				return nil, fmt.Errorf("missing required balancing account: COA code 600 for practitioner %s", practitionerID.String())
 			}
-
-			// COA-600 is an Asset; to absorb the variance we invert it.
 			counterBalancingAmount := s.roundValue(-totalLedgerImpact)
 			bankCoaID := bankAccount.ID
-
 			out = append(out, &FormEntryValue{
-				ID:                 uuid.New(),
-				EntryID:            entryID,
-				FormFieldID:        nil,
-				CoaID:              &bankCoaID,
-				NetAmount:          &counterBalancingAmount,
-				GstAmount:          nil,
-				GrossAmount:        &counterBalancingAmount,
-				BusinessPercentage: nil, // System balancing entries don't have business percentage
-				Notes:              nil, // System balancing entries don't have notes
+				ID:          uuid.New(),
+				EntryID:     entryID,
+				FormFieldID: nil,
+				CoaID:       &bankCoaID,
+				NetAmount:   &counterBalancingAmount,
+				GstAmount:   nil,
+				GrossAmount: &counterBalancingAmount,
 			})
 		}
 
-		// 3. Post-balancing verification — re-run same signed arithmetic to confirm zero balance.
 		var finalLedgerBalance float64
 		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+			if ev.NetAmount == nil || *ev.NetAmount == 0 {
 				continue
 			}
-
-			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-			if err == nil && chartAccount != nil {
-				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-					finalLedgerBalance += *ev.NetAmount
-				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-					finalLedgerBalance -= *ev.NetAmount
-				}
+			ca := resolveCOA(ev)
+			if ca == nil {
+				continue
 			}
+			finalLedgerBalance += ledgerSign(ca) * *ev.NetAmount
 		}
 
 		finalLedgerBalance = s.roundValue(finalLedgerBalance)
 		if math.Abs(finalLedgerBalance) > 0.01 {
-			return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
+			return nil, fmt.Errorf("ledger integrity violation: variance of %.2f after balancing", finalLedgerBalance)
 		}
 	}
 
 	return out, nil
 }
-
-// // =========================================================================
-// // PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
-// // =========================================================================
-// if len(out) > 0 {
-// 	var totalLedgerImpact float64
-// 	var practitionerID *uuid.UUID
-
-// 	// 1. Calculate initial transaction variance using exact DB polarity rules
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			if practitionerID == nil {
-// 				practitionerID = &chartAccount.PractitionerID
-// 			}
-
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			// Mirror the SQL script polarity perfectly
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				totalLedgerImpact += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				totalLedgerImpact -= amount
-// 			}
-// 		}
-// 	}
-
-// 	totalLedgerImpact = s.roundValue(totalLedgerImpact)
-
-// 	// 2. Inject balancing row if variance exists
-// 	if totalLedgerImpact != 0 && practitionerID != nil {
-// 		var counterBalancingAmount float64
-// 		var resolvedCoaID uuid.UUID
-// 		var foundTarget bool
-
-// 		// If totalLedgerImpact is positive, the database has too many debits.
-// 		// We need to inject a CREDIT (negative amount) to clear it.
-// 		counterBalancingAmount = s.roundValue(-totalLedgerImpact)
-
-// 		// Rule 3: Global Cash Safe-Harbor Fallback (Code 600)
-// 		bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-// 		if err == nil && bankAccount != nil {
-// 			resolvedCoaID = bankAccount.ID
-// 			foundTarget = true
-// 		}
-
-// 		if foundTarget {
-// 			out = append(out, &FormEntryValue{
-// 				ID:          uuid.New(),
-// 				EntryID:     entryID,
-// 				FormFieldID: nil, // Marks this as a system balancing row
-// 				CoaID:       &resolvedCoaID,
-// 				NetAmount:   &counterBalancingAmount,
-// 				GstAmount:   nil,
-// 				GrossAmount: &counterBalancingAmount,
-// 			})
-// 		}
-// 	}
-
-// 	// 3. Post-Balancing Verification Guardrail (Must exactly mirror the math blocks above)
-// 	var finalLedgerBalance float64
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				finalLedgerBalance += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				finalLedgerBalance -= amount
-// 			}
-// 		}
-// 	}
-
-// 	finalLedgerBalance = s.roundValue(finalLedgerBalance)
-// 	if finalLedgerBalance > 0.01 || finalLedgerBalance < -0.01 {
-// 		return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
-// 	}
-// }
-
-// 	return out, nil
-// }
 
 // roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
 // This ensures all monetary amounts are precise to 2 decimal places
