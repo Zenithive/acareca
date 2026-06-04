@@ -832,14 +832,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
 	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
 
-	fmt.Println("==================================", len(out))
 	if len(out) > 0 {
 		var totalLedgerImpact float64
 		var practitionerID *uuid.UUID
 
-		fmt.Println("initial ledger impact calculation:")
-
-		// 1. Sum signed contributions across all lines.
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
 				continue
@@ -852,9 +848,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				}
 
 				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				fmt.Println("==================", accountType)
-				fmt.Println("===================", *ev.NetAmount)
-				fmt.Println("===========================", *ev.CoaID)
 				// Use the raw signed amount — the sign already encodes debit/credit direction.
 				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
 					totalLedgerImpact += *ev.NetAmount
@@ -866,7 +859,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		totalLedgerImpact = s.roundValue(totalLedgerImpact)
 
-		// 2. If variance exists, inject a COA-600 (Bank) balancing row.
 		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
 			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
 			if err != nil || bankAccount == nil {
@@ -890,7 +882,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			})
 		}
 
-		// 3. Post-balancing verification — re-run same signed arithmetic to confirm zero balance.
 		var finalLedgerBalance float64
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
