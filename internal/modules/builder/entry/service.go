@@ -869,6 +869,22 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			counterBalancingAmount := s.roundValue(-totalLedgerImpact)
 			bankCoaID := bankAccount.ID
 
+			var totalGSTInTransaction float64
+			for _, ev := range out {
+				if ev.CoaID != nil {
+					chartAcc, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+					if err == nil && chartAcc != nil && chartAcc.Code == 820 {
+						continue // Skip GST account 820
+					}
+				}
+				if ev.GstAmount != nil {
+					totalGSTInTransaction += *ev.GstAmount
+				}
+			}
+			totalGSTInTransaction = s.roundValue(totalGSTInTransaction)
+
+			bankGrossAmount := s.roundValue(counterBalancingAmount + totalGSTInTransaction)
+
 			out = append(out, &FormEntryValue{
 				ID:                 uuid.New(),
 				EntryID:            entryID,
@@ -876,7 +892,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				CoaID:              &bankCoaID,
 				NetAmount:          &counterBalancingAmount,
 				GstAmount:          nil,
-				GrossAmount:        &counterBalancingAmount,
+				GrossAmount:        &bankGrossAmount,
 				BusinessPercentage: nil, // System balancing entries don't have business percentage
 				Notes:              nil, // System balancing entries don't have notes
 			})

@@ -135,20 +135,11 @@ func (s *service) CalculateCurrentYearEquityMovements(ctx context.Context, pract
 }
 
 func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, startDate, endDate string) (float64, error) {
-	query := `SELECT COALESCE(SUM(signed_amount), 0) FROM vw_balance_sheet_line_items WHERE practitioner_id = $1 AND account_code = 970`
-	args := []interface{}{practitionerID}
-
-	if startDate != "" {
-		query += " AND date::DATE >= $2::DATE AND date::DATE <= $3::DATE"
-		args = append(args, startDate, endDate)
-	} else {
-		query += " AND date::DATE <= $2::DATE"
-		args = append(args, endDate)
-	}
+	query := `SELECT COALESCE(SUM(signed_amount), 0) FROM vw_balance_sheet_line_items WHERE practitioner_id = $1 AND account_code = 970 AND date::DATE <= $2::DATE`
+	args := []interface{}{practitionerID, endDate}
 
 	if clinicID != nil && *clinicID != uuid.Nil {
-		idx := len(args) + 1
-		query += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id = '00000000-0000-0000-0000-000000000000')", idx)
+		query += " AND (clinic_id = $3 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
 	}
 
@@ -160,20 +151,11 @@ func (s *service) getShareCapital(ctx context.Context, practitionerID uuid.UUID,
 }
 
 func (s *service) getEquityAccountBalance(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, accountCode int16, startDate, endDate string) (float64, error) {
-	query := `SELECT COALESCE(SUM(signed_amount), 0) FROM vw_balance_sheet_line_items WHERE practitioner_id = $1 AND account_code = $2`
-	args := []interface{}{practitionerID, accountCode}
-
-	if startDate != "" {
-		query += " AND date >= $3::DATE AND date <= $4::DATE"
-		args = append(args, startDate, endDate)
-	} else {
-		query += " AND date <= $3::DATE"
-		args = append(args, endDate)
-	}
+	query := `SELECT COALESCE(SUM(signed_amount), 0) FROM vw_balance_sheet_line_items WHERE practitioner_id = $1 AND account_code = $2 AND date <= $3::DATE`
+	args := []interface{}{practitionerID, accountCode, endDate}
 
 	if clinicID != nil && *clinicID != uuid.Nil {
-		idx := len(args) + 1
-		query += fmt.Sprintf(" AND (clinic_id = $%d OR clinic_id = '00000000-0000-0000-0000-000000000000')", idx)
+		query += " AND (clinic_id = $4 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
 		args = append(args, *clinicID)
 	}
 
@@ -231,8 +213,8 @@ func (s *service) buildEquityMovements(ctx context.Context, practitionerID uuid.
 		effStart = fStart.Format("2006-01-02")
 	}
 
-	yearFunds, _ := s.getEquityAccountBalance(ctx, practitionerID, clinicID, 881, effStart, endDate)
-	yearDrawings, _ := s.getEquityAccountBalance(ctx, practitionerID, clinicID, 880, effStart, endDate)
+	yearFunds, _ := s.getEquityPeriodMovement(ctx, practitionerID, clinicID, 881, effStart, endDate)
+	yearDrawings, _ := s.getEquityPeriodMovement(ctx, practitionerID, clinicID, 880, effStart, endDate)
 
 	openingBalance := shareCapital + retainedEarnings
 	netMovement := yearFunds - yearDrawings
@@ -246,4 +228,20 @@ func (s *service) buildEquityMovements(ctx context.Context, practitionerID uuid.
 		CurrentYearProfit: currentYearProfit,
 		ClosingBalance:    closingBalance,
 	}, nil
+}
+
+func (s *service) getEquityPeriodMovement(ctx context.Context, practitionerID uuid.UUID, clinicID *uuid.UUID, accountCode int16, startDate, endDate string) (float64, error) {
+	query := `SELECT COALESCE(SUM(signed_amount), 0) FROM vw_balance_sheet_line_items WHERE practitioner_id = $1 AND account_code = $2 AND date >= $3::DATE AND date <= $4::DATE`
+	args := []interface{}{practitionerID, accountCode, startDate, endDate}
+
+	if clinicID != nil && *clinicID != uuid.Nil {
+		query += " AND (clinic_id = $5 OR clinic_id = '00000000-0000-0000-0000-000000000000')"
+		args = append(args, *clinicID)
+	}
+
+	var balance float64
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&balance); err != nil {
+		return 0, err
+	}
+	return balance, nil
 }
