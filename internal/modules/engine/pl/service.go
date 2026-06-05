@@ -275,7 +275,7 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		Module:     auditctx.ModuleReport,
 		EntityType: lo.ToPtr(auditctx.EntityPLReport),
 		EntityID:   &parsedActorID,
-		AfterState: map[string]interface{}{
+		AfterState: map[string]any{
 			"report_type": "Profit and Loss Report",
 		},
 		IPAddress: meta.IPAddress,

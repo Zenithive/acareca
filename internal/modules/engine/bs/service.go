@@ -196,7 +196,8 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
 	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
 	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
-	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
+	// Net profit (current year) is rolled into COA 960 - Retained Earnings
+	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings+totalOwnerEquity.CurrentYearProfit)
 
 	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity

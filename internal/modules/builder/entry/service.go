@@ -908,105 +908,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	return out, nil
 }
 
-// // =========================================================================
-// // PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
-// // =========================================================================
-// if len(out) > 0 {
-// 	var totalLedgerImpact float64
-// 	var practitionerID *uuid.UUID
-
-// 	// 1. Calculate initial transaction variance using exact DB polarity rules
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			if practitionerID == nil {
-// 				practitionerID = &chartAccount.PractitionerID
-// 			}
-
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			// Mirror the SQL script polarity perfectly
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				totalLedgerImpact += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				totalLedgerImpact -= amount
-// 			}
-// 		}
-// 	}
-
-// 	totalLedgerImpact = s.roundValue(totalLedgerImpact)
-
-// 	// 2. Inject balancing row if variance exists
-// 	if totalLedgerImpact != 0 && practitionerID != nil {
-// 		var counterBalancingAmount float64
-// 		var resolvedCoaID uuid.UUID
-// 		var foundTarget bool
-
-// 		// If totalLedgerImpact is positive, the database has too many debits.
-// 		// We need to inject a CREDIT (negative amount) to clear it.
-// 		counterBalancingAmount = s.roundValue(-totalLedgerImpact)
-
-// 		// Rule 3: Global Cash Safe-Harbor Fallback (Code 600)
-// 		bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-// 		if err == nil && bankAccount != nil {
-// 			resolvedCoaID = bankAccount.ID
-// 			foundTarget = true
-// 		}
-
-// 		if foundTarget {
-// 			out = append(out, &FormEntryValue{
-// 				ID:          uuid.New(),
-// 				EntryID:     entryID,
-// 				FormFieldID: nil, // Marks this as a system balancing row
-// 				CoaID:       &resolvedCoaID,
-// 				NetAmount:   &counterBalancingAmount,
-// 				GstAmount:   nil,
-// 				GrossAmount: &counterBalancingAmount,
-// 			})
-// 		}
-// 	}
-
-// 	// 3. Post-Balancing Verification Guardrail (Must exactly mirror the math blocks above)
-// 	var finalLedgerBalance float64
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				finalLedgerBalance += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				finalLedgerBalance -= amount
-// 			}
-// 		}
-// 	}
-
-// 	finalLedgerBalance = s.roundValue(finalLedgerBalance)
-// 	if finalLedgerBalance > 0.01 || finalLedgerBalance < -0.01 {
-// 		return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
-// 	}
-// }
-
-// 	return out, nil
-// }
-
-// roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
-// This ensures all monetary amounts are precise to 2 decimal places
 func (s *Service) roundValue(val float64) float64 {
 	return math.Round(val*100) / 100
 }
 
-// attachFieldMetadata enriches each value in the response with field_key, label, and is_computed.
 func (s *Service) attachFieldMetadata(ctx context.Context, rs *RsFormEntry) {
 	for i, v := range rs.Values {
 		if v.FormFieldID == nil {
