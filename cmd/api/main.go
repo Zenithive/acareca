@@ -70,8 +70,6 @@ func main() {
 		if err != nil {
 			log.Printf("⚠️  Warning: Failed to connect to NATS: %v", err)
 			log.Println("💡 To enable NATS: Set NATS_URL in .env")
-		} else {
-			log.Printf("✅ Connected to NATS at %s", cfg.NATSUrl)
 		}
 	}
 

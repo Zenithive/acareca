@@ -101,14 +101,13 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 		practitionerSvc: practitionerSvc,
 		coaRepo:         coaRepo,
 		notificationSvc: notificationSvc,
-		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		adminRepo:       adminRepo,
 		authSvc:         authSvc,
 	}
 }
 
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
-	meta := auditctx.GetMetadata(ctx)
 
 	var result *RsFormEntry
 
@@ -214,16 +213,12 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	}
 
 	idStr := result.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionEntryCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created"); err != nil {
@@ -364,19 +359,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionEntryUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	// Send update notification
@@ -416,18 +406,13 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 
-		meta := auditctx.GetMetadata(ctx)
 		idStr := id.String()
-		s.auditSvc.LogAsync(&audit.LogEntry{
-			PracticeID:  meta.PracticeID,
-			UserID:      meta.UserID,
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 			Action:      auditctx.ActionEntryDeleted,
 			Module:      auditctx.ModuleForms,
 			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 			EntityID:    &idStr,
 			BeforeState: beforeState,
-			IPAddress:   meta.IPAddress,
-			UserAgent:   meta.UserAgent,
 		})
 
 		return nil
@@ -1182,12 +1167,11 @@ func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID u
 
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsGenerated,
@@ -1197,8 +1181,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		AfterState: map[string]interface{}{
 			"report_type": "Transaction Report",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	// Record the Shared Event
@@ -1455,11 +1437,10 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	}
 
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsExported,
@@ -1470,8 +1451,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			"report_type": "Transaction Report",
 			"export_type": exportType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return result, contentType, nil
@@ -1654,7 +1633,6 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 	default:
 		return fmt.Errorf("unsupported recipient type: %s", recipientType)
 	}
-
 	// If no recipients, don't send notification
 	if len(recipients) == 0 {
 		log.Printf("[INFO] no recipients found for transaction notification")

@@ -221,10 +221,9 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		}
 	}()
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
 	entityIDStr := entityID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &entityIDStr,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserRegistered,
@@ -232,8 +231,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
 		AfterState: sanitizeUser(created),
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return created.ToRsUser(), nil
@@ -269,17 +266,14 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserLoggedIn,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntitySession),
 		AfterState: map[string]interface{}{"email": user.Email},
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	rs, err := s.issueTokens(ctx, user, entityID)
@@ -315,23 +309,18 @@ func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken str
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	userIDStr := sess.UserID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserLoggedOut,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntitySession),
 		EntityID:   &sessIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionSessionRevoked,
 		Module:     auditctx.ModuleAuth,
@@ -342,8 +331,6 @@ func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken str
 			"user_id":    userIDStr,
 			"revoked_at": time.Now(),
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return nil
@@ -413,22 +400,18 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		return nil, fmt.Errorf("google oauth transaction: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
 	action := auditctx.ActionUserLoggedIn
 	if isNewUser {
 		action = auditctx.ActionUserRegistered
 	}
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     action,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
 		AfterState: map[string]interface{}{"email": user.Email, "provider": "google"},
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
@@ -493,11 +476,9 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	if err != nil {
 		return errors.New("failed to verified" + err.Error())
 	}
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := token.EntityID.String()
 	tokenIDStr := token.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionEmailVerified,
 		Module:      auditctx.ModuleAuth,
@@ -505,8 +486,6 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		EntityID:    &tokenIDStr,
 		BeforeState: map[string]interface{}{"status": token.Status},
 		AfterState:  map[string]interface{}{"status": "USED"},
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 	return nil
 }
@@ -531,16 +510,13 @@ func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqC
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPasswordChanged,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return nil
@@ -661,10 +637,8 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		}
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := updated.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionUserUpdated,
 		Module:      auditctx.ModuleAuth,
@@ -672,8 +646,6 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		EntityID:    &userIDStr,
 		BeforeState: beforeState,
 		AfterState:  sanitizeUser(updated),
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return s.GetProfile(ctx, userID)
@@ -695,18 +667,14 @@ func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 		fmt.Printf("INFO: No practitioner profile deleted for user %s: %v\n", userID, err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionUserDeleted,
 		Module:      auditctx.ModuleAuth,
 		EntityType:  lo.ToPtr(auditctx.EntityUser),
 		EntityID:    &userIDStr,
 		BeforeState: beforeState,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return nil
@@ -811,10 +779,9 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	userIDStr := user.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionSessionCreated,
@@ -825,8 +792,6 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 			"session_id": sessIDStr,
 			"expires_at": sess.ExpiresAt,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return &RsToken{

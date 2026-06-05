@@ -164,11 +164,10 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 	}
 
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionActivityStatementGenerated,
@@ -178,8 +177,6 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 		AfterState: map[string]interface{}{
 			"report_type": "Activity Statement",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	// --- Shared Events ---
@@ -323,11 +320,10 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	resp.GrandTotal.Quarter.Name = "Total"
 
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionBASReportGenerated,
@@ -338,8 +334,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 			"report_type":    "Quarterly BAS Report",
 			"financial_year": f.FinancialYearID,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	if isAccountant {
@@ -612,10 +606,9 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	}
 
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionActivityStatementExported,
@@ -626,8 +619,6 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 			"report_type": "Activity Statement",
 			"export_type": exportType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	// Record the Shared Event
@@ -858,10 +849,9 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 		return nil, fmt.Errorf("failed to generate BAS preparation excel: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionBASReportExported,
@@ -873,8 +863,6 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 			"financial_year": filter.FinancialYearID,
 			"export_type":    exportType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return f, nil

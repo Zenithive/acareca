@@ -336,3 +336,59 @@ func HandleTransitionError(c *gin.Context, err error) {
 		response.Error(c, http.StatusInternalServerError, err)
 	}
 }
+
+func ParseFlexibleDate(dateStr string) (time.Time, error) {
+	if dateStr == "" {
+		return time.Time{}, errors.New("date cannot be empty")
+	}
+
+	// Trim spaces
+	dateStr = strings.TrimSpace(dateStr)
+
+	// Try different date formats
+	formats := []string{
+		"02 Jan 2006",               // "26 Apr 2026"
+		"2 Jan 2006",                // Single digit day
+		"02-01-2006",                // DD-MM-YYYY
+		"2006-01-02",                // YYYY-MM-DD (ISO format)
+		"01/02/2006",                // MM/DD/YYYY
+		"02/01/2006",                // DD/MM/YYYY
+		"January 2, 2006",           // Full month name
+		time.RFC3339,                // RFC3339
+		"2006-01-02T15:04:05Z07:00", // ISO 8601
+	}
+
+	var lastErr error
+	for _, format := range formats {
+		t, err := time.Parse(format, dateStr)
+		if err == nil {
+			return t, nil
+		}
+		lastErr = err
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
+}
+
+func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
+	switch eventType {
+	case EventTransactionCreated, EventTransactionUpdated:
+		return EventNewTransaction
+	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
+		return EventAccountantActivityAlert
+	case EventSystemError:
+		return EventSystemErrorAlert
+	case EventSystemWarning:
+		return EventSystemWarningAlert
+	case EventBillingPaymentSuccess, EventBillingPaymentFailed:
+		return EventBillingAlert
+	case EventSubscriptionCreated, EventSubscriptionUpdated, EventSubscriptionDeleted:
+		return EventSubscriptionAlert
+	case EventUserRegistered, EventPractitionerCreated:
+		return EventUserRegistrationAlert
+	case EventAuditLogCreated:
+		return EventSystemActivityAlert
+	default:
+		return EventSystemActivityAlert
+	}
+}

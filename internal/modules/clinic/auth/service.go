@@ -173,17 +173,14 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		}()
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := createdClinic.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr, // Clinic id
 		Action:     auditctx.ActionClinicRegistered,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	var document *file.Document
@@ -217,16 +214,13 @@ func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, erro
 		return nil, errors.New("email not verified. Please check your email for the verification link")
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinic.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicLoggedIn,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntitySession),
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return s.issueTokens(ctx, clinic, clinicIDStr)
@@ -252,23 +246,18 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 	}
 
 	// Audit log: user logged out
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	clinicIDStr := sess.ClinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicLoggedOut,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityClinicSession),
 		EntityID:   &sessIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	// Audit log:  Session revoked
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicSessionRevoked,
 		Module:     auditctx.ModuleInvoice,
@@ -279,8 +268,6 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 			"clinic_id":  clinicIDStr,
 			"revoked_at": time.Now(),
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return nil
@@ -337,12 +324,10 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	}
 
 	// Audit log: Email Verified
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := token.ClinicID.String()
 	tokenIDStr := token.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionEmailVerified,
 		Module:     auditctx.ModuleAuth,
@@ -354,8 +339,6 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		AfterState: map[string]interface{}{
 			"status": "USED",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 	return nil
 }
@@ -457,11 +440,10 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 	}
 
 	// Audit log : Session Created
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	clinicIDStr := clinic.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicID,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicSessionCreated,
@@ -472,8 +454,6 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 			"session_id": sessIDStr,
 			"expires_at": sess.ExpiresAt,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return &RsToken{
@@ -505,16 +485,13 @@ func (s *service) ChangePassword(ctx context.Context, clinicID uuid.UUID, req *R
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionPasswordChanged,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return nil
@@ -707,17 +684,14 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 		}
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicUpdated,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return toRsClinicDetail(updatedClinic, addresses, contacts, document), nil
@@ -767,17 +741,14 @@ func (s *service) DeleteClinic(ctx context.Context, clinicID uuid.UUID) error {
 		return fmt.Errorf("delete clinic: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicDeleted,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return nil

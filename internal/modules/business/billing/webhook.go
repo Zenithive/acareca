@@ -24,8 +24,8 @@ func (s *service) HandleWebhook(ctx context.Context, payload []byte, sigHeader s
 	event, err := s.stripeClient.ConstructWebhookEvent(payload, sigHeader, webhookSecret)
 	if err != nil {
 		log.Printf("webhook signature verification failed: sigHeader=%q secretLen=%d err=%v", sigHeader, len(webhookSecret), err)
-		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, "billing.webhook_sig_invalid",
-			err, "", "Stripe", "WEBHOOK", auditctx.ModuleBusiness)
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, auditctx.ActionBillingWebhookSigInvalid,
+			err, "", "Stripe", "WEBHOOK", auditctx.ModuleBilling)
 		return ErrInvalidWebhookSignature
 	}
 
@@ -99,19 +99,17 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 	err = s.subRepo.UpsertFromWebhook(ctx, upsert)
 	if err != nil {
 		// CRITICAL: User paid but system failed to activate subscription in DB
-		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "billing.activation_failed",
-			err, practitionerIDStr, subscriptionIDStr, auditctx.EntitySubscription, auditctx.ModuleBusiness)
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, auditctx.ActionBillingActivationFailed,
+			err, practitionerIDStr, subscriptionIDStr, auditctx.EntitySubscription, auditctx.ModuleBilling)
 		return err
 	}
 
 	// LOG SUCCESS AUDIT (Payment Successful)
-	meta := auditctx.GetMetadata(ctx)
 	pIDStr := practitionerID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &pIDStr,
-		UserID:     meta.UserID,
-		Action:     "billing.payment_success",
-		Module:     auditctx.ModuleBusiness,
+		Action:     auditctx.ActionBillingPaymentSuccess,
+		Module:     auditctx.ModuleBilling,
 		EntityType: lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:   &subscriptionIDStr,
 		AfterState: map[string]interface{}{
@@ -134,18 +132,6 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 	stripeSubID := invoice.Parent.SubscriptionDetails.Subscription.ID
 	invoiceID := invoice.ID
 
-	// Log the system error and notify admins
-	s.auditSvc.LogSystemIssue(
-		ctx,
-		auditctx.ActionSystemError,
-		"billing.payment_failed",
-		fmt.Errorf("invoice %s failed for subscription %s", invoiceID, stripeSubID),
-		"", // Actor (System-led)
-		stripeSubID,
-		auditctx.EntitySubscription,
-		auditctx.ModuleBusiness,
-	)
-
 	// In stripe-go v82, subscription is accessed via Parent.SubscriptionDetails
 	if invoice.Parent == nil || invoice.Parent.SubscriptionDetails == nil || invoice.Parent.SubscriptionDetails.Subscription == nil {
 		return fmt.Errorf("invoice has no subscription reference")
@@ -153,12 +139,26 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 
 	err := s.subRepo.UpdateStripeFields(ctx, stripeSubID, &invoiceID, subscription.StatusPastDue, time.Time{})
 	if err != nil {
-		// Warning: System couldn't mark account as past_due.
-		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, "billing.status_update_failed",
-			err, "", stripeSubID, auditctx.EntitySubscription, auditctx.ModuleBusiness)
+		// Warning: System couldn't mark account as past_due — route to system.warning.alert
+		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, auditctx.ActionBillingStatusUpdateFailed,
+			err, "", stripeSubID, auditctx.EntitySubscription, auditctx.ModuleBilling)
 		return err
 	}
-	return err
+
+	// Log payment failure as a billing event so admins with billing.alert preference are notified
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+		Action:     auditctx.ActionBillingPaymentFailed,
+		Module:     auditctx.ModuleBilling,
+		EntityType: lo.ToPtr(auditctx.EntitySubscription),
+		EntityID:   &stripeSubID,
+		AfterState: map[string]interface{}{
+			"invoice_id":    invoiceID,
+			"stripe_sub_id": stripeSubID,
+			"status":        subscription.StatusPastDue,
+		},
+	})
+
+	return nil
 }
 
 func (s *service) handleSubscriptionDeleted(ctx context.Context, event stripe.Event) error {
