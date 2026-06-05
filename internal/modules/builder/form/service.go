@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -916,54 +915,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			return fmt.Errorf("failed to create expense entry: %w", err)
 		}
 
-		// Rebalance: compute total and classify by COA type (already fetched above, reuse coaDetails map)
-		var totalAmount float64
-		var hasIncome, hasExpense bool
-		for i, ev := range entryValues {
-			if ev.NetAmount == nil {
-				continue
-			}
-			totalAmount += *ev.NetAmount
-			t := strings.ToLower(coaDetails[i].AccountTypeName)
-			// Credit-normal accounts (liability, equity, revenue, income) are treated the same
-			// as income for sign purposes — they reduce the balancing bank offset.
-			// This must mirror the polarity used in AssertLedgerGroupBalances.
-			if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
-				strings.Contains(t, "liability") || strings.Contains(t, "equity") {
-				hasIncome = true
-			} else {
-				hasExpense = true
-			}
-		}
-		totalAmount = math.Round(totalAmount*100) / 100
-
-		if totalAmount != 0 {
-			bankAccountID, err := s.entryRepo.GetBankAccountID(ctx, tx, OwnerID)
-			if err != nil {
-				return fmt.Errorf("failed to find Bank Account for auto-balancing: %w", err)
-			}
-
-			bankAmount := totalAmount
-			if hasExpense && !hasIncome {
-				bankAmount = -totalAmount
-			}
-
-			if err := s.entryRepo.InsertBalancingEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				CoaID:       &bankAccountID,
-				NetAmount:   &bankAmount,
-				GrossAmount: &bankAmount,
-			}); err != nil {
-				return fmt.Errorf("failed to insert auto-balancing entry: %w", err)
-			}
-		}
-
-		// Verify ledger integrity
-		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, entryID); err != nil {
-			return fmt.Errorf("ledger integrity check failed: %w", err)
-		}
-
 		// Link collected unique document links to this entry ID
 		if len(allDocIDs) > 0 {
 			allDocIDs = lo.Uniq(allDocIDs) // De-duplicate entries across elements
@@ -1372,66 +1323,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 					return fmt.Errorf("failed to process creation document links: %w", linkErr)
 				}
 			}
-		}
-
-		// Rebalance: delete old system entry, fetch current values via repo, insert new balancing entry
-		if err := s.entryRepo.DeleteSystemBalancingValues(ctx, tx, existingEntry.ID); err != nil {
-			return fmt.Errorf("failed to delete old balancing entries: %w", err)
-		}
-
-		currentValues, err := s.entryRepo.GetActiveEntryValuesWithAccountType(ctx, tx, existingEntry.ID)
-		if err != nil {
-			return fmt.Errorf("failed to get current entry values: %w", err)
-		}
-
-		var totalAmount float64
-		var hasIncome, hasExpense bool
-		for _, evs := range currentValues {
-			if evs.NetAmount == nil || evs.FormFieldID == nil {
-				continue
-			}
-			totalAmount += *evs.NetAmount
-			if evs.AccountTypeName != nil {
-				t := strings.ToLower(*evs.AccountTypeName)
-				// Credit-normal accounts (liability, equity, revenue, income) are treated the same
-				// as income for sign purposes — mirrors AssertLedgerGroupBalances polarity.
-				if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
-					strings.Contains(t, "liability") || strings.Contains(t, "equity") {
-					hasIncome = true
-				} else {
-					hasExpense = true
-				}
-			} else {
-				hasExpense = true
-			}
-		}
-		totalAmount = math.Round(totalAmount*100) / 100
-
-		if totalAmount != 0 {
-			bankAccountID, err := s.entryRepo.GetBankAccountID(ctx, tx, practitionerID)
-			if err != nil {
-				return fmt.Errorf("failed to find Bank Account for auto-balancing: %w", err)
-			}
-
-			bankAmount := totalAmount
-			if hasExpense && !hasIncome {
-				bankAmount = -totalAmount
-			}
-
-			if err := s.entryRepo.InsertBalancingEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				CoaID:       &bankAccountID,
-				NetAmount:   &bankAmount,
-				GrossAmount: &bankAmount,
-			}); err != nil {
-				return fmt.Errorf("failed to insert balancing entry: %w", err)
-			}
-		}
-
-		// Verify ledger integrity
-		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, existingEntry.ID); err != nil {
-			return fmt.Errorf("ledger integrity check failed: %w", err)
 		}
 
 		return nil
