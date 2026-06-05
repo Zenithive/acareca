@@ -1,6 +1,7 @@
 package preference
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,7 @@ import (
 type IHandler interface {
 	Get(c *gin.Context)
 	Update(c *gin.Context)
+	DeleteAll(c *gin.Context)
 }
 
 type handler struct {
@@ -26,7 +28,6 @@ func NewHandler(svc IService) IHandler {
 // @Tags         notification
 // @Success      200  {object}  response.RsBase
 // @Failure      401  {object}  response.RsError
-// @Failure      404  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken
 // @Router       /notification/preferences [get]
@@ -45,24 +46,27 @@ func (h *handler) Get(c *gin.Context) {
 }
 
 // @Summary      Update notification preference
-// @Description  Updates or creates a preference for a specific event type.
+// @Description  Updates or creates preferences. event_type is always required. If channels is empty, the specified event types are deleted. If channels is provided, preferences are upserted.
 // @Tags         notification
 // @Param        body  body  RqUpdatePreference  true  "Preference Update"
 // @Success      200  {object}  response.RsBase
 // @Failure      400  {object}  response.RsError
 // @Failure      401  {object}  response.RsError
-// @Failure      404  {object}  response.RsError
 // @Failure      500  {object}  response.RsError
 // @Security     BearerToken
 // @Router       /notification/preferences [put]
 func (h *handler) Update(c *gin.Context) {
 	userID, okUser := util.GetUserID(c)
-	actorID, okEntity := util.GetEntityID(c)
+	entityID, okEntity := util.GetEntityID(c)
 	if !okUser || !okEntity {
 		return
 	}
 
 	role := c.GetString("role")
+	if role == "" {
+		response.Error(c, http.StatusBadRequest, errMissingRole)
+		return
+	}
 
 	var rq RqUpdatePreference
 	if err := c.ShouldBindJSON(&rq); err != nil {
@@ -70,11 +74,35 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	err := h.svc.Update(c.Request.Context(), userID, actorID, role, rq)
-	if err != nil {
+	if err := h.svc.Update(c.Request.Context(), userID, entityID, role, rq); err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	response.JSON(c, http.StatusOK, nil, "Notification preferences updated successfully")
 }
+
+// @Summary      Delete all notification preferences
+// @Description  Deletes all notification preferences for the authenticated user on their current entity.
+// @Tags         notification
+// @Success      200  {object}  response.RsBase
+// @Failure      401  {object}  response.RsError
+// @Failure      500  {object}  response.RsError
+// @Security     BearerToken
+// @Router       /notification/preferences [delete]
+func (h *handler) DeleteAll(c *gin.Context) {
+	userID, okUser := util.GetUserID(c)
+	entityID, okEntity := util.GetEntityID(c)
+	if !okUser || !okEntity {
+		return
+	}
+
+	if err := h.svc.DeleteAll(c.Request.Context(), userID, entityID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, nil, "All notification preferences deleted successfully")
+}
+
+var errMissingRole = fmt.Errorf("role is missing from context")
