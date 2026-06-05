@@ -494,14 +494,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			inputAmount = s.roundValue(inputAmount)
 
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: nil,
-				CoaID:       &coaID,
-				NetAmount:   &inputAmount,
-				GstAmount:   nil,
-				GrossAmount: &inputAmount,
-				Description: v.Description,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        nil,
+				CoaID:              &coaID,
+				NetAmount:          &inputAmount,
+				GstAmount:          nil,
+				GrossAmount:        &inputAmount,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
+				Notes:              v.Notes,
 			})
 			continue
 		}
@@ -547,13 +549,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				CoaID:       f.CoaID, // 🚀 FIXED
-				NetAmount:   &netBase,
-				GstAmount:   gstAmount,
-				GrossAmount: &roundedGross,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &fieldID,
+				CoaID:              f.CoaID, // 🚀 FIXED
+				NetAmount:          &netBase,
+				GstAmount:          gstAmount,
+				GrossAmount:        &roundedGross,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
+				Notes:              v.Notes,
 			})
 			continue
 		}
@@ -563,13 +568,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = s.roundValue(grossTotal)
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				CoaID:       f.CoaID, // 🚀 FIXED
-				NetAmount:   &netBase,
-				GstAmount:   nil,
-				GrossAmount: &grossTotal,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &fieldID,
+				CoaID:              f.CoaID, // 🚀 FIXED
+				NetAmount:          &netBase,
+				GstAmount:          nil,
+				GrossAmount:        &grossTotal,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
+				Notes:              v.Notes,
 			})
 			continue
 		}
@@ -633,13 +641,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		keyValues[f.FieldKey] = valueForFormula
 		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
-			ID:          uuid.New(),
-			EntryID:     entryID,
-			FormFieldID: &fieldID,
-			CoaID:       f.CoaID, // 🚀 FIXED
-			NetAmount:   &netBase,
-			GstAmount:   gstAmount,
-			GrossAmount: &grossTotal,
+			ID:                 uuid.New(),
+			EntryID:            entryID,
+			FormFieldID:        &fieldID,
+			CoaID:              f.CoaID, // 🚀 FIXED
+			NetAmount:          &netBase,
+			GstAmount:          gstAmount,
+			GrossAmount:        &grossTotal,
+			Description:        v.Description,
+			BusinessPercentage: v.BusinessPercentage,
+			Notes:              v.Notes,
 		})
 	}
 
@@ -784,13 +795,15 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				}
 
 				out = append(out, &FormEntryValue{
-					ID:          uuid.New(),
-					EntryID:     entryID,
-					FormFieldID: &fieldID,
-					CoaID:       f.CoaID,
-					NetAmount:   &netBase,
-					GstAmount:   gstAmount,
-					GrossAmount: &grossTotal,
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        &fieldID,
+					CoaID:              f.CoaID,
+					NetAmount:          &netBase,
+					GstAmount:          gstAmount,
+					GrossAmount:        &grossTotal,
+					BusinessPercentage: nil, // Formulas don't have business percentage
+					Notes:              nil, // Formulas don't have notes
 				})
 			}
 		}
@@ -803,11 +816,11 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
 	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
 	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
+
 	if len(out) > 0 {
 		var totalLedgerImpact float64
 		var practitionerID *uuid.UUID
 
-		// 1. Sum signed contributions across all lines.
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
 				continue
@@ -831,7 +844,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		totalLedgerImpact = s.roundValue(totalLedgerImpact)
 
-		// 2. If variance exists, inject a COA-600 (Bank) balancing row.
 		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
 			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
 			if err != nil || bankAccount == nil {
@@ -843,17 +855,18 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			bankCoaID := bankAccount.ID
 
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: nil,
-				CoaID:       &bankCoaID,
-				NetAmount:   &counterBalancingAmount,
-				GstAmount:   nil,
-				GrossAmount: &counterBalancingAmount,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        nil,
+				CoaID:              &bankCoaID,
+				NetAmount:          &counterBalancingAmount,
+				GstAmount:          nil,
+				GrossAmount:        &counterBalancingAmount,
+				BusinessPercentage: nil, // System balancing entries don't have business percentage
+				Notes:              nil, // System balancing entries don't have notes
 			})
 		}
 
-		// 3. Post-balancing verification — re-run same signed arithmetic to confirm zero balance.
 		var finalLedgerBalance float64
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {

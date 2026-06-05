@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"strings"
 	"time"
 
@@ -338,8 +337,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			deletedMap[id] = true
 		}
 
-		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
-		// Note: If multiple fields have the same key, the last one wins (map behavior)
 		existingFields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
 		if err != nil {
 			return err
@@ -805,7 +802,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		if len(rq.Items) == 0 {
 			return nil, errors.New("at least one expense item is required")
 		}
-		// We fetch the first COA to find out who the practitioner is
 		firstCoa, err := s.coaSvc.GetByIDInternal(ctx, rq.Items[0].CoaID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
@@ -886,7 +882,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		var entryValues []*entry.FormEntryValue
 		var allDocIDs []uuid.UUID
-		// coaDetails indexed in parallel with rq.Items — fetched once, reused for balancing
 		coaDetails := make([]*coa.RsChartOfAccount, len(rq.Items))
 
 		for idx, item := range rq.Items {
@@ -928,14 +923,16 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 			itemDate := item.Date
 			entryValues = append(entryValues, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &itemDate,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				Notes:              item.Notes,
+				BusinessPercentage: &localBusinessUse,
+				Date:               &itemDate,
 			})
 
 			// Collect document IDs for the current expense item
@@ -951,54 +948,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		// Create the entry with all values first
 		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
-		}
-
-		// Rebalance: compute total and classify by COA type (already fetched above, reuse coaDetails map)
-		var totalAmount float64
-		var hasIncome, hasExpense bool
-		for i, ev := range entryValues {
-			if ev.NetAmount == nil {
-				continue
-			}
-			totalAmount += *ev.NetAmount
-			t := strings.ToLower(coaDetails[i].AccountTypeName)
-			// Credit-normal accounts (liability, equity, revenue, income) are treated the same
-			// as income for sign purposes — they reduce the balancing bank offset.
-			// This must mirror the polarity used in AssertLedgerGroupBalances.
-			if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
-				strings.Contains(t, "liability") || strings.Contains(t, "equity") {
-				hasIncome = true
-			} else {
-				hasExpense = true
-			}
-		}
-		totalAmount = math.Round(totalAmount*100) / 100
-
-		if totalAmount != 0 {
-			bankAccountID, err := s.entryRepo.GetBankAccountID(ctx, tx, OwnerID)
-			if err != nil {
-				return fmt.Errorf("failed to find Bank Account for auto-balancing: %w", err)
-			}
-
-			bankAmount := totalAmount
-			if hasExpense && !hasIncome {
-				bankAmount = -totalAmount
-			}
-
-			if err := s.entryRepo.InsertBalancingEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				CoaID:       &bankAccountID,
-				NetAmount:   &bankAmount,
-				GrossAmount: &bankAmount,
-			}); err != nil {
-				return fmt.Errorf("failed to insert auto-balancing entry: %w", err)
-			}
-		}
-
-		// Verify ledger integrity
-		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, entryID); err != nil {
-			return fmt.Errorf("ledger integrity check failed: %w", err)
 		}
 
 		// Link collected unique document links to this entry ID
@@ -1285,15 +1234,31 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				dateToUse = existingDate
 			}
 
+			// Preserve notes if not provided in update
+			var notesToUse *string
+			if item.Notes != nil {
+				notesToUse = item.Notes
+			} else {
+				// Find existing notes
+				for _, ev := range existingValues {
+					if ev.FormFieldID != nil && *ev.FormFieldID == item.ID && ev.UpdatedAt == nil {
+						notesToUse = ev.Notes
+						break
+					}
+				}
+			}
+
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &item.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: description,
-				Date:        dateToUse,
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &item.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        description,
+				Notes:              notesToUse,
+				BusinessPercentage: &businessUse,
+				Date:               dateToUse,
 			}); err != nil {
 				return fmt.Errorf("failed to insert updated entry value: %w", err)
 			}
@@ -1365,14 +1330,16 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &item.Date,
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				Notes:              item.Notes,
+				BusinessPercentage: &item.BusinessUse,
+				Date:               &item.Date,
 			}); err != nil {
 				return fmt.Errorf("failed to insert new entry value for item %d: %w", idx, err)
 			}
@@ -1386,66 +1353,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 					return fmt.Errorf("failed to process creation document links: %w", linkErr)
 				}
 			}
-		}
-
-		// Rebalance: delete old system entry, fetch current values via repo, insert new balancing entry
-		if err := s.entryRepo.DeleteSystemBalancingValues(ctx, tx, existingEntry.ID); err != nil {
-			return fmt.Errorf("failed to delete old balancing entries: %w", err)
-		}
-
-		currentValues, err := s.entryRepo.GetActiveEntryValuesWithAccountType(ctx, tx, existingEntry.ID)
-		if err != nil {
-			return fmt.Errorf("failed to get current entry values: %w", err)
-		}
-
-		var totalAmount float64
-		var hasIncome, hasExpense bool
-		for _, evs := range currentValues {
-			if evs.NetAmount == nil || evs.FormFieldID == nil {
-				continue
-			}
-			totalAmount += *evs.NetAmount
-			if evs.AccountTypeName != nil {
-				t := strings.ToLower(*evs.AccountTypeName)
-				// Credit-normal accounts (liability, equity, revenue, income) are treated the same
-				// as income for sign purposes — mirrors AssertLedgerGroupBalances polarity.
-				if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
-					strings.Contains(t, "liability") || strings.Contains(t, "equity") {
-					hasIncome = true
-				} else {
-					hasExpense = true
-				}
-			} else {
-				hasExpense = true
-			}
-		}
-		totalAmount = math.Round(totalAmount*100) / 100
-
-		if totalAmount != 0 {
-			bankAccountID, err := s.entryRepo.GetBankAccountID(ctx, tx, practitionerID)
-			if err != nil {
-				return fmt.Errorf("failed to find Bank Account for auto-balancing: %w", err)
-			}
-
-			bankAmount := totalAmount
-			if hasExpense && !hasIncome {
-				bankAmount = -totalAmount
-			}
-
-			if err := s.entryRepo.InsertBalancingEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				CoaID:       &bankAccountID,
-				NetAmount:   &bankAmount,
-				GrossAmount: &bankAmount,
-			}); err != nil {
-				return fmt.Errorf("failed to insert balancing entry: %w", err)
-			}
-		}
-
-		// Verify ledger integrity
-		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, existingEntry.ID); err != nil {
-			return fmt.Errorf("ledger integrity check failed: %w", err)
 		}
 
 		return nil
@@ -1563,6 +1470,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		// Find matching entry value
 		var netAmount, gstAmount, grossAmount float64
 		var description *string
+		var notes *string
 		var itemDate string
 		for _, ev := range entryValues {
 			if ev.FormFieldID != nil && *ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
@@ -1576,6 +1484,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 					grossAmount = *ev.GrossAmount
 				}
 				description = ev.Description
+				notes = ev.Notes
 				if ev.Date != nil && *ev.Date != "" {
 					// Use item-level date (primary source for expense entries)
 					itemDate = *ev.Date
@@ -1607,6 +1516,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			GrossAmount: grossAmount,
 			Date:        itemDate,
 			Description: description,
+			Notes:       notes,
 		}
 
 		response.Items = append(response.Items, item)
