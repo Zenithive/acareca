@@ -693,7 +693,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 					ELSE ABS(COALESCE(v.gross_amount, 0))
 				END::numeric, 2)::float8                                   AS gross_amount,
 			100.00::float8                                                 AS business_percentage,
-			'-'::text                                                      AS notes,
+			COALESCE(v.description, '-')                                   AS notes,
 			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
 		FROM vw_double_entry_line_items v
 		LEFT JOIN tbl_form f        ON f.id = v.form_id
@@ -1056,7 +1056,6 @@ func (r *Repository) UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID u
 	}
 	return nil
 }
-
 
 // // AssertLedgerGroupBalances implements institutional-grade ledger verification
 // // This method runs a SUM query grouped by entry_id right before tx.Commit()

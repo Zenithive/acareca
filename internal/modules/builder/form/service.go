@@ -340,8 +340,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			deletedMap[id] = true
 		}
 
-		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
-		// Note: If multiple fields have the same key, the last one wins (map behavior)
 		existingFields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
 		if err != nil {
 			return err
@@ -770,7 +768,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		if len(rq.Items) == 0 {
 			return nil, errors.New("at least one expense item is required")
 		}
-		// We fetch the first COA to find out who the practitioner is
 		firstCoa, err := s.coaSvc.GetByIDInternal(ctx, rq.Items[0].CoaID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
@@ -851,7 +848,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		var entryValues []*entry.FormEntryValue
 		var allDocIDs []uuid.UUID
-		// coaDetails indexed in parallel with rq.Items — fetched once, reused for balancing
 		coaDetails := make([]*coa.RsChartOfAccount, len(rq.Items))
 
 		for idx, item := range rq.Items {
@@ -893,14 +889,16 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 			itemDate := item.Date
 			entryValues = append(entryValues, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &itemDate,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				Notes:              item.Notes,
+				BusinessPercentage: &localBusinessUse,
+				Date:               &itemDate,
 			})
 
 			// Collect document IDs for the current expense item
@@ -1255,15 +1253,31 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				dateToUse = existingDate
 			}
 
+			// Preserve notes if not provided in update
+			var notesToUse *string
+			if item.Notes != nil {
+				notesToUse = item.Notes
+			} else {
+				// Find existing notes
+				for _, ev := range existingValues {
+					if ev.FormFieldID != nil && *ev.FormFieldID == item.ID && ev.UpdatedAt == nil {
+						notesToUse = ev.Notes
+						break
+					}
+				}
+			}
+
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &item.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: description,
-				Date:        dateToUse,
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &item.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        description,
+				Notes:              notesToUse,
+				BusinessPercentage: &businessUse,
+				Date:               dateToUse,
 			}); err != nil {
 				return fmt.Errorf("failed to insert updated entry value: %w", err)
 			}
@@ -1335,14 +1349,16 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &item.Date,
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				Notes:              item.Notes,
+				BusinessPercentage: &item.BusinessUse,
+				Date:               &item.Date,
 			}); err != nil {
 				return fmt.Errorf("failed to insert new entry value for item %d: %w", idx, err)
 			}
@@ -1537,6 +1553,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		// Find matching entry value
 		var netAmount, gstAmount, grossAmount float64
 		var description *string
+		var notes *string
 		var itemDate string
 		for _, ev := range entryValues {
 			if ev.FormFieldID != nil && *ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
@@ -1550,6 +1567,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 					grossAmount = *ev.GrossAmount
 				}
 				description = ev.Description
+				notes = ev.Notes
 				if ev.Date != nil && *ev.Date != "" {
 					// Use item-level date (primary source for expense entries)
 					itemDate = *ev.Date
@@ -1581,6 +1599,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			GrossAmount: grossAmount,
 			Date:        itemDate,
 			Description: description,
+			Notes:       notes,
 		}
 
 		response.Items = append(response.Items, item)
