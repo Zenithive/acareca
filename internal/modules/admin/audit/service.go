@@ -202,7 +202,7 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		title = "System Error"
 	}
 
-	extraData := map[string]interface{}{"action": action}
+	extraData := map[string]any{"action": action}
 	senderType := util.ActorSystem
 
 	_ = s.notificationPub.PublishToMultiple(

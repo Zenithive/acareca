@@ -1620,6 +1620,20 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 	default:
 		return fmt.Errorf("unsupported recipient type: %s", recipientType)
 	}
+	// GetAllAdmin
+
+	admin, err := s.adminRepo.GetAllAdmins(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get admin users: %v", err)
+	}
+	
+	for _, admin := range admin {
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   admin.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        admin.User.ID,
+		})
+	}
 
 	// If no recipients, don't send notification
 	if len(recipients) == 0 {

@@ -80,6 +80,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 
 	for _, recipient := range req.Recipients {
 		prefs, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
+
 		if err != nil {
 			log.Printf("[ERROR] failed to get preferences for user %s: %v", recipient.UserID, err)
 			continue
