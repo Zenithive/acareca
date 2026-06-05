@@ -12,7 +12,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 		auth.POST("/login", h.Login)
 		auth.GET("/google", h.GoogleAuthURL)
 		auth.GET("/google/callback", h.GoogleCallback)
-		auth.GET("/verify-email", h.VerifyEmail)
+		auth.GET("/verify", h.VerifyEmail)
 		auth.POST("/forgot-password", h.ForgotPassword)
 		auth.POST("/reset-password", h.ResetPassword)
 	}
