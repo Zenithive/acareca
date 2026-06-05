@@ -11,6 +11,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
@@ -51,9 +52,10 @@ type service struct {
 	authSvc         auth.Service
 	invitationRepo  invitation.Repository
 	invitationSvc   invitation.Service
+	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, eventsSvc events.Service, notificationSvc notification.Service, authSvc auth.Service, invitationRepo invitation.Repository, invitationSvc invitation.Service) Service {
+func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, eventsSvc events.Service, notificationSvc notification.Service, authSvc auth.Service, invitationRepo invitation.Repository, invitationSvc invitation.Service, adminRepo admin.Repository) Service {
 	return &service{
 		db:              db,
 		repo:            repo,
@@ -63,10 +65,11 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 		auditSvc:        auditSvc,
 		limitsSvc:       limits.NewService(db),
 		eventsSvc:       eventsSvc,
-		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		authSvc:         authSvc,
 		invitationRepo:  invitationRepo,
 		invitationSvc:   invitationSvc,
+		adminRepo:       adminRepo,
 	}
 }
 

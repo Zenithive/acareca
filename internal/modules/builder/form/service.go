@@ -18,6 +18,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
@@ -78,10 +79,11 @@ type service struct {
 	notificationPub *sharednotification.Publisher
 	invitationRepo  invitation.Repository
 	authSvc         AuthService
+	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository, notificationSvc notification.Service, invitationRepo invitation.Repository, authSvc AuthService) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo, notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)), invitationRepo: invitationRepo, authSvc: authSvc}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository, notificationSvc notification.Service, invitationRepo invitation.Repository, authSvc AuthService, adminRepo admin.Repository) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo, notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo), invitationRepo: invitationRepo, authSvc: authSvc, adminRepo: adminRepo}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {

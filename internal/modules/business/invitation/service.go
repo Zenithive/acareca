@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
@@ -56,13 +57,13 @@ type service struct {
 	mailer          *mail.Client
 }
 
-func NewService(repo Repository, cfg *config.Config, notificationSvc notification.Service, auditSvc audit.Service, db *sqlx.DB) Service {
+func NewService(repo Repository, cfg *config.Config, notificationSvc notification.Service, auditSvc audit.Service, db *sqlx.DB, adminRepo admin.Repository) Service {
 	return &service{
 		repo:            repo,
 		cfg:             cfg,
 		inviteConfig:    util.InviteDefaultConfig(),
 		notification:    notificationSvc,
-		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		auditSvc:        auditSvc,
 		db:              db,
 		mailer:          mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
@@ -661,4 +662,3 @@ func (s *service) ListPermissions(ctx context.Context, accId uuid.UUID, f *Filte
 	}
 	return results, nil
 }
-

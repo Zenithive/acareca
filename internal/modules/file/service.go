@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -53,7 +54,7 @@ type service struct {
 	authSvc         AuthService
 }
 
-func NewService(repo Repository, storage upload.StorageProvider, validator *upload.FileValidator, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service, invitationRepo invitation.Repository, authSvc AuthService, notificationSvc notification.Service) Service {
+func NewService(repo Repository, storage upload.StorageProvider, validator *upload.FileValidator, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service, invitationRepo invitation.Repository, authSvc AuthService, notificationSvc notification.Service, adminRepo admin.Repository) Service {
 	return &service{
 		repo:            repo,
 		storage:         storage,
@@ -62,7 +63,7 @@ func NewService(repo Repository, storage upload.StorageProvider, validator *uplo
 		db:              db,
 		auditSvc:        auditSvc,
 		bucket:          cfg.R2BucketName,
-		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		invitationRepo:  invitationRepo,
 		authSvc:         authSvc,
 	}

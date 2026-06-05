@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -38,13 +39,13 @@ type logJob struct {
 	entry *LogEntry
 }
 
-func NewService(repo Repository, notificationService notification.Service) Service {
+func NewService(repo Repository, notificationService notification.Service, adminRepo admin.Repository) Service {
 	s := &service{
 		repo:                repo,
 		logChan:             make(chan *logJob, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
-		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService)),
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), adminRepo),
 	}
 
 	// Start async worker
