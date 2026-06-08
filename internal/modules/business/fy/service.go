@@ -12,7 +12,6 @@ import (
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
-	"github.com/samber/lo"
 )
 
 type Service interface {
@@ -135,19 +134,8 @@ func (s *service) CreateFY(ctx context.Context, req *RqCreateFY) (*RsFinancialYe
 		EndDate:   createdFY.EndDate,
 	}
 
-	meta := auditctx.GetMetadata(ctx)
-	idStr := createdFY.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
-		Action:     auditctx.ActionFYCreated,
-		Module:     auditctx.ModuleBusiness,
-		EntityType: lo.ToPtr(auditctx.EntityFinancialYear),
-		EntityID:   &idStr,
-		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
-	})
+	s.auditSvc.LogAsync(ctx, audit.NewEntry(auditctx.ActionFYCreated, auditctx.ModuleBusiness, auditctx.EntityFinancialYear, createdFY.ID.String()).
+		WithAfter(result))
 
 	return result, nil
 }
@@ -251,19 +239,8 @@ func (s *service) UpdateFY(ctx context.Context, id uuid.UUID, req *RqUpdateFY) (
 		EndDate:   updatedFY.EndDate,
 	}
 
-	meta := auditctx.GetMetadata(ctx)
-	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
-		Action:     auditctx.ActionFYUpdated,
-		Module:     auditctx.ModuleBusiness,
-		EntityType: lo.ToPtr(auditctx.EntityFinancialYear),
-		EntityID:   &idStr,
-		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
-	})
+	s.auditSvc.LogAsync(ctx, audit.NewEntry(auditctx.ActionFYUpdated, auditctx.ModuleBusiness, auditctx.EntityFinancialYear, id.String()).
+		WithAfter(result))
 
 	return result, nil
 }
@@ -346,17 +323,8 @@ func (s *service) ActivateFY(ctx context.Context, id uuid.UUID) (*RsFinancialYea
 		EndDate:   updatedFY.EndDate,
 	}
 
-	meta := auditctx.GetMetadata(ctx)
-	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
-		Action:     auditctx.ActionFYActivated,
-		Module:     auditctx.ModuleBusiness,
-		EntityType: lo.ToPtr(auditctx.EntityFinancialYear),
-		EntityID:   &idStr,
-		AfterState: result,
-	})
+	s.auditSvc.LogAsync(ctx, audit.NewEntry(auditctx.ActionFYActivated, auditctx.ModuleBusiness, auditctx.EntityFinancialYear, id.String()).
+		WithAfter(result))
 
 	return result, nil
 }
@@ -378,3 +346,4 @@ func (s *service) GetFinancialYearByID(ctx context.Context, id uuid.UUID) (*RsFY
 		EndDate:   fy.EndDate,
 	}, nil
 }
+

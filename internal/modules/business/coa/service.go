@@ -235,19 +235,14 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	}
 
 	rs := created.ToRs()
-	meta := auditctx.GetMetadata(ctx)
 	idStr := created.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionCOACreated,
 		Module:     auditctx.ModuleBusiness,
 		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
 		AfterState: rs,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return &rs, nil
@@ -299,19 +294,14 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 	}
 
 	rs := updated.ToRs()
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionCOAUpdated,
 		Module:     auditctx.ModuleBusiness,
 		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
 		AfterState: rs,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return &rs, nil
@@ -346,20 +336,15 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
 	rs := existing.ToRs()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionCOADeleted,
 		Module:      auditctx.ModuleBusiness,
 		EntityType:  lo.ToPtr(auditctx.EntityCOA),
 		EntityID:    &idStr,
 		BeforeState: rs,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return nil

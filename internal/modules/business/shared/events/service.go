@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
-	"github.com/samber/lo"
 
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -66,21 +65,9 @@ func (s *service) Record(ctx context.Context, e SharedEvent) error {
 	}
 
 	if s.auditSvc != nil {
-		meta := auditctx.GetMetadata(ctx)
 		userIDStr := e.ActorID.String()
-		auditEntry := &audit.LogEntry{
-			PracticeID: meta.PracticeID,
-			UserID:     &userIDStr,
-			Action:     "shared_event.recorded",
-			Module:     "shared_events",
-			EntityType: lo.ToPtr("shared_event"),
-			EntityID:   lo.ToPtr(e.ID.String()),
-			//BeforeState: nil,
-			//AfterState: e,
-			IPAddress: meta.IPAddress,
-			UserAgent: meta.UserAgent,
-		}
-		s.auditSvc.LogAsync(auditEntry)
+		s.auditSvc.LogAsync(ctx, audit.NewEntry("shared_event.recorded", "shared_events", "shared_event", e.ID.String()).
+			WithUser(userIDStr))
 	}
 
 	return nil
@@ -115,3 +102,4 @@ func (s *service) mapToNotificationRequest(e SharedEvent) notification.RqNotific
 		CreatedAt:     time.Now(),
 	}
 }
+

@@ -42,6 +42,16 @@ const (
 	ActionPermissionRevoked   = "permission.revoked"
 )
 
+// Action constants - Billing module
+const (
+	ActionBillingPaymentSuccess     = "billing.payment_success"
+	ActionBillingPaymentFailed      = "billing.payment_failed"
+	ActionBillingActivationFailed   = "billing.activation_failed"
+	ActionBillingWebhookSigInvalid  = "billing.webhook_sig_invalid"
+	ActionBillingStatusUpdateFailed = "billing.status_update_failed"
+	ActionBillingActivationSuccess  = "billing.activation_successful"
+)
+
 // Action constants - Business module
 const (
 	ActionClinicCreated       = "clinic.created"

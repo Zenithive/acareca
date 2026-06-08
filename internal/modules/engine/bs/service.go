@@ -216,11 +216,10 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		TotalLiabilitiesAndEquity: math.Round(totalLiabilitiesAndEquity*100) / 100,
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	actorIDStr := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionBalanceSheetGenerated,
@@ -231,8 +230,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			"report_type": "Balance Sheet",
 			"end_date":    endDate,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	if role == util.RoleAccountant {
@@ -375,19 +372,16 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		return nil, fmt.Errorf("failed to generate balance sheet excel: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionBalanceSheetExported,
 		Module:     auditctx.ModuleReport,
 		EntityType: lo.ToPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
 		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	if role == util.RoleAccountant && len(notifIDs) > 0 {
