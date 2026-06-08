@@ -98,6 +98,7 @@ func (p *Publisher) appendAdminRecipients(ctx context.Context, recipients []Reci
 }
 
 func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
+	fmt.Println("=======================================2")
 	if p.notificationSvc == nil {
 		return fmt.Errorf("notification service is nil")
 	}
@@ -113,6 +114,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 		}
 
 		prefMap := make(map[util.NotificationEventType]struct{}, len(prefs.EventType))
+		fmt.Println("========================================", prefMap)
 		for _, et := range prefs.EventType {
 			prefMap[et] = struct{}{}
 		}

@@ -3,6 +3,7 @@ package pl
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -11,11 +12,15 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	plexport "github.com/iamarpitzala/acareca/internal/shared/export/pl"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -38,10 +43,23 @@ type service struct {
 	practitionerSvc practitioner.IService
 	authRepo        auth.Repository
 	auditSvc        audit.Service
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         auth.Service
 }
 
-func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, authRepo auth.Repository, auditSvc audit.Service) Service {
-	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo, practitionerSvc: practitionerSvc, authRepo: authRepo, auditSvc: auditSvc}
+func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, authRepo auth.Repository, auditSvc audit.Service, invitationRepo invitation.Repository, authSvc auth.Service, notificationSvc notification.Service, adminRepo admin.Repository) Service {
+	return &service{
+		repo:            repo,
+		clinicRepo:      clinicRepo,
+		accountantRepo:  accountantRepo,
+		practitionerSvc: practitionerSvc,
+		authRepo:        authRepo,
+		auditSvc:        auditSvc,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
+		invitationRepo:  invitationRepo,
+		authSvc:         authSvc,
+	}
 }
 
 func (s *service) GetMonthlySummary(ctx context.Context, f *PLFilter) ([]RsPLSummary, error) {
@@ -250,6 +268,11 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		},
 	})
 
+	// Send notification for report generation
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventPLReportGenerated, "P&L Report"); err != nil {
+		log.Printf("[WARN] failed to send P&L report generation notification: %v", err)
+	}
+
 	return buildReport(f, rows, summary), nil
 }
 
@@ -436,6 +459,11 @@ func (s *service) ExportPLReport(ctx context.Context, data []*RsReport, exportTy
 		}
 	}
 
+	// Send notification
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventPLReportExport, "P&L Report"); err != nil {
+		log.Printf("[WARN] failed to send P&L report notification: %v", err)
+	}
+
 	return plexport.GenerateExcelReport(exportSlice, config)
 }
 
@@ -445,4 +473,83 @@ func formatDateStr(dateStr string) string {
 		return dateStr
 	}
 	return t.Format("02-01-2006")
+}
+
+// notifyReportExport sends notifications to linked users about report export
+func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	user, err := s.authSvc.GetUserByID(ctx, entityID, actorType)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	senderName := user.FirstName + " " + user.LastName
+	senderType := actorType
+
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// Notify linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", entityID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// Notify linked practitioners
+		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+			return nil
+		}
+
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		return fmt.Errorf("unsupported actor type: %s", actorType)
+	}
+
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for report notification")
+		return nil
+	}
+
+	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   entityID,
+		SenderType: senderType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityReport,
+		EntityID:   entityID,
+		EntityKey:  "report_id",
+		Title:      fmt.Sprintf("%s Exported", reportName),
+		Body:       fmt.Sprintf("%s exported by %s", reportName, senderName),
+		ExtraData:  map[string]interface{}{"report_name": reportName},
+	})
 }

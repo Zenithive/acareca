@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -12,11 +13,14 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	bsexport "github.com/iamarpitzala/acareca/internal/shared/export/bs"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -38,9 +42,12 @@ type service struct {
 	invitationSvc   invitation.Service
 	accountantRepo  accountant.Repository
 	practitionerSvc practitioner.IService
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         auth.Service
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, invitationRepo invitation.Repository, authSvc auth.Service, notificationSvc notification.Service, adminRepo admin.Repository) Service {
 	return &service{
 		repo:            repo,
 		equitySvc:       equitySvc,
@@ -50,6 +57,9 @@ func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc
 		invitationSvc:   invitationSvc,
 		accountantRepo:  accountantRepo,
 		practitionerSvc: practitionerSvc,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
+		invitationRepo:  invitationRepo,
+		authSvc:         authSvc,
 	}
 }
 
@@ -229,6 +239,11 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		},
 	})
 
+	// Send notification for report generation
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetGenerated, "Balance Sheet"); err != nil {
+		log.Printf("[WARN] failed to send balance sheet generation notification: %v", err)
+	}
+
 	return result, nil
 }
 
@@ -354,6 +369,11 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 		return nil, fmt.Errorf("failed to generate balance sheet excel: %w", err)
 	}
 
+	// Send notification
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetExport, "Balance Sheet"); err != nil {
+		log.Printf("[WARN] failed to send balance sheet notification: %v", err)
+	}
+
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
@@ -402,4 +422,83 @@ func formatDateForDisplay(dateStr string) string {
 		return dateStr
 	}
 	return t.Format("02-01-2006")
+}
+
+// notifyReportExport sends notifications to linked users about report export
+func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	user, err := s.authSvc.GetUserByID(ctx, entityID, actorType)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	senderName := user.FirstName + " " + user.LastName
+	senderType := actorType
+
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// Notify linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", entityID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// Notify linked practitioners
+		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+			return nil
+		}
+
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		return fmt.Errorf("unsupported actor type: %s", actorType)
+	}
+
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for report notification")
+		return nil
+	}
+
+	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   entityID,
+		SenderType: senderType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityReport,
+		EntityID:   entityID,
+		EntityKey:  "report_id",
+		Title:      fmt.Sprintf("%s Exported", reportName),
+		Body:       fmt.Sprintf("%s exported by %s", reportName, senderName),
+		ExtraData:  map[string]interface{}{"report_name": reportName},
+	})
 }

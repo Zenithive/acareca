@@ -173,12 +173,12 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)
-	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc)
+	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	plHandler := pl.NewHandler(plSvc, invitationSvc, accountantRepo)
 	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
-	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, authRepo, practitionerSvc)
+	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, authRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
 	bas.RegisterRoutes(v1, basHandler, cfg)
 
@@ -188,7 +188,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc)
+	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 

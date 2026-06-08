@@ -171,14 +171,13 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.
 
 	s.logFileDelete(ctx, doc, userID)
 
-	// Send notification for document deletion
+	// Send notification for document deletion only if accountant
 	actorType := util.ActorPractitioner
 	if doc.OwnerRole == util.RoleAccountant {
 		actorType = util.ActorAccountant
-	}
-
-	if err := s.notifyDocument(ctx, doc.ID, userID, actorType, util.EventDocumentUploaded, doc.OriginalName); err != nil {
-		log.Printf("[WARN] failed to send document deletion notification: %v", err)
+		if err := s.notifyDocument(ctx, doc.ID, userID, actorType, util.EventDocumentUploaded, doc.OriginalName); err != nil {
+			log.Printf("[WARN] failed to send document deletion notification: %v", err)
+		}
 	}
 
 	return nil
@@ -247,14 +246,13 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 
 	s.logFileUpload(ctx, created, ownerID)
 
-	// Send notification for document upload
+	// Send notification for document upload only if accountant
 	actorType := util.ActorPractitioner
 	if ownerRole == util.RoleAccountant {
 		actorType = util.ActorAccountant
-	}
-
-	if err := s.notifyDocument(ctx, created.ID, ownerID, actorType, util.EventDocumentUploaded, created.OriginalName); err != nil {
-		log.Printf("[WARN] failed to send document upload notification: %v", err)
+		if err := s.notifyDocument(ctx, created.ID, ownerID, actorType, util.EventDocumentUploaded, created.OriginalName); err != nil {
+			log.Printf("[WARN] failed to send document upload notification: %v", err)
+		}
 	}
 
 	_, err = s.cfg.GetBaseURL()
@@ -339,10 +337,12 @@ func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.
 
 // notifyDocument sends notifications to linked users about document operations
 func (s *service) notifyDocument(ctx context.Context, docID uuid.UUID, actorID uuid.UUID, actorType util.ActorType, eventType util.EventType, filename string) error {
+	fmt.Println("add this ")
 	if s.notificationPub == nil {
 		log.Printf("[WARN] notification publisher is nil, skipping document notification")
 		return nil
 	}
+	fmt.Println("add 2nd this")
 
 	if s.authSvc == nil {
 		log.Printf("[WARN] auth service is nil, skipping document notification")

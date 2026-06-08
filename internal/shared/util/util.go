@@ -374,7 +374,7 @@ func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventT
 	switch eventType {
 	case EventTransactionCreated, EventTransactionUpdated:
 		return EventNewTransaction
-	case EventTransactionReportExport, EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
+	case EventTransactionReportExport, EventPLReportGenerated, EventPLReportExport, EventBASReportGenerated, EventBASReportExport, EventBalanceSheetGenerated, EventBalanceSheetExport, EventActivityStatementGenerated, EventActivityStatementExport, EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
 		return EventAccountantActivityAlert
 	case EventPractitionerTransactionCreated:
 		return EventPractitionerActivityAlert

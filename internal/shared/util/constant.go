@@ -32,12 +32,20 @@ const (
 	EventPermissionUpdated EventType = "permission.updated"
 
 	EventClinicUpdated           EventType = "clinic.updated"
-	EventFormSubmitted           EventType = "form.submitted"
-	EventFormUpdated             EventType = "form.updated"
-	EventTransactionCreated      EventType = "transaction.created"
-	EventTransactionUpdated      EventType = "transaction.status_changed"
-	EventDocumentUploaded        EventType = "document.uploaded"
-	EventTransactionReportExport EventType = "transaction.event.export"
+	EventFormSubmitted              EventType = "form.submitted"
+	EventFormUpdated                EventType = "form.updated"
+	EventTransactionCreated         EventType = "transaction.created"
+	EventTransactionUpdated         EventType = "transaction.status_changed"
+	EventDocumentUploaded           EventType = "document.uploaded"
+	EventTransactionReportExport    EventType = "transaction.event.export"
+	EventPLReportGenerated          EventType = "pl.report.generated"
+	EventPLReportExport             EventType = "pl.report.export"
+	EventBASReportGenerated         EventType = "bas.report.generated"
+	EventBASReportExport            EventType = "bas.report.export"
+	EventBalanceSheetGenerated      EventType = "balance_sheet.generated"
+	EventBalanceSheetExport         EventType = "balance_sheet.export"
+	EventActivityStatementGenerated EventType = "activity_statement.generated"
+	EventActivityStatementExport    EventType = "activity_statement.export"
 
 	//Pratitioner
 	EventPractitionerTransactionCreated EventType = "pratitioner.transaction.created"
@@ -66,6 +74,7 @@ const (
 	EntityInvite      EntityType = "invite"
 	EntityAuditLog    EntityType = "audit_log"
 	EntitySystem      EntityType = "system"
+	EntityReport      EntityType = "report"
 )
 
 type ActorType string
