@@ -46,14 +46,12 @@ func (s *service) Get(ctx context.Context, userID uuid.UUID) ([]Preference, erro
 func (s *service) Update(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error {
 	return util.RunInTransaction(ctx, s.DB, func(ctx context.Context, tx *sqlx.Tx) error {
 
-		if len(rq.EventType) == 0 {
-			if err := s.repo.DeleteAllPreferences(ctx, userID, entityID, tx); err != nil {
-				return fmt.Errorf("failed to delete all preferences: %w", err)
-			}
-			return nil
+		if err := s.repo.DeleteAllPreferences(ctx, userID, entityID, tx); err != nil {
+			return fmt.Errorf("failed to delete all preferences: %w", err)
 		}
 
 		if len(rq.Channels) == 0 {
+			fmt.Println("2")
 			for _, eventType := range rq.EventType {
 				if err := s.repo.DeletePreferenceByEventType(ctx, userID, entityID, eventType, tx); err != nil {
 					return fmt.Errorf("failed to delete preference for event type %s: %w", eventType, err)
