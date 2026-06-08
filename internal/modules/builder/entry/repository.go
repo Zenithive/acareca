@@ -27,6 +27,8 @@ type IRepository interface {
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 	ListTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsTransactionRow, error)
 	CountTransactions(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
+
+	DeleteEntryValue(ctx context.Context, tx *sqlx.Tx, entryId uuid.UUID, entryValueId uuid.UUID) error
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error)
 	CountCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) (int, error)
@@ -658,6 +660,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		SELECT
 			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
 			v.entry_id                                                     AS entry_id,
+			v.entry_value_id                                               AS entry_value_id,
 			v.form_field_id                                                AS form_field_id,
 			v.coa_id                                                       AS coa_id,
 			v.tax_id                                                       AS tax_type_id,
@@ -712,6 +715,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	type detailRow struct {
 		ID                 uuid.UUID  `db:"id"`
 		EntryID            uuid.UUID  `db:"entry_id"`
+		EntryValueID       uuid.UUID  `db:"entry_value_id"`
 		FormFieldID        *string    `db:"form_field_id"`
 		CoaID              uuid.UUID  `db:"coa_id"`
 		TaxTypeID          *int16     `db:"tax_type_id"`
@@ -755,6 +759,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		detail := &RsCoaEntryDetail{
 			ID:                 row.ID.String(),
 			EntryID:            row.EntryID.String(),
+			EntryValueID:       row.EntryValueID.String(),
 			CoaID:              row.CoaID.String(),
 			TaxTypeID:          row.TaxTypeID,
 			FormFieldName:      row.FormFieldName,
@@ -1116,5 +1121,62 @@ func (r *Repository) UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID u
 // 		return fmt.Errorf("ledger integrity violation: entry %s has variance of %.2f which exceeds 0.01 threshold", entryID.String(), ledgerBalance)
 // 	}
 
-// 	return nil
-// }
+//		return nil
+//	}
+func (r *Repository) DeleteEntryValue(ctx context.Context, tx *sqlx.Tx, entryId uuid.UUID, entryValueId uuid.UUID) error {
+
+	query := `
+		UPDATE tbl_form_entry_value
+		SET deleted_at = now()
+		WHERE entry_id = $1
+		  AND id = $2
+		  AND deleted_at IS NULL
+	`
+
+	res, err := tx.ExecContext(ctx, query, entryId, entryValueId)
+	if err != nil {
+		return fmt.Errorf("delete form entry value: %w", err)
+	}
+
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrNotFound
+	}
+
+	var hasValues bool
+
+	checkQuery := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM tbl_form_entry_value
+			WHERE entry_id = $1
+			  AND deleted_at IS NULL
+		)
+	`
+
+	if err := tx.QueryRowContext(ctx, checkQuery, entryId).Scan(&hasValues); err != nil {
+		return fmt.Errorf("check remaining form entry values: %w", err)
+	}
+
+	if !hasValues {
+		parentQuery := `
+			UPDATE tbl_form_entry
+			SET deleted_at = now(),
+				updated_at = now()
+			WHERE id = $1
+			  AND deleted_at IS NULL
+		`
+
+		res, err := tx.ExecContext(ctx, parentQuery, entryId)
+		if err != nil {
+			return fmt.Errorf("delete form entry: %w", err)
+		}
+
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return ErrNotFound
+		}
+	}
+
+	return nil
+}

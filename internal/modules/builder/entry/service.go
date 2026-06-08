@@ -44,6 +44,8 @@ type IService interface {
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
+
+	DeleteEntryValue(ctx context.Context, entryId uuid.UUID, entryValueId uuid.UUID) error
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
@@ -1662,5 +1664,48 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 		EntityKey:  "transaction_id",
 		Title:      title,
 		Body:       fmt.Sprintf("%s by %s", title, senderName),
+	})
+}
+
+// DeleteEntryValue implements [IService].
+func (s *Service) DeleteEntryValue(ctx context.Context, entryId uuid.UUID, entryValueId uuid.UUID) error {
+	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, values, err := s.repo.GetByID(ctx, tx, entryId)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return fmt.Errorf("form entry not found: %s", entryId)
+		}
+		beforeState := existing.ToRs(values)
+
+		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
+			return err
+		}
+
+		metaMap := events.JSONBMap{
+			"entry_id":  existing.ID.String(),
+			"clinic_id": existing.ClinicID.String(),
+		}
+
+		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, entryId,
+			"Accountant %s deleted an entry for form: %s",
+			metaMap,
+		)
+
+		if err := s.repo.DeleteEntryValue(ctx, tx, entryId, entryValueId); err != nil {
+			return err
+		}
+
+		idStr := entryId.String()
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+			Action:      auditctx.ActionEntryDeleted,
+			Module:      auditctx.ModuleForms,
+			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
+			EntityID:    &idStr,
+			BeforeState: beforeState,
+		})
+
+		return nil
 	})
 }

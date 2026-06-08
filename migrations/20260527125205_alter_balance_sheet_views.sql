@@ -28,6 +28,7 @@ SELECT fe.clinic_id,
     COALESCE(fev.gross_amount, 0) AS gross_amount,
     fev.description,
     fev.business_percentage,
+    fev.id AS entry_value_id,
     cfv.form_id AS form_id,
     coa.account_tax_id AS tax_id,
     CASE

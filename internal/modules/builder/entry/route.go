@@ -31,5 +31,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 		idGroup.GET("", h.Get)
 		idGroup.PATCH("", h.Update)
 		idGroup.DELETE("", h.Delete)
+		idGroup.DELETE("/value/:entry_value_id", h.DeleteEntryValue)
 	}
 }

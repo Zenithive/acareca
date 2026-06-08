@@ -23,6 +23,7 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
+	DeleteEntryValue(c *gin.Context)
 
 	// COA-grouped endpoints
 	ListCoaEntries(c *gin.Context)
@@ -523,4 +524,36 @@ func (h *handler) ExportTransactions(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, data, "COA entries fetched successfully")
+}
+
+// @Summary Delete a form entry
+// @Description Remove an entry from the system
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param id path string true "Entry ID"
+// @Success 204 "No Content"
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/{id} [delete]
+func (h *handler) DeleteEntryValue(c *gin.Context) {
+	entryId, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	entryValueId, ok := util.ParseUuidID(c, "entry_value_id")
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteEntryValue(c.Request.Context(), entryId, entryValueId); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusNoContent, nil, "Form entry deleted successfully")
 }

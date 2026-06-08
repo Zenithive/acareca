@@ -153,7 +153,6 @@ type RsEntryValue struct {
 	FieldKey    string     `json:"field_key,omitempty"`
 	Label       string     `json:"label,omitempty"`
 	IsComputed  bool       `json:"is_computed"`
-	Description *string    `json:"description,omitempty"`
 	// Amount is used when there is no GST (net == gross).
 	Amount *float64 `json:"amount,omitempty"`
 	// NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.
@@ -317,6 +316,7 @@ type RsCoaEntry struct {
 type RsCoaEntryDetail struct {
 	ID                 string   `json:"id"`
 	EntryID            string   `json:"entry_id"`
+	EntryValueID       string   `json:"entry_value_id"`
 	FormFieldID        string   `json:"form_field_id"`
 	CoaID              string   `json:"coa_id"`
 	TaxTypeID          *int16   `json:"tax_type_id"`
