@@ -337,12 +337,10 @@ func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.
 
 // notifyDocument sends notifications to linked users about document operations
 func (s *service) notifyDocument(ctx context.Context, docID uuid.UUID, actorID uuid.UUID, actorType util.ActorType, eventType util.EventType, filename string) error {
-	fmt.Println("add this ")
 	if s.notificationPub == nil {
 		log.Printf("[WARN] notification publisher is nil, skipping document notification")
 		return nil
 	}
-	fmt.Println("add 2nd this")
 
 	if s.authSvc == nil {
 		log.Printf("[WARN] auth service is nil, skipping document notification")
