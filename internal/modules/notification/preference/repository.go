@@ -13,16 +13,50 @@ import (
 type Repository interface {
 	GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]Preference, error)
 	CreatePreference(ctx context.Context, pref Preference, tx *sqlx.Tx) error
-	GetAllPreferencesByentityID(ctx context.Context, entityId uuid.UUID) ([]Preference, error)
+	GetAllPreferencesByEntityID(ctx context.Context, entityID uuid.UUID) ([]Preference, error)
 	GetPreferencesByUserID(ctx context.Context, userID uuid.UUID) (Preference, error)
-	DeletePreference(ctx context.Context, userID uuid.UUID, tx *sqlx.Tx) error
+	DeleteAllPreferences(ctx context.Context, userID, entityID uuid.UUID, tx *sqlx.Tx) error
+	DeletePreferenceByEventType(ctx context.Context, userID, entityID uuid.UUID, eventType util.NotificationEventType, tx *sqlx.Tx) error
 }
+
 type repository struct {
 	db *sqlx.DB
 }
 
 func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
+}
+
+func scanPreference(rows *sqlx.Rows) (Preference, error) {
+	var p Preference
+	var channelsRaw []byte
+	var eventTypeValue string
+
+	err := rows.Scan(
+		&p.ID,
+		&p.UserID,
+		&p.EntityID,
+		&p.EntityType,
+		&eventTypeValue,
+		&channelsRaw,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+	if err != nil {
+		return Preference{}, err
+	}
+
+	p.EventType = []util.NotificationEventType{util.NotificationEventType(eventTypeValue)}
+
+	if len(channelsRaw) > 0 {
+		if err := json.Unmarshal(channelsRaw, &p.Channels); err != nil {
+			return Preference{}, err
+		}
+	} else {
+		p.Channels = make([]util.Channel, 0)
+	}
+
+	return p, nil
 }
 
 func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([]Preference, error) {
@@ -50,36 +84,10 @@ func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([
 	defer rows.Close()
 
 	for rows.Next() {
-		var p Preference
-
-		var channelsRaw []byte
-		var eventTypeValue string
-
-		err := rows.Scan(
-			&p.ID,
-			&p.UserID,
-			&p.EntityID,
-			&p.EntityType,
-			&eventTypeValue,
-			&channelsRaw,
-			&p.CreatedAt,
-			&p.UpdatedAt,
-		)
+		p, err := scanPreference(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		p.EventType = []util.NotificationEventType{util.NotificationEventType(eventTypeValue)}
-
-		//  convert JSONB → map
-		if len(channelsRaw) > 0 {
-			if err := json.Unmarshal(channelsRaw, &p.Channels); err != nil {
-				return nil, err
-			}
-		} else {
-			p.Channels = make([]util.Channel, 0)
-		}
-
 		prefs = append(prefs, p)
 	}
 
@@ -89,8 +97,8 @@ func (r *repository) GetAllPreferences(ctx context.Context, userID uuid.UUID) ([
 
 	return prefs, nil
 }
-func (r *repository) GetAllPreferencesByentityID(ctx context.Context, entityId uuid.UUID) ([]Preference, error) {
 
+func (r *repository) GetAllPreferencesByEntityID(ctx context.Context, entityID uuid.UUID) ([]Preference, error) {
 	prefs := make([]Preference, 0)
 
 	const q = `
@@ -108,44 +116,17 @@ func (r *repository) GetAllPreferencesByentityID(ctx context.Context, entityId u
 		AND deleted_at IS NULL
 	`
 
-	rows, err := r.db.QueryxContext(ctx, q, entityId)
+	rows, err := r.db.QueryxContext(ctx, q, entityID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var p Preference
-
-		var channelsRaw []byte
-		var eventTypeValue string
-
-		err := rows.Scan(
-			&p.ID,
-			&p.UserID,
-			&p.EntityID,
-			&p.EntityType,
-			&eventTypeValue,
-			&channelsRaw,
-			&p.CreatedAt,
-			&p.UpdatedAt,
-		)
+		p, err := scanPreference(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		// Convert single enum value to array for model
-		p.EventType = []util.NotificationEventType{util.NotificationEventType(eventTypeValue)}
-
-		//  convert JSONB → map
-		if len(channelsRaw) > 0 {
-			if err := json.Unmarshal(channelsRaw, &p.Channels); err != nil {
-				return nil, err
-			}
-		} else {
-			p.Channels = make([]util.Channel, 0)
-		}
-
 		prefs = append(prefs, p)
 	}
 
@@ -180,16 +161,12 @@ func (r *repository) CreatePreference(ctx context.Context, p Preference, tx *sql
 		return fmt.Errorf("marshal channels: %w", err)
 	}
 
-	var eventTypeValue string
-	if len(p.EventType) > 0 {
-		eventTypeValue = string(p.EventType[0])
-	} else {
+	if len(p.EventType) == 0 {
 		return fmt.Errorf("event_type cannot be empty")
 	}
+	eventTypeValue := string(p.EventType[0])
 
-	_, err = tx.ExecContext(
-		ctx,
-		q,
+	_, err = tx.ExecContext(ctx, q,
 		p.UserID,
 		p.EntityID,
 		p.EntityType,
@@ -203,18 +180,26 @@ func (r *repository) CreatePreference(ctx context.Context, p Preference, tx *sql
 	return nil
 }
 
-// DeletePreference implements [Repository].
-func (r *repository) DeletePreference(ctx context.Context, userID uuid.UUID, tx *sqlx.Tx) error {
+func (r *repository) DeleteAllPreferences(ctx context.Context, userID, entityID uuid.UUID, tx *sqlx.Tx) error {
 	const q = `
 		UPDATE tbl_notification_preferences
 		SET deleted_at = NOW()
-		WHERE user_id = $1 AND deleted_at IS NULL
+		WHERE user_id = $1 AND entity_id = $2 AND deleted_at IS NULL
 	`
-	_, err := tx.ExecContext(ctx, q, userID)
+	_, err := tx.ExecContext(ctx, q, userID, entityID)
 	return err
 }
 
-// GetPreferencesByUserID implements [Repository].
+func (r *repository) DeletePreferenceByEventType(ctx context.Context, userID, entityID uuid.UUID, eventType util.NotificationEventType, tx *sqlx.Tx) error {
+	const q = `
+		UPDATE tbl_notification_preferences
+		SET deleted_at = NOW()
+		WHERE user_id = $1 AND entity_id = $2 AND event_type = $3 AND deleted_at IS NULL
+	`
+	_, err := tx.ExecContext(ctx, q, userID, entityID, string(eventType))
+	return err
+}
+
 func (r *repository) GetPreferencesByUserID(ctx context.Context, userID uuid.UUID) (Preference, error) {
 	const q = `
 		SELECT 
@@ -224,40 +209,22 @@ func (r *repository) GetPreferencesByUserID(ctx context.Context, userID uuid.UUI
 			entity_type,
 			event_type,
 			channels,
-			created_at,	
+			created_at,
 			updated_at
 		FROM tbl_notification_preferences
 		WHERE user_id = $1 AND deleted_at IS NULL
+		LIMIT 1
 	`
-	var p Preference
 
-	var channelsRaw []byte
-	var eventTypeValue string // Read single enum value from DB
-
-	err := r.db.QueryRowContext(ctx, q, userID).Scan(
-		&p.ID,
-		&p.UserID,
-		&p.EntityID,
-		&p.EntityType,
-		&eventTypeValue, // Scan single value
-		&channelsRaw,
-		&p.CreatedAt,
-		&p.UpdatedAt,
-	)
+	rows, err := r.db.QueryxContext(ctx, q, userID)
 	if err != nil {
 		return Preference{}, err
 	}
+	defer rows.Close()
 
-	// Convert single enum value to array for model
-	p.EventType = []util.NotificationEventType{util.NotificationEventType(eventTypeValue)}
-
-	//  convert JSONB → map
-	if len(channelsRaw) > 0 {
-		if err := json.Unmarshal(channelsRaw, &p.Channels); err != nil {
-			return Preference{}, err
-		}
-	} else {
-		p.Channels = make([]util.Channel, 0)
+	if !rows.Next() {
+		return Preference{}, ErrPreferenceNotFound
 	}
-	return p, nil
+
+	return scanPreference(rows)
 }
