@@ -8812,6 +8812,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "integer",
+                        "description": "Number of comparative periods to include (0-4)",
+                        "name": "comparisons",
+                        "in": "query"
+                    },
+                    {
                         "type": "string",
                         "description": "Export Type: PDF | Excel",
                         "name": "export_type",
@@ -13119,9 +13125,6 @@ const docTemplate = `{
                 },
                 "net_amount": {
                     "type": "number"
-                },
-                "notes": {
-                    "type": "string"
                 }
             }
         },
@@ -13216,9 +13219,6 @@ const docTemplate = `{
                 "net_amount": {
                     "description": "NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.",
                     "type": "number"
-                },
-                "notes": {
-                    "type": "string"
                 }
             }
         },
@@ -13492,9 +13492,6 @@ const docTemplate = `{
                     }
                 },
                 "name": {
-                    "type": "string"
-                },
-                "notes": {
                     "type": "string"
                 },
                 "tax_type": {

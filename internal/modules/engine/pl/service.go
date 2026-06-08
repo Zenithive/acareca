@@ -29,7 +29,7 @@ type Service interface {
 	GetByResponsibility(ctx context.Context, f *PLFilter) ([]RsPLResponsibility, error)
 	GetFYSummary(ctx context.Context, f *PLFilter) ([]RsPLFYSummary, error)
 	GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportFilter, role string, targetNotifIDs []uuid.UUID, userID uuid.UUID) (*RsReport, error)
-	ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error)
+	ExportPLReport(ctx context.Context, data []*RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error)
 }
 
 type service struct {
@@ -359,7 +359,7 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error) {
+func (s *service) ExportPLReport(ctx context.Context, data []*RsReport, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*excelize.File, error) {
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -368,16 +368,13 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 
 	var entityName string
 	var practitionerABN string
-	targetID := ""
-	if filterPractitionerID != "" {
-		targetID = filterPractitionerID
-	} else if role == util.RolePractitioner {
+	targetID := filterPractitionerID
+	if targetID == "" && role == util.RolePractitioner {
 		targetID = actorID.String()
 	}
 
 	if targetID != "" {
-		prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
-		if err == nil {
+		if prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID)); err == nil {
 			if prac.EntityName != nil {
 				entityName = *prac.EntityName
 			} else {
@@ -388,32 +385,28 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 			}
 		}
 	} else {
-		if role == util.RolePractitioner {
-			prac, err := s.practitionerSvc.GetPractitioner(ctx, uuid.MustParse(targetID))
-			entityName = fullName
-			if err == nil {
-				if prac.ABN != nil {
-					practitionerABN = *prac.ABN
-				}
+		if acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String()); err == nil {
+			if acc.EntityName != nil {
+				entityName = *acc.EntityName
+			} else {
+				entityName = fullName
 			}
-		} else {
-			acc, err := s.accountantRepo.GetAccountantByUserID(ctx, userID.String())
-			if err == nil {
-				if acc.EntityName != nil {
-					entityName = *acc.EntityName
-				} else {
-					entityName = fullName
-				}
-				if acc.ABN != nil {
-					practitionerABN = *acc.ABN
-				}
+			if acc.ABN != nil {
+				practitionerABN = *acc.ABN
 			}
 		}
 	}
 
 	periodText := ""
-	if data.ReportMetadata.DateFrom != "" && data.ReportMetadata.DateUntil != "" {
-		periodText = fmt.Sprintf("%s to %s", formatDateStr(data.ReportMetadata.DateFrom), formatDateStr(data.ReportMetadata.DateUntil))
+	baseline := data[0]
+	if len(data) > 1 {
+		if baseline.ReportMetadata.DateUntil != "" {
+			periodText = fmt.Sprintf("As of %s (with %d Comparative Periods)", formatDateStr(baseline.ReportMetadata.DateUntil), len(data))
+		}
+	} else {
+		if baseline.ReportMetadata.DateFrom != "" && baseline.ReportMetadata.DateUntil != "" {
+			periodText = fmt.Sprintf("%s to %s", formatDateStr(baseline.ReportMetadata.DateFrom), formatDateStr(baseline.ReportMetadata.DateUntil))
+		}
 	}
 
 	config := export.ExportConfig{
@@ -425,95 +418,54 @@ func (s *service) ExportPLReport(ctx context.Context, data *RsReport, exportType
 		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	exportData := &plexport.RsReport{
-		ReportMetadata: plexport.RsReportMetadata{
-			DateFrom:         data.ReportMetadata.DateFrom,
-			DateUntil:        data.ReportMetadata.DateUntil,
-			OverallNetProfit: data.ReportMetadata.OverallNetProfit,
-		},
-		Income: plexport.RsReportGroup{
-			GroupTotal: data.Income.GroupTotal,
-			Accounts:   make([]plexport.RsReportAccount, len(data.Income.Accounts)),
-		},
-		CostOfSales: plexport.RsReportGroup{
-			GroupTotal: data.CostOfSales.GroupTotal,
-			Accounts:   make([]plexport.RsReportAccount, len(data.CostOfSales.Accounts)),
-		},
-		GrossProfit: data.GrossProfit,
-		OtherCosts: plexport.RsReportGroup{
-			GroupTotal: data.OtherCosts.GroupTotal,
-			Accounts:   make([]plexport.RsReportAccount, len(data.OtherCosts.Accounts)),
-		},
-		NetProfit: data.NetProfit,
-	}
-
-	for i, acc := range data.Income.Accounts {
-		exportData.Income.Accounts[i] = plexport.RsReportAccount{
-			CoaID:      acc.CoaID,
-			CoaName:    acc.CoaName,
-			TotalValue: acc.TotalValue,
+	exportSlice := make([]*plexport.RsReport, len(data))
+	for i, d := range data {
+		exportSlice[i] = &plexport.RsReport{
+			ReportMetadata: plexport.RsReportMetadata{
+				DateFrom:         d.ReportMetadata.DateFrom,
+				DateUntil:        d.ReportMetadata.DateUntil,
+				OverallNetProfit: d.ReportMetadata.OverallNetProfit,
+			},
+			Income: plexport.RsReportGroup{
+				GroupTotal: d.Income.GroupTotal,
+				Accounts:   make([]plexport.RsReportAccount, len(d.Income.Accounts)),
+			},
+			CostOfSales: plexport.RsReportGroup{
+				GroupTotal: d.CostOfSales.GroupTotal,
+				Accounts:   make([]plexport.RsReportAccount, len(d.CostOfSales.Accounts)),
+			},
+			GrossProfit: d.GrossProfit,
+			OtherCosts: plexport.RsReportGroup{
+				GroupTotal: d.OtherCosts.GroupTotal,
+				Accounts:   make([]plexport.RsReportAccount, len(d.OtherCosts.Accounts)),
+			},
+			NetProfit: d.NetProfit,
 		}
-	}
-	for i, acc := range data.CostOfSales.Accounts {
-		exportData.CostOfSales.Accounts[i] = plexport.RsReportAccount{
-			CoaID:      acc.CoaID,
-			CoaName:    acc.CoaName,
-			TotalValue: acc.TotalValue,
+
+		for j, acc := range d.Income.Accounts {
+			exportSlice[i].Income.Accounts[j] = plexport.RsReportAccount{
+				CoaID:      acc.CoaID,
+				CoaName:    acc.CoaName,
+				TotalValue: acc.TotalValue,
+			}
 		}
-	}
-	for i, acc := range data.OtherCosts.Accounts {
-		exportData.OtherCosts.Accounts[i] = plexport.RsReportAccount{
-			CoaID:      acc.CoaID,
-			CoaName:    acc.CoaName,
-			TotalValue: acc.TotalValue,
+		for j, acc := range d.CostOfSales.Accounts {
+			exportSlice[i].CostOfSales.Accounts[j] = plexport.RsReportAccount{
+				CoaID:      acc.CoaID,
+				CoaName:    acc.CoaName,
+				TotalValue: acc.TotalValue,
+			}
 		}
-	}
-
-	f, err := plexport.GenerateExcelReport(exportData, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate profit and loss excel: %w", err)
-	}
-
-	finalNotifIDs := notifIDs
-	if filterPractitionerID != "" {
-		finalNotifIDs = []uuid.UUID{uuid.MustParse(filterPractitionerID)}
-	}
-
-	userIDStr := userID.String()
-	parsedActorID := actorID.String()
-
-	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
-		PracticeID: nil,
-		UserID:     &userIDStr,
-		Action:     auditctx.ActionPLReportExported,
-		Module:     auditctx.ModuleReport,
-		EntityType: lo.ToPtr(auditctx.EntityPLReport),
-		EntityID:   &parsedActorID,
-		AfterState: map[string]interface{}{
-			"report_type": "Profit and Loss Report",
-			"export_type": exportType,
-		},
-	})
-
-	if role == util.RoleAccountant && len(finalNotifIDs) > 0 {
-		for _, pID := range finalNotifIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "pl_report.exported",
-				EntityType:     "REPORT",
-				Description:    fmt.Sprintf("Accountant %s exported Profit and Loss Report", fullName),
-				CreatedAt:      time.Now(),
-				Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report", "export_type": exportType},
-			})
+		for j, acc := range d.OtherCosts.Accounts {
+			exportSlice[i].OtherCosts.Accounts[j] = plexport.RsReportAccount{
+				CoaID:      acc.CoaID,
+				CoaName:    acc.CoaName,
+				TotalValue: acc.TotalValue,
+			}
 		}
 	}
 
-	return f, nil
+	return plexport.GenerateExcelReport(exportSlice, config)
 }
 
 func formatDateStr(dateStr string) string {

@@ -1748,8 +1748,6 @@ definitions:
         type: number
       net_amount:
         type: number
-      notes:
-        type: string
     type: object
   entry.RqFormEntry:
     properties:
@@ -1814,8 +1812,6 @@ definitions:
         description: NetAmount, GstAmount, GrossAmount are used when a GST breakdown
           exists.
         type: number
-      notes:
-        type: string
     type: object
   equity.EquityMovements:
     properties:
@@ -1998,8 +1994,6 @@ definitions:
           type: string
         type: array
       name:
-        type: string
-      notes:
         type: string
       tax_type:
         type: string
@@ -8711,6 +8705,10 @@ paths:
         in: query
         name: form_id
         type: string
+      - description: Number of comparative periods to include (0-4)
+        in: query
+        name: comparisons
+        type: integer
       - description: 'Export Type: PDF | Excel'
         in: query
         name: export_type
