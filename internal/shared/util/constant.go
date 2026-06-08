@@ -39,6 +39,9 @@ const (
 	EventDocumentUploaded        EventType = "document.uploaded"
 	EventTransactionReportExport EventType = "transaction.event.export"
 
+	//Pratitioner
+	EventPractitionerTransactionCreated EventType = "pratitioner.transaction.created"
+
 	EventAuditLogCreated EventType = "audit_log.created"
 	EventSystemError     EventType = "system.error"
 	EventSystemWarning   EventType = "system.warning"
@@ -95,8 +98,9 @@ type NotificationEventType string
 
 const (
 	// Shared (practitioner + accountant)
-	EventNewTransaction          NotificationEventType = "new.transaction"
-	EventAccountantActivityAlert NotificationEventType = "accountant.activity.alert"
+	EventNewTransaction            NotificationEventType = "new.transaction"
+	EventAccountantActivityAlert   NotificationEventType = "accountant.activity.alert"
+	EventPractitionerActivityAlert NotificationEventType = "practitioner.activity.alert"
 
 	// Admin-specific notification preference categories
 	EventSystemActivityAlert   NotificationEventType = "system.activity.alert"   // general audit log activity

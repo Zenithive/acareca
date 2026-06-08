@@ -376,6 +376,8 @@ func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventT
 		return EventNewTransaction
 	case EventTransactionReportExport, EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
 		return EventAccountantActivityAlert
+	case EventPractitionerTransactionCreated:
+		return EventPractitionerActivityAlert
 	case EventSystemError:
 		return EventSystemErrorAlert
 	case EventSystemWarning:
