@@ -76,7 +76,7 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, notes, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
@@ -193,7 +193,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, notes, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage , description, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
@@ -296,7 +296,7 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 			GstAmount:          row.GstAmount,
 			GrossAmount:        row.GrossAmount,
 			BusinessPercentage: row.BusinessPercentage,
-			Notes:              row.Notes,
+			Notes:              row.Description,
 			CreatedAt:          row.CreatedAt,
 			UpdatedAt:          row.UpdatedAt,
 			Date:               row.Date,
@@ -359,11 +359,11 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, e *FormEntry, valu
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, notes)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING created_at, updated_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date, v.BusinessPercentage, v.Notes).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date, v.BusinessPercentage).
 			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("create entry value tx: %w", err)
 		}
@@ -402,11 +402,11 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, e *FormEntry, valu
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, notes, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL)
+            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL)
             RETURNING created_at
         `
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date, v.BusinessPercentage, v.Notes).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date, v.BusinessPercentage).
 			Scan(&v.CreatedAt); err != nil {
 			return fmt.Errorf("insert entry value tx: %w", err)
 		}
@@ -693,7 +693,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 					ELSE ABS(COALESCE(v.gross_amount, 0))
 				END::numeric, 2)::float8                                   AS gross_amount,
 			100.00::float8                                                 AS business_percentage,
-			COALESCE(v.description, '-')                                   AS notes,
+			COALESCE(v.description, '-')                                   AS description,
 			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
 		FROM vw_double_entry_line_items v
 		LEFT JOIN tbl_form f        ON f.id = v.form_id
@@ -731,7 +731,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		GstAmount          float64    `db:"gst_amount"`
 		GrossAmount        float64    `db:"gross_amount"`
 		BusinessPercentage float64    `db:"business_percentage"`
-		Notes              string     `db:"notes"`
+		Notes              string     `db:"description"`
 		CreatedAt          string     `db:"created_at"`
 		UpdatedAt          *string    `db:"updated_at"`
 	}
@@ -753,7 +753,6 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		gstVal := row.GstAmount
 		grossVal := row.GrossAmount
 		bizPct := row.BusinessPercentage
-		notesVal := row.Notes
 
 		detail := &RsCoaEntryDetail{
 			ID:                 row.ID.String(),
@@ -769,7 +768,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			GstAmount:          &gstVal,
 			GrossAmount:        &grossVal,
 			BusinessPercentage: &bizPct,
-			Notes:              &notesVal,
+			Notes:              &row.Notes,
 			CreatedAt:          row.CreatedAt,
 			UpdatedAt:          row.UpdatedAt,
 		}
@@ -984,9 +983,9 @@ func (r *Repository) InsertBalancingEntryValue(ctx context.Context, tx *sqlx.Tx,
 
 // InsertEntryValue inserts a new active entry value row for a field.
 func (r *Repository) InsertEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error {
-	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.NetAmount, ev.GstAmount, ev.GrossAmount, ev.Description, ev.Date, ev.BusinessPercentage, ev.Notes)
+	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date, business_percentage)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.NetAmount, ev.GstAmount, ev.GrossAmount, ev.Description, ev.Date, ev.BusinessPercentage)
 	if err != nil {
 		return fmt.Errorf("insert entry value: %w", err)
 	}

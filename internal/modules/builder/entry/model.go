@@ -22,7 +22,6 @@ type RqEntryValue struct {
 	GrossAmount        *float64 `json:"gross_amount,omitempty"`
 	Description        *string  `json:"description,omitempty"`
 	BusinessPercentage *float64 `json:"business_percentage,omitempty" validate:"omitempty,min=0,max=100"`
-	Notes              *string  `json:"notes,omitempty"`
 }
 
 // Validate ensures either form_field_id OR coa_id is provided (not both, not neither)
@@ -83,7 +82,6 @@ type FormEntryValue struct {
 	Description        *string    `db:"description"`
 	Date               *string    `db:"date"`
 	BusinessPercentage *float64   `db:"business_percentage"`
-	Notes              *string    `db:"notes"`
 	CreatedAt          string     `db:"created_at"`
 	UpdatedAt          *string    `db:"updated_at"`
 }
@@ -107,9 +105,8 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 		ev := RsEntryValue{
 			FormFieldID:        v.FormFieldID,
 			CoaID:              v.CoaID,
-			Description:        v.Description,
 			BusinessPercentage: v.BusinessPercentage,
-			Notes:              v.Notes,
+			Notes:              v.Description,
 		}
 		if v.GstAmount != nil {
 			ev.NetAmount = v.NetAmount
@@ -151,12 +148,12 @@ type RsEntryDocument struct {
 }
 
 type RsEntryValue struct {
-	FormFieldID        *uuid.UUID `json:"form_field_id,omitempty"`
-	CoaID              *uuid.UUID `json:"coa_id,omitempty"`
-	FieldKey           string     `json:"field_key,omitempty"`
-	Label              string     `json:"label,omitempty"`
-	IsComputed         bool       `json:"is_computed"`
-	Description        *string    `json:"description,omitempty"`
+	FormFieldID *uuid.UUID `json:"form_field_id,omitempty"`
+	CoaID       *uuid.UUID `json:"coa_id,omitempty"`
+	FieldKey    string     `json:"field_key,omitempty"`
+	Label       string     `json:"label,omitempty"`
+	IsComputed  bool       `json:"is_computed"`
+	Description *string    `json:"description,omitempty"`
 	// Amount is used when there is no GST (net == gross).
 	Amount *float64 `json:"amount,omitempty"`
 	// NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.
@@ -164,7 +161,7 @@ type RsEntryValue struct {
 	GstAmount          *float64 `json:"gst_amount,omitempty"`
 	GrossAmount        *float64 `json:"gross_amount,omitempty"`
 	BusinessPercentage *float64 `json:"business_percentage,omitempty"`
-	Notes              *string  `json:"notes,omitempty"`
+	Notes              *string  `json:"description,omitempty"`
 }
 
 type Filter struct {
@@ -287,11 +284,11 @@ type transactionFlatRow struct {
 	GstAmount          *float64  `db:"gst_amount"`
 	GrossAmount        *float64  `db:"gross_amount"`
 	BusinessPercentage *float64  `db:"business_percentage"`
-	Notes              *string   `db:"notes"`
 	CreatedAt          string    `db:"created_at"`
 	UpdatedAt          *string   `db:"updated_at"`
 	Date               *string   `db:"date"`
 	IsExpense          bool      `db:"is_expense"`
+	Description        *string   `db:"description"`
 }
 
 type RsFieldSummary struct {
@@ -338,10 +335,10 @@ type RsCoaEntryDetail struct {
 	GstAmount          *float64 `json:"gst_amount"`
 	GrossAmount        *float64 `json:"gross_amount"`
 	BusinessPercentage *float64 `json:"business_percentage"`
-	Notes              *string  `json:"notes"`
 	CreatedAt          string   `json:"created_at"`
 	UpdatedAt          *string  `json:"updated_at,omitempty"`
 	Date               *string  `json:"date,omitempty"`
+	Notes              *string  `json:"notes,omitempty"`
 }
 
 type RsExportData struct {
