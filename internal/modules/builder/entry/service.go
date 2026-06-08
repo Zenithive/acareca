@@ -503,7 +503,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				GrossAmount:        &inputAmount,
 				Description:        v.Description,
 				BusinessPercentage: v.BusinessPercentage,
-				Notes:              v.Notes,
 			})
 			continue
 		}
@@ -558,7 +557,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				GrossAmount:        &roundedGross,
 				Description:        v.Description,
 				BusinessPercentage: v.BusinessPercentage,
-				Notes:              v.Notes,
 			})
 			continue
 		}
@@ -577,7 +575,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				GrossAmount:        &grossTotal,
 				Description:        v.Description,
 				BusinessPercentage: v.BusinessPercentage,
-				Notes:              v.Notes,
 			})
 			continue
 		}
@@ -650,7 +647,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			GrossAmount:        &grossTotal,
 			Description:        v.Description,
 			BusinessPercentage: v.BusinessPercentage,
-			Notes:              v.Notes,
 		})
 	}
 
@@ -802,8 +798,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 					NetAmount:          &netBase,
 					GstAmount:          gstAmount,
 					GrossAmount:        &grossTotal,
-					BusinessPercentage: nil, // Formulas don't have business percentage
-					Notes:              nil, // Formulas don't have notes
+					BusinessPercentage: nil,
 				})
 			}
 		}
@@ -863,10 +858,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				GstAmount:          nil,
 				GrossAmount:        &counterBalancingAmount,
 				BusinessPercentage: nil, // System balancing entries don't have business percentage
-				Notes:              nil, // System balancing entries don't have notes
 			})
 		}
-
 		var finalLedgerBalance float64
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
@@ -987,6 +980,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 // roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
 // This ensures all monetary amounts are precise to 2 decimal places
+
 func (s *Service) roundValue(val float64) float64 {
 	return math.Round(val*100) / 100
 }

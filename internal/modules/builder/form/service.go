@@ -930,7 +930,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				GstAmount:          &gstAmount,
 				GrossAmount:        &grossAmount,
 				Description:        item.Description,
-				Notes:              item.Notes,
 				BusinessPercentage: &localBusinessUse,
 				Date:               &itemDate,
 			})
@@ -1235,18 +1234,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 
 			// Preserve notes if not provided in update
-			var notesToUse *string
-			if item.Notes != nil {
-				notesToUse = item.Notes
-			} else {
-				// Find existing notes
-				for _, ev := range existingValues {
-					if ev.FormFieldID != nil && *ev.FormFieldID == item.ID && ev.UpdatedAt == nil {
-						notesToUse = ev.Notes
-						break
-					}
-				}
-			}
 
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
 				ID:                 uuid.New(),
@@ -1256,7 +1243,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:          &gstAmount,
 				GrossAmount:        &grossAmount,
 				Description:        description,
-				Notes:              notesToUse,
 				BusinessPercentage: &businessUse,
 				Date:               dateToUse,
 			}); err != nil {
@@ -1337,7 +1323,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				GstAmount:          &gstAmount,
 				GrossAmount:        &grossAmount,
 				Description:        item.Description,
-				Notes:              item.Notes,
 				BusinessPercentage: &item.BusinessUse,
 				Date:               &item.Date,
 			}); err != nil {
@@ -1470,7 +1455,6 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 		// Find matching entry value
 		var netAmount, gstAmount, grossAmount float64
 		var description *string
-		var notes *string
 		var itemDate string
 		for _, ev := range entryValues {
 			if ev.FormFieldID != nil && *ev.FormFieldID == f.ID && ev.UpdatedAt == nil {
@@ -1484,7 +1468,6 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 					grossAmount = *ev.GrossAmount
 				}
 				description = ev.Description
-				notes = ev.Notes
 				if ev.Date != nil && *ev.Date != "" {
 					// Use item-level date (primary source for expense entries)
 					itemDate = *ev.Date
@@ -1516,7 +1499,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			GrossAmount: grossAmount,
 			Date:        itemDate,
 			Description: description,
-			Notes:       notes,
+			Notes:       description,
 		}
 
 		response.Items = append(response.Items, item)

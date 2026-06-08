@@ -133,7 +133,6 @@ type ExpenseItem struct {
 	Amount      float64   `json:"amount" validate:"required"`
 	Date        string    `json:"date" validate:"required"`
 	Description *string   `json:"description,omitempty"`
-	Notes       *string   `json:"notes,omitempty"`
 	TaxType     *string   `json:"tax_type" validate:"omitempty"`
 	DocumentIDs []string  `json:"document_ids"`
 }
