@@ -1732,6 +1732,10 @@ definitions:
       amount:
         minimum: 0
         type: number
+      business_percentage:
+        maximum: 100
+        minimum: 0
+        type: number
       coa_id:
         type: string
       description:
@@ -1785,6 +1789,8 @@ definitions:
     properties:
       amount:
         description: Amount is used when there is no GST (net == gross).
+        type: number
+      business_percentage:
         type: number
       coa_id:
         type: string
@@ -2778,7 +2784,6 @@ definitions:
         type: array
     required:
     - channels
-    - event_type
     type: object
   response.RsBase:
     properties:
@@ -2981,11 +2986,37 @@ definitions:
     - new.transaction
     - accountant.activity.alert
     - system.activity.alert
+    - system.error.alert
+    - system.warning.alert
+    - billing.alert
+    - subscription.alert
+    - user.registration.alert
     type: string
+    x-enum-comments:
+      EventBillingAlert: payment success/failure
+      EventSubscriptionAlert: subscription created/updated/deleted
+      EventSystemActivityAlert: general audit log activity
+      EventSystemErrorAlert: system.error only (critical)
+      EventSystemWarningAlert: system.warning only
+      EventUserRegistrationAlert: new practitioner registered
+    x-enum-descriptions:
+    - ""
+    - ""
+    - general audit log activity
+    - system.error only (critical)
+    - system.warning only
+    - payment success/failure
+    - subscription created/updated/deleted
+    - new practitioner registered
     x-enum-varnames:
     - EventNewTransaction
     - EventAccountantActivityAlert
     - EventSystemActivityAlert
+    - EventSystemErrorAlert
+    - EventSystemWarningAlert
+    - EventBillingAlert
+    - EventSubscriptionAlert
+    - EventUserRegistrationAlert
   util.RsList:
     properties:
       items: {}
@@ -4922,6 +4953,14 @@ paths:
         in: query
         name: end_date
         type: string
+      - description: Anchor Financial Year snapshot UUID
+        in: query
+        name: financial_year_id
+        type: string
+      - description: Number of historical years to compare back (0 to 4)
+        in: query
+        name: comparisons
+        type: integer
       - description: 'Export Type: pdf | excel'
         in: query
         name: export_type
@@ -8448,8 +8487,9 @@ paths:
       tags:
       - notification
   /notification/preferences:
-    get:
-      description: Returns the current channel preferences for the authenticated user.
+    delete:
+      description: Deletes all notification preferences for the authenticated user
+        on their current entity.
       responses:
         "200":
           description: OK
@@ -8459,8 +8499,24 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete all notification preferences
+      tags:
+      - notification
+    get:
+      description: Returns the current channel preferences for the authenticated user.
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8473,7 +8529,9 @@ paths:
       tags:
       - notification
     put:
-      description: Updates or creates a preference for a specific event type.
+      description: Updates or creates preferences. event_type is always required.
+        If channels is empty, the specified event types are deleted. If channels is
+        provided, preferences are upserted.
       parameters:
       - description: Preference Update
         in: body
@@ -8492,10 +8550,6 @@ paths:
             $ref: '#/definitions/response.RsError'
         "401":
           description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8651,6 +8705,10 @@ paths:
         in: query
         name: form_id
         type: string
+      - description: Number of comparative periods to include (0-4)
+        in: query
+        name: comparisons
+        type: integer
       - description: 'Export Type: PDF | Excel'
         in: query
         name: export_type

@@ -247,6 +247,7 @@ func (h *handler) GetReport(c *gin.Context) {
 // @Param        coa_id       query    string  false  "Filter by COA UUID"
 // @Param        tax_type_id  query    string  false  "Filter by tax type"
 // @Param        form_id      query    string  false  "Filter by form UUID"
+// @Param        comparisons     query    int     false  "Number of comparative periods to include (0-4)"
 // @Param        export_type 	   query    string  true   "Export Type: PDF | Excel"
 // @Success      200          {file}   binary  "Profit_and_Loss_Report.xlsx"
 // @Failure      400          {object} response.RsError "Bad Request"
@@ -284,13 +285,47 @@ func (h *handler) ExportReport(c *gin.Context) {
 		}
 	}
 
-	reportData, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, notifIDs, userID)
+	numComparisons := 0
+	if f.Comparisons != nil {
+		numComparisons = *f.Comparisons
+		if numComparisons > 4 {
+			numComparisons = 4
+		}
+		if numComparisons < 0 {
+			numComparisons = 0
+		}
+	}
+
+	baselineReport, err := h.svc.GetReport(c.Request.Context(), *actorID, &f, role, notifIDs, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDParam)
+	allYearsPLData := []*RsReport{baselineReport}
+
+	if numComparisons > 1 && f.DateFrom != nil && *f.DateFrom != "" && f.DateUntil != nil && *f.DateUntil != "" {
+		startBase, errStart := time.Parse("2006-01-02", *f.DateFrom)
+		endBase, errEnd := time.Parse("2006-01-02", *f.DateUntil)
+
+		if errStart == nil && errEnd == nil {
+			for i := 1; i <= numComparisons-1; i++ {
+				pastFrom := startBase.AddDate(-i, 0, 0).Format("2006-01-02")
+				pastUntil := endBase.AddDate(-i, 0, 0).Format("2006-01-02")
+
+				historicalFilter := f
+				historicalFilter.DateFrom = &pastFrom
+				historicalFilter.DateUntil = &pastUntil
+
+				pastReport, err := h.svc.GetReport(c.Request.Context(), *actorID, &historicalFilter, role, notifIDs, userID)
+				if err == nil && pastReport != nil {
+					allYearsPLData = append(allYearsPLData, pastReport)
+				}
+			}
+		}
+	}
+
+	excelFile, err := h.svc.ExportPLReport(c.Request.Context(), allYearsPLData, exportType, *actorID, role, userID, notifIDs, pracIDParam)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

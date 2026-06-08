@@ -30,17 +30,58 @@ type RsBalanceSheet struct {
 	TotalLiabilitiesAndEquity float64     `json:"total_liabilities_and_equity"`
 }
 
+// helper function to turn an end-date into a "Financial Year YYYY-YYYY" string
+func getFinancialYearHeader(dateStr string) string {
+	var t time.Time
+	var err error
+	t, err = time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		t, err = time.Parse("02-01-2006", dateStr)
+	}
+	if err != nil {
+		return dateStr
+	}
+
+	var startYear, endYear int
+	if t.Month() >= 7 {
+		startYear = t.Year()
+		endYear = t.Year() + 1
+	} else {
+		startYear = t.Year() - 1
+		endYear = t.Year()
+	}
+
+	return fmt.Sprintf("Financial Year %d-%d", startYear, endYear)
+}
+
 // GenerateExcelReport generates an Excel file for balance sheet report
-func GenerateExcelReport(data *RsBalanceSheet, config export.ExportConfig) (*excelize.File, error) {
+func GenerateExcelReport(data []*RsBalanceSheet, config export.ExportConfig) (*excelize.File, error) {
 	f := excelize.NewFile()
 	sheet := "Balance Sheet"
 	f.NewSheet(sheet)
 	f.DeleteSheet("Sheet1")
 
-	// Apply common styles
 	styles := export.ApplyCommonStyles(f)
 
-	// Create helper function for rich text metadata
+	centerHeaderStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Family: "Calibri", Size: 11, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"1F4E78"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+
+	if len(data) == 0 {
+		return f, fmt.Errorf("no report datasets provided")
+	}
+	baseline := data[0]
+	numYears := len(data)
+
+	getColLetter := func(colIndex int) string {
+		letter, _ := excelize.ColumnNumberToName(colIndex)
+		return letter
+	}
+
+	lastColLetter := getColLetter(numYears + 1)
+
 	setRichMeta := func(cell string, label string, value string) {
 		f.SetCellRichText(sheet, cell, []excelize.RichTextRun{
 			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
@@ -50,40 +91,79 @@ func GenerateExcelReport(data *RsBalanceSheet, config export.ExportConfig) (*exc
 
 	// Set title
 	f.SetCellValue(sheet, "A1", "Balance Sheet")
-	f.MergeCell(sheet, "A1", "B1")
-	f.SetCellStyle(sheet, "A1", "B1", styles.HeaderBlue)
+	f.MergeCell(sheet, "A1", lastColLetter+"1")
+	f.SetCellStyle(sheet, "A1", lastColLetter+"1", styles.HeaderBlue)
 
-	// Set metadata rows
-	f.MergeCell(sheet, "A2", "B2")
 	setRichMeta("A2", "Exported by:", config.EntityName)
+	f.MergeCell(sheet, "A2", lastColLetter+"2")
 
-	f.MergeCell(sheet, "A3", "B3")
 	if config.EntityABN != "" {
 		setRichMeta("A3", "ABN:", config.EntityABN)
+		f.MergeCell(sheet, "A3", lastColLetter+"3")
 	}
 
 	var dateText string
-	if data.EndDate != "" {
-		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	if numYears > 1 {
+		if baseline.EndDate != "" {
+			dateText = fmt.Sprintf("As of %s (with %d Comparative Periods)", baseline.EndDate, numYears)
+		}
+	} else {
+		if baseline.EndDate != "" {
+			dateText = fmt.Sprintf("As of %s", baseline.EndDate)
+		}
 	}
 
-	f.MergeCell(sheet, "A4", "B4")
 	setRichMeta("A4", "Period:", dateText)
+	f.MergeCell(sheet, "A4", lastColLetter+"4")
 
 	currentTimeStr := time.Now().Format("02/01/2006, 3:04:05 pm")
-	f.MergeCell(sheet, "A5", "B5")
 	setRichMeta("A5", "Generated:", currentTimeStr)
-	f.MergeCell(sheet, "A6", "B6")
+	f.MergeCell(sheet, "A5", lastColLetter+"5")
+	f.MergeCell(sheet, "A6", lastColLetter+"6")
 
-	currentRow := 7
+	f.SetCellValue(sheet, "A7", "Account")
+	f.SetCellStyle(sheet, "A7", "A7", centerHeaderStyle)
+	for yIdx, yr := range data {
+		colLetter := getColLetter(yIdx + 2)
+		fyLabel := getFinancialYearHeader(yr.EndDate)
+		f.SetCellValue(sheet, fmt.Sprintf("%s7", colLetter), fyLabel)
+		f.SetCellStyle(sheet, fmt.Sprintf("%s7", colLetter), fmt.Sprintf("%s7", colLetter), centerHeaderStyle)
+	}
 
-	// Render a balance sheet section (Assets, Liabilities, or Equity)
-	renderBSSection := func(title string, accounts []RsAccount, total float64) string {
+	currentRow := 8
+
+	renderBSSection := func(title string, sectionKey string) {
+		// Render section category separator row title
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), title)
 		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.SectionTitle)
 
-		if len(accounts) > 0 {
-			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(accounts))
+		type UniqueAcc struct {
+			Code int16
+			Name string
+		}
+		var uniqueAccounts []UniqueAcc
+		seen := make(map[int16]bool)
+
+		for _, yr := range data {
+			var targets []RsAccount
+			switch sectionKey {
+			case "assets":
+				targets = yr.Assets
+			case "liabilities":
+				targets = yr.Liabilities
+			case "equity":
+				targets = yr.Equity
+			}
+			for _, acc := range targets {
+				if !seen[acc.Code] {
+					seen[acc.Code] = true
+					uniqueAccounts = append(uniqueAccounts, UniqueAcc{Code: acc.Code, Name: acc.Name})
+				}
+			}
+		}
+
+		if len(uniqueAccounts) > 0 {
+			tableRange := fmt.Sprintf("A%d:A%d", currentRow, currentRow+len(uniqueAccounts))
 			tableName := strings.ReplaceAll(title, " ", "_") + fmt.Sprintf("_%d", currentRow)
 
 			showHeaders := true
@@ -97,48 +177,86 @@ func GenerateExcelReport(data *RsBalanceSheet, config export.ExportConfig) (*exc
 
 		currentRow++
 		dataStartRow := currentRow
-		for _, acc := range accounts {
-			f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), acc.Name)
+
+		for _, uAcc := range uniqueAccounts {
+			f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), uAcc.Name)
 			f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.DataLeft)
 
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), acc.Balance)
-			f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.DataGrid)
+			for yIdx, yr := range data {
+				colLetter := getColLetter(yIdx + 2)
+				var targetBal float64 = 0.0
+
+				var checkList []RsAccount
+				switch sectionKey {
+				case "assets":
+					checkList = yr.Assets
+				case "liabilities":
+					checkList = yr.Liabilities
+				case "equity":
+					checkList = yr.Equity
+				}
+
+				for _, acc := range checkList {
+					if acc.Code == uAcc.Code {
+						targetBal = acc.Balance
+						break
+					}
+				}
+
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", colLetter, currentRow), targetBal)
+				f.SetCellStyle(sheet, fmt.Sprintf("%s%d", colLetter, currentRow), fmt.Sprintf("%s%d", colLetter, currentRow), styles.DataGrid)
+			}
 			currentRow++
 		}
 		dataEndRow := currentRow - 1
 
-		totalCell := fmt.Sprintf("B%d", currentRow)
 		f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL "+title)
+		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.GroupTotal)
 
-		if len(accounts) > 0 {
-			formula := fmt.Sprintf("SUBTOTAL(109, B%d:B%d)", dataStartRow, dataEndRow)
-			f.SetCellFormula(sheet, totalCell, formula)
-		} else {
-			f.SetCellValue(sheet, totalCell, 0)
+		for yIdx := 0; yIdx < numYears; yIdx++ {
+			colLetter := getColLetter(yIdx + 2)
+			totalCell := fmt.Sprintf("%s%d", colLetter, currentRow)
+
+			if len(uniqueAccounts) > 0 {
+				formula := fmt.Sprintf("SUBTOTAL(109, %s%d:%s%d)", colLetter, dataStartRow, colLetter, dataEndRow)
+				f.SetCellFormula(sheet, totalCell, formula)
+			} else {
+				f.SetCellValue(sheet, totalCell, 0)
+			}
+			f.SetCellStyle(sheet, totalCell, totalCell, styles.GroupTotal)
 		}
-
-		f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.GroupTotal)
 		currentRow += 2
-		return totalCell
 	}
 
-	renderBSSection("ASSETS", data.Assets, data.TotalAssets)
-	renderBSSection("LIABILITIES", data.Liabilities, data.TotalLiabilities)
-	renderBSSection("EQUITY", data.Equity, data.TotalEquity)
+	renderBSSection("ASSETS", "assets")
+	renderBSSection("LIABILITIES", "liabilities")
+	renderBSSection("EQUITY", "equity")
 
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "Current Year Profit")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
-	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.CurrentYearProfit)
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.ProfitGreen)
+
+	for yIdx, yr := range data {
+		colLetter := getColLetter(yIdx + 2)
+		cellCoords := fmt.Sprintf("%s%d", colLetter, currentRow)
+		f.SetCellValue(sheet, cellCoords, yr.CurrentYearProfit)
+		f.SetCellStyle(sheet, cellCoords, cellCoords, styles.ProfitGreen)
+	}
 	currentRow += 2
 
 	f.SetCellValue(sheet, fmt.Sprintf("A%d", currentRow), "TOTAL LIABILITIES & EQUITY")
 	f.SetCellStyle(sheet, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), styles.Profit)
-	f.SetCellValue(sheet, fmt.Sprintf("B%d", currentRow), data.TotalLiabilitiesAndEquity)
-	f.SetCellStyle(sheet, fmt.Sprintf("B%d", currentRow), fmt.Sprintf("B%d", currentRow), styles.ProfitGreen)
+
+	for yIdx, yr := range data {
+		colLetter := getColLetter(yIdx + 2)
+		cellCoords := fmt.Sprintf("%s%d", colLetter, currentRow)
+		f.SetCellValue(sheet, cellCoords, yr.TotalLiabilitiesAndEquity)
+		f.SetCellStyle(sheet, cellCoords, cellCoords, styles.ProfitGreen)
+	}
 
 	f.SetColWidth(sheet, "A", "A", 45)
-	f.SetColWidth(sheet, "B", "B", 20)
+	for i := 1; i <= numYears; i++ {
+		f.SetColWidth(sheet, getColLetter(i+1), getColLetter(i+1), 30)
+	}
 
 	return f, nil
 }
