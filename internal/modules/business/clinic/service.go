@@ -11,6 +11,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
@@ -51,9 +52,10 @@ type service struct {
 	authSvc         auth.Service
 	invitationRepo  invitation.Repository
 	invitationSvc   invitation.Service
+	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, eventsSvc events.Service, notificationSvc notification.Service, authSvc auth.Service, invitationRepo invitation.Repository, invitationSvc invitation.Service) Service {
+func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, eventsSvc events.Service, notificationSvc notification.Service, authSvc auth.Service, invitationRepo invitation.Repository, invitationSvc invitation.Service, adminRepo admin.Repository) Service {
 	return &service{
 		db:              db,
 		repo:            repo,
@@ -63,10 +65,11 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 		auditSvc:        auditSvc,
 		limitsSvc:       limits.NewService(db),
 		eventsSvc:       eventsSvc,
-		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		authSvc:         authSvc,
 		invitationRepo:  invitationRepo,
 		invitationSvc:   invitationSvc,
+		adminRepo:       adminRepo,
 	}
 }
 
@@ -269,16 +272,12 @@ func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role stri
 	}
 
 	idStr := result.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionClinicCreated,
 		Module:     auditctx.ModuleClinic,
 		EntityType: lo.ToPtr(auditctx.EntityClinic),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	if err := s.notifyClinic(ctx, actorID, util.ActorType(role), util.EventClinicUpdated, "New clinic created"); err != nil {
@@ -565,16 +564,12 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 		}
 
 		idStr := id.String()
-		s.auditSvc.LogAsync(&audit.LogEntry{
-			PracticeID:  meta.PracticeID,
-			UserID:      meta.UserID,
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 			Action:      auditctx.ActionClinicDeleted,
 			Module:      auditctx.ModuleClinic,
 			EntityType:  lo.ToPtr(auditctx.EntityClinic),
 			EntityID:    &idStr,
 			BeforeState: existing,
-			IPAddress:   meta.IPAddress,
-			UserAgent:   meta.UserAgent,
 		})
 
 		return nil
@@ -786,17 +781,13 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, role stri
 	// Audit log: clinic updated (Async - for both Practitioner and Accountant)
 
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionClinicUpdated,
 		Module:      auditctx.ModuleClinic,
 		EntityType:  lo.ToPtr(auditctx.EntityClinic),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	if err := s.notifyClinic(ctx, actorID, util.ActorType(role), util.EventClinicUpdated, "Clinic updated"); err != nil {

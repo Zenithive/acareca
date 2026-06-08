@@ -199,7 +199,6 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 		}
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	beforeState, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
 	if err != nil {
 		return fmt.Errorf("get before state: %w", err)
@@ -215,17 +214,13 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 	}
 
 	fyIDStr := fyID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionLockDateUpdated,
 		Module:      auditctx.ModuleBusiness,
 		EntityType:  lo.ToPtr(auditctx.EntityFinancialSettings),
 		EntityID:    &fyIDStr,
 		BeforeState: beforeState,
 		AfterState:  afterState,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return nil

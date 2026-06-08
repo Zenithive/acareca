@@ -20,6 +20,6 @@ type Preference struct {
 }
 
 type RqUpdatePreference struct {
-	EventType []util.NotificationEventType `json:"event_type" validate:"required"`
-	Channels  []util.Channel               `json:"channels"   validate:"required"`
+	EventType []util.NotificationEventType `json:"event_type"`
+	Channels  []util.Channel               `json:"channels" validate:"required"`
 }

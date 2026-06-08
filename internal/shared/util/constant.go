@@ -41,6 +41,15 @@ const (
 	EventAuditLogCreated EventType = "audit_log.created"
 	EventSystemError     EventType = "system.error"
 	EventSystemWarning   EventType = "system.warning"
+
+	// Admin-specific event types
+	EventUserRegistered        EventType = "user.registered"
+	EventPractitionerCreated   EventType = "practitioner.created"
+	EventBillingPaymentSuccess EventType = "billing.payment_success"
+	EventBillingPaymentFailed  EventType = "billing.payment_failed"
+	EventSubscriptionCreated   EventType = "subscription.created"
+	EventSubscriptionUpdated   EventType = "subscription.updated"
+	EventSubscriptionDeleted   EventType = "subscription.deleted"
 )
 
 type EntityType string
@@ -84,7 +93,15 @@ func (c Channel) IsValid() bool {
 type NotificationEventType string
 
 const (
+	// Shared (practitioner + accountant)
 	EventNewTransaction          NotificationEventType = "new.transaction"
 	EventAccountantActivityAlert NotificationEventType = "accountant.activity.alert"
-	EventSystemActivityAlert     NotificationEventType = "system.activity.alert"
+
+	// Admin-specific notification preference categories
+	EventSystemActivityAlert   NotificationEventType = "system.activity.alert"   // general audit log activity
+	EventSystemErrorAlert      NotificationEventType = "system.error.alert"      // system.error only (critical)
+	EventSystemWarningAlert    NotificationEventType = "system.warning.alert"    // system.warning only
+	EventBillingAlert          NotificationEventType = "billing.alert"           // payment success/failure
+	EventSubscriptionAlert     NotificationEventType = "subscription.alert"      // subscription created/updated/deleted
+	EventUserRegistrationAlert NotificationEventType = "user.registration.alert" // new practitioner registered
 )

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
+	"log"
 	"strings"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
@@ -24,45 +25,24 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
 )
 
-// parseFlexibleDate handles multiple date formats
+// AuthUserInfo represents user information needed for notifications
+type AuthUserInfo struct {
+	ID        uuid.UUID
+	FirstName string
+	LastName  string
+}
 
-func parseFlexibleDate(dateStr string) (time.Time, error) {
-	if dateStr == "" {
-		return time.Time{}, errors.New("date cannot be empty")
-	}
-
-	// Trim spaces
-	dateStr = strings.TrimSpace(dateStr)
-
-	// Try different date formats
-	formats := []string{
-		"02 Jan 2006",               // "26 Apr 2026"
-		"2 Jan 2006",                // Single digit day
-		"02-01-2006",                // DD-MM-YYYY
-		"2006-01-02",                // YYYY-MM-DD (ISO format)
-		"01/02/2006",                // MM/DD/YYYY
-		"02/01/2006",                // DD/MM/YYYY
-		"January 2, 2006",           // Full month name
-		time.RFC3339,                // RFC3339
-		"2006-01-02T15:04:05Z07:00", // ISO 8601
-	}
-
-	var lastErr error
-	for _, format := range formats {
-		t, err := time.Parse(format, dateStr)
-		if err == nil {
-			return t, nil
-		}
-		lastErr = err
-	}
-
-	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
+// AuthService defines the interface for auth operations needed by form service
+type AuthService interface {
+	GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType util.ActorType) (*AuthUserInfo, error)
 }
 
 type IService interface {
@@ -95,16 +75,19 @@ type service struct {
 	invitationSvc   invitation.Service
 	practitionerSvc practitioner.IService
 	financialRepo   fy.Repository
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         AuthService
+	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository, notificationSvc notification.Service, invitationRepo invitation.Repository, authSvc AuthService, adminRepo admin.Repository) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo, notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo), invitationRepo: invitationRepo, authSvc: authSvc, adminRepo: adminRepo}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// 1. Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
 	if err != nil {
 		return nil, nil, err
@@ -158,7 +141,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			}
 		}
 		if activeVersionID == uuid.Nil {
-			// If we just created the form, we expect a version. If not found, fail the TX.
 			return fmt.Errorf("active version not found for form %s", created.ID)
 		}
 
@@ -184,11 +166,10 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		}
 		return nil
 	})
-	// If transaction failed, exit before touching 'created'
 	if err != nil {
 		return nil, nil, err
 	}
-	// --- EVERYTHING BELOW ONLY RUNS ON SUCCESS ---
+
 	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
 
 		actorUserID, err := uuid.Parse(*meta.UserID)
@@ -228,17 +209,33 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	}
 
 	idStr := created.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: created,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
+
+	// Send notification
+	if meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			eventType := util.EventFormSubmitted
+			if created.Status != "PUBLISHED" {
+				eventType = util.EventFormUpdated
+			}
+
+			if err := s.notifyForm(ctx, created.ID, actorUserID, actorType, eventType, created.Name); err != nil {
+				log.Printf("[WARN] failed to send form creation notification: %v", err)
+			}
+		}
+	}
 
 	return created, syncResult, nil
 }
@@ -340,8 +337,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			deletedMap[id] = true
 		}
 
-		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
-		// Note: If multiple fields have the same key, the last one wins (map behavior)
 		existingFields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
 		if err != nil {
 			return err
@@ -437,18 +432,29 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 
 	// Audit Logging
 	idStr := updated.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updated,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	// Send notification
+	if meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			if err := s.notifyForm(ctx, updated.ID, actorUserID, actorType, util.EventFormUpdated, updated.Name); err != nil {
+				log.Printf("[WARN] failed to send form update notification: %v", err)
+			}
+		}
+	}
 
 	return updated, syncResult, nil
 }
@@ -654,17 +660,28 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 	}
 	// Audit log: form deleted
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormDeleted,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: formDetail,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	// Send notification (form deletion is communicated as EventFormUpdated)
+	if formDetail.Method != "EXPENSE_ENTRY" && meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			if err := s.notifyForm(ctx, formID, actorUserID, actorType, util.EventFormUpdated, formDetail.Name); err != nil {
+				log.Printf("[WARN] failed to send form deletion notification: %v", err)
+			}
+		}
+	}
 
 	return nil
 }
@@ -702,18 +719,34 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 	// Audit log: Status Updated
 	meta := auditctx.GetMetadata(ctx)
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: map[string]string{"status": existing.Status},
 		AfterState:  map[string]string{"status": status},
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	// Send notification - use EventFormSubmitted if publishing, otherwise EventFormUpdated
+	if meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			eventType := util.EventFormUpdated
+			if strings.EqualFold(status, "PUBLISHED") {
+				eventType = util.EventFormSubmitted
+			}
+
+			if err := s.notifyForm(ctx, formID, actorUserID, actorType, eventType, updated.Name); err != nil {
+				log.Printf("[WARN] failed to send form status update notification: %v", err)
+			}
+		}
+	}
 
 	return updated, nil
 }
@@ -762,7 +795,6 @@ func resolveTaxRate(ctx context.Context, coaSvc coa.Service, coaDetail *coa.RsCh
 }
 
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
 	var OwnerID uuid.UUID
 
 	switch role {
@@ -770,7 +802,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		if len(rq.Items) == 0 {
 			return nil, errors.New("at least one expense item is required")
 		}
-		// We fetch the first COA to find out who the practitioner is
 		firstCoa, err := s.coaSvc.GetByIDInternal(ctx, rq.Items[0].CoaID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
@@ -783,7 +814,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	// Validate each item's date against FY and lock date
 	for idx, item := range rq.Items {
-		itemDate, err := parseFlexibleDate(item.Date)
+		itemDate, err := util.ParseFlexibleDate(item.Date)
 		if err != nil {
 			return nil, fmt.Errorf("item %d: invalid date format: %w", idx, err)
 		}
@@ -799,7 +830,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		}
 
 		if lockDateStr != nil && *lockDateStr != "" {
-			lockDate, err := parseFlexibleDate(*lockDateStr)
+			lockDate, err := util.ParseFlexibleDate(*lockDateStr)
 			if err != nil {
 				return nil, fmt.Errorf("item %d: invalid lock date format: %w", idx, err)
 			}
@@ -851,7 +882,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		var entryValues []*entry.FormEntryValue
 		var allDocIDs []uuid.UUID
-		// coaDetails indexed in parallel with rq.Items — fetched once, reused for balancing
 		coaDetails := make([]*coa.RsChartOfAccount, len(rq.Items))
 
 		for idx, item := range rq.Items {
@@ -893,14 +923,15 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 			itemDate := item.Date
 			entryValues = append(entryValues, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &itemDate,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				BusinessPercentage: &localBusinessUse,
+				Date:               &itemDate,
 			})
 
 			// Collect document IDs for the current expense item
@@ -916,54 +947,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		// Create the entry with all values first
 		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
-		}
-
-		// Rebalance: compute total and classify by COA type (already fetched above, reuse coaDetails map)
-		var totalAmount float64
-		var hasIncome, hasExpense bool
-		for i, ev := range entryValues {
-			if ev.NetAmount == nil {
-				continue
-			}
-			totalAmount += *ev.NetAmount
-			t := strings.ToLower(coaDetails[i].AccountTypeName)
-			// Credit-normal accounts (liability, equity, revenue, income) are treated the same
-			// as income for sign purposes — they reduce the balancing bank offset.
-			// This must mirror the polarity used in AssertLedgerGroupBalances.
-			if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
-				strings.Contains(t, "liability") || strings.Contains(t, "equity") {
-				hasIncome = true
-			} else {
-				hasExpense = true
-			}
-		}
-		totalAmount = math.Round(totalAmount*100) / 100
-
-		if totalAmount != 0 {
-			bankAccountID, err := s.entryRepo.GetBankAccountID(ctx, tx, OwnerID)
-			if err != nil {
-				return fmt.Errorf("failed to find Bank Account for auto-balancing: %w", err)
-			}
-
-			bankAmount := totalAmount
-			if hasExpense && !hasIncome {
-				bankAmount = -totalAmount
-			}
-
-			if err := s.entryRepo.InsertBalancingEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				CoaID:       &bankAccountID,
-				NetAmount:   &bankAmount,
-				GrossAmount: &bankAmount,
-			}); err != nil {
-				return fmt.Errorf("failed to insert auto-balancing entry: %w", err)
-			}
-		}
-
-		// Verify ledger integrity
-		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, entryID); err != nil {
-			return fmt.Errorf("ledger integrity check failed: %w", err)
 		}
 
 		// Link collected unique document links to this entry ID
@@ -983,23 +966,18 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	// Audit log
 	idStr := createdForm.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: createdForm,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return createdForm, nil
 }
 
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
 
 	// Get existing form first (we need this to find the practitioner)
 	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
@@ -1037,7 +1015,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		if item.Date == nil || *item.Date == "" {
 			continue
 		}
-		itemDate, err := parseFlexibleDate(*item.Date)
+		itemDate, err := util.ParseFlexibleDate(*item.Date)
 		if err != nil {
 			return nil, fmt.Errorf("update item %d: invalid date format: %w", idx, err)
 		}
@@ -1050,7 +1028,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			return nil, fmt.Errorf("update item %d: failed to verify lock date: %w", idx, err)
 		}
 		if lockDateStr != nil && *lockDateStr != "" {
-			lockDate, err := parseFlexibleDate(*lockDateStr)
+			lockDate, err := util.ParseFlexibleDate(*lockDateStr)
 			if err != nil {
 				return nil, fmt.Errorf("update item %d: invalid lock date format: %w", idx, err)
 			}
@@ -1065,7 +1043,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		if item.Date == "" {
 			continue
 		}
-		itemDate, err := parseFlexibleDate(item.Date)
+		itemDate, err := util.ParseFlexibleDate(item.Date)
 		if err != nil {
 			return nil, fmt.Errorf("create item %d: invalid date format: %w", idx, err)
 		}
@@ -1078,7 +1056,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			return nil, fmt.Errorf("create item %d: failed to verify lock date: %w", idx, err)
 		}
 		if lockDateStr != nil && *lockDateStr != "" {
-			lockDate, err := parseFlexibleDate(*lockDateStr)
+			lockDate, err := util.ParseFlexibleDate(*lockDateStr)
 			if err != nil {
 				return nil, fmt.Errorf("create item %d: invalid lock date format: %w", idx, err)
 			}
@@ -1255,15 +1233,18 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				dateToUse = existingDate
 			}
 
+			// Preserve notes if not provided in update
+
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &item.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: description,
-				Date:        dateToUse,
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &item.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        description,
+				BusinessPercentage: &businessUse,
+				Date:               dateToUse,
 			}); err != nil {
 				return fmt.Errorf("failed to insert updated entry value: %w", err)
 			}
@@ -1335,14 +1316,15 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 
 			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &item.Date,
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				BusinessPercentage: &item.BusinessUse,
+				Date:               &item.Date,
 			}); err != nil {
 				return fmt.Errorf("failed to insert new entry value for item %d: %w", idx, err)
 			}
@@ -1358,66 +1340,6 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 		}
 
-		// Rebalance: delete old system entry, fetch current values via repo, insert new balancing entry
-		if err := s.entryRepo.DeleteSystemBalancingValues(ctx, tx, existingEntry.ID); err != nil {
-			return fmt.Errorf("failed to delete old balancing entries: %w", err)
-		}
-
-		currentValues, err := s.entryRepo.GetActiveEntryValuesWithAccountType(ctx, tx, existingEntry.ID)
-		if err != nil {
-			return fmt.Errorf("failed to get current entry values: %w", err)
-		}
-
-		var totalAmount float64
-		var hasIncome, hasExpense bool
-		for _, evs := range currentValues {
-			if evs.NetAmount == nil || evs.FormFieldID == nil {
-				continue
-			}
-			totalAmount += *evs.NetAmount
-			if evs.AccountTypeName != nil {
-				t := strings.ToLower(*evs.AccountTypeName)
-				// Credit-normal accounts (liability, equity, revenue, income) are treated the same
-				// as income for sign purposes — mirrors AssertLedgerGroupBalances polarity.
-				if strings.Contains(t, "revenue") || strings.Contains(t, "income") ||
-					strings.Contains(t, "liability") || strings.Contains(t, "equity") {
-					hasIncome = true
-				} else {
-					hasExpense = true
-				}
-			} else {
-				hasExpense = true
-			}
-		}
-		totalAmount = math.Round(totalAmount*100) / 100
-
-		if totalAmount != 0 {
-			bankAccountID, err := s.entryRepo.GetBankAccountID(ctx, tx, practitionerID)
-			if err != nil {
-				return fmt.Errorf("failed to find Bank Account for auto-balancing: %w", err)
-			}
-
-			bankAmount := totalAmount
-			if hasExpense && !hasIncome {
-				bankAmount = -totalAmount
-			}
-
-			if err := s.entryRepo.InsertBalancingEntryValue(ctx, tx, &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				CoaID:       &bankAccountID,
-				NetAmount:   &bankAmount,
-				GrossAmount: &bankAmount,
-			}); err != nil {
-				return fmt.Errorf("failed to insert balancing entry: %w", err)
-			}
-		}
-
-		// Verify ledger integrity
-		if err := s.entryRepo.AssertLedgerGroupBalances(ctx, tx, existingEntry.ID); err != nil {
-			return fmt.Errorf("ledger integrity check failed: %w", err)
-		}
-
 		return nil
 	})
 
@@ -1427,17 +1349,13 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 	// Audit log
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updatedForm,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return updatedForm, nil
@@ -1581,6 +1499,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			GrossAmount: grossAmount,
 			Date:        itemDate,
 			Description: description,
+			Notes:       description,
 		}
 
 		response.Items = append(response.Items, item)
@@ -1607,4 +1526,101 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	return response, nil
+}
+
+// notifyForm sends notifications to linked users about form operations
+func (s *service) notifyForm(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, actorType util.ActorType, eventType util.EventType, formName string) error {
+	if s.notificationPub == nil {
+		log.Printf("[WARN] notification publisher is nil, skipping form notification")
+		return nil
+	}
+
+	// Get sender information
+	user, err := s.authSvc.GetUserByID(ctx, actorID, actorType)
+	if err != nil {
+		log.Printf("[WARN] failed to get user for notification: %v", err)
+		return nil
+	}
+	senderName := user.FirstName + " " + user.LastName
+
+	// Build recipients list
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// If the sender is a practitioner, notify all their linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, actorID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", actorID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// If the sender is an accountant, notify all linked practitioners
+		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, actorID)
+		if err != nil {
+			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", actorID, err)
+			return nil
+		}
+
+		// Notify each linked practitioner
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		log.Printf("[WARN] unsupported actor type for form notification: %s", actorType)
+		return nil
+	}
+
+	// If no recipients, don't send notification
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for form notification")
+		return nil
+	}
+
+	// Determine title based on event type
+	title := "Form Updated"
+	if eventType == util.EventFormSubmitted {
+		title = "Form Submitted"
+	}
+
+	// Send notifications with preferences using the publisher
+	err = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   actorID,
+		SenderType: actorType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityForm,
+		EntityID:   formID,
+		EntityKey:  "form_id",
+		Title:      title,
+		Body:       fmt.Sprintf("%s: %s by %s", title, formName, senderName),
+		ExtraData:  map[string]any{"form_name": formName},
+	})
+
+	if err != nil {
+		log.Printf("[WARN] failed to send form notification: %v", err)
+	}
+
+	return nil
 }

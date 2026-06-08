@@ -187,7 +187,7 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 		return false
 	}
 
-	notificationEventType := mapEventTypeToNotificationEventType(eventType)
+	notificationEventType := util.MapEventTypeToNotificationEventType(eventType)
 
 	if pref.EntityID == entityID && pref.EntityType == string(entityType) {
 		if slices.Contains(pref.EventType, notificationEventType) {
@@ -197,19 +197,4 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 	}
 
 	return true
-}
-
-// mapEventTypeToNotificationEventType maps event types to notification event types
-func mapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
-	switch eventType {
-	case util.EventTransactionCreated, util.EventTransactionUpdated:
-		return util.EventNewTransaction
-	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded,
-		util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
-		return util.EventAccountantActivityAlert
-	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
-		return util.EventSystemActivityAlert
-	default:
-		return util.EventSystemActivityAlert
-	}
 }

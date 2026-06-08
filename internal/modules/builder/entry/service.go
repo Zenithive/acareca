@@ -101,14 +101,13 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 		practitionerSvc: practitionerSvc,
 		coaRepo:         coaRepo,
 		notificationSvc: notificationSvc,
-		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc)),
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		adminRepo:       adminRepo,
 		authSvc:         authSvc,
 	}
 }
 
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
-	meta := auditctx.GetMetadata(ctx)
 
 	var result *RsFormEntry
 
@@ -214,16 +213,12 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	}
 
 	idStr := result.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionEntryCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created"); err != nil {
@@ -364,19 +359,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionEntryUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	// Send update notification
@@ -416,18 +406,13 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 
-		meta := auditctx.GetMetadata(ctx)
 		idStr := id.String()
-		s.auditSvc.LogAsync(&audit.LogEntry{
-			PracticeID:  meta.PracticeID,
-			UserID:      meta.UserID,
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 			Action:      auditctx.ActionEntryDeleted,
 			Module:      auditctx.ModuleForms,
 			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 			EntityID:    &idStr,
 			BeforeState: beforeState,
-			IPAddress:   meta.IPAddress,
-			UserAgent:   meta.UserAgent,
 		})
 
 		return nil
@@ -509,14 +494,15 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			inputAmount = s.roundValue(inputAmount)
 
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: nil,
-				CoaID:       &coaID,
-				NetAmount:   &inputAmount,
-				GstAmount:   nil,
-				GrossAmount: &inputAmount,
-				Description: v.Description,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        nil,
+				CoaID:              &coaID,
+				NetAmount:          &inputAmount,
+				GstAmount:          nil,
+				GrossAmount:        &inputAmount,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
 			})
 			continue
 		}
@@ -562,13 +548,15 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				CoaID:       f.CoaID, // 🚀 FIXED
-				NetAmount:   &netBase,
-				GstAmount:   gstAmount,
-				GrossAmount: &roundedGross,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &fieldID,
+				CoaID:              f.CoaID, // 🚀 FIXED
+				NetAmount:          &netBase,
+				GstAmount:          gstAmount,
+				GrossAmount:        &roundedGross,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
 			})
 			continue
 		}
@@ -578,13 +566,15 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			grossTotal = s.roundValue(grossTotal)
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				CoaID:       f.CoaID, // 🚀 FIXED
-				NetAmount:   &netBase,
-				GstAmount:   nil,
-				GrossAmount: &grossTotal,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &fieldID,
+				CoaID:              f.CoaID, // 🚀 FIXED
+				NetAmount:          &netBase,
+				GstAmount:          nil,
+				GrossAmount:        &grossTotal,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
 			})
 			continue
 		}
@@ -648,13 +638,15 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		keyValues[f.FieldKey] = valueForFormula
 		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
-			ID:          uuid.New(),
-			EntryID:     entryID,
-			FormFieldID: &fieldID,
-			CoaID:       f.CoaID, // 🚀 FIXED
-			NetAmount:   &netBase,
-			GstAmount:   gstAmount,
-			GrossAmount: &grossTotal,
+			ID:                 uuid.New(),
+			EntryID:            entryID,
+			FormFieldID:        &fieldID,
+			CoaID:              f.CoaID, // 🚀 FIXED
+			NetAmount:          &netBase,
+			GstAmount:          gstAmount,
+			GrossAmount:        &grossTotal,
+			Description:        v.Description,
+			BusinessPercentage: v.BusinessPercentage,
 		})
 	}
 
@@ -799,13 +791,14 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				}
 
 				out = append(out, &FormEntryValue{
-					ID:          uuid.New(),
-					EntryID:     entryID,
-					FormFieldID: &fieldID,
-					CoaID:       f.CoaID,
-					NetAmount:   &netBase,
-					GstAmount:   gstAmount,
-					GrossAmount: &grossTotal,
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        &fieldID,
+					CoaID:              f.CoaID,
+					NetAmount:          &netBase,
+					GstAmount:          gstAmount,
+					GrossAmount:        &grossTotal,
+					BusinessPercentage: nil,
 				})
 			}
 		}
@@ -818,11 +811,11 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
 	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
 	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
+
 	if len(out) > 0 {
 		var totalLedgerImpact float64
 		var practitionerID *uuid.UUID
 
-		// 1. Sum signed contributions across all lines.
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
 				continue
@@ -846,7 +839,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		totalLedgerImpact = s.roundValue(totalLedgerImpact)
 
-		// 2. If variance exists, inject a COA-600 (Bank) balancing row.
 		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
 			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
 			if err != nil || bankAccount == nil {
@@ -858,17 +850,16 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			bankCoaID := bankAccount.ID
 
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: nil,
-				CoaID:       &bankCoaID,
-				NetAmount:   &counterBalancingAmount,
-				GstAmount:   nil,
-				GrossAmount: &counterBalancingAmount,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        nil,
+				CoaID:              &bankCoaID,
+				NetAmount:          &counterBalancingAmount,
+				GstAmount:          nil,
+				GrossAmount:        &counterBalancingAmount,
+				BusinessPercentage: nil, // System balancing entries don't have business percentage
 			})
 		}
-
-		// 3. Post-balancing verification — re-run same signed arithmetic to confirm zero balance.
 		var finalLedgerBalance float64
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
@@ -989,6 +980,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 // roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
 // This ensures all monetary amounts are precise to 2 decimal places
+
 func (s *Service) roundValue(val float64) float64 {
 	return math.Round(val*100) / 100
 }
@@ -1169,12 +1161,11 @@ func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID u
 
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsGenerated,
@@ -1184,8 +1175,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		AfterState: map[string]interface{}{
 			"report_type": "Transaction Report",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	// Record the Shared Event
@@ -1218,6 +1207,23 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 
 	f := filter.ToCommonFilter()
 
+	// Capture what the client sent (Page Index)
+	incomingPageIndex := 0
+	if f.Offset != nil {
+		incomingPageIndex = *f.Offset
+	}
+
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	// Translate the Page Index into a real database Row Skip Offset
+	// Page 0 -> (0 * 10) = OFFSET 0  (Gets rows 1 to 10)
+	// Page 1 -> (1 * 10) = OFFSET 10 (Gets rows 11 to 20)
+	calculatedDbOffset := incomingPageIndex * pageSize
+	f.Offset = &calculatedDbOffset
+
 	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1228,7 +1234,7 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, incomingPageIndex, pageSize)
 	return &rs, nil
 }
 
@@ -1442,11 +1448,10 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	}
 
 	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsExported,
@@ -1457,8 +1462,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			"report_type": "Transaction Report",
 			"export_type": exportType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return result, contentType, nil
@@ -1641,7 +1644,6 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 	default:
 		return fmt.Errorf("unsupported recipient type: %s", recipientType)
 	}
-
 	// If no recipients, don't send notification
 	if len(recipients) == 0 {
 		log.Printf("[INFO] no recipients found for transaction notification")

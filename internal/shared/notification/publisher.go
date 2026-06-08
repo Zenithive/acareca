@@ -1,4 +1,4 @@
-﻿package notification
+package notification
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
@@ -67,10 +68,33 @@ type PublishRequest struct {
 
 type Publisher struct {
 	notificationSvc NotificationService
+	adminRepo       admin.Repository
 }
 
-func NewPublisher(notificationSvc NotificationService) *Publisher {
-	return &Publisher{notificationSvc: notificationSvc}
+func NewPublisher(notificationSvc NotificationService, adminRepo admin.Repository) *Publisher {
+	return &Publisher{notificationSvc: notificationSvc, adminRepo: adminRepo}
+}
+
+func (p *Publisher) appendAdminRecipients(ctx context.Context, recipients []RecipientWithPreferences) []RecipientWithPreferences {
+	if p.adminRepo == nil {
+		return recipients
+	}
+
+	admins, err := p.adminRepo.GetAllAdmins(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get admin users: %v", err)
+		return recipients
+	}
+
+	for _, a := range admins {
+		recipients = append(recipients, RecipientWithPreferences{
+			RecipientID:   a.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        a.User.ID,
+		})
+	}
+
+	return recipients
 }
 
 func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
@@ -78,23 +102,31 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 		return fmt.Errorf("notification service is nil")
 	}
 
-	for _, recipient := range req.Recipients {
+	recipients := p.appendAdminRecipients(ctx, append([]RecipientWithPreferences{}, req.Recipients...))
+
+	for _, recipient := range recipients {
 		prefs, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
+
 		if err != nil {
 			log.Printf("[ERROR] failed to get preferences for user %s: %v", recipient.UserID, err)
 			continue
 		}
 
-		notificationEventType := make([]util.NotificationEventType, 0, len(prefs.EventType))
+		prefMap := make(map[util.NotificationEventType]struct{}, len(prefs.EventType))
 		for _, et := range prefs.EventType {
-			notificationEventType = append(notificationEventType, mapEventTypeToNotificationEventType(util.EventType(et)))
+			prefMap[et] = struct{}{}
+		}
+
+		if _, ok := prefMap[util.NotificationEventType(req.EventType)]; !ok {
+			mapped := util.MapEventTypeToNotificationEventType(req.EventType)
+			if _, ok = prefMap[mapped]; !ok {
+				continue
+			}
 		}
 
 		channels := make([]util.Channel, 0, len(prefs.Channels))
-		if len(notificationEventType) > 0 {
-			for _, ch := range prefs.Channels {
-				channels = append(channels, ch)
-			}
+		for _, ch := range prefs.Channels {
+			channels = append(channels, ch)
 		}
 
 		if len(channels) == 0 {
@@ -170,17 +202,4 @@ func (p *Publisher) PublishToMultiple(ctx context.Context, recipients []uuid.UUI
 		}(req)
 	}
 	return nil
-}
-
-func mapEventTypeToNotificationEventType(eventType util.EventType) util.NotificationEventType {
-	switch eventType {
-	case util.EventTransactionCreated, util.EventTransactionUpdated:
-		return util.EventNewTransaction
-	case util.EventClinicUpdated, util.EventFormSubmitted, util.EventFormUpdated, util.EventDocumentUploaded, util.EventInviteSent, util.EventInviteAccepted, util.EventInviteDeclined:
-		return util.EventAccountantActivityAlert
-	case util.EventSystemError, util.EventSystemWarning, util.EventAuditLogCreated:
-		return util.EventSystemActivityAlert
-	default:
-		return util.EventSystemActivityAlert
-	}
 }

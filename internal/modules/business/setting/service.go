@@ -44,18 +44,13 @@ func (s *service) CreatePractitioner(ctx context.Context, req *RqCreatePractitio
 	}
 	result := created.ToRs()
 	// Audit log: practitioner created
-	meta := auditctx.GetMetadata(ctx)
 	idStr := result.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionPractitionerCreated,
 		Module:     auditctx.ModuleBusiness,
 		EntityType: lo.ToPtr(auditctx.EntityPractitioner),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 	return result, nil
 }
@@ -114,19 +109,14 @@ func (s *service) UpdatePractitioner(ctx context.Context, id uuid.UUID, req *RqU
 	result := updated.ToRs()
 
 	// Audit log: practitioner updated
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionPractitionerUpdated,
 		Module:      auditctx.ModuleBusiness,
 		EntityType:  lo.ToPtr(auditctx.EntityPractitioner),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return result, nil
@@ -155,18 +145,13 @@ func (s *service) DeletePractitioner(ctx context.Context, id uuid.UUID) error {
 	}
 
 	// Audit log: practitioner deleted
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionPractitionerDeleted,
 		Module:      auditctx.ModuleBusiness,
 		EntityType:  lo.ToPtr(auditctx.EntityPractitioner),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return nil
@@ -205,18 +190,13 @@ func (s *service) UpsertSetting(ctx context.Context, practitionerID uuid.UUID, r
 	result := updated.ToRs()
 
 	// Audit log: setting updated
-	meta := auditctx.GetMetadata(ctx)
 	idStr := practitionerID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionSettingUpdated,
 		Module:     auditctx.ModuleBusiness,
 		EntityType: lo.ToPtr(auditctx.EntityFinancialSettings),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return result, nil

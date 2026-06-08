@@ -76,7 +76,7 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
@@ -193,7 +193,7 @@ func (r *Repository) GetByVersionID(ctx context.Context, id uuid.UUID) (*FormEnt
 		return nil, nil, fmt.Errorf("get form entry: %w", err)
 	}
 
-	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, created_at, updated_at
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage , description, created_at, updated_at
 		FROM tbl_form_entry_value
 		WHERE entry_id = $1 AND updated_at IS NULL AND form_field_id IS NOT NULL
 		`
@@ -250,6 +250,8 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 			ev.net_amount,
 			ev.gst_amount,
 			ev.gross_amount,
+			COALESCE(ev.business_percentage, 100.00) AS business_percentage,
+			COALESCE(ev.notes, '-') AS notes,
 			ev.created_at,
 			ev.updated_at,
 			CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END AS date,
@@ -278,25 +280,27 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 	result := make([]*RsTransactionRow, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, &RsTransactionRow{
-			ID:            row.ID,
-			EntryID:       row.EntryID,
-			FormFieldID:   row.FormFieldID,
-			FormFieldName: row.FormFieldName,
-			CoaID:         row.CoaID,
-			CoaName:       row.CoaName,
-			TaxTypeID:     row.TaxTypeID,
-			TaxTypeName:   row.TaxTypeName,
-			FormID:        row.FormID,
-			FormName:      row.FormName,
-			ClinicID:      row.ClinicID,
-			ClinicName:    row.ClinicName,
-			NetAmount:     row.NetAmount,
-			GstAmount:     row.GstAmount,
-			GrossAmount:   row.GrossAmount,
-			CreatedAt:     row.CreatedAt,
-			UpdatedAt:     row.UpdatedAt,
-			Date:          row.Date,
-			IsExpense:     row.IsExpense,
+			ID:                 row.ID,
+			EntryID:            row.EntryID,
+			FormFieldID:        row.FormFieldID,
+			FormFieldName:      row.FormFieldName,
+			CoaID:              row.CoaID,
+			CoaName:            row.CoaName,
+			TaxTypeID:          row.TaxTypeID,
+			TaxTypeName:        row.TaxTypeName,
+			FormID:             row.FormID,
+			FormName:           row.FormName,
+			ClinicID:           row.ClinicID,
+			ClinicName:         row.ClinicName,
+			NetAmount:          row.NetAmount,
+			GstAmount:          row.GstAmount,
+			GrossAmount:        row.GrossAmount,
+			BusinessPercentage: row.BusinessPercentage,
+			Notes:              row.Description,
+			CreatedAt:          row.CreatedAt,
+			UpdatedAt:          row.UpdatedAt,
+			Date:               row.Date,
+			IsExpense:          row.IsExpense,
 		})
 	}
 	return result, nil
@@ -355,11 +359,11 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, e *FormEntry, valu
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING created_at, updated_at
 		`
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date, v.BusinessPercentage).
 			Scan(&v.CreatedAt, &v.UpdatedAt); err != nil {
 			return fmt.Errorf("create entry value tx: %w", err)
 		}
@@ -398,11 +402,11 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, e *FormEntry, valu
 	for _, v := range values {
 		v.EntryID = e.ID
 		valQuery := `
-            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+            INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL)
             RETURNING created_at
         `
-		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date).
+		if err := tx.QueryRowContext(ctx, valQuery, v.ID, v.EntryID, v.FormFieldID, v.CoaID, v.NetAmount, v.GstAmount, v.GrossAmount, v.Description, v.Date, v.BusinessPercentage).
 			Scan(&v.CreatedAt); err != nil {
 			return fmt.Errorf("insert entry value tx: %w", err)
 		}
@@ -688,6 +692,8 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 					WHEN COALESCE(v.net_amount, 0) < 0 THEN -ABS(COALESCE(v.gross_amount, 0))
 					ELSE ABS(COALESCE(v.gross_amount, 0))
 				END::numeric, 2)::float8                                   AS gross_amount,
+			100.00::float8                                                 AS business_percentage,
+			COALESCE(v.description, '-')                                   AS description,
 			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
 		FROM vw_double_entry_line_items v
 		LEFT JOIN tbl_form f        ON f.id = v.form_id
@@ -704,28 +710,30 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	q = r.db.Rebind(q)
 
 	type detailRow struct {
-		ID              uuid.UUID  `db:"id"`
-		EntryID         uuid.UUID  `db:"entry_id"`
-		FormFieldID     *string    `db:"form_field_id"`
-		CoaID           uuid.UUID  `db:"coa_id"`
-		TaxTypeID       *int16     `db:"tax_type_id"`
-		FormID          *string    `db:"form_id"`
-		ClinicID        uuid.UUID  `db:"clinic_id"`
-		LineItemValueID *uuid.UUID `db:"line_item_value_id"`
-		VersionID       *string    `db:"version_id"`
-		FormFieldName   string     `db:"form_field_name"`
-		CoaName         string     `db:"coa_name"`
-		TaxTypeName     *string    `db:"tax_type_name"`
-		FormName        *string    `db:"form_name"`
-		FormMethod      *string    `db:"form_method"`
-		ClinicName      string     `db:"clinic_name"`
-		TransactionType string     `db:"transaction_type"`
-		AccountType     string     `db:"account_type"`
-		NetAmount       float64    `db:"net_amount"`
-		GstAmount       float64    `db:"gst_amount"`
-		GrossAmount     float64    `db:"gross_amount"`
-		CreatedAt       string     `db:"created_at"`
-		UpdatedAt       *string    `db:"updated_at"`
+		ID                 uuid.UUID  `db:"id"`
+		EntryID            uuid.UUID  `db:"entry_id"`
+		FormFieldID        *string    `db:"form_field_id"`
+		CoaID              uuid.UUID  `db:"coa_id"`
+		TaxTypeID          *int16     `db:"tax_type_id"`
+		FormID             *string    `db:"form_id"`
+		ClinicID           uuid.UUID  `db:"clinic_id"`
+		LineItemValueID    *uuid.UUID `db:"line_item_value_id"`
+		VersionID          *string    `db:"version_id"`
+		FormFieldName      string     `db:"form_field_name"`
+		CoaName            string     `db:"coa_name"`
+		TaxTypeName        *string    `db:"tax_type_name"`
+		FormName           *string    `db:"form_name"`
+		FormMethod         *string    `db:"form_method"`
+		ClinicName         string     `db:"clinic_name"`
+		TransactionType    string     `db:"transaction_type"`
+		AccountType        string     `db:"account_type"`
+		NetAmount          float64    `db:"net_amount"`
+		GstAmount          float64    `db:"gst_amount"`
+		GrossAmount        float64    `db:"gross_amount"`
+		BusinessPercentage float64    `db:"business_percentage"`
+		Notes              string     `db:"description"`
+		CreatedAt          string     `db:"created_at"`
+		UpdatedAt          *string    `db:"updated_at"`
 	}
 
 	var rows []*detailRow
@@ -744,22 +752,25 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		netVal := row.NetAmount
 		gstVal := row.GstAmount
 		grossVal := row.GrossAmount
+		bizPct := row.BusinessPercentage
 
 		detail := &RsCoaEntryDetail{
-			ID:              row.ID.String(),
-			EntryID:         row.EntryID.String(),
-			CoaID:           row.CoaID.String(),
-			TaxTypeID:       row.TaxTypeID,
-			FormFieldName:   row.FormFieldName,
-			CoaName:         row.CoaName,
-			TaxTypeName:     row.TaxTypeName,
-			IsExpense:       isExpense,
-			TransactionType: row.TransactionType,
-			NetAmount:       &netVal,
-			GstAmount:       &gstVal,
-			GrossAmount:     &grossVal,
-			CreatedAt:       row.CreatedAt,
-			UpdatedAt:       row.UpdatedAt,
+			ID:                 row.ID.String(),
+			EntryID:            row.EntryID.String(),
+			CoaID:              row.CoaID.String(),
+			TaxTypeID:          row.TaxTypeID,
+			FormFieldName:      row.FormFieldName,
+			CoaName:            row.CoaName,
+			TaxTypeName:        row.TaxTypeName,
+			IsExpense:          isExpense,
+			TransactionType:    row.TransactionType,
+			NetAmount:          &netVal,
+			GstAmount:          &gstVal,
+			GrossAmount:        &grossVal,
+			BusinessPercentage: &bizPct,
+			Notes:              &row.Notes,
+			CreatedAt:          row.CreatedAt,
+			UpdatedAt:          row.UpdatedAt,
 		}
 
 		if row.LineItemValueID != nil {
@@ -972,9 +983,9 @@ func (r *Repository) InsertBalancingEntryValue(ctx context.Context, tx *sqlx.Tx,
 
 // InsertEntryValue inserts a new active entry value row for a field.
 func (r *Repository) InsertEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error {
-	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.NetAmount, ev.GstAmount, ev.GrossAmount, ev.Description, ev.Date)
+	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date, business_percentage)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.NetAmount, ev.GstAmount, ev.GrossAmount, ev.Description, ev.Date, ev.BusinessPercentage)
 	if err != nil {
 		return fmt.Errorf("insert entry value: %w", err)
 	}
@@ -1044,7 +1055,6 @@ func (r *Repository) UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID u
 	}
 	return nil
 }
-
 
 // // AssertLedgerGroupBalances implements institutional-grade ledger verification
 // // This method runs a SUM query grouped by entry_id right before tx.Commit()

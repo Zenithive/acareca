@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
@@ -17,8 +18,9 @@ import (
 
 type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
-	LogAsync(entry *LogEntry)
+	LogAsync(ctx context.Context, entry *LogEntry)
 	LogSystemIssue(ctx context.Context, level, action string, issueErr error, actorID, entityID, entityType, module string)
+	LogWithNotification(ctx context.Context, entry *LogEntry, notifyAdmins bool) error
 	Query(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
 	Shutdown()
@@ -26,19 +28,24 @@ type Service interface {
 
 type service struct {
 	repo                Repository
-	logChan             chan *LogEntry
+	logChan             chan *logJob
 	done                chan struct{}
 	notificationService notification.Service
 	notificationPub     *sharednotification.Publisher
 }
 
-func NewService(repo Repository, notificationService notification.Service) Service {
+type logJob struct {
+	ctx   context.Context
+	entry *LogEntry
+}
+
+func NewService(repo Repository, notificationService notification.Service, adminRepo admin.Repository) Service {
 	s := &service{
 		repo:                repo,
-		logChan:             make(chan *LogEntry, 1000),
+		logChan:             make(chan *logJob, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
-		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService)),
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), adminRepo),
 	}
 
 	// Start async worker
@@ -47,37 +54,55 @@ func NewService(repo Repository, notificationService notification.Service) Servi
 	return s
 }
 
-// Log synchronously writes an audit log entry
 func (s *service) Log(ctx context.Context, entry *LogEntry) error {
+	s.enrichEntry(ctx, entry)
 	return s.repo.Insert(ctx, entry)
 }
 
-// LogAsync queues an audit log entry for async processing
-// This prevents audit logging from blocking main operations
-func (s *service) LogAsync(entry *LogEntry) {
+func (s *service) LogAsync(ctx context.Context, entry *LogEntry) {
+	s.enrichEntry(ctx, entry)
 	select {
-	case s.logChan <- entry:
-		// Successfully queued
+	case s.logChan <- &logJob{ctx: context.Background(), entry: entry}:
 	default:
-		// Channel full, log error but don't block
 		log.Printf("WARN: audit log channel full, dropping entry: %s.%s", entry.Module, entry.Action)
 	}
 }
 
-// asyncWorker processes audit log entries from the queue
+func (s *service) LogWithNotification(ctx context.Context, entry *LogEntry, notifyAdmins bool) error {
+	s.enrichEntry(ctx, entry)
+	if err := s.repo.Insert(ctx, entry); err != nil {
+		return err
+	}
+	if notifyAdmins && s.notificationPub != nil {
+		go s.publishAuditLogNotification(entry)
+	}
+	return nil
+}
+
+func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
+	meta := auditctx.GetMetadata(ctx)
+	if entry.PracticeID == nil {
+		entry.PracticeID = meta.PracticeID
+	}
+	if entry.UserID == nil {
+		entry.UserID = meta.UserID
+	}
+	if entry.IPAddress == nil {
+		entry.IPAddress = meta.IPAddress
+	}
+	if entry.UserAgent == nil {
+		entry.UserAgent = meta.UserAgent
+	}
+}
+
 func (s *service) asyncWorker() {
-	for entry := range s.logChan {
-		ctx := context.Background()
-		if err := s.repo.Insert(ctx, entry); err != nil {
-			// Log error but continue processing
-			log.Printf("ERROR: failed to insert audit log: %v (action: %s.%s)", err, entry.Module, entry.Action)
+	for job := range s.logChan {
+		if err := s.repo.Insert(job.ctx, job.entry); err != nil {
+			log.Printf("ERROR: failed to insert audit log: %v (action: %s.%s)", err, job.entry.Module, job.entry.Action)
 			continue
 		}
-
-		// Trigger notification to admins asynchronously (in a separate goroutine)
-		// This ensures the audit log is saved even if notification sending fails
 		if s.notificationService != nil {
-			go s.publishAuditLogNotification(entry)
+			go s.publishAuditLogNotification(job.entry)
 		}
 	}
 	close(s.done)
@@ -178,7 +203,7 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		title = "System Error"
 	}
 
-	extraData := map[string]interface{}{"action": action}
+	extraData := map[string]any{"action": action}
 	senderType := util.ActorSystem
 
 	_ = s.notificationPub.PublishToMultiple(
@@ -285,11 +310,15 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"invite.permission_updated":   "updated permissions for accountant",
 
 		// Billing & Subscriptions (Success)
-		"subscription.created":          "created a new subscription plan",
-		"subscription.updated":          "updated subscription plan",
-		"subscription.deleted":          "deleted subscription plan",
-		"billing.payment_success":       "successfully processed payment for",
-		"billing.activation_successful": "successfully activated subscription for",
+		"subscription.created":                   "created a new subscription plan",
+		"subscription.updated":                   "updated subscription plan",
+		"subscription.deleted":                   "deleted subscription plan",
+		auditctx.ActionBillingPaymentSuccess:     "successfully processed payment for",
+		auditctx.ActionBillingActivationSuccess:  "successfully activated subscription for",
+		auditctx.ActionBillingPaymentFailed:      "payment failed for",
+		auditctx.ActionBillingActivationFailed:   "failed to activate subscription for",
+		auditctx.ActionBillingWebhookSigInvalid:  "received invalid billing webhook signature",
+		auditctx.ActionBillingStatusUpdateFailed: "failed to update subscription status for",
 
 		// Report Generate and Export
 		"bas_report.exported":         "exported BAS Report",
@@ -378,6 +407,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			entityID = parsed
 		}
 	}
+	eventType := resolveAdminEventType(entry.Action)
 
 	_ = s.notificationPub.PublishToMultiple(
 		ctx,
@@ -385,13 +415,34 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		util.ActorAdmin,
 		nil,
 		&senderType,
-		util.EventAuditLogCreated,
+		eventType,
 		util.EntityAuditLog,
 		entityID,
 		title,
 		message,
 		&extraData,
 	)
+}
+
+// resolveAdminEventType maps an audit action string to the appropriate admin EventType
+// so that admin notification preferences can be controlled at a granular level.
+func resolveAdminEventType(action string) util.EventType {
+	switch action {
+	case auditctx.ActionBillingPaymentSuccess, auditctx.ActionBillingActivationSuccess:
+		return util.EventBillingPaymentSuccess
+	case auditctx.ActionBillingPaymentFailed:
+		return util.EventBillingPaymentFailed
+	case auditctx.ActionSubscriptionCreated:
+		return util.EventSubscriptionCreated
+	case auditctx.ActionSubscriptionUpdated:
+		return util.EventSubscriptionUpdated
+	case auditctx.ActionSubscriptionDeleted:
+		return util.EventSubscriptionDeleted
+	case auditctx.ActionUserRegistered, auditctx.ActionPractitionerCreated:
+		return util.EventPractitionerCreated
+	default:
+		return util.EventAuditLogCreated
+	}
 }
 
 // Shutdown drains the log channel and waits for the worker to finish.
