@@ -6160,7 +6160,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "Zero-based page index",
-                        "name": "page",
+                        "name": "offset",
                         "in": "query"
                     },
                     {
@@ -7549,62 +7549,6 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "patch": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Update an existing expense form",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "form/expense"
-                ],
-                "summary": "Update expense",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Form ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Expense update request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/form.RqUpdateExpense"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
             }
         },
         "/form/{id}": {
@@ -8441,7 +8385,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/notification.RqUpdatePreference"
+                            "$ref": "#/definitions/preference.RqUpdatePreference"
                         }
                     }
                 ],
@@ -11818,6 +11762,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "document": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
                 "document_id": {
                     "type": "string"
                 },
@@ -13506,57 +13453,6 @@ const docTemplate = `{
                 }
             }
         },
-        "form.ExpenseItemUpdate": {
-            "type": "object",
-            "required": [
-                "id"
-            ],
-            "properties": {
-                "amount": {
-                    "type": "number"
-                },
-                "business_use": {
-                    "type": "number",
-                    "maximum": 100,
-                    "minimum": 0
-                },
-                "coa_id": {
-                    "type": "string"
-                },
-                "date": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "documents": {
-                    "type": "object",
-                    "properties": {
-                        "create": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        },
-                        "delete": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "tax_type": {
-                    "type": "string"
-                }
-            }
-        },
         "form.RqCreateFormWithFields": {
             "type": "object",
             "required": [
@@ -13659,35 +13555,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/field.RqUpdateFormField"
-                    }
-                }
-            }
-        },
-        "form.RqUpdateExpense": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "create": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/form.ExpenseItem"
-                    }
-                },
-                "delete": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "name": {
-                    "type": "string"
-                },
-                "update": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/form.ExpenseItemUpdate"
                     }
                 }
             }
@@ -14166,6 +14033,9 @@ const docTemplate = `{
                 },
                 "total_liabilities": {
                     "type": "number"
+                },
+                "total_liabilities_and_equity": {
+                    "type": "number"
                 }
             }
         },
@@ -14522,25 +14392,6 @@ const docTemplate = `{
                 }
             }
         },
-        "notification.NotificationChannels": {
-            "type": "object",
-            "additionalProperties": {
-                "type": "boolean"
-            }
-        },
-        "notification.NotificationEventType": {
-            "type": "string",
-            "enum": [
-                "new.transaction",
-                "accountant.activity.alert",
-                "system.activity.alert"
-            ],
-            "x-enum-varnames": [
-                "EventNewTransaction",
-                "EventAccountantActivityAlert",
-                "EventSystemActivityAlert"
-            ]
-        },
         "notification.RqBulkDismiss": {
             "type": "object",
             "required": [
@@ -14552,24 +14403,6 @@ const docTemplate = `{
                     "minItems": 1,
                     "items": {
                         "type": "string"
-                    }
-                }
-            }
-        },
-        "notification.RqUpdatePreference": {
-            "type": "object",
-            "required": [
-                "channels",
-                "event_type"
-            ],
-            "properties": {
-                "channels": {
-                    "$ref": "#/definitions/notification.NotificationChannels"
-                },
-                "event_type": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/notification.NotificationEventType"
                     }
                 }
             }
@@ -14758,6 +14591,27 @@ const docTemplate = `{
                 },
                 "lock_date": {
                     "type": "string"
+                }
+            }
+        },
+        "preference.RqUpdatePreference": {
+            "type": "object",
+            "required": [
+                "channels",
+                "event_type"
+            ],
+            "properties": {
+                "channels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/util.Channel"
+                    }
+                },
+                "event_type": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/util.NotificationEventType"
+                    }
                 }
             }
         },
@@ -15034,6 +14888,32 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "util.Channel": {
+            "type": "string",
+            "enum": [
+                "in_app",
+                "push",
+                "email"
+            ],
+            "x-enum-varnames": [
+                "ChannelInApp",
+                "ChannelPush",
+                "ChannelEmail"
+            ]
+        },
+        "util.NotificationEventType": {
+            "type": "string",
+            "enum": [
+                "new.transaction",
+                "accountant.activity.alert",
+                "system.activity.alert"
+            ],
+            "x-enum-varnames": [
+                "EventNewTransaction",
+                "EventAccountantActivityAlert",
+                "EventSystemActivityAlert"
+            ]
         },
         "util.RsList": {
             "type": "object",

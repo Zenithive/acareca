@@ -283,7 +283,7 @@ func (h *handler) ListTransactions(c *gin.Context) {
 // @Description Returns one row per COA with aggregated amounts and entry counts
 // @Tags entry
 // @Produce json
-// @Param page query int false "Zero-based page index"
+// @Param offset query int false "Zero-based page index"
 // @Param limit query int false "Page size (default 10, max 100)"
 // @Param practitioner_id query string false "Filter by practitioner ID"
 // @Param clinic_id query string false "Filter by clinic ID"
