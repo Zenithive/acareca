@@ -2992,6 +2992,18 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Anchor Financial Year snapshot UUID",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of historical years to compare back (0 to 4)",
+                        "name": "comparisons",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Export Type: pdf | excel",
                         "name": "export_type",
                         "in": "query",
@@ -8353,12 +8365,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8373,7 +8379,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Updates or creates a preference for a specific event type.",
+                "description": "Updates or creates preferences. event_type is always required. If channels is empty, the specified event types are deleted. If channels is provided, preferences are upserted.",
                 "tags": [
                     "notification"
                 ],
@@ -8408,8 +8414,34 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
-                    "404": {
-                        "description": "Not Found",
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Deletes all notification preferences for the authenticated user on their current entity.",
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Delete all notification preferences",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8777,6 +8809,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by form UUID",
                         "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of comparative periods to include (0-4)",
+                        "name": "comparisons",
                         "in": "query"
                     },
                     {
@@ -13065,6 +13103,11 @@ const docTemplate = `{
                     "type": "number",
                     "minimum": 0
                 },
+                "business_percentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
                 "coa_id": {
                     "type": "string"
                 },
@@ -13144,6 +13187,9 @@ const docTemplate = `{
             "properties": {
                 "amount": {
                     "description": "Amount is used when there is no GST (net == gross).",
+                    "type": "number"
+                },
+                "business_percentage": {
                     "type": "number"
                 },
                 "coa_id": {
@@ -14597,8 +14643,7 @@ const docTemplate = `{
         "preference.RqUpdatePreference": {
             "type": "object",
             "required": [
-                "channels",
-                "event_type"
+                "channels"
             ],
             "properties": {
                 "channels": {
@@ -14907,12 +14952,40 @@ const docTemplate = `{
             "enum": [
                 "new.transaction",
                 "accountant.activity.alert",
-                "system.activity.alert"
+                "system.activity.alert",
+                "system.error.alert",
+                "system.warning.alert",
+                "billing.alert",
+                "subscription.alert",
+                "user.registration.alert"
+            ],
+            "x-enum-comments": {
+                "EventBillingAlert": "payment success/failure",
+                "EventSubscriptionAlert": "subscription created/updated/deleted",
+                "EventSystemActivityAlert": "general audit log activity",
+                "EventSystemErrorAlert": "system.error only (critical)",
+                "EventSystemWarningAlert": "system.warning only",
+                "EventUserRegistrationAlert": "new practitioner registered"
+            },
+            "x-enum-descriptions": [
+                "",
+                "",
+                "general audit log activity",
+                "system.error only (critical)",
+                "system.warning only",
+                "payment success/failure",
+                "subscription created/updated/deleted",
+                "new practitioner registered"
             ],
             "x-enum-varnames": [
                 "EventNewTransaction",
                 "EventAccountantActivityAlert",
-                "EventSystemActivityAlert"
+                "EventSystemActivityAlert",
+                "EventSystemErrorAlert",
+                "EventSystemWarningAlert",
+                "EventBillingAlert",
+                "EventSubscriptionAlert",
+                "EventUserRegistrationAlert"
             ]
         },
         "util.RsList": {

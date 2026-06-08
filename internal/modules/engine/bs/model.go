@@ -19,9 +19,11 @@ type BSRow struct {
 }
 
 type BSFilter struct {
-	PractitionerID *string `form:"practitioner_id"`
-	UserID         *string `form:"user_id"`
-	EndDate        *string `form:"end_date"`
+	PractitionerID  *string `form:"practitioner_id"`
+	UserID          *string `form:"user_id"`
+	EndDate         *string `form:"end_date"`
+	FinancialYearID *string `form:"financial_year_id"`
+	Comparisons     *int    `form:"comparisons"` // "0" (None), "1", "2", "3", "4" (Years to compare back)
 }
 
 type RsBalanceSheet struct {
