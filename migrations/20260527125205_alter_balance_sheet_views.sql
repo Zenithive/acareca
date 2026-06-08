@@ -27,7 +27,8 @@ SELECT fe.clinic_id,
     COALESCE(fev.gst_amount, 0) AS gst_amount,
     COALESCE(fev.gross_amount, 0) AS gross_amount,
     fev.description,
-    cfv.form_id AS form_id,             
+    fev.business_percentage,
+    cfv.form_id AS form_id,
     coa.account_tax_id AS tax_id,
     CASE
         WHEN at.name IN ('Asset', 'Expense') THEN 'DEBIT'
@@ -74,7 +75,8 @@ FROM tbl_form_entry fe
             net_amount,
             gst_amount,
             gross_amount,
-            description
+            description,
+            business_percentage
         FROM tbl_form_entry_value
         WHERE updated_at IS NULL
         ORDER BY entry_id,
@@ -99,6 +101,7 @@ WHERE fe.status = 'SUBMITTED'
             AND fev.coa_id IS NOT NULL
         )
     );
+
 
 CREATE OR REPLACE VIEW vw_double_entry_entry_summary AS
 SELECT practitioner_id,
