@@ -15,7 +15,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	basexport "github.com/iamarpitzala/acareca/internal/shared/export/bas"
@@ -43,13 +42,12 @@ type service struct {
 	auditSvc        audit.Service
 	clinicRepo      clinic.Repository
 	fyRepo          fy.Repository
-	eventsSvc       events.Service
 	authRepo        auth.Repository
 	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository, practitionerSvc practitioner.IService) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo, practitionerSvc: practitionerSvc}
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, authRepo auth.Repository, practitionerSvc practitioner.IService) Service {
+	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, authRepo: authRepo, practitionerSvc: practitionerSvc}
 }
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
@@ -178,32 +176,6 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 			"report_type": "Activity Statement",
 		},
 	})
-
-	// --- Shared Events ---
-	if role == util.RoleAccountant && len(PracIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		for _, pID := range PracIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "activity_statement.generated",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s generated Activity Statement", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Activity Statement"},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 
 	return &RsBASReport{
 		G1:  row.G1TotalSalesGross,
@@ -336,31 +308,6 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		},
 	})
 
-	if isAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		// Record the Shared Event
-		for pID := range practitionerMap {
-			err = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "bas_report.generated",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s generated BAS Report", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": f.FinancialYearID},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 	return resp, nil
 }
 
@@ -621,26 +568,6 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		},
 	})
 
-	// Record the Shared Event
-	if role == util.RoleAccountant && len(practitionerIDs) > 0 {
-		for _, pID := range practitionerIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "activity_statement.exported",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s exported Activity Statement", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Activity Statement", "export_type": exportType},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
-
 	return result, contentType, nil
 }
 
@@ -800,25 +727,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 					targetPracIDs = append(targetPracIDs, id)
 				}
 			}
-			for _, pID := range targetPracIDs {
-				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "bas_report.exported",
-					EntityType:     "REPORT",
-					EntityID:       actorID,
-					Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
-					Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
-					CreatedAt:      time.Now(),
-				})
-				if innerErr != nil {
-					return fmt.Errorf("failed to log shared event: %w", innerErr)
-				}
-			}
+
 		}
 
 		return nil

@@ -15,7 +15,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	bsexport "github.com/iamarpitzala/acareca/internal/shared/export/bs"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -35,20 +34,18 @@ type service struct {
 	equitySvc       equity.Service
 	db              *sqlx.DB
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	authRepo        auth.Repository
 	invitationSvc   invitation.Service
 	accountantRepo  accountant.Repository
 	practitionerSvc practitioner.IService
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
 	return &service{
 		repo:            repo,
 		equitySvc:       equitySvc,
 		db:              db,
 		auditSvc:        auditSvc,
-		eventsSvc:       eventsSvc,
 		authRepo:        authRepo,
 		invitationSvc:   invitationSvc,
 		accountantRepo:  accountantRepo,
@@ -232,35 +229,6 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 		},
 	})
 
-	if role == util.RoleAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-			var dateDescription string
-			if endDate != "" {
-				dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(endDate))
-			}
-
-			description := fmt.Sprintf("Accountant %s generated Balance Sheet %s", fullName, dateDescription)
-			for _, pID := range targetPracIDs {
-				_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "balance_sheet.generated",
-					EntityType:     "REPORT",
-					Description:    description,
-					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "end_date": endDate},
-					CreatedAt:      time.Now(),
-				})
-			}
-		}
-	}
-
 	return result, nil
 }
 
@@ -398,29 +366,6 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": baselineData.EndDate},
 	})
 
-	if role == util.RoleAccountant && len(notifIDs) > 0 {
-		var dateDescription string
-		if baselineData.EndDate != "" {
-			dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(baselineData.EndDate))
-		}
-
-		description := fmt.Sprintf("Accountant %s exported Balance Sheet (%s) %s", fullName, exportType, dateDescription)
-		for _, pID := range notifIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "balance_sheet.exported",
-				EntityType:     "REPORT",
-				Description:    description,
-				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "end_date": baselineData.EndDate},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 	f.UpdateLinkedValue()
 
 	return &ExportBalanceSheetResponse{Result: f}, nil

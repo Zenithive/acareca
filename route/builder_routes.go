@@ -19,7 +19,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/calculation"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
@@ -40,7 +39,6 @@ func RegisterBuilderRoutes(
 	accountantRepo accountant.Repository,
 	authRepo auth.Repository,
 	auditSvc audit.Service,
-	eventsSvc events.Service,
 	invitationSvc invitation.Service,
 	invitationRepo invitation.Repository,
 	notificationSvc notification.Service,
@@ -75,7 +73,7 @@ func RegisterBuilderRoutes(
 	fieldSvc := field.NewService(fieldRepo, coaSvc, clinicSvc, practitionerSvc, versionSvc)
 	formulaSvc := formula.NewService(formulaRepo)
 	formAuthAdapter := NewFormAuthServiceAdapter(authSvc)
-	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicSvc, invitationSvc, practitionerSvc, fyRepo, notificationSvc, invitationRepo, formAuthAdapter, adminRepo)
+	formSvc := form.NewService(dbConn, detailSvc, versionSvc, fieldSvc, formulaSvc, entryRepo, coaSvc, auditSvc, accountantRepo, authRepo, clinicSvc, invitationSvc, practitionerSvc, fyRepo, notificationSvc, invitationRepo, formAuthAdapter, adminRepo)
 	formHandler := form.NewHandler(formSvc)
 
 	// Form routes
@@ -84,7 +82,7 @@ func RegisterBuilderRoutes(
 
 	// Entry routes
 	entriesRepo := entry.NewRepository(dbConn)
-	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, eventsSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, invitationRepo, detailRepo, fyRepo, practitionerSvc, coaRepo, notificationSvc, adminRepo, authSvc)
+	entriesSvc := entry.NewService(dbConn, entriesRepo, fieldRepo, method.NewService(), detailSvc, versionSvc, auditSvc, accountantRepo, authRepo, clinicRepo, clinicSvc, formulaSvc, fieldSvc, invitationSvc, invitationRepo, detailRepo, fyRepo, practitionerSvc, coaRepo, notificationSvc, adminRepo, authSvc)
 	entriesHandler := entry.NewHandler(entriesSvc, invitationSvc)
 
 	entryGroup := v1.Group("/entry", middleware.Auth(cfg), middleware.AuditContext())

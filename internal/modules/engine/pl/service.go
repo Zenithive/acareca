@@ -13,7 +13,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	plexport "github.com/iamarpitzala/acareca/internal/shared/export/pl"
@@ -39,11 +38,10 @@ type service struct {
 	practitionerSvc practitioner.IService
 	authRepo        auth.Repository
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 }
 
-func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, authRepo auth.Repository, auditSvc audit.Service, eventsSvc events.Service) Service {
-	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo, practitionerSvc: practitionerSvc, authRepo: authRepo, auditSvc: auditSvc, eventsSvc: eventsSvc}
+func NewService(repo Repository, clinicRepo clinic.Repository, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, authRepo auth.Repository, auditSvc audit.Service) Service {
+	return &service{repo: repo, clinicRepo: clinicRepo, accountantRepo: accountantRepo, practitionerSvc: practitionerSvc, authRepo: authRepo, auditSvc: auditSvc}
 }
 
 func (s *service) GetMonthlySummary(ctx context.Context, f *PLFilter) ([]RsPLSummary, error) {
@@ -223,33 +221,6 @@ func (s *service) GetReport(ctx context.Context, actorID uuid.UUID, f *PLReportF
 		rows, innerErr = s.repo.GetReport(ctx, targetPracIDs, f)
 		if innerErr != nil {
 			return innerErr
-		}
-
-		if isAccountant && len(targetNotifIDs) > 0 {
-			var fullName string
-			user, innerErr := s.authRepo.FindByID(ctx, userID)
-			if innerErr == nil {
-				fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-			}
-
-			for _, pID := range targetNotifIDs {
-				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "pl_report.generated",
-					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s generated Profit and Loss Report", fullName),
-					CreatedAt:      time.Now(),
-					Metadata:       events.JSONBMap{"report_type": "Profit and Loss Report"},
-				})
-				if innerErr != nil {
-					return fmt.Errorf("failed to write shared audit transaction record: %w", innerErr)
-				}
-			}
 		}
 
 		summary, innerErr = s.repo.GetPLSummary(ctx, targetPracIDs, f)
