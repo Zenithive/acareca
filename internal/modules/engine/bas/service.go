@@ -582,7 +582,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	}
 
 	// Send notification
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementExport, "Activity Statement"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement"); err != nil {
 		log.Printf("[WARN] failed to send activity statement notification: %v", err)
 	}
 
@@ -1140,6 +1140,16 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		log.Printf("[INFO] no recipients found for report notification")
 		return nil
 	}
+	var action string
+
+	switch eventType {
+	case util.EventPLReportGenerated:
+		action = "Generated"
+	case util.EventPLReportExport:
+		action = "Exported"
+	default:
+		action = "Updated"
+	}
 
 	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
 		Recipients: recipients,
@@ -1150,8 +1160,8 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		EntityType: util.EntityReport,
 		EntityID:   entityID,
 		EntityKey:  "report_id",
-		Title:      fmt.Sprintf("%s Exported", reportName),
-		Body:       fmt.Sprintf("%s exported by %s", reportName, senderName),
+		Title:      fmt.Sprintf("%s %s", reportName, action),
+		Body:       fmt.Sprintf("%s %s by %s", reportName, strings.ToLower(action), senderName),
 		ExtraData:  map[string]interface{}{"report_name": reportName},
 	})
 }

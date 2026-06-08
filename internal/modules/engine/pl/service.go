@@ -491,6 +491,17 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 
 	recipients := []sharednotification.RecipientWithPreferences{}
 
+	var action string
+
+	switch eventType {
+	case util.EventPLReportGenerated:
+		action = "Generated"
+	case util.EventPLReportExport:
+		action = "Exported"
+	default:
+		action = "Updated"
+	}
+
 	switch actorType {
 	case util.ActorPractitioner:
 		// Notify linked accountants
@@ -548,8 +559,8 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		EntityType: util.EntityReport,
 		EntityID:   entityID,
 		EntityKey:  "report_id",
-		Title:      fmt.Sprintf("%s Exported", reportName),
-		Body:       fmt.Sprintf("%s exported by %s", reportName, senderName),
+		Title:      fmt.Sprintf("%s %s", reportName, action),
+		Body:       fmt.Sprintf("%s %s by %s", reportName, strings.ToLower(action), senderName),
 		ExtraData:  map[string]interface{}{"report_name": reportName},
 	})
 }
