@@ -27,7 +27,7 @@ import (
 
 type Service interface {
 	GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error)
-	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error)
+	ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error)
 }
 
 type service struct {
@@ -264,7 +264,14 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	return result, nil
 }
 
-func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error) {
+func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error) {
+	// If no data was passed, prevent panic
+	if len(data) == 0 {
+		return nil, errors.New("no balance sheet data provided for export")
+	}
+
+	baselineData := data[0]
+
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -316,9 +323,10 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 			}
 		}
 	}
+
 	var dateText string
-	if data.EndDate != "" {
-		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	if baselineData.EndDate != "" {
+		dateText = fmt.Sprintf("As of %s", baselineData.EndDate)
 	}
 
 	config := export.ExportConfig{
@@ -330,44 +338,50 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	exportData := &bsexport.RsBalanceSheet{
-		EndDate:                   data.EndDate,
-		Assets:                    make([]bsexport.RsAccount, len(data.Assets)),
-		TotalAssets:               data.TotalAssets,
-		Liabilities:               make([]bsexport.RsAccount, len(data.Liabilities)),
-		TotalLiabilities:          data.TotalLiabilities,
-		Equity:                    make([]bsexport.RsAccount, len(data.Equity)),
-		CurrentYearProfit:         data.CurrentYearProfit,
-		TotalEquity:               data.TotalEquity,
-		TotalLiabilitiesAndEquity: data.TotalLiabilities + data.TotalEquity,
+	exportDataList := make([]*bsexport.RsBalanceSheet, len(data))
+
+	for yearIdx, yearData := range data {
+		exportData := &bsexport.RsBalanceSheet{
+			EndDate:                   yearData.EndDate,
+			Assets:                    make([]bsexport.RsAccount, len(yearData.Assets)),
+			TotalAssets:               yearData.TotalAssets,
+			Liabilities:               make([]bsexport.RsAccount, len(yearData.Liabilities)),
+			TotalLiabilities:          yearData.TotalLiabilities,
+			Equity:                    make([]bsexport.RsAccount, len(yearData.Equity)),
+			CurrentYearProfit:         yearData.CurrentYearProfit,
+			TotalEquity:               yearData.TotalEquity,
+			TotalLiabilitiesAndEquity: yearData.TotalLiabilities + yearData.TotalEquity,
+		}
+
+		for i, acc := range yearData.Assets {
+			exportData.Assets[i] = bsexport.RsAccount{
+				CoaId:   acc.CoaId,
+				Code:    acc.Code,
+				Name:    acc.Name,
+				Balance: acc.Balance,
+			}
+		}
+		for i, acc := range yearData.Liabilities {
+			exportData.Liabilities[i] = bsexport.RsAccount{
+				CoaId:   acc.CoaId,
+				Code:    acc.Code,
+				Name:    acc.Name,
+				Balance: acc.Balance,
+			}
+		}
+		for i, acc := range yearData.Equity {
+			exportData.Equity[i] = bsexport.RsAccount{
+				CoaId:   acc.CoaId,
+				Code:    acc.Code,
+				Name:    acc.Name,
+				Balance: acc.Balance,
+			}
+		}
+
+		exportDataList[yearIdx] = exportData
 	}
 
-	for i, acc := range data.Assets {
-		exportData.Assets[i] = bsexport.RsAccount{
-			CoaId:   acc.CoaId,
-			Code:    acc.Code,
-			Name:    acc.Name,
-			Balance: acc.Balance,
-		}
-	}
-	for i, acc := range data.Liabilities {
-		exportData.Liabilities[i] = bsexport.RsAccount{
-			CoaId:   acc.CoaId,
-			Code:    acc.Code,
-			Name:    acc.Name,
-			Balance: acc.Balance,
-		}
-	}
-	for i, acc := range data.Equity {
-		exportData.Equity[i] = bsexport.RsAccount{
-			CoaId:   acc.CoaId,
-			Code:    acc.Code,
-			Name:    acc.Name,
-			Balance: acc.Balance,
-		}
-	}
-
-	f, err := bsexport.GenerateExcelReport(exportData, config)
+	f, err := bsexport.GenerateExcelReport(exportDataList, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate balance sheet excel: %w", err)
 	}
@@ -381,13 +395,13 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		EntityType: lo.ToPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
-		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
+		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": baselineData.EndDate},
 	})
 
 	if role == util.RoleAccountant && len(notifIDs) > 0 {
 		var dateDescription string
-		if data.EndDate != "" {
-			dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(data.EndDate))
+		if baselineData.EndDate != "" {
+			dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(baselineData.EndDate))
 		}
 
 		description := fmt.Sprintf("Accountant %s exported Balance Sheet (%s) %s", fullName, exportType, dateDescription)
@@ -402,7 +416,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 				EventType:      "balance_sheet.exported",
 				EntityType:     "REPORT",
 				Description:    description,
-				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
+				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "end_date": baselineData.EndDate},
 				CreatedAt:      time.Now(),
 			})
 		}
