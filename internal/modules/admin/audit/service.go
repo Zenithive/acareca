@@ -32,6 +32,7 @@ type service struct {
 	done                chan struct{}
 	notificationService notification.Service
 	notificationPub     *sharednotification.Publisher
+	adminRepo           admin.Repository
 }
 
 type logJob struct {
@@ -45,7 +46,8 @@ func NewService(repo Repository, notificationService notification.Service, admin
 		logChan:             make(chan *logJob, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
-		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), adminRepo),
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), nil),
+		adminRepo:           adminRepo,
 	}
 
 	// Start async worker
@@ -81,6 +83,14 @@ func (s *service) LogWithNotification(ctx context.Context, entry *LogEntry, noti
 
 func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	meta := auditctx.GetMetadata(ctx)
+	
+	// DEBUG: Log context metadata
+	log.Printf("[DEBUG-ENRICH] Action: %s | Context UserID: %v | Context PracticeID: %v",
+		entry.Action,
+		meta.UserID,
+		meta.PracticeID,
+	)
+	
 	if entry.PracticeID == nil {
 		entry.PracticeID = meta.PracticeID
 	}
@@ -93,6 +103,13 @@ func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	if entry.UserAgent == nil {
 		entry.UserAgent = meta.UserAgent
 	}
+	
+	// DEBUG: Log enriched entry
+	log.Printf("[DEBUG-ENRICHED] Action: %s | Entry UserID: %v | Entry PracticeID: %v",
+		entry.Action,
+		entry.UserID,
+		entry.PracticeID,
+	)
 }
 
 func (s *service) asyncWorker() {
@@ -193,11 +210,6 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	adminIDs, err := s.repo.GetAdminIDs(ctx)
-	if err != nil || len(adminIDs) == 0 {
-		return
-	}
-
 	title := "System Warning"
 	if level == auditctx.ActionSystemError {
 		title = "System Error"
@@ -207,14 +219,27 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 	senderType := util.ActorSystem
 	senderID := uuid.Nil
 
-	// Build recipients with preferences
-	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(adminIDs))
-	for _, adminID := range adminIDs {
-		recipients = append(recipients, sharednotification.RecipientWithPreferences{
-			RecipientID:   adminID,
-			RecipientType: util.ActorAdmin,
-			UserID:        adminID,
-		})
+	// Build admin recipients list using adminRepo
+	recipients := make([]sharednotification.RecipientWithPreferences, 0)
+	
+	if s.adminRepo != nil {
+		admins, err := s.adminRepo.GetAllAdmins(ctx)
+		if err != nil {
+			log.Printf("[WARN] failed to get admin users for system notification: %v", err)
+			return
+		}
+		
+		for _, admin := range admins {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   admin.ID,
+				RecipientType: util.ActorAdmin,
+				UserID:        admin.User.ID,
+			})
+		}
+	}
+
+	if len(recipients) == 0 {
+		return
 	}
 
 	// Use Publish method which checks preferences
@@ -239,15 +264,16 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var err error
-	// Fetch Admins
-	adminIDs, err := s.repo.GetAdminIDs(ctx)
-	if err != nil || len(adminIDs) == 0 {
-		return
-	}
+	// DEBUG: Log entry details to check if UserID is present
+	log.Printf("[DEBUG-AUDIT] Action: %s | UserID: %v | PracticeID: %v",
+		entry.Action,
+		entry.UserID,
+		entry.PracticeID,
+	)
 
+	var err error
 	// Get User Name
-	userName := "User"
+	userName := "System"
 
 	// Define invitation-specific actions
 	isInvitationAction := entry.Action == "accountant.invite_accepted" ||
@@ -410,7 +436,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"entity_id": entry.EntityID,
 	}
 
-	// Send to each admin
+	// Send to each admin (excluding the acting admin)
 	senderType := util.ActorSystem
 	senderID := uuid.Nil
 	var entityID uuid.UUID
@@ -422,14 +448,56 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 	eventType := resolveAdminEventType(entry.Action)
 
-	// Build recipients with preferences
-	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(adminIDs))
-	for _, adminID := range adminIDs {
-		recipients = append(recipients, sharednotification.RecipientWithPreferences{
-			RecipientID:   adminID,
-			RecipientType: util.ActorAdmin,
-			UserID:        adminID,
-		})
+	// Build admin recipients list, excluding the acting admin
+	recipients := make([]sharednotification.RecipientWithPreferences, 0)
+
+	if s.adminRepo != nil {
+		admins, adminErr := s.adminRepo.GetAllAdmins(ctx)
+		if adminErr != nil {
+			log.Printf("[WARN] failed to get admin users for audit notification: %v", adminErr)
+			return
+		}
+
+		log.Printf("[DEBUG-FILTER] Total admins found: %d", len(admins))
+
+		// Get the acting user's ID to filter them out
+		var actingUserID *uuid.UUID
+		if entry.UserID != nil {
+			if parsed, parseErr := uuid.Parse(*entry.UserID); parseErr == nil {
+				actingUserID = &parsed
+				log.Printf("[DEBUG-FILTER] Acting UserID parsed: %s", parsed.String())
+			} else {
+				log.Printf("[ERROR-FILTER] Failed to parse UserID: %v", parseErr)
+			}
+		} else {
+			log.Printf("[WARN-FILTER] entry.UserID is nil - cannot filter acting admin")
+		}
+
+		// Add all admins except the one who performed the action
+		for _, admin := range admins {
+			log.Printf("[DEBUG-FILTER] Checking admin: %s (UserID: %s)", admin.User.Email, admin.User.ID.String())
+
+			// Skip if this admin is the one who performed the action
+			if actingUserID != nil && admin.User.ID == *actingUserID {
+				log.Printf("[INFO] ✓ Skipping notification to acting admin: %s (action: %s)", admin.User.Email, entry.Action)
+				continue
+			}
+
+			log.Printf("[DEBUG-FILTER] ✓ Adding admin %s to recipients", admin.User.Email)
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   admin.ID,
+				RecipientType: util.ActorAdmin,
+				UserID:        admin.User.ID,
+			})
+		}
+	}
+
+	log.Printf("[DEBUG-FILTER] Final recipient count: %d", len(recipients))
+
+	// Skip if no recipients left after filtering
+	if len(recipients) == 0 {
+		log.Printf("[INFO] No admin recipients for audit notification: %s", entry.Action)
+		return
 	}
 
 	// Use Publish method which checks preferences
