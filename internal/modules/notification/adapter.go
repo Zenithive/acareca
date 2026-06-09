@@ -47,14 +47,18 @@ func (a *ServiceAdapter) GetPreferences(ctx context.Context, userID uuid.UUID) (
 		return sharednotification.NotificationPreferences{}, err
 	}
 
-	channelsMap := make([]util.Channel, 0, len(prefs.Channels))
-	for _, ch := range prefs.Channels {
-		channelsMap = append(channelsMap, util.Channel(ch))
+	allEventTypes := make([]util.NotificationEventType, 0)
+	var channels []util.Channel
+
+	for _, pref := range prefs {
+		allEventTypes = append(allEventTypes, pref.EventType...)
+		if len(pref.Channels) > 0 {
+			channels = pref.Channels
+		}
 	}
 
-	// Convert preference.Preference to sharednotification.NotificationPreferences
 	return sharednotification.NotificationPreferences{
-		EventType: prefs.EventType,
-		Channels:  channelsMap,
+		EventType: allEventTypes,
+		Channels:  channels,
 	}, nil
 }

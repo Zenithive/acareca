@@ -114,6 +114,26 @@ func getDefaultEventTypes(entityType string) []util.NotificationEventType {
 			util.EventUserRegistrationAlert,
 		}
 	}
+	
+	// Both Practitioner and Accountant get these default preferences
+	if entityType == util.RolePractitioner {
+		return []util.NotificationEventType{
+			util.EventNewTransaction,
+			util.EventAccountantActivityAlert,
+			util.EventSystemActivityAlert,
+		}
+	}
+	
+	// Accountant
+	if entityType == util.RoleAccountant {
+		return []util.NotificationEventType{
+			util.EventNewTransaction,
+			util.EventPractitionerActivityAlert,
+			util.EventSystemActivityAlert,
+		}
+	}
+	
+	// Default fallback
 	return []util.NotificationEventType{
 		util.EventNewTransaction,
 		util.EventAccountantActivityAlert,

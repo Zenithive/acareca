@@ -98,7 +98,6 @@ func (p *Publisher) appendAdminRecipients(ctx context.Context, recipients []Reci
 }
 
 func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
-	fmt.Println("=======================================2")
 	if p.notificationSvc == nil {
 		return fmt.Errorf("notification service is nil")
 	}
@@ -112,16 +111,23 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 			log.Printf("[ERROR] failed to get preferences for user %s: %v", recipient.UserID, err)
 			continue
 		}
+		fmt.Println("pref=========================================", len(prefs.EventType))
 
 		prefMap := make(map[util.NotificationEventType]struct{}, len(prefs.EventType))
-		fmt.Println("========================================", prefMap)
 		for _, et := range prefs.EventType {
 			prefMap[et] = struct{}{}
 		}
 
 		if _, ok := prefMap[util.NotificationEventType(req.EventType)]; !ok {
-			mapped := util.MapEventTypeToNotificationEventType(req.EventType)
-			if _, ok = prefMap[mapped]; !ok {
+			mappedTypes := util.MapEventTypeToNotificationEventType(req.EventType)
+			hasMatch := false
+			for _, mappedType := range mappedTypes {
+				if _, ok = prefMap[mappedType]; ok {
+					hasMatch = true
+					break
+				}
+			}
+			if !hasMatch {
 				continue
 			}
 		}
