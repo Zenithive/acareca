@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS tbl_clinic (
     deleted_at      TIMESTAMPTZ DEFAULT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_tbl_clinic_entity_id ON tbl_clinic(entity_id);
+CREATE INDEX IF NOT EXISTS idx_tbl_clinic_practitioner_id ON tbl_clinic(practitioner_id);
 
 CREATE TABLE IF NOT EXISTS tbl_clinic_address (
     id              UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS tbl_financial_settings (
     financial_year_id   UUID NOT NULL REFERENCES tbl_financial_year(id),
     lock_date           DATE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at          TIMESTAMPTZ DEFAULT NULL
 );
 
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts (
     code            SMALLINT NOT NULL CHECK (code >= 100 AND code <= 9999),
     name            VARCHAR(255) NOT NULL,
     is_system       BOOLEAN NOT NULL DEFAULT FALSE,
-    key             VARCHAR(255) NOT NULL;
+    key             VARCHAR(255) NOT NULL,
     classification  account_classification NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -134,7 +134,7 @@ DROP INDEX IF EXISTS uq_chart_of_accounts_code_practitioner_id;
 DROP INDEX IF EXISTS idx_fin_settings_deleted_at;
 DROP INDEX IF EXISTS idx_clinic_contact_deleted_at;
 DROP INDEX IF EXISTS idx_clinic_address_deleted_at;
-DROP INDEX IF EXISTS idx_tbl_clinic_entity_id;
+DROP INDEX IF EXISTS idx_tbl_clinic_practitioner_id;
 DROP TABLE IF EXISTS tbl_chart_of_accounts;
 DROP TABLE IF EXISTS tbl_account_tax;
 DROP TABLE IF EXISTS tbl_account_type;

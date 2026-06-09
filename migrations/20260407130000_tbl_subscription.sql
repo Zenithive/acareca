@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS tbl_subscription (
     price         DECIMAL(12, 2) NOT NULL DEFAULT 0,
     duration_days INTEGER NOT NULL DEFAULT 30,
     is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    stripe_product_id TEXT,
+    stripe_price_id   TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at    TIMESTAMPTZ

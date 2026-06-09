@@ -1,9 +1,15 @@
 -- +goose Up
 -- +goose StatementBegin
-
-CREATE TYPE form_status AS ENUM ('DRAFT', 'PUBLISHED');
-
-CREATE TYPE calculation_method AS ENUM ('INDEPENDENT_CONTRACTOR', 'SERVICE_FEE', 'EXPENSE_ENTRY');
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'form_status') THEN
+        CREATE TYPE form_status AS ENUM ('DRAFT', 'PUBLISHED');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'calculation_method') THEN
+        CREATE TYPE calculation_method AS ENUM ('INDEPENDENT_CONTRACTOR', 'SERVICE_FEE', 'EXPENSE_ENTRY');
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS tbl_form (
     id              UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),

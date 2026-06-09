@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tbl_practitioner (
     abn        VARCHAR(20),
     acn          VARCHAR(9),
     profession   VARCHAR(100),
+    stripe_customer_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
@@ -42,6 +43,8 @@ CREATE TABLE IF NOT EXISTS tbl_practitioner_subscription (
     start_date      TIMESTAMPTZ NOT NULL,
     end_date        TIMESTAMPTZ NOT NULL,
     status          practitioner_subscription_status NOT NULL DEFAULT 'ACTIVE',
+    stripe_subscription_id TEXT,
+    stripe_invoice_id       TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at      TIMESTAMPTZ

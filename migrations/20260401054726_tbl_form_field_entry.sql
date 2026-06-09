@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS tbl_form_entry_value (
 CREATE INDEX IF NOT EXISTS idx_tbl_form_field_form_version_id ON tbl_form_field(form_version_id);
 CREATE INDEX IF NOT EXISTS idx_tbl_form_field_sort_order ON tbl_form_field(form_version_id, sort_order);
 
+CREATE UNIQUE INDEX uniq_form_field_key ON tbl_form_field(form_version_id, field_key);
+
 CREATE INDEX IF NOT EXISTS idx_tbl_form_entry_form_version_id ON tbl_form_entry(form_version_id);
 CREATE INDEX IF NOT EXISTS idx_tbl_form_entry_clinic_id ON tbl_form_entry(clinic_id);
 
