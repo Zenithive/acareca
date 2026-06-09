@@ -76,10 +76,8 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role string, req *RqCreateClinic) (*RsClinic, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	limitCheckID := actorID
-
-	if err := s.limitsSvc.Check(ctx, limitCheckID, limits.KeyClinicCreate); err != nil {
-		return nil, err
+	if role == util.RoleAccountant {
+		actorID = req.PractitionerID
 	}
 
 	var result *RsClinic
