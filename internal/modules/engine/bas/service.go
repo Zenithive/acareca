@@ -197,7 +197,7 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 	})
 
 	// Send notification for report generation
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement", []uuid.UUID{pracID}); err != nil {
 		log.Printf("[WARN] failed to send activity statement generation notification: %v", err)
 	}
 
@@ -333,7 +333,7 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 	})
 
 	// Send notification for report generation
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBASReportGenerated, "BAS Preparation Report"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBASReportGenerated, "BAS Preparation Report", targetPracIDs); err != nil {
 		log.Printf("[WARN] failed to send BAS preparation generation notification: %v", err)
 	}
 
@@ -582,7 +582,7 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 	}
 
 	// Send notification
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement", practitionerIDs); err != nil {
 		log.Printf("[WARN] failed to send activity statement notification: %v", err)
 	}
 
@@ -793,7 +793,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	}
 
 	// Send notification
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBASReportExport, "BAS Preparation Report"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBASReportExport, "BAS Preparation Report", PracIDs); err != nil {
 		log.Printf("[WARN] failed to send BAS preparation notification: %v", err)
 	}
 
@@ -1078,7 +1078,9 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 }
 
 // notifyReportExport sends notifications to linked users about report export
-func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string) error {
+// targetPractitionerIDs: optional list of specific practitioners for whom the report was generated
+// If nil or empty when actor is accountant, notifies all linked practitioners
+func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string, targetPractitionerIDs []uuid.UUID) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
@@ -1111,11 +1113,20 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		}
 
 	case util.ActorAccountant:
-		// Notify linked practitioners
-		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
-		if err != nil {
-			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
-			return nil
+		// Notify only specific practitioners if targetPractitionerIDs is provided
+		var practitionerIDs []uuid.UUID
+		
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil
+			}
 		}
 
 		for _, practitionerID := range practitionerIDs {
