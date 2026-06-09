@@ -96,6 +96,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 	if p.notificationSvc == nil {
 		return fmt.Errorf("notification service is nil")
 	}
+	fmt.Println("run this also==================================================,,,,")
 
 	recipients := p.appendAdminRecipients(ctx, append([]RecipientWithPreferences{}, req.Recipients...))
 
@@ -168,6 +169,7 @@ func (p *Publisher) PublishToMultiple(ctx context.Context, recipients []uuid.UUI
 	if p.notificationSvc == nil {
 		return fmt.Errorf("notification service is nil")
 	}
+	fmt.Println("=========================", len(recipients))
 	bodyJSON, _ := json.Marshal(body)
 	notifPayload := NotificationPayload{Title: title, Body: bodyJSON, ExtraData: extraData}
 	payloadBytes, err := json.Marshal(notifPayload)

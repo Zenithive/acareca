@@ -203,22 +203,34 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		title = "System Error"
 	}
 
-	extraData := map[string]any{"action": action}
+	extraData := map[string]interface{}{"action": action}
 	senderType := util.ActorSystem
+	senderID := uuid.Nil
 
-	_ = s.notificationPub.PublishToMultiple(
-		ctx,
-		adminIDs,
-		util.ActorAdmin,
-		nil,
-		&senderType,
-		eventType,
-		util.EntitySystem,
-		entityID,
-		title,
-		detail,
-		&extraData,
-	)
+	// Build recipients with preferences
+	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(adminIDs))
+	for _, adminID := range adminIDs {
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   adminID,
+			RecipientType: util.ActorAdmin,
+			UserID:        adminID,
+		})
+	}
+
+	// Use Publish method which checks preferences
+	_ = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   senderID,
+		SenderType: senderType,
+		SenderName: "System",
+		EventType:  eventType,
+		EntityType: util.EntitySystem,
+		EntityID:   entityID,
+		EntityKey:  "system_id",
+		Title:      title,
+		Body:       detail,
+		ExtraData:  extraData,
+	})
 }
 
 // This runs in its own goroutine to avoid blocking the audit worker
@@ -400,6 +412,7 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 
 	// Send to each admin
 	senderType := util.ActorSystem
+	senderID := uuid.Nil
 	var entityID uuid.UUID
 	if entry.EntityID != nil {
 		parsed, err := uuid.Parse(*entry.EntityID)
@@ -409,19 +422,30 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 	eventType := resolveAdminEventType(entry.Action)
 
-	_ = s.notificationPub.PublishToMultiple(
-		ctx,
-		adminIDs,
-		util.ActorAdmin,
-		nil,
-		&senderType,
-		eventType,
-		util.EntityAuditLog,
-		entityID,
-		title,
-		message,
-		&extraData,
-	)
+	// Build recipients with preferences
+	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(adminIDs))
+	for _, adminID := range adminIDs {
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   adminID,
+			RecipientType: util.ActorAdmin,
+			UserID:        adminID,
+		})
+	}
+
+	// Use Publish method which checks preferences
+	_ = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   senderID,
+		SenderType: senderType,
+		SenderName: "System",
+		EventType:  eventType,
+		EntityType: util.EntityAuditLog,
+		EntityID:   entityID,
+		EntityKey:  "audit_log_id",
+		Title:      title,
+		Body:       message,
+		ExtraData:  extraData,
+	})
 }
 
 // resolveAdminEventType maps an audit action string to the appropriate admin EventType
