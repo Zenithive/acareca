@@ -20,7 +20,9 @@ CREATE TYPE account_classification AS ENUM (
 CREATE TABLE IF NOT EXISTS tbl_clinic (
     id              UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(), 
     practitioner_id UUID NOT NULL REFERENCES tbl_practitioner(id),
+    profile_picture text NULL,
     document_id     UUID NULL,
+    image_url text NULL,
     name            VARCHAR(150) NOT NULL, 
     abn             VARCHAR(11), 
     description     TEXT, 

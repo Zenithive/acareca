@@ -498,12 +498,14 @@ SELECT
     fe.clinic_id, cfv.practitioner_id,
     f.id AS form_id, f.name AS form_name,
     fe.id AS entry_id, fe."date"::date AS date,
+    fe.date AS entry_date,
     DATE_TRUNC('month',   fe."date"::date) AS period_month,
     DATE_TRUNC('quarter', fe."date"::date) AS period_quarter,
     DATE_TRUNC('year',    fe."date"::date) AS period_year,
     ff.id AS form_field_id, ff.label AS field_label,
     ff.section_type, ff.payment_responsibility, ff.tax_type,
     coa.id AS coa_id, coa.code AS account_code, coa.name AS account_name,
+    at.name AS account_type,
     atx.id AS account_tax_id, atx.name AS tax_name, atx.rate AS tax_rate, atx.is_taxable,
     CASE
         WHEN atx.name = 'BAS Excluded' THEN 'BAS_EXCLUDED'
@@ -524,6 +526,7 @@ JOIN tbl_form_field          ff  ON ff.id  = fev.form_field_id
 JOIN tbl_custom_form_version cfv ON cfv.id = ff.form_version_id
 JOIN tbl_form                f   ON f.id   = cfv.form_id
 JOIN tbl_chart_of_accounts   coa ON coa.id = ff.coa_id
+JOIN tbl_account_type        at  ON at.id  = coa.account_type_id
 JOIN tbl_account_tax         atx ON atx.id = coa.account_tax_id
 WHERE fe.status = 'SUBMITTED'
   AND fe.deleted_at IS NULL
