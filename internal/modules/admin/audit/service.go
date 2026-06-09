@@ -205,6 +205,54 @@ func buildSystemIssueMessage(action, actorName, entityName string, err error) st
 		actorName, action, entityName, err)
 }
 
+// buildAdminRecipients builds a list of admin recipients, optionally excluding an acting user
+func (s *service) buildAdminRecipients(ctx context.Context, excludeUserID *uuid.UUID) []sharednotification.RecipientWithPreferences {
+	recipients := make([]sharednotification.RecipientWithPreferences, 0)
+
+	if s.adminRepo == nil {
+		return recipients
+	}
+
+	admins, err := s.adminRepo.GetAllAdmins(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get admin users: %v", err)
+		return recipients
+	}
+
+	log.Printf("[DEBUG-RECIPIENTS] Building admin recipients - Total admins: %d, Exclude UserID: %v", len(admins), excludeUserID)
+
+	for _, admin := range admins {
+		// Skip if this admin is the one to be excluded
+		if excludeUserID != nil && admin.User.ID == *excludeUserID {
+			log.Printf("[INFO] Skipping excluded admin: %s (UserID: %s)", admin.User.Email, admin.User.ID.String())
+			continue
+		}
+
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   admin.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        admin.User.ID,
+		})
+	}
+
+	log.Printf("[DEBUG-RECIPIENTS] Final recipient count: %d", len(recipients))
+	return recipients
+}
+
+// publishToAdmins publishes a notification to admin users with preference checking
+func (s *service) publishToAdmins(ctx context.Context, req sharednotification.PublishRequest) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	if len(req.Recipients) == 0 {
+		log.Printf("[INFO] No admin recipients for notification - EventType: %s", req.EventType)
+		return nil
+	}
+
+	return s.notificationPub.Publish(ctx, req)
+}
+
 // publishSystemIssueNotification fans out system error/warning notifications to all admins.
 func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType util.EventType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -215,38 +263,14 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		title = "System Error"
 	}
 
-	extraData := map[string]interface{}{"action": action}
-	senderType := util.ActorSystem
-	senderID := uuid.Nil
+	// Build admin recipients (no exclusion for system notifications)
+	recipients := s.buildAdminRecipients(ctx, nil)
 
-	// Build admin recipients list using adminRepo
-	recipients := make([]sharednotification.RecipientWithPreferences, 0)
-	
-	if s.adminRepo != nil {
-		admins, err := s.adminRepo.GetAllAdmins(ctx)
-		if err != nil {
-			log.Printf("[WARN] failed to get admin users for system notification: %v", err)
-			return
-		}
-		
-		for _, admin := range admins {
-			recipients = append(recipients, sharednotification.RecipientWithPreferences{
-				RecipientID:   admin.ID,
-				RecipientType: util.ActorAdmin,
-				UserID:        admin.User.ID,
-			})
-		}
-	}
-
-	if len(recipients) == 0 {
-		return
-	}
-
-	// Use Publish method which checks preferences
-	_ = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+	// Publish notification with preference checking
+	_ = s.publishToAdmins(ctx, sharednotification.PublishRequest{
 		Recipients: recipients,
-		SenderID:   senderID,
-		SenderType: senderType,
+		SenderID:   uuid.Nil,
+		SenderType: util.ActorSystem,
 		SenderName: "System",
 		EventType:  eventType,
 		EntityType: util.EntitySystem,
@@ -254,7 +278,7 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 		EntityKey:  "system_id",
 		Title:      title,
 		Body:       detail,
-		ExtraData:  extraData,
+		ExtraData:  map[string]interface{}{"action": action},
 	})
 }
 
@@ -448,60 +472,19 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 	eventType := resolveAdminEventType(entry.Action)
 
-	// Build admin recipients list, excluding the acting admin
-	recipients := make([]sharednotification.RecipientWithPreferences, 0)
-
-	if s.adminRepo != nil {
-		admins, adminErr := s.adminRepo.GetAllAdmins(ctx)
-		if adminErr != nil {
-			log.Printf("[WARN] failed to get admin users for audit notification: %v", adminErr)
-			return
-		}
-
-		log.Printf("[DEBUG-FILTER] Total admins found: %d", len(admins))
-
-		// Get the acting user's ID to filter them out
-		var actingUserID *uuid.UUID
-		if entry.UserID != nil {
-			if parsed, parseErr := uuid.Parse(*entry.UserID); parseErr == nil {
-				actingUserID = &parsed
-				log.Printf("[DEBUG-FILTER] Acting UserID parsed: %s", parsed.String())
-			} else {
-				log.Printf("[ERROR-FILTER] Failed to parse UserID: %v", parseErr)
-			}
-		} else {
-			log.Printf("[WARN-FILTER] entry.UserID is nil - cannot filter acting admin")
-		}
-
-		// Add all admins except the one who performed the action
-		for _, admin := range admins {
-			log.Printf("[DEBUG-FILTER] Checking admin: %s (UserID: %s)", admin.User.Email, admin.User.ID.String())
-
-			// Skip if this admin is the one who performed the action
-			if actingUserID != nil && admin.User.ID == *actingUserID {
-				log.Printf("[INFO] ✓ Skipping notification to acting admin: %s (action: %s)", admin.User.Email, entry.Action)
-				continue
-			}
-
-			log.Printf("[DEBUG-FILTER] ✓ Adding admin %s to recipients", admin.User.Email)
-			recipients = append(recipients, sharednotification.RecipientWithPreferences{
-				RecipientID:   admin.ID,
-				RecipientType: util.ActorAdmin,
-				UserID:        admin.User.ID,
-			})
+	// Get the acting user's ID to filter them out
+	var excludeUserID *uuid.UUID
+	if entry.UserID != nil {
+		if parsed, parseErr := uuid.Parse(*entry.UserID); parseErr == nil {
+			excludeUserID = &parsed
 		}
 	}
 
-	log.Printf("[DEBUG-FILTER] Final recipient count: %d", len(recipients))
+	// Build admin recipients, excluding the acting admin
+	recipients := s.buildAdminRecipients(ctx, excludeUserID)
 
-	// Skip if no recipients left after filtering
-	if len(recipients) == 0 {
-		log.Printf("[INFO] No admin recipients for audit notification: %s", entry.Action)
-		return
-	}
-
-	// Use Publish method which checks preferences
-	_ = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+	// Publish notification with preference checking
+	_ = s.publishToAdmins(ctx, sharednotification.PublishRequest{
 		Recipients: recipients,
 		SenderID:   senderID,
 		SenderType: senderType,
