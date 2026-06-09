@@ -7414,6 +7414,35 @@ paths:
       summary: Export transaction data for report generation
       tags:
       - entry
+  /entry/value/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a specific entry from the system
+      parameters:
+      - description: Entry Value ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a form entry value
+      tags:
+      - entry
   /entry/version/{version_id}:
     get:
       consumes:
