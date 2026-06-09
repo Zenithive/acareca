@@ -21,7 +21,7 @@ type RecipientWithPreferences struct {
 
 type NotificationService interface {
 	Publish(ctx context.Context, rq NotificationRequest) error
-	GetPreferences(ctx context.Context, userID uuid.UUID) (NotificationPreferences, error)
+	GetPreferences(ctx context.Context, userID uuid.UUID) (map[util.NotificationEventType][]util.Channel, error)
 }
 
 type NotificationRequest struct {
@@ -37,11 +37,6 @@ type NotificationRequest struct {
 	Payload       []byte
 	Channels      []util.Channel
 	CreatedAt     time.Time
-}
-
-type NotificationPreferences struct {
-	EventType []util.NotificationEventType
-	Channels  []util.Channel
 }
 
 type NotificationPayload struct {
@@ -105,42 +100,33 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 	recipients := p.appendAdminRecipients(ctx, append([]RecipientWithPreferences{}, req.Recipients...))
 
 	for _, recipient := range recipients {
-		prefs, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
-
+		// Get user preferences as a map: eventType -> channels
+		prefMap, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
 		if err != nil {
 			log.Printf("[ERROR] failed to get preferences for user %s: %v", recipient.UserID, err)
 			continue
 		}
-		fmt.Println("pref=========================================", len(prefs.EventType))
 
-		prefMap := make(map[util.NotificationEventType]struct{}, len(prefs.EventType))
-		for _, et := range prefs.EventType {
-			prefMap[et] = struct{}{}
-		}
-
-		if _, ok := prefMap[util.NotificationEventType(req.EventType)]; !ok {
+		// Check if user has enabled this event type
+		channels, ok := prefMap[util.NotificationEventType(req.EventType)]
+		if !ok {
+			// Try mapped event types
 			mappedTypes := util.MapEventTypeToNotificationEventType(req.EventType)
-			hasMatch := false
 			for _, mappedType := range mappedTypes {
-				if _, ok = prefMap[mappedType]; ok {
-					hasMatch = true
+				if ch, found := prefMap[mappedType]; found {
+					channels = ch
+					ok = true
 					break
 				}
 			}
-			if !hasMatch {
-				continue
-			}
 		}
 
-		channels := make([]util.Channel, 0, len(prefs.Channels))
-		for _, ch := range prefs.Channels {
-			channels = append(channels, ch)
-		}
-
-		if len(channels) == 0 {
-			log.Printf("[INFO] no enabled channels for user %s, event %s", recipient.UserID, req.EventType)
+		// Skip if user hasn't enabled this event type or has no channels
+		if !ok || len(channels) == 0 {
 			continue
 		}
+
+		// Build and publish notification
 		extraData := map[string]interface{}{req.EntityKey: req.EntityID.String()}
 		if req.ExtraData != nil {
 			maps.Copy(extraData, req.ExtraData)
@@ -153,6 +139,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 			ExtraData:  &extraData,
 		}
 		payloadBytes, _ := json.Marshal(payload)
+
 		notifReq := NotificationRequest{
 			ID:            uuid.New(),
 			RecipientID:   recipient.RecipientID,
@@ -167,6 +154,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 			Channels:      channels,
 			CreatedAt:     time.Now(),
 		}
+
 		if err := p.notificationSvc.Publish(ctx, notifReq); err != nil {
 			log.Printf("[ERROR] failed to publish %s notification to %s: %v", req.EventType, recipient.RecipientID, err)
 		} else {

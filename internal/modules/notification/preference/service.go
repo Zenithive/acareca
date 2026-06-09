@@ -45,13 +45,13 @@ func (s *service) Get(ctx context.Context, userID uuid.UUID) ([]Preference, erro
 
 func (s *service) Update(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error {
 	return util.RunInTransaction(ctx, s.DB, func(ctx context.Context, tx *sqlx.Tx) error {
-
+		// Delete existing preferences for this entity
 		if err := s.repo.DeleteAllPreferences(ctx, userID, entityID, tx); err != nil {
 			return fmt.Errorf("failed to delete all preferences: %w", err)
 		}
 
+		// If no channels specified, user is disabling these event types
 		if len(rq.Channels) == 0 {
-			fmt.Println("2")
 			for _, eventType := range rq.EventType {
 				if err := s.repo.DeletePreferenceByEventType(ctx, userID, entityID, eventType, tx); err != nil {
 					return fmt.Errorf("failed to delete preference for event type %s: %w", eventType, err)
@@ -60,6 +60,7 @@ func (s *service) Update(ctx context.Context, userID, entityID uuid.UUID, role s
 			return nil
 		}
 
+		// Create/update preferences for each event type
 		for _, eventType := range rq.EventType {
 			pref := Preference{
 				UserID:     userID,
