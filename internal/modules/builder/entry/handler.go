@@ -401,6 +401,7 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 // @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
 // @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
 // @Param search query string false "Search by account, field, or clinic name"
+// @Param selected_columns query string false  "Comma-separated list of visible columns to include. Options: date, supplier_name, description, clinic, expenses, net_amount, gst_amount, gross_amount, gst_type, business_percentage, note"
 // @Success 200 {file} binary "Excel file containing transaction report"
 // @Failure 400 {object} response.RsError "Invalid request parameters"
 // @Failure 500 {object} response.RsError "Internal server error during generation"
@@ -442,10 +443,22 @@ func (h *handler) HandleExport(c *gin.Context) {
 		filter.PractitionerID = actorID
 	}
 
+	// Get selected columns from query
+	rawColumns := c.Query("selected_columns")
+	var selectedColumns []string
+	if rawColumns != "" {
+		parts := strings.Split(rawColumns, ",")
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				selectedColumns = append(selectedColumns, trimmed)
+			}
+		}
+	}
+
 	// Get export type from query (default to excel)
 	exportType := c.DefaultQuery("export_type", "excel")
 
-	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs)
+	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs, selectedColumns)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return

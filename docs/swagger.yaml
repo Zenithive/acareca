@@ -1812,6 +1812,8 @@ definitions:
         description: NetAmount, GstAmount, GrossAmount are used when a GST breakdown
           exists.
         type: number
+      notes:
+        type: string
     type: object
   equity.EquityMovements:
     properties:
@@ -7259,6 +7261,12 @@ paths:
       - description: Search by account, field, or clinic name
         in: query
         name: search
+        type: string
+      - description: 'Comma-separated list of visible columns to include. Options:
+          date, supplier_name, description, clinic, expenses, net_amount, gst_amount,
+          gross_amount, gst_type, business_percentage, note'
+        in: query
+        name: selected_columns
         type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
