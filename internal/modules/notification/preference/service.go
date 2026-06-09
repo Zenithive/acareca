@@ -104,8 +104,10 @@ func (s *service) createPreferences(ctx context.Context, tx *sqlx.Tx, userID, en
 	return nil
 }
 
-func getDefaultEventTypes(entityType string) []util.NotificationEventType {
-	if entityType == util.RoleAdmin {
+func getDefaultEventTypes(role string) []util.NotificationEventType {
+	switch role {
+
+	case util.RoleAdmin:
 		return []util.NotificationEventType{
 			util.EventSystemErrorAlert,
 			util.EventSystemWarningAlert,
@@ -114,31 +116,26 @@ func getDefaultEventTypes(entityType string) []util.NotificationEventType {
 			util.EventSubscriptionAlert,
 			util.EventUserRegistrationAlert,
 		}
-	}
-	
-	// Both Practitioner and Accountant get these default preferences
-	if entityType == util.RolePractitioner {
+
+	case util.RolePractitioner:
 		return []util.NotificationEventType{
 			util.EventNewTransaction,
 			util.EventAccountantActivityAlert,
 			util.EventSystemActivityAlert,
 		}
-	}
-	
-	// Accountant
-	if entityType == util.RoleAccountant {
+
+	case util.RoleAccountant:
 		return []util.NotificationEventType{
 			util.EventNewTransaction,
 			util.EventPractitionerActivityAlert,
 			util.EventSystemActivityAlert,
 		}
-	}
-	
-	// Default fallback
-	return []util.NotificationEventType{
-		util.EventNewTransaction,
-		util.EventAccountantActivityAlert,
-		util.EventSystemActivityAlert,
+
+	default:
+		return []util.NotificationEventType{
+			util.EventNewTransaction,
+			util.EventSystemActivityAlert,
+		}
 	}
 }
 
