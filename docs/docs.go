@@ -6628,52 +6628,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/entry/value/{id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Remove a specific entry from the system",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "entry"
-                ],
-                "summary": "Delete a form entry value",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Entry Value ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
         "/entry/version/{version_id}": {
             "get": {
                 "security": [

@@ -1,23 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
 
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'business_entity_type') THEN
-        CREATE TYPE business_entity_type AS ENUM ('SOLE_TRADER', 'COMPANY', 'TRUST');
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS tbl_accountant (
     id          UUID PRIMARY KEY NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
     user_id     UUID NOT NULL REFERENCES tbl_user(id),
-    verified          BOOLEAN NOT NULL DEFAULT FALSE,
-    entity_name       VARCHAR(255),
-    entity_type       business_entity_type NOT NULL DEFAULT 'SOLE_TRADER',
-    address           TEXT,
-    abn               VARCHAR(20),
-    acn               VARCHAR(9),
-    tax_agent_number  VARCHAR(50),
-    profession        VARCHAR(100),
+    license_no  VARCHAR(50),
+    verified    BOOLEAN NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at  TIMESTAMPTZ
@@ -39,6 +27,4 @@ CREATE TABLE IF NOT EXISTS tbl_accountant_setting (
 -- +goose StatementBegin
 DROP TABLE IF EXISTS tbl_accountant_setting;
 DROP TABLE IF EXISTS tbl_accountant;
-
-DROP TYPE IF EXISTS business_entity_type;
 -- +goose StatementEnd
