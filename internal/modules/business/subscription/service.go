@@ -37,12 +37,19 @@ func (s *service) Create(ctx context.Context, practitionerID uuid.UUID, req *RqC
 		return nil, err
 	}
 
+	// Set default payment status if not provided
+	paymentStatus := PaymentStatusPending
+	if req.PaymentStatus != nil {
+		paymentStatus = *req.PaymentStatus
+	}
+
 	sub := &PractitionerSubscription{
 		PractitionerID: practitionerID,
 		SubscriptionID: req.SubscriptionID,
 		StartDate:      start,
 		EndDate:        end,
 		Status:         req.Status,
+		PaymentStatus:  paymentStatus,
 	}
 
 	created, err := s.repo.Create(ctx, sub, tx)
@@ -88,6 +95,9 @@ func (s *service) Update(ctx context.Context, id int, req *RqUpdatePractitionerS
 	}
 	if req.Status != nil {
 		existing.Status = *req.Status
+	}
+	if req.PaymentStatus != nil {
+		existing.PaymentStatus = *req.PaymentStatus
 	}
 	existing.UpdatedAt = time.Now()
 

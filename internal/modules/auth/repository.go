@@ -36,7 +36,7 @@ type Repository interface {
 	FindSessionByRefreshToken(ctx context.Context, refreshToken string) (*Session, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 
-	// verificaction token
+	// verification token
 	CreateVerificationToken(ctx context.Context, tx *sqlx.Tx, token *VerificationToken) error
 	DeactivateOldTokens(ctx context.Context, tx *sqlx.Tx, entityID uuid.UUID) error
 	GetToken(ctx context.Context, tokenID uuid.UUID) (*VerificationToken, error)

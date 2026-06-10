@@ -18,29 +18,42 @@ const (
 	StatusInactive  Status = "INACTIVE"
 )
 
+type PaymentStatus string
+
+const (
+	PaymentStatusPending   PaymentStatus = "PENDING"
+	PaymentStatusUnpaid    PaymentStatus = "UNPAID"
+	PaymentStatusActive    PaymentStatus = "ACTIVE"
+	PaymentStatusExpired   PaymentStatus = "EXPIRED"
+	PaymentStatusCancelled PaymentStatus = "CANCELLED"
+)
+
 type PractitionerSubscription struct {
-	ID                   int        `db:"id"`
-	PractitionerID       uuid.UUID  `db:"practitioner_id"`
-	SubscriptionID       int        `db:"subscription_id"`
-	StartDate            time.Time  `db:"start_date"`
-	EndDate              time.Time  `db:"end_date"`
-	Status               Status     `db:"status"`
-	StripeSubscriptionID *string    `db:"stripe_subscription_id"`
-	StripeInvoiceID      *string    `db:"stripe_invoice_id"`
-	CreatedAt            time.Time  `db:"created_at"`
-	UpdatedAt            time.Time  `db:"updated_at"`
-	DeletedAt            *time.Time `db:"deleted_at"`
+	ID                   int            `db:"id"`
+	PractitionerID       uuid.UUID      `db:"practitioner_id"`
+	SubscriptionID       int            `db:"subscription_id"`
+	StartDate            time.Time      `db:"start_date"`
+	EndDate              time.Time      `db:"end_date"`
+	Status               Status         `db:"status"`
+	PaymentStatus        PaymentStatus  `db:"payment_status"`
+	StripeSubscriptionID *string        `db:"stripe_subscription_id"`
+	StripeInvoiceID      *string        `db:"stripe_invoice_id"`
+	CreatedAt            time.Time      `db:"created_at"`
+	UpdatedAt            time.Time      `db:"updated_at"`
+	DeletedAt            *time.Time     `db:"deleted_at"`
 }
 
 type RqCreatePractitionerSubscription struct {
-	SubscriptionID int    `json:"subscription_id" validate:"required,min=1"`
-	StartDate      string `json:"start_date" validate:"required"`
-	EndDate        string `json:"end_date" validate:"required"`
-	Status         Status `json:"status" validate:"required,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
+	SubscriptionID int            `json:"subscription_id" validate:"required,min=1"`
+	StartDate      string         `json:"start_date" validate:"required"`
+	EndDate        string         `json:"end_date" validate:"required"`
+	Status         Status         `json:"status" validate:"required,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
+	PaymentStatus  *PaymentStatus `json:"payment_status" validate:"omitempty,oneof=PENDING UNPAID ACTIVE EXPIRED CANCELLED"`
 }
 
 type RqUpdatePractitionerSubscription struct {
-	Status *Status `json:"status" validate:"omitempty,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
+	Status        *Status        `json:"status" validate:"omitempty,oneof=ACTIVE PAST_DUE CANCELLED PAUSED EXPIRED"`
+	PaymentStatus *PaymentStatus `json:"payment_status" validate:"omitempty,oneof=PENDING UNPAID ACTIVE EXPIRED CANCELLED"`
 }
 
 type SubscriptionInfo struct {
@@ -56,19 +69,21 @@ type RsActiveSubscription struct {
 	StartDate      time.Time        `json:"start_date"`
 	EndDate        time.Time        `json:"end_date"`
 	Status         Status           `json:"status"`
+	PaymentStatus  PaymentStatus    `json:"payment_status"`
 	CreatedAt      time.Time        `json:"created_at"`
 	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 type RsPractitionerSubscription struct {
-	ID             int       `json:"id"`
-	PractitionerID uuid.UUID `json:"practitioner_id"`
-	SubscriptionID int       `json:"subscription_id"`
-	StartDate      time.Time `json:"start_date"`
-	EndDate        time.Time `json:"end_date"`
-	Status         Status    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             int           `json:"id"`
+	PractitionerID uuid.UUID     `json:"practitioner_id"`
+	SubscriptionID int           `json:"subscription_id"`
+	StartDate      time.Time     `json:"start_date"`
+	EndDate        time.Time     `json:"end_date"`
+	Status         Status        `json:"status"`
+	PaymentStatus  PaymentStatus `json:"payment_status"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
 }
 
 func (s *PractitionerSubscription) ToRs() *RsPractitionerSubscription {
@@ -79,6 +94,7 @@ func (s *PractitionerSubscription) ToRs() *RsPractitionerSubscription {
 		StartDate:      s.StartDate,
 		EndDate:        s.EndDate,
 		Status:         s.Status,
+		PaymentStatus:  s.PaymentStatus,
 		CreatedAt:      s.CreatedAt,
 		UpdatedAt:      s.UpdatedAt,
 	}
@@ -90,6 +106,7 @@ type WebhookUpsert struct {
 	StripeSubscriptionID string
 	StripeInvoiceID      *string
 	Status               Status
+	PaymentStatus        PaymentStatus
 	StartDate            time.Time
 	EndDate              time.Time
 }

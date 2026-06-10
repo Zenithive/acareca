@@ -18,9 +18,11 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
+	"github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -59,23 +61,24 @@ type Service interface {
 }
 
 type service struct {
-	repo             Repository
-	cfg              *config.Config
-	db               *sqlx.DB
-	oauthConfig      *oauth2.Config
-	mailer           *mail.Client
-	practitionerSvc  practitioner.IService
-	auditSvc         audit.Service
-	invitationSvc    invitation.Service
-	practitionerRepo practitioner.Repository
-	accountantSvc    accountant.IService
-	adminSvc         admin.IService
-	inviteRepo       invitation.Repository
-	fileRepo         filemod.Repository
-	PreferenceSvc    preference.IService
+	repo                Repository
+	cfg                 *config.Config
+	db                  *sqlx.DB
+	oauthConfig         *oauth2.Config
+	mailer              *mail.Client
+	practitionerSvc     practitioner.IService
+	auditSvc            audit.Service
+	invitationSvc       invitation.Service
+	practitionerRepo    practitioner.Repository
+	accountantSvc       accountant.IService
+	adminSvc            admin.IService
+	inviteRepo          invitation.Repository
+	fileRepo            filemod.Repository
+	PreferenceSvc       preference.IService
+	practitionerSubRepo subscription.Repository
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, preferenceSvc preference.IService, practitionerSubRepo subscription.Repository) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -87,20 +90,21 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		Endpoint: google.Endpoint,
 	}
 	return &service{
-		repo:             repo,
-		cfg:              cfg,
-		oauthConfig:      oauthCfg,
-		db:               db,
-		mailer:           mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
-		practitionerSvc:  practitionerSvc,
-		auditSvc:         auditSvc,
-		invitationSvc:    invitationSvc,
-		practitionerRepo: practitionerRepo,
-		accountantSvc:    accountantSvc,
-		adminSvc:         adminSvc,
-		inviteRepo:       inviteRepo,
-		fileRepo:         fileRepo,
-		PreferenceSvc:    preferenceSvc,
+		repo:                repo,
+		cfg:                 cfg,
+		oauthConfig:         oauthCfg,
+		db:                  db,
+		mailer:              mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		practitionerSvc:     practitionerSvc,
+		auditSvc:            auditSvc,
+		invitationSvc:       invitationSvc,
+		practitionerRepo:    practitionerRepo,
+		accountantSvc:       accountantSvc,
+		adminSvc:            adminSvc,
+		inviteRepo:          inviteRepo,
+		fileRepo:            fileRepo,
+		PreferenceSvc:       preferenceSvc,
+		practitionerSubRepo: practitionerSubRepo,
 	}
 }
 
@@ -252,15 +256,50 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		return nil, ErrInvalidPassword
 	}
 
+	// Check email verification first
 	if user.Role != util.RoleAdmin {
 		isVerified, err := s.isUserVerified(ctx, user)
 		if err != nil {
 			return nil, fmt.Errorf("verification check: %w", err)
 		}
 		if !isVerified {
-			return nil, errors.New("account not verified. Please check your email to verify your account")
+			return nil, ErrEmailVerificationRequired
 		}
 	}
+
+	// Non-admin users must have an active subscription with valid payment status
+	if user.Role != util.RoleAdmin {
+		entityID, err := s.resolveEntityID(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+
+		practitionerID := uuid.MustParse(entityID)
+
+		activeSub, err := s.practitionerSubRepo.GetActiveSubscription(ctx, practitionerID)
+		if err != nil && !errors.Is(err, subscription.ErrNotFound) {
+			return nil, fmt.Errorf("subscription check: %w", err)
+		}
+
+		if activeSub == nil {
+			// No active subscription — determine the current status from any existing subscription
+			status := "PENDING"
+			subs, err := s.practitionerSubRepo.ListByPractitionerID(ctx, practitionerID, common.Filter{Limit: lo.ToPtr(1), Offset: lo.ToPtr(0)})
+			if err == nil && len(subs) > 0 {
+				status = string(subs[0].Status)
+			}
+			return nil, &SubscriptionRequiredError{SubscriptionStatus: status}
+		}
+
+		// Check payment status - only allow login if payment is ACTIVE
+		if activeSub.PaymentStatus != subscription.PaymentStatusActive {
+			return nil, &PaymentRequiredError{
+				PaymentStatus:      string(activeSub.PaymentStatus),
+				SubscriptionStatus: string(activeSub.Status),
+			}
+		}
+	}
+
 	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
 		return nil, err

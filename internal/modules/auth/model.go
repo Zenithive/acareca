@@ -196,3 +196,51 @@ const (
 	TokenStatusExpired = "EXPIRED"
 	TokenStatusResent  = "RESENT"
 )
+
+// Structured error responses
+type RsErrorEmailVerificationRequired struct {
+	Success bool   `json:"success"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type RsErrorSubscriptionRequired struct {
+	Success            bool   `json:"success"`
+	Code               string `json:"code"`
+	SubscriptionStatus string `json:"subscription_status"`
+	Message            string `json:"message"`
+}
+
+type RsErrorPaymentRequired struct {
+	Success            bool   `json:"success"`
+	Code               string `json:"code"`
+	PaymentStatus      string `json:"payment_status"`
+	SubscriptionStatus string `json:"subscription_status"`
+	Message            string `json:"message"`
+}
+
+// Sentinel errors
+var ErrEmailVerificationRequired = &EmailVerificationRequiredError{}
+
+type EmailVerificationRequiredError struct{}
+
+func (e *EmailVerificationRequiredError) Error() string {
+	return "please verify your email address before continuing"
+}
+
+type SubscriptionRequiredError struct {
+	SubscriptionStatus string
+}
+
+func (e *SubscriptionRequiredError) Error() string {
+	return "an active subscription is required to access the application"
+}
+
+type PaymentRequiredError struct {
+	PaymentStatus      string
+	SubscriptionStatus string
+}
+
+func (e *PaymentRequiredError) Error() string {
+	return "payment is required to access the application"
+}

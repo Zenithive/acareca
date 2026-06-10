@@ -110,6 +110,36 @@ func (h *handler) Login(c *gin.Context) {
 			response.Error(c, http.StatusUnauthorized, err)
 			return
 		}
+		var emailVerErr *EmailVerificationRequiredError
+		if errors.As(err, &emailVerErr) {
+			c.JSON(http.StatusForbidden, RsErrorEmailVerificationRequired{
+				Success: false,
+				Code:    "EMAIL_VERIFICATION_REQUIRED",
+				Message: "Please verify your email address before continuing.",
+			})
+			return
+		}
+		var subErr *SubscriptionRequiredError
+		if errors.As(err, &subErr) {
+			c.JSON(http.StatusForbidden, RsErrorSubscriptionRequired{
+				Success:            false,
+				Code:               "SUBSCRIPTION_REQUIRED",
+				SubscriptionStatus: subErr.SubscriptionStatus,
+				Message:            "An active subscription is required to access the application.",
+			})
+			return
+		}
+		var paymentErr *PaymentRequiredError
+		if errors.As(err, &paymentErr) {
+			c.JSON(http.StatusPaymentRequired, RsErrorPaymentRequired{
+				Success:            false,
+				Code:               "PAYMENT_REQUIRED",
+				PaymentStatus:      paymentErr.PaymentStatus,
+				SubscriptionStatus: paymentErr.SubscriptionStatus,
+				Message:            "Payment is required to access the application. Please complete your payment.",
+			})
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}
