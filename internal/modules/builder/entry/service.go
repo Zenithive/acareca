@@ -1144,7 +1144,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 	var result interface{}
 	var contentType string
 	var fullName string
-	var targetNotifIDs []uuid.UUID
 
 	// Fallback
 	if len(selectedColumns) == 0 {
@@ -1295,38 +1294,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			}
 			result = buf
 			contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-		}
-
-		targetNotifIDs = PracIDs
-		if f.ClinicID != nil {
-			clinicUUID, err := uuid.Parse(*f.ClinicID)
-			if err == nil {
-				clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicUUID)
-				if err == nil && clinic != nil {
-					targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
-				}
-			}
-		}
-
-		if role == util.RoleAccountant {
-			for _, pID := range targetNotifIDs {
-				err := s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "transaction_report.exported",
-					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
-					Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
-					CreatedAt:      time.Now(),
-				})
-				if err != nil {
-					return fmt.Errorf("failed to log shared transaction export event: %w", err)
-				}
-			}
 		}
 
 		return nil
