@@ -241,7 +241,7 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 	})
 
 	// Send notification for report generation
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetGenerated, "Balance Sheet"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetGenerated, "Balance Sheet", targetPracIDs); err != nil {
 		log.Printf("[WARN] failed to send balance sheet generation notification: %v", err)
 	}
 
@@ -371,7 +371,7 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet
 	}
 
 	// Send notification
-	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetExport, "Balance Sheet"); err != nil {
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetExport, "Balance Sheet", notifIDs); err != nil {
 		log.Printf("[WARN] failed to send balance sheet notification: %v", err)
 	}
 
@@ -426,7 +426,9 @@ func formatDateForDisplay(dateStr string) string {
 }
 
 // notifyReportExport sends notifications to linked users about report export
-func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string) error {
+// targetPractitionerIDs: optional list of specific practitioners for whom the report was generated
+// If nil or empty when actor is accountant, notifies all linked practitioners
+func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string, targetPractitionerIDs []uuid.UUID) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
@@ -459,11 +461,20 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 		}
 
 	case util.ActorAccountant:
-		// Notify linked practitioners
-		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
-		if err != nil {
-			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
-			return nil
+		// Notify only specific practitioners if targetPractitionerIDs is provided
+		var practitionerIDs []uuid.UUID
+		
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil
+			}
 		}
 
 		for _, practitionerID := range practitionerIDs {

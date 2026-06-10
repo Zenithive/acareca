@@ -19,7 +19,7 @@ type Service interface {
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
-	GetPreferences(ctx context.Context, userID uuid.UUID) (preference.Preference, error)
+	GetPreferences(ctx context.Context, userID uuid.UUID) ([]preference.Preference, error)
 }
 
 type service struct {
@@ -120,6 +120,6 @@ func (s *service) MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientI
 	return s.repo.MarkDismissed(ctx, ids, recipientID)
 }
 
-func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) (preference.Preference, error) {
-	return s.PrefRepo.GetPreferencesByUserID(ctx, userID)
+func (s *service) GetPreferences(ctx context.Context, userID uuid.UUID) ([]preference.Preference, error) {
+	return s.PrefRepo.GetAllPreferences(ctx, userID)
 }

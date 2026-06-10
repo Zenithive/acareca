@@ -40,21 +40,21 @@ func (a *ServiceAdapter) Publish(ctx context.Context, rq sharednotification.Noti
 	return a.svc.Publish(ctx, notifReq)
 }
 
-// GetPreferences adapts the GetPreferences method
-func (a *ServiceAdapter) GetPreferences(ctx context.Context, userID uuid.UUID) (sharednotification.NotificationPreferences, error) {
+// GetPreferences adapts the GetPreferences method and returns a map of event types to channels
+func (a *ServiceAdapter) GetPreferences(ctx context.Context, userID uuid.UUID) (map[util.NotificationEventType][]util.Channel, error) {
 	prefs, err := a.svc.GetPreferences(ctx, userID)
 	if err != nil {
-		return sharednotification.NotificationPreferences{}, err
+		return nil, err
 	}
 
-	channelsMap := make([]util.Channel, 0, len(prefs.Channels))
-	for _, ch := range prefs.Channels {
-		channelsMap = append(channelsMap, util.Channel(ch))
+	// Build a map: eventType -> channels
+	prefMap := make(map[util.NotificationEventType][]util.Channel, len(prefs))
+	for _, pref := range prefs {
+		// Each preference row has one event type (stored as array with single element)
+		if len(pref.EventType) > 0 {
+			prefMap[pref.EventType[0]] = pref.Channels
+		}
 	}
 
-	// Convert preference.Preference to sharednotification.NotificationPreferences
-	return sharednotification.NotificationPreferences{
-		EventType: prefs.EventType,
-		Channels:  channelsMap,
-	}, nil
+	return prefMap, nil
 }

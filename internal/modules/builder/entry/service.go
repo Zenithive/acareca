@@ -107,6 +107,7 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 
 	var result *RsFormEntry
+	var realOwnerID uuid.UUID
 
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 
@@ -118,7 +119,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			return fmt.Errorf("clinic not found: %s", req.ClinicID)
 		}
 
-		realOwnerID := clinic.PractitionerID
+		realOwnerID = clinic.PractitionerID
 
 		if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 			return err
@@ -206,7 +207,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		AfterState: result,
 	})
 
-	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created", []uuid.UUID{realOwnerID}); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -242,6 +243,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	var result *RsFormEntry
 	var beforeState any
+	var practitionerID uuid.UUID
 
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
@@ -254,6 +256,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			return fmt.Errorf("form entry not found: %s", id)
 		}
 
+		practitionerID = existing.PractitionerID
 		beforeState = existing.ToRs(values)
 
 		dateToCheck := existing.Date
@@ -342,7 +345,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		AfterState:  result,
 	})
 
-	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated", []uuid.UUID{practitionerID}); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -1283,7 +1286,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		return nil, "", err
 	}
 
-	if err = s.notifyTransaction(ctx, actorID, util.ActorType(role), util.EventTransactionReportExport, "Transaction report exported"); err != nil {
+	if err = s.notifyTransaction(ctx, actorID, util.ActorType(role), util.EventTransactionReportExport, "Transaction report exported", PracIDs); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -1414,7 +1417,7 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string) error {
+func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string, targetPractitionerIDs []uuid.UUID) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
@@ -1458,15 +1461,23 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 		}
 
 	case util.ActorAccountant:
-		// If the sender is an accountant, we need to find which practitioners to notify
-		// Get all practitioners linked to this accountant
-		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
-		if err != nil {
-			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
-			return nil // Don't fail transaction if notification fails
+		// If the sender is an accountant, notify only specific practitioners if provided
+		var practitionerIDs []uuid.UUID
+		
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the transaction/report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil // Don't fail transaction if notification fails
+			}
 		}
 
-		// Notify each linked practitioner
+		// Notify each practitioner
 		for _, practitionerID := range practitionerIDs {
 			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
 			if err != nil {
