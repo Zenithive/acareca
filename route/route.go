@@ -226,9 +226,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	preferenceHandler := preference.NewHandler(preferenceSvc)
 	preference.RegisterRoutes(nft, preferenceHandler)
 
-	// ============ BILLING MODULE ============
-	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
-
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))
 	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
@@ -257,6 +254,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// Register file routes
 	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
+
+	// ============ BILLING MODULE ============
+	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc, notificationSvc, adminRepo)
 
 	// ============ BUILDER ROUTES (requires notificationPublisher) ============
 	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
