@@ -6308,6 +6308,12 @@ const docTemplate = `{
                         "description": "Search by account, field, or clinic name",
                         "name": "search",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of visible columns to include. Options: date, supplier_name, description, clinic, expenses, net_amount, gst_amount, gross_amount, gst_type, business_percentage, note",
+                        "name": "selected_columns",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -13219,6 +13225,9 @@ const docTemplate = `{
                 "net_amount": {
                     "description": "NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.",
                     "type": "number"
+                },
+                "notes": {
+                    "type": "string"
                 }
             }
         },

@@ -46,7 +46,7 @@ type IService interface {
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
-	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
+	ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID, selectedColumns []string) (interface{}, string, error)
 	ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error)
 }
 
@@ -1140,10 +1140,16 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	return &rs, nil
 }
 
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error) {
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID, selectedColumns []string) (interface{}, string, error) {
 	var result interface{}
 	var contentType string
 	var fullName string
+	var targetNotifIDs []uuid.UUID
+
+	// Fallback
+	if len(selectedColumns) == 0 {
+		selectedColumns = []string{"date", "supplier_name", "description", "clinic", "expenses", "net_amount", "gst_amount", "gross_amount", "gst_type", "business_percentage", "note"}
+	}
 
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
@@ -1227,7 +1233,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
 		}
 
-		// Handle Excel Export
 		if strings.ToLower(exportType) == "excel" {
 			config := export.ExportConfig{
 				EntityName:     entityName,
@@ -1242,24 +1247,37 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			for i, g := range groups {
 				exportDetails := make([]*entryexport.CoaDetail, len(g.Details))
 				for j, d := range g.Details {
-					var createdAtTime time.Time
-					if d.CreatedAt != "" {
-						parsedTime, err := time.Parse("2006-01-02", d.CreatedAt)
+
+					var realizedDate time.Time
+					sourceDateStr := ""
+					if d.Date != nil {
+						sourceDateStr = *d.Date
+					} else if d.CreatedAt != "" {
+						sourceDateStr = d.CreatedAt
+					}
+
+					if sourceDateStr != "" {
+						if len(sourceDateStr) >= 10 {
+							sourceDateStr = sourceDateStr[:10]
+						}
+						parsed, err := time.Parse("2006-01-02", sourceDateStr)
 						if err == nil {
-							createdAtTime = parsedTime
+							realizedDate = parsed
 						}
 					}
 
 					exportDetails[j] = &entryexport.CoaDetail{
-						FormFieldName: d.FormFieldName,
-						TaxTypeName:   d.TaxTypeName,
-						FormName:      lo.FromPtrOr(d.FormName, "-"),
-						ClinicName:    lo.FromPtrOr(d.ClinicName, "-"),
-						NetAmount:     d.NetAmount,
-						GstAmount:     d.GstAmount,
-						GrossAmount:   d.GrossAmount,
-						CreatedAt:     createdAtTime,
-						IsExpense:     d.IsExpense,
+						FormFieldName:      d.FormFieldName,
+						TaxTypeName:        d.TaxTypeName,
+						FormName:           lo.FromPtrOr(d.FormName, "-"),
+						ClinicName:         lo.FromPtrOr(d.ClinicName, "-"),
+						NetAmount:          d.NetAmount,
+						GstAmount:          d.GstAmount,
+						GrossAmount:        d.GrossAmount,
+						CreatedAt:          realizedDate,
+						IsExpense:          d.IsExpense,
+						BusinessPercentage: d.BusinessPercentage,
+						Notes:              d.Notes,
 					}
 				}
 				exportGroups[i] = &entryexport.CoaGroup{
@@ -1271,12 +1289,44 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 				}
 			}
 
-			buf, err := entryexport.GenerateExcelReport(exportGroups, config, formatDateHelper)
+			buf, err := entryexport.GenerateExcelReport(exportGroups, config, formatDateHelper, selectedColumns)
 			if err != nil {
 				return fmt.Errorf("failed to generate excel: %w", err)
 			}
 			result = buf
 			contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		}
+
+		targetNotifIDs = PracIDs
+		if f.ClinicID != nil {
+			clinicUUID, err := uuid.Parse(*f.ClinicID)
+			if err == nil {
+				clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicUUID)
+				if err == nil && clinic != nil {
+					targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
+				}
+			}
+		}
+
+		if role == util.RoleAccountant {
+			for _, pID := range targetNotifIDs {
+				err := s.eventsSvc.Record(ctx, events.SharedEvent{
+					ID:             uuid.New(),
+					PractitionerID: pID,
+					AccountantID:   actorID,
+					ActorID:        userID,
+					ActorName:      &fullName,
+					ActorType:      role,
+					EventType:      "transaction_report.exported",
+					EntityType:     "REPORT",
+					Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
+					Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
+					CreatedAt:      time.Now(),
+				})
+				if err != nil {
+					return fmt.Errorf("failed to log shared transaction export event: %w", err)
+				}
+			}
 		}
 
 		return nil
@@ -1286,11 +1336,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		return nil, "", err
 	}
 
-	if err = s.notifyTransaction(ctx, actorID, util.ActorType(role), util.EventTransactionReportExport, "Transaction report exported", PracIDs); err != nil {
-		log.Printf("failed to send transaction notification event: %v", err.Error())
-	}
-
-	// --- AUDIT LOG ---
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
@@ -1302,8 +1347,9 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		EntityType: lo.ToPtr(auditctx.EntityTransactions),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
-			"report_type": "Transaction Report",
-			"export_type": exportType,
+			"report_type":      "Transaction Report",
+			"export_type":      exportType,
+			"selected_columns": selectedColumns,
 		},
 	})
 
@@ -1463,7 +1509,7 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 	case util.ActorAccountant:
 		// If the sender is an accountant, notify only specific practitioners if provided
 		var practitionerIDs []uuid.UUID
-		
+
 		if len(targetPractitionerIDs) > 0 {
 			// Use the specific practitioners for whom the transaction/report was generated
 			practitionerIDs = targetPractitionerIDs

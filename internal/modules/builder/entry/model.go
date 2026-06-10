@@ -161,7 +161,7 @@ type RsEntryValue struct {
 	GstAmount          *float64 `json:"gst_amount,omitempty"`
 	GrossAmount        *float64 `json:"gross_amount,omitempty"`
 	BusinessPercentage *float64 `json:"business_percentage,omitempty"`
-	Notes              *string  `json:"description,omitempty"`
+	Notes              *string  `json:"notes,omitempty"`
 }
 
 type Filter struct {
@@ -194,15 +194,16 @@ type RsTransactionRow struct {
 }
 
 type TransactionFilter struct {
-	ClinicID  *string `form:"clinic_id"`
-	FormID    *string `form:"form_id"`
-	CoaID     *string `form:"coa_id"`
-	TaxTypeID *int16  `form:"tax_type_id"`
-	StartDate *string `form:"start_date"`
-	EndDate   *string `form:"end_date"`
-	VersionID *string `form:"version_id"`
-	Status    *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Role      string  `form:"-"`
+	ClinicID        *string  `form:"clinic_id"`
+	FormID          *string  `form:"form_id"`
+	CoaID           *string  `form:"coa_id"`
+	TaxTypeID       *int16   `form:"tax_type_id"`
+	StartDate       *string  `form:"start_date"`
+	EndDate         *string  `form:"end_date"`
+	VersionID       *string  `form:"version_id"`
+	Status          *string  `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Role            string   `form:"-"`
+	SelectedColumns []string `json:"selected_columns"`
 	common.Filter
 }
 
