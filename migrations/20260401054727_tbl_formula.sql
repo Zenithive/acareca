@@ -1,5 +1,13 @@
 -- +goose Up
 -- +goose StatementBegin
+ALTER TABLE tbl_form_field
+ADD COLUMN field_key VARCHAR(5) NOT NULL DEFAULT '',
+ADD COLUMN slug VARCHAR(100),
+ADD COLUMN is_computed BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE UNIQUE INDEX uniq_form_field_key
+ON tbl_form_field(form_version_id, field_key);
+
 CREATE TABLE tbl_formula (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
