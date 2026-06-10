@@ -2,6 +2,8 @@ package util
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -397,4 +399,11 @@ func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEven
 	default:
 		return []NotificationEventType{EventSystemActivityAlert}
 	}
+}
+
+func HashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	return tokenHash
 }

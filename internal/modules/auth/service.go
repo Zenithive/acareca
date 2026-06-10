@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -282,16 +280,15 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		}
 
 		if activeSub == nil {
-			// No active subscription — determine the current status from any existing subscription
 			status := "PENDING"
-			subs, err := s.practitionerSubRepo.ListByPractitionerID(ctx, practitionerID, common.Filter{Limit: lo.ToPtr(1), Offset: lo.ToPtr(0)})
+			var filter common.Filter
+			subs, err := s.practitionerSubRepo.ListByPractitionerID(ctx, practitionerID, filter)
 			if err == nil && len(subs) > 0 {
 				status = string(subs[0].Status)
 			}
 			return nil, &SubscriptionRequiredError{SubscriptionStatus: status}
 		}
 
-		// Check payment status - only allow login if payment is ACTIVE
 		if activeSub.PaymentStatus != subscription.PaymentStatusActive {
 			return nil, &PaymentRequiredError{
 				PaymentStatus:      string(activeSub.PaymentStatus),
@@ -736,8 +733,7 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 	}
 
 	rawToken := uuid.New().String()
-	hash := sha256.Sum256([]byte(rawToken))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := util.HashToken(rawToken)
 
 	expiresAt := time.Now().Add(15 * time.Minute)
 	if err := s.repo.SaveResetToken(ctx, user.ID.String(), tokenHash, expiresAt); err != nil {
@@ -754,8 +750,7 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 }
 
 func (s *service) ResetPassword(ctx context.Context, req *RqResetPassword) error {
-	hash := sha256.Sum256([]byte(req.Token))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := util.HashToken(req.Token)
 
 	newPasswordHash, err := util.GenerateHash(req.NewPassword)
 	if err != nil {
