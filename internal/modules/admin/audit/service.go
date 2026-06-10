@@ -83,14 +83,14 @@ func (s *service) LogWithNotification(ctx context.Context, entry *LogEntry, noti
 
 func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	meta := auditctx.GetMetadata(ctx)
-	
+
 	// DEBUG: Log context metadata
 	log.Printf("[DEBUG-ENRICH] Action: %s | Context UserID: %v | Context PracticeID: %v",
 		entry.Action,
 		meta.UserID,
 		meta.PracticeID,
 	)
-	
+
 	if entry.PracticeID == nil {
 		entry.PracticeID = meta.PracticeID
 	}
@@ -103,7 +103,7 @@ func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	if entry.UserAgent == nil {
 		entry.UserAgent = meta.UserAgent
 	}
-	
+
 	// DEBUG: Log enriched entry
 	log.Printf("[DEBUG-ENRICHED] Action: %s | Entry UserID: %v | Entry PracticeID: %v",
 		entry.Action,
@@ -285,6 +285,10 @@ func (s *service) publishSystemIssueNotification(level, action, detail string, e
 // This runs in its own goroutine to avoid blocking the audit worker
 // publishAuditLogNotification sends notifications to all admin users about a new audit log
 func (s *service) publishAuditLogNotification(entry *LogEntry) {
+	if shouldSkipNotification(entry) {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -560,4 +564,25 @@ func (s *service) GetByID(ctx context.Context, id string) (*RsAuditLog, error) {
 		return nil, err
 	}
 	return toRsAuditLog(l), nil
+}
+
+// shouldSkipNotification determines if an audit log should skip the admin notification step
+func shouldSkipNotification(entry *LogEntry) bool {
+	if entry.Module == auditctx.ModuleBilling {
+		return true
+	}
+
+	switch entry.Action {
+	case auditctx.ActionSubscriptionCreated,
+		auditctx.ActionSubscriptionUpdated,
+		auditctx.ActionSubscriptionDeleted,
+		auditctx.ActionBillingPaymentSuccess,
+		auditctx.ActionBillingActivationSuccess,
+		auditctx.ActionBillingPaymentFailed,
+		auditctx.ActionBillingActivationFailed,
+		auditctx.ActionBillingStatusUpdateFailed:
+		return true
+	default:
+		return false
+	}
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/samber/lo"
 	stripe "github.com/stripe/stripe-go/v82"
 )
@@ -111,7 +113,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		Action:     auditctx.ActionBillingPaymentSuccess,
 		Module:     auditctx.ModuleBilling,
 		EntityType: lo.ToPtr(auditctx.EntitySubscription),
-		EntityID:   &subscriptionIDStr,
+		EntityID:   &pIDStr,
 		AfterState: map[string]interface{}{
 			"stripe_sub_id": stripeSub.ID,
 			"amount_total":  session.AmountTotal,
@@ -119,6 +121,10 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 			"end_date":      endDate,
 		},
 	})
+
+	go s.notifySubscriptionAlert(practitionerID, subscriptionID, string(subscription.StatusActive), time.Now(), endDate)
+
+	fmt.Printf("\n[DEBUG]Subscription checkout completed notification has been called from Billing\n")
 
 	return err
 }
@@ -150,13 +156,22 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 		Action:     auditctx.ActionBillingPaymentFailed,
 		Module:     auditctx.ModuleBilling,
 		EntityType: lo.ToPtr(auditctx.EntitySubscription),
-		EntityID:   &stripeSubID,
+		// EntityID:   &stripeSubID,
 		AfterState: map[string]interface{}{
 			"invoice_id":    invoiceID,
 			"stripe_sub_id": stripeSubID,
 			"status":        subscription.StatusPastDue,
 		},
 	})
+
+	var practitionerID uuid.UUID
+	if invoice.Parent.SubscriptionDetails.Subscription.Metadata != nil {
+		if pracIDStr, ok := invoice.Parent.SubscriptionDetails.Subscription.Metadata["practitioner_id"]; ok {
+			practitionerID, _ = uuid.Parse(pracIDStr)
+		}
+	}
+
+	go s.notifyPaymentFailedAlert(practitionerID, stripeSubID, invoiceID, float64(invoice.AmountDue)/100.0)
 
 	return nil
 }
@@ -167,7 +182,21 @@ func (s *service) handleSubscriptionDeleted(ctx context.Context, event stripe.Ev
 		return fmt.Errorf("parse subscription: %w", err)
 	}
 
-	return s.subRepo.UpdateStripeFields(ctx, stripeSub.ID, nil, subscription.StatusCancelled, time.Time{})
+	err := s.subRepo.UpdateStripeFields(ctx, stripeSub.ID, nil, subscription.StatusCancelled, time.Time{})
+	if err != nil {
+		return err
+	}
+
+	var practitionerID uuid.UUID
+	if stripeSub.Metadata != nil {
+		if pracIDStr, ok := stripeSub.Metadata["practitioner_id"]; ok {
+			practitionerID, _ = uuid.Parse(pracIDStr)
+		}
+	}
+
+	go s.notifySubscriptionDeletedAlert(practitionerID, stripeSub.ID)
+
+	return nil
 }
 
 func (s *service) handleSubscriptionUpdated(ctx context.Context, event stripe.Event) error {
@@ -185,11 +214,179 @@ func (s *service) handleSubscriptionUpdated(ctx context.Context, event stripe.Ev
 		invoiceIDPtr = &id
 	}
 
-	return s.subRepo.UpdateStripeFields(ctx, stripeSub.ID, invoiceIDPtr, status, endDate)
+	err := s.subRepo.UpdateStripeFields(ctx, stripeSub.ID, invoiceIDPtr, status, endDate)
+	if err != nil {
+		return err
+	}
+
+	var internalSubID int
+	if stripeSub.Metadata != nil {
+		if idStr, ok := stripeSub.Metadata["subscription_id"]; ok {
+			internalSubID, _ = strconv.Atoi(idStr)
+		}
+	}
+
+	if stripeSub.Metadata != nil {
+		if pracIDStr, ok := stripeSub.Metadata["practitioner_id"]; ok {
+			if practitionerID, parseErr := uuid.Parse(pracIDStr); parseErr == nil {
+				go s.notifySubscriptionAlert(practitionerID, internalSubID, string(status), time.Now(), endDate)
+			}
+		}
+	}
+
+	fmt.Printf("\n[DEBUG]Subscription updated notification has been called from Billing\n")
+
+	return nil
+	// periodEnd extracts the current period end from the first subscription item.
+	// In stripe-go v82, current_period_end lives on SubscriptionItem, not Subscription.
 }
 
-// periodEnd extracts the current period end from the first subscription item.
-// In stripe-go v82, current_period_end lives on SubscriptionItem, not Subscription.
+func (s *service) notifySubscriptionAlert(practitionerID uuid.UUID, subscriptionPlanID int, status string, activationDate time.Time, endDate time.Time) {
+	if s.adminRepo == nil {
+		log.Printf("[WARN] adminRepo is nil, cannot fetch admin recipients")
+		return
+	}
+
+	// 1. Fetch admins using the proper struct field: s.adminRepo
+	admins, err := s.adminRepo.GetAllAdmins(context.Background())
+	if err != nil {
+		log.Printf("[WARN] failed to get admins for subscription alert: %v", err)
+		return
+	}
+
+	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(admins))
+	for _, a := range admins {
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   a.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        a.User.ID,
+		})
+	}
+
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no admin recipients found for subscription notification")
+		return
+	}
+
+	prac, err := s.repo.GetPractitionerWithStripe(context.Background(), practitionerID)
+	practitionerName := "Unknown Practitioner"
+	if err == nil && prac != nil {
+		practitionerName = prac.FirstName + " " + prac.LastName
+	}
+
+	planName := fmt.Sprintf("Plan #%d", subscriptionPlanID)
+	if subModel, err := s.repo.GetSubscriptionWithStripe(context.Background(), subscriptionPlanID); err == nil && subModel != nil {
+		planName = subModel.Name
+	}
+
+	title := "Practitioner Subscription Activated"
+	body := fmt.Sprintf("Practitioner %s has subscribed to %s Plan. Renewal Date: %s", practitionerName, planName, endDate.Format("02-01-2006"))
+
+	if s.notificationPub == nil {
+		log.Printf("[WARN] notificationPub is nil, skipping alert dispatch")
+		return
+	}
+
+	_ = s.notificationPub.Publish(context.Background(), sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   practitionerID,
+		SenderType: util.ActorPractitioner,
+		SenderName: practitionerName,
+		EventType:  util.EventType(util.EventSubscriptionAlert),
+		EntityType: util.EntitySubscription,
+		EntityID:   practitionerID,
+		EntityKey:  "practitioner_id",
+		Title:      title,
+		Body:       body,
+	})
+}
+
+func (s *service) notifyPaymentFailedAlert(practitionerID uuid.UUID, stripeSubID string, invoiceID string, amountDue float64) {
+	if s.adminRepo == nil || s.notificationPub == nil {
+		return
+	}
+
+	admins, err := s.adminRepo.GetAllAdmins(context.Background())
+	if err != nil || len(admins) == 0 {
+		return
+	}
+
+	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(admins))
+	for _, a := range admins {
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   a.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        a.User.ID,
+		})
+	}
+
+	practitionerName := "Unknown Practitioner"
+	if practitionerID != uuid.Nil {
+		if prac, err := s.repo.GetPractitionerWithStripe(context.Background(), practitionerID); err == nil && prac != nil {
+			practitionerName = prac.FirstName + " " + prac.LastName
+		}
+	}
+
+	title := "Subscription Payment Failed"
+	body := fmt.Sprintf("Payment of $%.2f failed for practitioner %s (Invoice: %s)", amountDue, practitionerName, invoiceID)
+
+	_ = s.notificationPub.Publish(context.Background(), sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   practitionerID,
+		SenderType: util.ActorPractitioner,
+		SenderName: practitionerName,
+		EventType:  util.EventType(util.EventSubscriptionAlert),
+		EntityType: util.EntitySubscription,
+		EntityID:   practitionerID,
+		EntityKey:  "practitioner_id",
+		Title:      title,
+		Body:       body,
+	})
+}
+
+func (s *service) notifySubscriptionDeletedAlert(practitionerID uuid.UUID, stripeSubID string) {
+	if s.adminRepo == nil || s.notificationPub == nil {
+		return
+	}
+
+	admins, err := s.adminRepo.GetAllAdmins(context.Background())
+	if err != nil || len(admins) == 0 {
+		return
+	}
+
+	recipients := make([]sharednotification.RecipientWithPreferences, 0, len(admins))
+	for _, a := range admins {
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   a.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        a.User.ID,
+		})
+	}
+
+	practitionerName := "Unknown Practitioner"
+	if practitionerID != uuid.Nil {
+		if prac, err := s.repo.GetPractitionerWithStripe(context.Background(), practitionerID); err == nil && prac != nil {
+			practitionerName = prac.FirstName + " " + prac.LastName
+		}
+	}
+
+	title := "Subscription Cancelled"
+	body := fmt.Sprintf("The subscription for practitioner %s has been cancelled", practitionerName)
+
+	_ = s.notificationPub.Publish(context.Background(), sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   practitionerID,
+		SenderType: util.ActorPractitioner,
+		SenderName: practitionerName,
+		EventType:  util.EventType(util.EventSubscriptionAlert),
+		EntityType: util.EntitySubscription,
+		EntityID:   practitionerID,
+		EntityKey:  "practitioner_id",
+		Title:      title,
+		Body:       body,
+	})
+}
+
 func periodEnd(sub *stripe.Subscription) time.Time {
 	if sub.Items != nil && len(sub.Items.Data) > 0 {
 		return time.Unix(sub.Items.Data[0].CurrentPeriodEnd, 0)

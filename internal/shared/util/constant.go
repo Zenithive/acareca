@@ -31,7 +31,7 @@ const (
 	EventInviteDeclined    EventType = "invite.declined"
 	EventPermissionUpdated EventType = "permission.updated"
 
-	EventClinicUpdated           EventType = "clinic.updated"
+	EventClinicUpdated              EventType = "clinic.updated"
 	EventFormSubmitted              EventType = "form.submitted"
 	EventFormUpdated                EventType = "form.updated"
 	EventTransactionCreated         EventType = "transaction.created"
@@ -67,14 +67,15 @@ const (
 type EntityType string
 
 const (
-	EntityClinic      EntityType = "clinic"
-	EntityForm        EntityType = "form"
-	EntityTransaction EntityType = "transaction"
-	EntityDocument    EntityType = "document"
-	EntityInvite      EntityType = "invite"
-	EntityAuditLog    EntityType = "audit_log"
-	EntitySystem      EntityType = "system"
-	EntityReport      EntityType = "report"
+	EntityClinic       EntityType = "clinic"
+	EntityForm         EntityType = "form"
+	EntityTransaction  EntityType = "transaction"
+	EntityDocument     EntityType = "document"
+	EntityInvite       EntityType = "invite"
+	EntityAuditLog     EntityType = "audit_log"
+	EntitySystem       EntityType = "system"
+	EntityReport       EntityType = "report"
+	EntitySubscription EntityType = "subscription"
 )
 
 type ActorType string
