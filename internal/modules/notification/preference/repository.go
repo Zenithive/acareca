@@ -55,7 +55,6 @@ func scanPreference(rows *sqlx.Rows) (Preference, error) {
 	} else {
 		p.Channels = make([]util.Channel, 0)
 	}
-
 	return p, nil
 }
 
@@ -213,7 +212,6 @@ func (r *repository) GetPreferencesByUserID(ctx context.Context, userID uuid.UUI
 			updated_at
 		FROM tbl_notification_preferences
 		WHERE user_id = $1 AND deleted_at IS NULL
-		LIMIT 1
 	`
 
 	rows, err := r.db.QueryxContext(ctx, q, userID)

@@ -15,7 +15,7 @@ import (
 
 func RegisterAdminRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx.DB, auditSvc audit.Service, stripeClient sharedstripe.StripeClient) {
 	adminGroup := v1.Group("/admin")
-	adminGroup.Use(middleware.Auth(cfg), middleware.RequireRole("ADMIN"))
+	adminGroup.Use(middleware.Auth(cfg), middleware.RequireRole("ADMIN"), middleware.AuditContext())
 
 	// Subscription routes - initialize subscription-specific services
 	subscriptionGroup := adminGroup.Group("/subscription")
