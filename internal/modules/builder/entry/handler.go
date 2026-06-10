@@ -453,7 +453,7 @@ func (h *handler) HandleExport(c *gin.Context) {
 	}
 	filter.Role = role
 
-	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
+	var notifIDs []uuid.UUID
 
 	if role == util.RoleAccountant {
 		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
@@ -467,7 +467,6 @@ func (h *handler) HandleExport(c *gin.Context) {
 			filter.PractitionerID = &pracUUID
 		}
 	} else {
-		// Practitioner: scope to self, no shared events
 		notifIDs = nil
 		filter.PractitionerID = actorID
 	}
@@ -514,7 +513,6 @@ func (h *handler) HandleExport(c *gin.Context) {
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Header("Cache-Control", "no-cache")
 
-	// 7. Write Data
 	c.Data(http.StatusOK, contentType, buf.Bytes())
 }
 

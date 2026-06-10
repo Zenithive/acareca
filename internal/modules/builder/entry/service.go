@@ -24,7 +24,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
@@ -62,7 +61,6 @@ type Service struct {
 	detailSvc       detail.IService
 	versionSvc      version.IService
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	accountantRepo  accountant.Repository
 	authRepo        auth.Repository
 	clinicRepo      clinic.Repository
@@ -81,7 +79,7 @@ type Service struct {
 	authSvc         auth.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
 	return &Service{
 		repo:            repo,
 		fieldRepo:       fieldRepo,
@@ -91,7 +89,6 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 		versionSvc:      versionSvc,
 		auditSvc:        auditSvc,
 		formulaSvc:      formulaSvc,
-		eventsSvc:       eventsSvc,
 		accountantRepo:  accRepo,
 		authRepo:        authRepo,
 		clinicRepo:      clinicRepo,
@@ -113,6 +110,7 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 
 	var result *RsFormEntry
+	var realOwnerID uuid.UUID
 
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 
@@ -124,7 +122,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			return fmt.Errorf("clinic not found: %s", req.ClinicID)
 		}
 
-		realOwnerID := clinic.PractitionerID
+		realOwnerID = clinic.PractitionerID
 
 		if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 			return err
@@ -191,18 +189,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, e.ID, result)
 
-		metaMap := events.JSONBMap{
-			"entry_id":        result.ID.String(),
-			"form_version_id": formVersionID.String(),
-			"clinic_id":       req.ClinicID.String(),
-			"status":          result.Status,
-		}
-
-		s.recordSharedEvent(ctx, tx, req.ClinicID, formVersionID, auditctx.ActionEntryCreated, result.ID,
-			"Accountant %s created a new entry for form: %s",
-			metaMap,
-		)
-
 		// Verify ledger integrity before commit
 		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, result.ID); err != nil {
 			return err
@@ -224,7 +210,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		AfterState: result,
 	})
 
-	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created", []uuid.UUID{realOwnerID}); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -260,6 +246,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	var result *RsFormEntry
 	var beforeState any
+	var practitionerID uuid.UUID
 
 	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
@@ -272,6 +259,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			return fmt.Errorf("form entry not found: %s", id)
 		}
 
+		practitionerID = existing.PractitionerID
 		beforeState = existing.ToRs(values)
 
 		dateToCheck := existing.Date
@@ -338,18 +326,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, id, result)
 
-		metaMap := events.JSONBMap{
-			"entry_id":        result.ID.String(),
-			"form_version_id": existing.FormVersionID.String(),
-			"clinic_id":       existing.ClinicID.String(),
-			"status":          result.Status,
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryUpdated, id,
-			"Accountant %s updated entry for form: %s",
-			metaMap,
-		)
-
 		// Verify ledger integrity before commit
 		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, id); err != nil {
 			return err
@@ -372,9 +348,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		AfterState:  result,
 	})
 
-	// Send update notification
-	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated"); err != nil {
-		log.Printf("failed to send transaction update notification event: %v", err.Error())
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated", []uuid.UUID{practitionerID}); err != nil {
+		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
 	return result, nil
@@ -394,16 +369,6 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
 			return err
 		}
-
-		metaMap := events.JSONBMap{
-			"entry_id":  existing.ID.String(),
-			"clinic_id": existing.ClinicID.String(),
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, id,
-			"Accountant %s deleted an entry for form: %s",
-			metaMap,
-		)
 
 		if err := s.repo.Delete(ctx, tx, id); err != nil {
 			return err
@@ -1147,65 +1112,6 @@ func roundEntry(v float64) float64 {
 	return float64(int(shifted)) / 100
 }
 
-// Helper to record shared events
-func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
-	meta := auditctx.GetMetadata(ctx)
-
-	// Only act if the user is an Accountant
-	if meta.UserType == nil || !strings.EqualFold(*meta.UserType, util.RoleAccountant) || meta.UserID == nil {
-		return
-	}
-
-	actorUserID, err := uuid.Parse(*meta.UserID)
-	if err != nil {
-		return
-	}
-
-	formName := "Form"
-	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
-	if err == nil && ver != nil {
-		form, err := s.detailRepo.GetByID(ctx, ver.FormId)
-		if err == nil && form != nil {
-			formName = form.Name
-		}
-	}
-
-	clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicID)
-	if err != nil || clinic == nil {
-		return
-	}
-	var accountantID uuid.UUID
-	var fullName string
-
-	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-	if err == nil && accProfile != nil {
-		accountantID = accProfile.ID
-	} else {
-		accountantID = actorUserID
-	}
-
-	user, err := s.authRepo.FindByID(ctx, actorUserID)
-	if err == nil && user != nil {
-		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-	}
-
-	// Record Event
-	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-		ID:             uuid.New(),
-		PractitionerID: clinic.PractitionerID,
-		AccountantID:   accountantID,
-		ActorID:        actorUserID,
-		ActorName:      &fullName,
-		ActorType:      util.RoleAccountant,
-		EventType:      action,
-		EntityType:     "FORM",
-		EntityID:       entryID,
-		Description:    fmt.Sprintf(descriptionTemplate, fullName, formName),
-		Metadata:       metadata,
-		CreatedAt:      time.Now(),
-	})
-}
-
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
 	// --- AUDIT LOG ---
 	var userIDStr string
@@ -1224,34 +1130,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		},
 	})
 
-	// Record the Shared Event
-	if role == util.RoleAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		var pID uuid.UUID
-		if filter.PractitionerID != nil {
-			pID = *filter.PractitionerID
-		}
-
-		_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-			ID:             uuid.New(),
-			PractitionerID: pID,
-			AccountantID:   actorID,
-			ActorID:        userID,
-			ActorName:      &fullName,
-			ActorType:      role,
-			EventType:      "transaction_report.generated",
-			EntityType:     "REPORT",
-			Description:    fmt.Sprintf("Accountant %s generated Transaction Report", fullName),
-			Metadata:       events.JSONBMap{"report_type": "Transaction Report"},
-			CreatedAt:      time.Now(),
-		})
-	}
-
 	f := filter.ToCommonFilter()
 
 	// Capture what the client sent (Page Index)
@@ -1265,9 +1143,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		pageSize = *f.Limit
 	}
 
-	// Translate the Page Index into a real database Row Skip Offset
-	// Page 0 -> (0 * 10) = OFFSET 0  (Gets rows 1 to 10)
-	// Page 1 -> (1 * 10) = OFFSET 10 (Gets rows 11 to 20)
 	calculatedDbOffset := incomingPageIndex * pageSize
 	f.Offset = &calculatedDbOffset
 
@@ -1635,7 +1510,7 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string) error {
+func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string, targetPractitionerIDs []uuid.UUID) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
@@ -1679,15 +1554,23 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 		}
 
 	case util.ActorAccountant:
-		// If the sender is an accountant, we need to find which practitioners to notify
-		// Get all practitioners linked to this accountant
-		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
-		if err != nil {
-			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
-			return nil // Don't fail transaction if notification fails
+		// If the sender is an accountant, notify only specific practitioners if provided
+		var practitionerIDs []uuid.UUID
+
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the transaction/report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil // Don't fail transaction if notification fails
+			}
 		}
 
-		// Notify each linked practitioner
+		// Notify each practitioner
 		for _, practitionerID := range practitionerIDs {
 			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
 			if err != nil {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
@@ -13,7 +11,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -47,7 +44,6 @@ type service struct {
 	fileRepo        file.Repository
 	auditSvc        audit.Service
 	limitsSvc       limits.Service
-	eventsSvc       events.Service
 	notificationPub *sharednotification.Publisher
 	authSvc         auth.Service
 	invitationRepo  invitation.Repository
@@ -55,7 +51,7 @@ type service struct {
 	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, eventsSvc events.Service, notificationSvc notification.Service, authSvc auth.Service, invitationRepo invitation.Repository, invitationSvc invitation.Service, adminRepo admin.Repository) Service {
+func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, authRepo auth.Repository, fileRepo file.Repository, auditSvc audit.Service, notificationSvc notification.Service, authSvc auth.Service, invitationRepo invitation.Repository, invitationSvc invitation.Service, adminRepo admin.Repository) Service {
 	return &service{
 		db:              db,
 		repo:            repo,
@@ -64,7 +60,6 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 		fileRepo:        fileRepo,
 		auditSvc:        auditSvc,
 		limitsSvc:       limits.NewService(db),
-		eventsSvc:       eventsSvc,
 		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
 		authSvc:         authSvc,
 		invitationRepo:  invitationRepo,
@@ -74,7 +69,6 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 }
 
 func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role string, req *RqCreateClinic) (*RsClinic, error) {
-	meta := auditctx.GetMetadata(ctx)
 
 	if role == util.RoleAccountant {
 		actorID = req.PractitionerID
@@ -219,47 +213,6 @@ func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role stri
 			},
 			CreatedAt: created.CreatedAt,
 			UpdatedAt: created.UpdatedAt,
-		}
-
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-
-			actorUserID, err := uuid.Parse(*meta.UserID)
-			if err != nil {
-				return err
-			}
-
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
-
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err != nil {
-				return err
-			}
-			fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-			err = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: actorID,
-				AccountantID:   finalAccountantID,
-				ActorID:        actorUserID,
-				ActorName:      &fullName,
-				ActorType:      "ACCOUNTANT",
-				EventType:      "clinic.created",
-				EntityType:     "CLINIC",
-				EntityID:       result.ID,
-				Description:    fmt.Sprintf("Accountant %s created a new clinic: %s", fullName, result.Name),
-				Metadata:       events.JSONBMap{"clinic_name": result.Name},
-				CreatedAt:      time.Now(),
-			})
-
-			if err != nil {
-				return err
-			}
 		}
 
 		return nil
@@ -494,8 +447,6 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 }
 
 func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error {
-	meta := auditctx.GetMetadata(ctx)
-
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		existing, err := s.repo.GetClinicByID(ctx, tx, id)
 		if err != nil {
@@ -522,45 +473,6 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 			return fmt.Errorf("delete clinic: %w", err)
 		}
 
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-
-			actorUserID, err := uuid.Parse(*meta.UserID)
-			if err == nil {
-
-				var finalAccountantID uuid.UUID
-				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-				if err == nil {
-					finalAccountantID = accProfile.ID
-				} else {
-					finalAccountantID = actorUserID
-				}
-
-				user, err := s.authRepo.FindByID(ctx, actorUserID)
-				if err == nil {
-					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-					err = s.eventsSvc.Record(ctx, events.SharedEvent{
-						ID:             uuid.New(),
-						PractitionerID: actorID,
-						AccountantID:   finalAccountantID,
-						ActorID:        actorUserID,
-						ActorName:      &fullName,
-						ActorType:      "ACCOUNTANT",
-						EventType:      "clinic.deleted",
-						EntityType:     "CLINIC",
-						EntityID:       id,
-						Description:    fmt.Sprintf("Accountant %s deleted clinic: %s", fullName, existing.Name),
-						Metadata:       events.JSONBMap{"clinic_name": existing.Name},
-						CreatedAt:      time.Now(),
-					})
-
-					if err != nil {
-						return err
-					}
-				}
-			}
-		}
-
 		idStr := id.String()
 		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 			Action:      auditctx.ActionClinicDeleted,
@@ -575,8 +487,6 @@ func (s *service) DeleteClinic(ctx context.Context, actorID uuid.UUID, id uuid.U
 }
 
 func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, role string, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
-
-	meta := auditctx.GetMetadata(ctx)
 
 	var result *RsClinic
 	var beforeState *RsClinic
@@ -734,40 +644,6 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, role stri
 			return fmt.Errorf("get updated clinic: %w", err)
 		}
 		result = updatedClinic
-
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-			actorUserID, err := uuid.Parse(*meta.UserID)
-			if err == nil {
-
-				var finalAccountantID uuid.UUID
-				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-				if err == nil {
-					finalAccountantID = accProfile.ID
-				} else {
-					finalAccountantID = actorUserID
-				}
-
-				user, err := s.authRepo.FindByID(ctx, actorUserID)
-				if err == nil {
-					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-						ID:             uuid.New(),
-						PractitionerID: actorID,
-						AccountantID:   finalAccountantID,
-						ActorID:        actorUserID,
-						ActorName:      &fullName,
-						ActorType:      "ACCOUNTANT",
-						EventType:      "clinic.updated",
-						EntityType:     "CLINIC",
-						EntityID:       result.ID,
-						Description:    fmt.Sprintf("Accountant %s updated clinic: %s", fullName, result.Name),
-						Metadata:       events.JSONBMap{"clinic_name": result.Name},
-						CreatedAt:      time.Now(),
-					})
-				}
-			}
-		}
 
 		return nil
 	})

@@ -32,6 +32,7 @@ type service struct {
 	done                chan struct{}
 	notificationService notification.Service
 	notificationPub     *sharednotification.Publisher
+	adminRepo           admin.Repository
 }
 
 type logJob struct {
@@ -45,7 +46,8 @@ func NewService(repo Repository, notificationService notification.Service, admin
 		logChan:             make(chan *logJob, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
-		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), adminRepo),
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), nil),
+		adminRepo:           adminRepo,
 	}
 
 	// Start async worker
@@ -81,6 +83,14 @@ func (s *service) LogWithNotification(ctx context.Context, entry *LogEntry, noti
 
 func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	meta := auditctx.GetMetadata(ctx)
+	
+	// DEBUG: Log context metadata
+	log.Printf("[DEBUG-ENRICH] Action: %s | Context UserID: %v | Context PracticeID: %v",
+		entry.Action,
+		meta.UserID,
+		meta.PracticeID,
+	)
+	
 	if entry.PracticeID == nil {
 		entry.PracticeID = meta.PracticeID
 	}
@@ -93,6 +103,13 @@ func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
 	if entry.UserAgent == nil {
 		entry.UserAgent = meta.UserAgent
 	}
+	
+	// DEBUG: Log enriched entry
+	log.Printf("[DEBUG-ENRICHED] Action: %s | Entry UserID: %v | Entry PracticeID: %v",
+		entry.Action,
+		entry.UserID,
+		entry.PracticeID,
+	)
 }
 
 func (s *service) asyncWorker() {
@@ -188,37 +205,81 @@ func buildSystemIssueMessage(action, actorName, entityName string, err error) st
 		actorName, action, entityName, err)
 }
 
+// buildAdminRecipients builds a list of admin recipients, optionally excluding an acting user
+func (s *service) buildAdminRecipients(ctx context.Context, excludeUserID *uuid.UUID) []sharednotification.RecipientWithPreferences {
+	recipients := make([]sharednotification.RecipientWithPreferences, 0)
+
+	if s.adminRepo == nil {
+		return recipients
+	}
+
+	admins, err := s.adminRepo.GetAllAdmins(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get admin users: %v", err)
+		return recipients
+	}
+
+	log.Printf("[DEBUG-RECIPIENTS] Building admin recipients - Total admins: %d, Exclude UserID: %v", len(admins), excludeUserID)
+
+	for _, admin := range admins {
+		// Skip if this admin is the one to be excluded
+		if excludeUserID != nil && admin.User.ID == *excludeUserID {
+			log.Printf("[INFO] Skipping excluded admin: %s (UserID: %s)", admin.User.Email, admin.User.ID.String())
+			continue
+		}
+
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   admin.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        admin.User.ID,
+		})
+	}
+
+	log.Printf("[DEBUG-RECIPIENTS] Final recipient count: %d", len(recipients))
+	return recipients
+}
+
+// publishToAdmins publishes a notification to admin users with preference checking
+func (s *service) publishToAdmins(ctx context.Context, req sharednotification.PublishRequest) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	if len(req.Recipients) == 0 {
+		log.Printf("[INFO] No admin recipients for notification - EventType: %s", req.EventType)
+		return nil
+	}
+
+	return s.notificationPub.Publish(ctx, req)
+}
+
 // publishSystemIssueNotification fans out system error/warning notifications to all admins.
 func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType util.EventType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	adminIDs, err := s.repo.GetAdminIDs(ctx)
-	if err != nil || len(adminIDs) == 0 {
-		return
-	}
 
 	title := "System Warning"
 	if level == auditctx.ActionSystemError {
 		title = "System Error"
 	}
 
-	extraData := map[string]any{"action": action}
-	senderType := util.ActorSystem
+	// Build admin recipients (no exclusion for system notifications)
+	recipients := s.buildAdminRecipients(ctx, nil)
 
-	_ = s.notificationPub.PublishToMultiple(
-		ctx,
-		adminIDs,
-		util.ActorAdmin,
-		nil,
-		&senderType,
-		eventType,
-		util.EntitySystem,
-		entityID,
-		title,
-		detail,
-		&extraData,
-	)
+	// Publish notification with preference checking
+	_ = s.publishToAdmins(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   uuid.Nil,
+		SenderType: util.ActorSystem,
+		SenderName: "System",
+		EventType:  eventType,
+		EntityType: util.EntitySystem,
+		EntityID:   entityID,
+		EntityKey:  "system_id",
+		Title:      title,
+		Body:       detail,
+		ExtraData:  map[string]interface{}{"action": action},
+	})
 }
 
 // This runs in its own goroutine to avoid blocking the audit worker
@@ -227,15 +288,16 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var err error
-	// Fetch Admins
-	adminIDs, err := s.repo.GetAdminIDs(ctx)
-	if err != nil || len(adminIDs) == 0 {
-		return
-	}
+	// DEBUG: Log entry details to check if UserID is present
+	log.Printf("[DEBUG-AUDIT] Action: %s | UserID: %v | PracticeID: %v",
+		entry.Action,
+		entry.UserID,
+		entry.PracticeID,
+	)
 
+	var err error
 	// Get User Name
-	userName := "User"
+	userName := "System"
 
 	// Define invitation-specific actions
 	isInvitationAction := entry.Action == "accountant.invite_accepted" ||
@@ -398,8 +460,9 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"entity_id": entry.EntityID,
 	}
 
-	// Send to each admin
+	// Send to each admin (excluding the acting admin)
 	senderType := util.ActorSystem
+	senderID := uuid.Nil
 	var entityID uuid.UUID
 	if entry.EntityID != nil {
 		parsed, err := uuid.Parse(*entry.EntityID)
@@ -409,19 +472,31 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 	eventType := resolveAdminEventType(entry.Action)
 
-	_ = s.notificationPub.PublishToMultiple(
-		ctx,
-		adminIDs,
-		util.ActorAdmin,
-		nil,
-		&senderType,
-		eventType,
-		util.EntityAuditLog,
-		entityID,
-		title,
-		message,
-		&extraData,
-	)
+	// Get the acting user's ID to filter them out
+	var excludeUserID *uuid.UUID
+	if entry.UserID != nil {
+		if parsed, parseErr := uuid.Parse(*entry.UserID); parseErr == nil {
+			excludeUserID = &parsed
+		}
+	}
+
+	// Build admin recipients, excluding the acting admin
+	recipients := s.buildAdminRecipients(ctx, excludeUserID)
+
+	// Publish notification with preference checking
+	_ = s.publishToAdmins(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   senderID,
+		SenderType: senderType,
+		SenderName: "System",
+		EventType:  eventType,
+		EntityType: util.EntityAuditLog,
+		EntityID:   entityID,
+		EntityKey:  "audit_log_id",
+		Title:      title,
+		Body:       message,
+		ExtraData:  extraData,
+	})
 }
 
 // resolveAdminEventType maps an audit action string to the appropriate admin EventType

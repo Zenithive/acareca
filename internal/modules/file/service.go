@@ -171,14 +171,13 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.
 
 	s.logFileDelete(ctx, doc, userID)
 
-	// Send notification for document deletion
+	// Send notification for document deletion only if accountant
 	actorType := util.ActorPractitioner
 	if doc.OwnerRole == util.RoleAccountant {
 		actorType = util.ActorAccountant
-	}
-
-	if err := s.notifyDocument(ctx, doc.ID, userID, actorType, util.EventDocumentUploaded, doc.OriginalName); err != nil {
-		log.Printf("[WARN] failed to send document deletion notification: %v", err)
+		if err := s.notifyDocument(ctx, doc.ID, userID, actorType, util.EventDocumentUploaded, doc.OriginalName); err != nil {
+			log.Printf("[WARN] failed to send document deletion notification: %v", err)
+		}
 	}
 
 	return nil
@@ -247,14 +246,13 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 
 	s.logFileUpload(ctx, created, ownerID)
 
-	// Send notification for document upload
+	// Send notification for document upload only if accountant
 	actorType := util.ActorPractitioner
 	if ownerRole == util.RoleAccountant {
 		actorType = util.ActorAccountant
-	}
-
-	if err := s.notifyDocument(ctx, created.ID, ownerID, actorType, util.EventDocumentUploaded, created.OriginalName); err != nil {
-		log.Printf("[WARN] failed to send document upload notification: %v", err)
+		if err := s.notifyDocument(ctx, created.ID, ownerID, actorType, util.EventDocumentUploaded, created.OriginalName); err != nil {
+			log.Printf("[WARN] failed to send document upload notification: %v", err)
+		}
 	}
 
 	_, err = s.cfg.GetBaseURL()

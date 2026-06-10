@@ -3,6 +3,7 @@ package bas
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strings"
@@ -12,13 +13,16 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	basexport "github.com/iamarpitzala/acareca/internal/shared/export/bas"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -43,13 +47,26 @@ type service struct {
 	auditSvc        audit.Service
 	clinicRepo      clinic.Repository
 	fyRepo          fy.Repository
-	eventsSvc       events.Service
 	authRepo        auth.Repository
 	practitionerSvc practitioner.IService
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         auth.Service
 }
 
-func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, eventsSvc events.Service, authRepo auth.Repository, practitionerSvc practitioner.IService) Service {
-	return &service{repo: repo, accountantRepo: accountantRepo, auditSvc: auditSvc, clinicRepo: clinicRepo, fyRepo: fyRepo, eventsSvc: eventsSvc, authRepo: authRepo, practitionerSvc: practitionerSvc}
+func NewService(repo Repository, accountantRepo accountant.Repository, auditSvc audit.Service, clinicRepo clinic.Repository, fyRepo fy.Repository, authRepo auth.Repository, practitionerSvc practitioner.IService, invitationRepo invitation.Repository, authSvc auth.Service, notificationSvc notification.Service, adminRepo admin.Repository) Service {
+	return &service{
+		repo:            repo,
+		accountantRepo:  accountantRepo,
+		auditSvc:        auditSvc,
+		clinicRepo:      clinicRepo,
+		fyRepo:          fyRepo,
+		authRepo:        authRepo,
+		practitionerSvc: practitionerSvc,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
+		invitationRepo:  invitationRepo,
+		authSvc:         authSvc,
+	}
 }
 
 func (s *service) GetQuarterlySummary(ctx context.Context, clinicID uuid.UUID, f *BASFilter) ([]RsBASSummary, error) {
@@ -179,30 +196,9 @@ func (s *service) GetReport(ctx context.Context, f *BASReportFilter, PracIDs []u
 		},
 	})
 
-	// --- Shared Events ---
-	if role == util.RoleAccountant && len(PracIDs) > 0 {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		for _, pID := range PracIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "activity_statement.generated",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s generated Activity Statement", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Activity Statement"},
-				CreatedAt:      time.Now(),
-			})
-		}
+	// Send notification for report generation
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement", []uuid.UUID{pracID}); err != nil {
+		log.Printf("[WARN] failed to send activity statement generation notification: %v", err)
 	}
 
 	return &RsBASReport{
@@ -336,31 +332,11 @@ func (s *service) GetBASPreparation(ctx context.Context, actorID uuid.UUID, role
 		},
 	})
 
-	if isAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		// Record the Shared Event
-		for pID := range practitionerMap {
-			err = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "bas_report.generated",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s generated BAS Report", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": f.FinancialYearID},
-				CreatedAt:      time.Now(),
-			})
-		}
+	// Send notification for report generation
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBASReportGenerated, "BAS Preparation Report", targetPracIDs); err != nil {
+		log.Printf("[WARN] failed to send BAS preparation generation notification: %v", err)
 	}
+
 	return resp, nil
 }
 
@@ -605,6 +581,11 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
 
+	// Send notification
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventActivityStatementGenerated, "Activity Statement", practitionerIDs); err != nil {
+		log.Printf("[WARN] failed to send activity statement notification: %v", err)
+	}
+
 	// --- AUDIT LOG ---
 	var userIDStr string
 	userIDStr = userID.String()
@@ -620,26 +601,6 @@ func (s *service) ExportActivityStatement(ctx context.Context, quarters []Quarte
 			"export_type": exportType,
 		},
 	})
-
-	// Record the Shared Event
-	if role == util.RoleAccountant && len(practitionerIDs) > 0 {
-		for _, pID := range practitionerIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "activity_statement.exported",
-				EntityType:     "REPORT",
-				EntityID:       actorID,
-				Description:    fmt.Sprintf("Accountant %s exported Activity Statement", fullName),
-				Metadata:       events.JSONBMap{"report_type": "Activity Statement", "export_type": exportType},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 
 	return result, contentType, nil
 }
@@ -800,25 +761,7 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 					targetPracIDs = append(targetPracIDs, id)
 				}
 			}
-			for _, pID := range targetPracIDs {
-				innerErr = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "bas_report.exported",
-					EntityType:     "REPORT",
-					EntityID:       actorID,
-					Description:    fmt.Sprintf("Accountant %s exported BAS Report", fullName),
-					Metadata:       events.JSONBMap{"report_type": "Quarterly BAS Report", "financial_year": filter.FinancialYearID, "export_type": exportType},
-					CreatedAt:      time.Now(),
-				})
-				if innerErr != nil {
-					return fmt.Errorf("failed to log shared event: %w", innerErr)
-				}
-			}
+
 		}
 
 		return nil
@@ -847,6 +790,11 @@ func (s *service) ExportBASPreparation(ctx context.Context, data *RsBASPreparati
 	f, err := basexport.GenerateBASPreparationExcelReport(exportData, config, FY.Label)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate BAS preparation excel: %w", err)
+	}
+
+	// Send notification
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBASReportExport, "BAS Preparation Report", PracIDs); err != nil {
+		log.Printf("[WARN] failed to send BAS preparation notification: %v", err)
 	}
 
 	var userIDStr string
@@ -1127,4 +1075,104 @@ func (s *service) GetBASAnalytics(ctx context.Context, targetPracIDs []uuid.UUID
 	}
 
 	return resp, nil
+}
+
+// notifyReportExport sends notifications to linked users about report export
+// targetPractitionerIDs: optional list of specific practitioners for whom the report was generated
+// If nil or empty when actor is accountant, notifies all linked practitioners
+func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string, targetPractitionerIDs []uuid.UUID) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	user, err := s.authSvc.GetUserByID(ctx, entityID, actorType)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	senderName := user.FirstName + " " + user.LastName
+	senderType := actorType
+
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// Notify linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", entityID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// Notify only specific practitioners if targetPractitionerIDs is provided
+		var practitionerIDs []uuid.UUID
+		
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil
+			}
+		}
+
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		return fmt.Errorf("unsupported actor type: %s", actorType)
+	}
+
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for report notification")
+		return nil
+	}
+	var action string
+
+	switch eventType {
+	case util.EventPLReportGenerated:
+		action = "Generated"
+	case util.EventPLReportExport:
+		action = "Exported"
+	default:
+		action = "Updated"
+	}
+
+	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   entityID,
+		SenderType: senderType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityReport,
+		EntityID:   entityID,
+		EntityKey:  "report_id",
+		Title:      fmt.Sprintf("%s %s", reportName, action),
+		Body:       fmt.Sprintf("%s %s by %s", reportName, strings.ToLower(action), senderName),
+		ExtraData:  map[string]interface{}{"report_name": reportName},
+	})
 }

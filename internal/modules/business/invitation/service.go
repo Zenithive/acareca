@@ -120,6 +120,7 @@ func (s *service) SendInvite(ctx context.Context, practitionerID uuid.UUID, req 
 	}
 
 	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", baseURL, invite.ID)
+	fmt.Println("===================", inviteLink)
 
 	go func(email, name, link string, pID uuid.UUID, invID uuid.UUID) {
 		if err := s.mailer.SendInvitationEmail(email, name, link); err != nil {
@@ -399,6 +400,7 @@ func (s *service) ResendInvite(ctx context.Context, practitionerID uuid.UUID, in
 	}
 
 	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", baseURL, oldInv.ID)
+	fmt.Println("==================================", inviteLink)
 
 	go func(email, name, link string, pID uuid.UUID, invID uuid.UUID) {
 		if err := s.mailer.SendInvitationEmail(email, name, link); err != nil {

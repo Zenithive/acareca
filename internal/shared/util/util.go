@@ -370,25 +370,31 @@ func ParseFlexibleDate(dateStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
 }
 
-func MapEventTypeToNotificationEventType(eventType EventType) NotificationEventType {
+func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEventType {
 	switch eventType {
 	case EventTransactionCreated, EventTransactionUpdated:
-		return EventNewTransaction
+		return []NotificationEventType{EventNewTransaction}
+	case EventTransactionReportExport, EventPLReportGenerated, EventPLReportExport, EventBASReportGenerated, EventBASReportExport, EventBalanceSheetGenerated, EventBalanceSheetExport, EventActivityStatementGenerated, EventActivityStatementExport:
+		// Reports should notify both accountants and practitioners
+		return []NotificationEventType{EventAccountantActivityAlert, EventPractitionerActivityAlert}
 	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
-		return EventAccountantActivityAlert
+		// Administrative activities - accountants only
+		return []NotificationEventType{EventAccountantActivityAlert}
+	case EventPractitionerTransactionCreated:
+		return []NotificationEventType{EventPractitionerActivityAlert}
 	case EventSystemError:
-		return EventSystemErrorAlert
+		return []NotificationEventType{EventSystemErrorAlert}
 	case EventSystemWarning:
-		return EventSystemWarningAlert
+		return []NotificationEventType{EventSystemWarningAlert}
 	case EventBillingPaymentSuccess, EventBillingPaymentFailed:
-		return EventBillingAlert
+		return []NotificationEventType{EventBillingAlert}
 	case EventSubscriptionCreated, EventSubscriptionUpdated, EventSubscriptionDeleted:
-		return EventSubscriptionAlert
+		return []NotificationEventType{EventSubscriptionAlert}
 	case EventUserRegistered, EventPractitionerCreated:
-		return EventUserRegistrationAlert
+		return []NotificationEventType{EventUserRegistrationAlert}
 	case EventAuditLogCreated:
-		return EventSystemActivityAlert
+		return []NotificationEventType{EventSystemActivityAlert}
 	default:
-		return EventSystemActivityAlert
+		return []NotificationEventType{EventSystemActivityAlert}
 	}
 }

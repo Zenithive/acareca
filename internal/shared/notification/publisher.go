@@ -21,7 +21,7 @@ type RecipientWithPreferences struct {
 
 type NotificationService interface {
 	Publish(ctx context.Context, rq NotificationRequest) error
-	GetPreferences(ctx context.Context, userID uuid.UUID) (NotificationPreferences, error)
+	GetPreferences(ctx context.Context, userID uuid.UUID) (map[util.NotificationEventType][]util.Channel, error)
 }
 
 type NotificationRequest struct {
@@ -37,11 +37,6 @@ type NotificationRequest struct {
 	Payload       []byte
 	Channels      []util.Channel
 	CreatedAt     time.Time
-}
-
-type NotificationPreferences struct {
-	EventType []util.NotificationEventType
-	Channels  []util.Channel
 }
 
 type NotificationPayload struct {
@@ -68,33 +63,10 @@ type PublishRequest struct {
 
 type Publisher struct {
 	notificationSvc NotificationService
-	adminRepo       admin.Repository
 }
 
 func NewPublisher(notificationSvc NotificationService, adminRepo admin.Repository) *Publisher {
-	return &Publisher{notificationSvc: notificationSvc, adminRepo: adminRepo}
-}
-
-func (p *Publisher) appendAdminRecipients(ctx context.Context, recipients []RecipientWithPreferences) []RecipientWithPreferences {
-	if p.adminRepo == nil {
-		return recipients
-	}
-
-	admins, err := p.adminRepo.GetAllAdmins(ctx)
-	if err != nil {
-		log.Printf("[WARN] failed to get admin users: %v", err)
-		return recipients
-	}
-
-	for _, a := range admins {
-		recipients = append(recipients, RecipientWithPreferences{
-			RecipientID:   a.ID,
-			RecipientType: util.ActorAdmin,
-			UserID:        a.User.ID,
-		})
-	}
-
-	return recipients
+	return &Publisher{notificationSvc: notificationSvc}
 }
 
 func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
@@ -102,37 +74,34 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 		return fmt.Errorf("notification service is nil")
 	}
 
-	recipients := p.appendAdminRecipients(ctx, append([]RecipientWithPreferences{}, req.Recipients...))
-
-	for _, recipient := range recipients {
-		prefs, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
-
+	for _, recipient := range req.Recipients {
+		// Get user preferences as a map: eventType -> channels
+		prefMap, err := p.notificationSvc.GetPreferences(ctx, recipient.UserID)
 		if err != nil {
 			log.Printf("[ERROR] failed to get preferences for user %s: %v", recipient.UserID, err)
 			continue
 		}
 
-		prefMap := make(map[util.NotificationEventType]struct{}, len(prefs.EventType))
-		for _, et := range prefs.EventType {
-			prefMap[et] = struct{}{}
-		}
-
-		if _, ok := prefMap[util.NotificationEventType(req.EventType)]; !ok {
-			mapped := util.MapEventTypeToNotificationEventType(req.EventType)
-			if _, ok = prefMap[mapped]; !ok {
-				continue
+		// Check if user has enabled this event type
+		channels, ok := prefMap[util.NotificationEventType(req.EventType)]
+		if !ok {
+			// Try mapped event types
+			mappedTypes := util.MapEventTypeToNotificationEventType(req.EventType)
+			for _, mappedType := range mappedTypes {
+				if ch, found := prefMap[mappedType]; found {
+					channels = ch
+					ok = true
+					break
+				}
 			}
 		}
 
-		channels := make([]util.Channel, 0, len(prefs.Channels))
-		for _, ch := range prefs.Channels {
-			channels = append(channels, ch)
-		}
-
-		if len(channels) == 0 {
-			log.Printf("[INFO] no enabled channels for user %s, event %s", recipient.UserID, req.EventType)
+		// Skip if user hasn't enabled this event type or has no channels
+		if !ok || len(channels) == 0 {
 			continue
 		}
+
+		// Build and publish notification
 		extraData := map[string]interface{}{req.EntityKey: req.EntityID.String()}
 		if req.ExtraData != nil {
 			maps.Copy(extraData, req.ExtraData)
@@ -145,6 +114,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 			ExtraData:  &extraData,
 		}
 		payloadBytes, _ := json.Marshal(payload)
+
 		notifReq := NotificationRequest{
 			ID:            uuid.New(),
 			RecipientID:   recipient.RecipientID,
@@ -159,6 +129,7 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 			Channels:      channels,
 			CreatedAt:     time.Now(),
 		}
+
 		if err := p.notificationSvc.Publish(ctx, notifReq); err != nil {
 			log.Printf("[ERROR] failed to publish %s notification to %s: %v", req.EventType, recipient.RecipientID, err)
 		} else {
@@ -168,38 +139,39 @@ func (p *Publisher) Publish(ctx context.Context, req PublishRequest) error {
 	return nil
 }
 
-func (p *Publisher) PublishToMultiple(ctx context.Context, recipients []uuid.UUID, recipientType util.ActorType, senderID *uuid.UUID, senderType *util.ActorType, eventType util.EventType, entityType util.EntityType, entityID uuid.UUID, title, body string, extraData *map[string]interface{}) error {
-	if p.notificationSvc == nil {
-		return fmt.Errorf("notification service is nil")
-	}
-	bodyJSON, _ := json.Marshal(body)
-	notifPayload := NotificationPayload{Title: title, Body: bodyJSON, ExtraData: extraData}
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
-	}
-	for _, recipientID := range recipients {
-		req := NotificationRequest{
-			ID:            uuid.New(),
-			RecipientID:   recipientID,
-			RecipientType: recipientType,
-			SenderID:      senderID,
-			SenderType:    senderType,
-			EventType:     eventType,
-			EntityType:    entityType,
-			EntityID:      entityID,
-			Status:        util.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []util.Channel{util.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
-		go func(r NotificationRequest) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := p.notificationSvc.Publish(pCtx, r); err != nil {
-				log.Printf("[ERROR] failed to publish notification to %s: %v", r.RecipientID, err)
-			}
-		}(req)
-	}
-	return nil
-}
+// func (p *Publisher) PublishToMultiple(ctx context.Context, recipients []uuid.UUID, recipientType util.ActorType, senderID *uuid.UUID, senderType *util.ActorType, eventType util.EventType, entityType util.EntityType, entityID uuid.UUID, title, body string, extraData *map[string]interface{}) error {
+// 	if p.notificationSvc == nil {
+// 		return fmt.Errorf("notification service is nil")
+// 	}
+// 	// fmt.Println("=========================", len(recipients))
+// 	bodyJSON, _ := json.Marshal(body)
+// 	notifPayload := NotificationPayload{Title: title, Body: bodyJSON, ExtraData: extraData}
+// 	payloadBytes, err := json.Marshal(notifPayload)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to marshal payload: %w", err)
+// 	}
+// 	for _, recipientID := range recipients {
+// 		req := NotificationRequest{
+// 			ID:            uuid.New(),
+// 			RecipientID:   recipientID,
+// 			RecipientType: recipientType,
+// 			SenderID:      senderID,
+// 			SenderType:    senderType,
+// 			EventType:     eventType,
+// 			EntityType:    entityType,
+// 			EntityID:      entityID,
+// 			Status:        util.StatusUnread,
+// 			Payload:       payloadBytes,
+// 			Channels:      []util.Channel{util.ChannelInApp},
+// 			CreatedAt:     time.Now(),
+// 		}
+// 		go func(r NotificationRequest) {
+// 			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 			defer pCancel()
+// 			if err := p.notificationSvc.Publish(pCtx, r); err != nil {
+// 				log.Printf("[ERROR] failed to publish notification to %s: %v", r.RecipientID, err)
+// 			}
+// 		}(req)
+// 	}
+// 	return nil
+// }
