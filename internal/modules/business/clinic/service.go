@@ -70,10 +70,8 @@ func NewService(db *sqlx.DB, repo Repository, accRepo accountant.Repository, aut
 
 func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role string, req *RqCreateClinic) (*RsClinic, error) {
 
-	limitCheckID := actorID
-
-	if err := s.limitsSvc.Check(ctx, limitCheckID, limits.KeyClinicCreate); err != nil {
-		return nil, err
+	if role == util.RoleAccountant {
+		actorID = req.PractitionerID
 	}
 
 	var result *RsClinic
@@ -101,8 +99,6 @@ func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role stri
 		clinic := &Clinic{
 			PractitionerID: actorID,
 			EntityID:       finalEntityID,
-			ProfilePicture: req.ProfilePicture,
-			ImageURL:       req.ImageURL,
 			Name:           req.Name,
 			ABN:            req.ABN,
 			Description:    req.Description,
@@ -199,8 +195,6 @@ func (s *service) CreateClinic(ctx context.Context, actorID uuid.UUID, role stri
 			ID:             created.ID,
 			PractitionerID: actorID,
 			EntityID:       created.EntityID,
-			ProfilePicture: created.ProfilePicture,
-			ImageURL:       created.ImageURL,
 			Name:           created.Name,
 			ABN:            created.ABN,
 			Description:    created.Description,
@@ -314,8 +308,6 @@ func (s *service) ListClinic(ctx context.Context, practitionerID uuid.UUID, filt
 				ID:                clinic.ID,
 				EntityID:          clinic.EntityID,
 				PractitionerID:    clinic.PractitionerID,
-				ProfilePicture:    clinic.ProfilePicture,
-				ImageURL:          clinic.ImageURL,
 				Name:              clinic.Name,
 				ABN:               clinic.ABN,
 				Description:       clinic.Description,
@@ -424,8 +416,6 @@ func (s *service) GetClinicByID(ctx context.Context, actorID uuid.UUID, id uuid.
 		result = &RsClinic{
 			ID:                clinic.ID,
 			PractitionerID:    clinic.PractitionerID,
-			ProfilePicture:    clinic.ProfilePicture,
-			ImageURL:          clinic.ImageURL,
 			Name:              clinic.Name,
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
@@ -506,12 +496,6 @@ func (s *service) UpdateClinic(ctx context.Context, actorID uuid.UUID, role stri
 
 		if req.Name != nil {
 			clinic.Name = *req.Name
-		}
-		if req.ProfilePicture != nil {
-			clinic.ProfilePicture = req.ProfilePicture
-		}
-		if req.ImageURL != nil {
-			clinic.ImageURL = req.ImageURL
 		}
 		if req.ABN != nil {
 			clinic.ABN = req.ABN
@@ -746,8 +730,6 @@ func (s *service) GetClinicByIDInternal(ctx context.Context, id uuid.UUID) (*RsC
 		result = &RsClinic{
 			ID:                clinic.ID,
 			PractitionerID:    clinic.PractitionerID,
-			ProfilePicture:    clinic.ProfilePicture,
-			ImageURL:          clinic.ImageURL,
 			Name:              clinic.Name,
 			ABN:               clinic.ABN,
 			Description:       clinic.Description,
@@ -780,7 +762,7 @@ func (s *service) BulkUpdateClinics(ctx context.Context, practitionerID uuid.UUI
 			}
 
 			// Perform update within the same transaction
-			updatedClinic, err := s.updateClinicIn(ctx, tx, practitionerID, *clinicReq.ID, &clinicReq)
+			updatedClinic, err := s.updateClinicIn(ctx, tx, *clinicReq.ID, &clinicReq)
 			if err != nil {
 				return fmt.Errorf("failed to update clinic %s: %w", clinicReq.ID.String(), err)
 			}
@@ -886,8 +868,6 @@ func (s *service) getClinicByIDInternal(ctx context.Context, tx *sqlx.Tx, id uui
 		ID:                clinic.ID,
 		EntityID:          clinic.EntityID,
 		PractitionerID:    clinic.PractitionerID,
-		ProfilePicture:    clinic.ProfilePicture,
-		ImageURL:          clinic.ImageURL,
 		Name:              clinic.Name,
 		ABN:               clinic.ABN,
 		Description:       clinic.Description,
@@ -902,7 +882,7 @@ func (s *service) getClinicByIDInternal(ctx context.Context, tx *sqlx.Tx, id uui
 }
 
 // Helper method to update clinic within a transaction (used by bulk update)
-func (s *service) updateClinicIn(ctx context.Context, tx *sqlx.Tx, actorID uuid.UUID, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
+func (s *service) updateClinicIn(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, req *RqUpdateClinic) (*RsClinic, error) {
 	clinic, err := s.repo.GetClinicByID(ctx, tx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get clinic: %w", err)
@@ -911,12 +891,6 @@ func (s *service) updateClinicIn(ctx context.Context, tx *sqlx.Tx, actorID uuid.
 	// Update clinic fields if provided
 	if req.Name != nil {
 		clinic.Name = *req.Name
-	}
-	if req.ProfilePicture != nil {
-		clinic.ProfilePicture = req.ProfilePicture
-	}
-	if req.ImageURL != nil {
-		clinic.ImageURL = req.ImageURL
 	}
 	if req.ABN != nil {
 		clinic.ABN = req.ABN
@@ -1132,8 +1106,6 @@ func (s *service) ListClinicsForAccountant(ctx context.Context, accountantID uui
 				ID:                clinic.ID,
 				EntityID:          clinic.EntityID,
 				PractitionerID:    clinic.PractitionerID,
-				ProfilePicture:    clinic.ProfilePicture,
-				ImageURL:          clinic.ImageURL,
 				Name:              clinic.Name,
 				ABN:               clinic.ABN,
 				Description:       clinic.Description,

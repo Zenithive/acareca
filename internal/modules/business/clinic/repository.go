@@ -102,7 +102,7 @@ var clinicSearchColumns = []string{"name", "abn", "description"}
 
 func (r *repository) ListClinicByPractitioner(ctx context.Context, practitionerID uuid.UUID, filter common.Filter) ([]*Clinic, error) {
 	base := `
-		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE practitioner_id = ? AND deleted_at IS NULL`
 
@@ -155,19 +155,16 @@ func (r *repository) CreateClinic(ctx context.Context, tx *sqlx.Tx, clinic *Clin
 	}
 
 	query := `
-        INSERT INTO tbl_clinic (practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, TRUE))
-        RETURNING id, practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active, created_at, updated_at
+        INSERT INTO tbl_clinic (practitioner_id, name, abn, description, document_id, is_active)
+        VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE))
+        RETURNING id, practitioner_id, name, abn, description, document_id, is_active, created_at, updated_at
     `
 
 	var c Clinic
 	var returnedDocID *uuid.UUID
-	row := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.ProfilePicture, clinic.ImageURL, clinic.Name,
-		clinic.ABN, clinic.Description, docID, clinic.IsActive,
-	)
+	row := tx.QueryRowxContext(ctx, query, clinic.PractitionerID, clinic.Name, clinic.ABN, clinic.Description, docID, clinic.IsActive)
 	err := row.Scan(
-		&c.ID, &c.PractitionerID, &c.ProfilePicture, &c.ImageURL, &c.Name,
-		&c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
+		&c.ID, &c.PractitionerID, &c.Name, &c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create clinic tx: %w", err)
@@ -240,7 +237,7 @@ func (r *repository) GetActiveFinancialYear(ctx context.Context, tx *sqlx.Tx) (*
 
 func (r *repository) GetClinicByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, document_id, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -256,7 +253,7 @@ func (r *repository) GetClinicByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUI
 
 func (r *repository) GetClinicByIDAndPractitioner(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, practitionerID uuid.UUID) (*Clinic, error) {
 	query := `
-		SELECT id, practitioner_id, profile_picture, image_url, name, abn, description, is_active, created_at, updated_at
+		SELECT id, practitioner_id, document_id, name, abn, description, is_active, created_at, updated_at
 		FROM tbl_clinic
 		WHERE id = $1 AND practitioner_id = $2 AND deleted_at IS NULL
 	`
@@ -354,20 +351,18 @@ func (r *repository) UpdateClinic(ctx context.Context, tx *sqlx.Tx, clinic *Clin
 
 	query := `
 		UPDATE tbl_clinic 
-		SET practitioner_id = $1, profile_picture = $2, image_url = $3, name = $4, abn = $5, 
-		    description = $6, is_active = $7, document_id = $8, updated_at = now()
-		WHERE id = $9 AND deleted_at IS NULL
-		RETURNING id, practitioner_id, profile_picture, image_url, name, abn, description, document_id, is_active, created_at, updated_at
+		SET practitioner_id = $1, name = $2, abn = $3, 
+		    description = $4, is_active = $5, document_id = $6, updated_at = now()
+		WHERE id = $7 AND deleted_at IS NULL
+		RETURNING id, practitioner_id, name, abn, description, document_id, is_active, created_at, updated_at
 	`
 	var c Clinic
 	var returnedDocID *uuid.UUID
 	row := tx.QueryRowxContext(ctx, query,
-		clinic.PractitionerID, clinic.ProfilePicture, clinic.ImageURL, clinic.Name,
-		clinic.ABN, clinic.Description, clinic.IsActive, docID, clinic.ID,
+		clinic.PractitionerID, clinic.Name, clinic.ABN, clinic.Description, clinic.IsActive, docID, clinic.ID,
 	)
 	err := row.Scan(
-		&c.ID, &c.PractitionerID, &c.ProfilePicture, &c.ImageURL, &c.Name,
-		&c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
+		&c.ID, &c.PractitionerID, &c.Name, &c.ABN, &c.Description, &returnedDocID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -449,8 +444,6 @@ func (r *repository) ListClinicByAccountant(ctx context.Context, accountantID uu
         SELECT 
             c.id, 
 			c.practitioner_id,
-            c.profile_picture,
-            c.image_url, 
             c.name, 
             c.abn, 
             c.description, 

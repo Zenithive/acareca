@@ -2,6 +2,8 @@ package entry
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -40,6 +42,7 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
@@ -377,6 +380,39 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			Module:      auditctx.ModuleForms,
 			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 			EntityID:    &idStr,
+			BeforeState: beforeState,
+		})
+
+		return nil
+	})
+}
+
+func (s *Service) DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID) error {
+	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, values, err := s.repo.(*Repository).GetByValueID(ctx, tx, valueID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		beforeState := existing.ToRs(values)
+
+		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
+			return err
+		}
+
+		if err := s.repo.(*Repository).DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
+			return err
+		}
+
+		valueIDStr := valueID.String()
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+			Action:      auditctx.ActionEntryDeleted,
+			Module:      auditctx.ModuleForms,
+			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
+			EntityID:    &valueIDStr,
 			BeforeState: beforeState,
 		})
 
