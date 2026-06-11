@@ -56,6 +56,12 @@ RUN mkdir -p /tmp/chromedp-profile && chmod 1777 /tmp
 # Non-root user (carried from builder)
 COPY --from=builder /etc/passwd /etc/passwd
 
+RUN mkdir -p /home/appuser/.local/share/applications \
+    && touch /home/appuser/.local/share/applications/mimeapps.list \
+    && chown -R appuser:appuser /home/appuser \
+    && mkdir -p /tmp/chromedp-profile \
+    && chmod 1777 /tmp
+
 # Binary
 COPY --from=builder /app/server /server
 
