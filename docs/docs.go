@@ -10582,7 +10582,7 @@ const docTemplate = `{
             }
         },
         "/template/{id}/pdf": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerToken": []
@@ -10602,6 +10602,15 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Invoice Data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.InvoiceData"
+                        }
                     }
                 ],
                 "responses": {
@@ -15156,6 +15165,176 @@ const docTemplate = `{
                 "StatusExpired",
                 "StatusInactive"
             ]
+        },
+        "template.Attachment": {
+            "type": "object",
+            "properties": {
+                "file_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.InvoiceData": {
+            "type": "object",
+            "properties": {
+                "amount_in_words": {
+                    "type": "string"
+                },
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/template.Attachment"
+                    }
+                },
+                "bill_from": {
+                    "$ref": "#/definitions/template.PartyInfo"
+                },
+                "bill_to": {
+                    "$ref": "#/definitions/template.PartyInfo"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "discount_total": {
+                    "type": "number"
+                },
+                "due_date_display": {
+                    "type": "string"
+                },
+                "footer_html": {
+                    "type": "string"
+                },
+                "grand_total": {
+                    "type": "number"
+                },
+                "has_attachments": {
+                    "type": "boolean"
+                },
+                "invoice_number": {
+                    "type": "string"
+                },
+                "issue_date_display": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/template.LineItem"
+                    }
+                },
+                "letterhead_html": {
+                    "type": "string"
+                },
+                "logo_initial": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "payment_method_label": {
+                    "type": "string"
+                },
+                "reference": {
+                    "type": "string"
+                },
+                "reference2": {
+                    "type": "string"
+                },
+                "show_logo": {
+                    "type": "boolean"
+                },
+                "show_logo_image": {
+                    "type": "boolean"
+                },
+                "show_tax": {
+                    "type": "boolean"
+                },
+                "subtotal": {
+                    "type": "number"
+                },
+                "table_style_class": {
+                    "type": "string"
+                },
+                "tax_method_label": {
+                    "type": "string"
+                },
+                "tax_total": {
+                    "type": "number"
+                },
+                "totals_amounts_caption": {
+                    "type": "string"
+                },
+                "totals_discount_label": {
+                    "type": "string"
+                },
+                "totals_grand_label": {
+                    "type": "string"
+                },
+                "totals_subtotal_label": {
+                    "type": "string"
+                },
+                "totals_tax_label": {
+                    "type": "string"
+                },
+                "watermark_enabled": {
+                    "type": "boolean"
+                },
+                "watermark_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.LineItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "discount_amount": {
+                    "type": "number"
+                },
+                "line_total": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "qty": {
+                    "type": "integer"
+                },
+                "tax_amount": {
+                    "type": "number"
+                },
+                "tax_percent": {
+                    "type": "number"
+                },
+                "unit_price": {
+                    "type": "number"
+                }
+            }
+        },
+        "template.PartyInfo": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
         },
         "template.RqTemplate": {
             "type": "object",

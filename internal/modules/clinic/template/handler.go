@@ -243,11 +243,12 @@ func (h *Handler) UpdateSetting(c *gin.Context) {
 // @Tags template
 // @Produce application/pdf
 // @Param id path string true "Template ID"
+// @Param request body InvoiceData true "Invoice Data"
 // @Success 200 {file} binary
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
-// @Router /template/{id}/pdf [get]
+// @Router /template/{id}/pdf [post]
 func (h *Handler) GeneratePDF(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
