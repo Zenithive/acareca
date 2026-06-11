@@ -11,7 +11,7 @@ func chromiumPath() string {
 	if p := os.Getenv("CHROMIUM_PATH"); p != "" {
 		return p
 	}
-	return "/usr/bin/chromium"
+	return "/usr/bin/google-chrome-stable"
 }
 
 func newAllocator(ctx context.Context) (context.Context, context.CancelFunc) {
