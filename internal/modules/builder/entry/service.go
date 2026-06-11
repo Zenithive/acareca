@@ -403,17 +403,6 @@ func (s *Service) DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID)
 			return err
 		}
 
-		metaMap := events.JSONBMap{
-			"entry_id":       existing.ID.String(),
-			"entry_value_id": valueID.String(),
-			"clinic_id":      existing.ClinicID.String(),
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, existing.ID,
-			"Accountant %s deleted a specific transaction from form: %s",
-			metaMap,
-		)
-
 		if err := s.repo.(*Repository).DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
 			return err
 		}
