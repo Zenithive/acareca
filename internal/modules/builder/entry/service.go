@@ -54,6 +54,7 @@ type IService interface {
 }
 
 type Service struct {
+	db              *sqlx.DB
 	repo            IRepository
 	fieldRepo       field.IRepository
 	methodSvc       method.IService
@@ -81,6 +82,7 @@ type Service struct {
 
 func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
 	return &Service{
+		db:              db,
 		repo:            repo,
 		fieldRepo:       fieldRepo,
 		methodSvc:       methodSvc,
@@ -112,7 +114,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	var result *RsFormEntry
 	var realOwnerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
 		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 		if err != nil {
@@ -221,7 +223,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	var e *FormEntry
 	var values []*FormEntryValue
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var err error
 
 		e, values, err = s.repo.GetByID(ctx, tx, id)
@@ -248,7 +250,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	var beforeState any
 	var practitionerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
 
 		existing, values, innerErr := s.repo.GetByID(ctx, tx, id)
@@ -356,7 +358,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		existing, values, err := s.repo.GetByID(ctx, tx, id)
 		if err != nil {
 			return err
@@ -388,8 +390,8 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID) error {
-	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
-		existing, values, err := s.repo.(*Repository).GetByValueID(ctx, tx, valueID)
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, values, err := s.repo.GetByValueID(ctx, tx, valueID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
@@ -403,18 +405,7 @@ func (s *Service) DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID)
 			return err
 		}
 
-		metaMap := events.JSONBMap{
-			"entry_id":       existing.ID.String(),
-			"entry_value_id": valueID.String(),
-			"clinic_id":      existing.ClinicID.String(),
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, existing.ID,
-			"Accountant %s deleted a specific transaction from form: %s",
-			metaMap,
-		)
-
-		if err := s.repo.(*Repository).DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
+		if err := s.repo.DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
 			return err
 		}
 
@@ -1197,7 +1188,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		selectedColumns = []string{"date", "supplier_name", "description", "clinic", "expenses", "net_amount", "gst_amount", "gross_amount", "gst_type", "business_percentage", "note"}
 	}
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			return err
