@@ -300,3 +300,124 @@ type LineItem struct {
 type Attachment struct {
 	FileName string `json:"file_name"`
 }
+
+type InvoiceResponse struct {
+	ID            uuid.UUID      `json:"id"`
+	ClinicID      uuid.UUID      `json:"clinic_id"`
+	ClinicName    string         `json:"clinic_name"`
+	TemplateID    uuid.UUID      `json:"template_id"`
+	InvoiceNumber string         `json:"invoice_number"`
+	Reference     string         `json:"reference"`
+	PaymentMethod string         `json:"payment_method"`
+	TaxMethod     string         `json:"tax_method"`
+	IssueDate     string         `json:"issue_date"`
+	DueDate       string         `json:"due_date"`
+	Status        string         `json:"status"`
+	SentTo        InvoiceContact `json:"sent_to"`
+	Items         []InvoiceItem  `json:"items"`
+}
+
+type InvoiceContact struct {
+	ID      uuid.UUID `db:"id" json:"id"`
+	FName   string    `db:"fname" json:"fname"`
+	LName   string    `db:"lname" json:"lname"`
+	Phone   string    `db:"phone" json:"phone"`
+	Email   string    `db:"email" json:"email"`
+	ABN     string    `db:"abn" json:"abn"`
+	Address []string  `db:"address" json:"address"`
+}
+
+type InvoiceItem struct {
+	ID          uuid.UUID `db:"id" json:"id"`
+	Name        string    `db:"name" json:"name"`
+	Description string    `db:"description" json:"description"`
+	Quantity    int       `db:"quantity" json:"quantity"`
+	UnitPrice   float64   `db:"unit_price" json:"unit_price"`
+	Discount    float64   `db:"discount" json:"discount"`
+	TaxRate     float64   `db:"tax_rate" json:"tax_rate"`
+	TaxAmount   float64   `db:"tax_amount" json:"tax_amount"`
+	TotalAmount float64   `db:"total_amount" json:"total_amount"`
+}
+
+func invoiceToData(inv *InvoiceResponse) InvoiceData {
+	items := make([]LineItem, len(inv.Items))
+	var subtotal, taxTotal, discountTotal float64
+
+	for i, it := range inv.Items {
+		subtotal += it.UnitPrice * float64(it.Quantity)
+		taxTotal += it.TaxAmount
+		discountTotal += it.Discount
+		items[i] = LineItem{
+			Name:           it.Name,
+			Description:    it.Description,
+			UnitPrice:      it.UnitPrice,
+			Qty:            it.Quantity,
+			DiscountAmount: it.Discount,
+			TaxPercent:     it.TaxRate,
+			TaxAmount:      it.TaxAmount,
+			LineTotal:      it.TotalAmount,
+		}
+	}
+
+	grandTotal := subtotal + taxTotal - discountTotal
+
+	billTo := PartyInfo{
+		Name:  inv.SentTo.FName + " " + inv.SentTo.LName,
+		Email: inv.SentTo.Email,
+		Phone: inv.SentTo.Phone,
+		ABN:   inv.SentTo.ABN,
+	}
+	if len(inv.SentTo.Address) > 0 {
+		billTo.Address = inv.SentTo.Address[0]
+	}
+
+	return InvoiceData{
+		ClinicName:         inv.ClinicName,
+		InvoiceNumber:      inv.InvoiceNumber,
+		IssueDateDisplay:   inv.IssueDate,
+		DueDateDisplay:     inv.DueDate,
+		Reference:          inv.Reference,
+		PaymentMethodLabel: inv.PaymentMethod,
+		TaxMethodLabel:     inv.TaxMethod,
+		BillFrom: PartyInfo{
+			Name: inv.ClinicName,
+		},
+		BillTo:               billTo,
+		Items:                items,
+		Subtotal:             subtotal,
+		TaxTotal:             taxTotal,
+		DiscountTotal:        discountTotal,
+		GrandTotal:           grandTotal,
+		TotalsAmountsCaption: "All amounts in INR",
+		TotalsSubtotalLabel:  "Subtotal",
+		TotalsTaxLabel:       "GST",
+		TotalsDiscountLabel:  "Discount",
+		TotalsGrandLabel:     "Total Due",
+		HasAttachments:       false,
+		Attachments:          []Attachment{},
+	}
+}
+
+type invoiceRow struct {
+	Id            uuid.UUID `db:"id"`
+	ClinicId      uuid.UUID `db:"clinic_id"`
+	TemplateId    uuid.UUID `db:"template_id"`
+	InvoiceNumber string    `db:"invoice_number"`
+	Reference     string    `db:"reference"`
+	PaymentMethod string    `db:"payment_method"`
+	TaxMethod     string    `db:"tax_method"`
+	IssueDate     string    `db:"issue_date"`
+	DueDate       string    `db:"due_date"`
+	Status        string    `db:"status"`
+	FName         string    `db:"fname"`
+	LName         string    `db:"lname"`
+	Email         string    `db:"email"`
+	Phone         string    `db:"phone"`
+	ABN           string    `db:"abn"`
+	ClinicName    string    `db:"clinic_name"`
+	AddressLine1  string    `db:"address_line1"`
+	City          string    `db:"city"`
+	State         string    `db:"state"`
+	PostalCode    string    `db:"postal_code"`
+	Country       string    `db:"country"`
+}

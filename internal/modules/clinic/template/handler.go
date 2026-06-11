@@ -2,6 +2,7 @@ package template
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -18,7 +19,9 @@ type IHandler interface {
 	List(c *gin.Context)
 	GetSetting(c *gin.Context)
 	UpdateSetting(c *gin.Context)
+
 	GeneratePDF(c *gin.Context)
+	DownloadPDF(c *gin.Context)
 }
 
 type Handler struct {
@@ -279,5 +282,51 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 	}
 
 	c.Header("Content-Disposition", "attachment; filename=invoice.pdf")
+	c.Data(http.StatusOK, "application/pdf", pdf)
+}
+
+// DownloadPDF implements [IHandler].
+// @Summary Download PDF for a template using invoice data
+// @Tags template
+// @Produce application/pdf
+// @Param id path string true "Template ID"
+// @Param invoice_id path string true "Invoice ID"
+// @Success 200 {file} binary
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /template/{id}/pdf/{invoice_id} [get]
+func (h *Handler) DownloadPDF(c *gin.Context) {
+	templateId, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid template id"})
+		return
+	}
+
+	invoiceId, err := uuid.Parse(c.Param("invoice_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice id"})
+		return
+	}
+
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clinic id"})
+		return
+	}
+
+	pdf, filename, err := h.svc.DownloadPDF(c.Request.Context(), clinicId, templateId, invoiceId)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.pdf", filename))
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Length", fmt.Sprintf("%d", len(pdf)))
 	c.Data(http.StatusOK, "application/pdf", pdf)
 }
