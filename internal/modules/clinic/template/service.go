@@ -23,6 +23,7 @@ type IService interface {
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
 
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
+	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
 }
 
 type Service struct {
@@ -344,4 +345,77 @@ func attachmentsToMap(items []Attachment) []map[string]any {
 		out[i] = map[string]any{"file_name": a.FileName}
 	}
 	return out
+}
+
+func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
+	// Fetch invoice
+	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch invoice: %w", err)
+	}
+
+	// Fetch template
+	t, err := s.repo.Get(ctx, clinicId, templateId)
+	if err != nil {
+		return nil, "", err
+	}
+
+	html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decrypt html: %w", err)
+	}
+	css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decrypt css: %w", err)
+	}
+
+	// Fetch settings
+	st, err := s.repo.GetSetting(ctx, templateId)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Map invoice → InvoiceData
+	data := invoiceToData(inv)
+
+	// Overlay settings
+	if st != nil {
+		data.PrimaryColor = st.PrimaryColor
+		data.AccentColor = st.AccentColor
+		data.BodyFontFamily = st.BodyFontFamily
+		data.HeaderFontFamily = st.HeaderFontFamily
+		data.ShowTax = st.IsTax
+		if st.TableStyle != nil {
+			data.TableStyleClass = *st.TableStyle
+		}
+		if st.IsWaterMark && st.WaterMarkText != nil {
+			data.WatermarkEnabled = true
+			data.WatermarkText = *st.WaterMarkText
+		}
+		if st.TermText != nil {
+			data.Notes = *st.TermText
+		}
+		if st.IsLogo {
+			data.ShowLogo = true
+			if st.Logo != nil {
+				data.ShowLogoImage = true
+				data.LogoURL = s.cfg.R2StoragePrefix + st.Logo.ToRsDocument().FileKey
+			} else if len(inv.ClinicName) > 0 {
+				data.LogoInitial = string([]rune(inv.ClinicName)[0])
+			}
+		}
+	}
+
+	fullHTML, err := chromepdf.Render(html, css, invoiceDataToMap(data))
+	if err != nil {
+		return nil, "", err
+	}
+
+	pdf, err := chromepdf.Generate(ctx, fullHTML)
+	if err != nil {
+		return nil, "", err
+	}
+
+	filename := fmt.Sprintf("%s-%s", inv.InvoiceNumber, inv.ClinicName)
+	return pdf, filename, nil
 }
