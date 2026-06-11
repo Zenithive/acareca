@@ -227,7 +227,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	preference.RegisterRoutes(nft, preferenceHandler)
 
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
+	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn), cfg)
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// ============ INVOICE MODULE ============

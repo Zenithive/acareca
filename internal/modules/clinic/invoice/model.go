@@ -54,18 +54,19 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 }
 
 type RqUpdateInvoice struct {
-	ID            uuid.UUID            `json:"id" validate:"-"`
-	ContactID     *uuid.UUID           `json:"contact_id,omitempty"`
-	TemplateID    *uuid.UUID           `json:"template_id,omitempty"`
-	Name          *string              `json:"name,omitempty"`
-	InvoiceNumber *string              `json:"invoice_number,omitempty"`
-	Reference     *string              `json:"reference,omitempty"`
-	PaymentMethod *string              `json:"payment_method,omitempty" validate:"omitempty,oneof=CASH CARD ONLINE"`
-	TaxMethod     *string              `json:"tax_method,omitempty" validate:"omitempty,oneof=EXCLUSIVE INCLUSIVE"`
-	IssueDate     *string              `json:"issue_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	DueDate       *string              `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	Status        *string              `json:"status,omitempty"`
-	Items         []*item.RqUpdateItem `json:"items,omitempty" validate:"omitempty,dive"`
+	ID               uuid.UUID            `json:"id" validate:"-"`
+	ContactID        *uuid.UUID           `json:"contact_id,omitempty"`
+	TemplateID       *uuid.UUID           `json:"template_id,omitempty"`
+	Name             *string              `json:"name,omitempty"`
+	InvoiceNumber    *string              `json:"invoice_number,omitempty"`
+	Reference        *string              `json:"reference,omitempty"`
+	PaymentMethod    *string              `json:"payment_method,omitempty" validate:"omitempty,oneof=CASH CARD ONLINE"`
+	TaxMethod        *string              `json:"tax_method,omitempty" validate:"omitempty,oneof=EXCLUSIVE INCLUSIVE"`
+	IssueDate        *string              `json:"issue_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	DueDate          *string              `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status           *string              `json:"status,omitempty"`
+	Items            []*item.RqUpdateItem `json:"items,omitempty" validate:"omitempty,dive"`
+	AttachmentBase64 string               `json:"attachment_base64,omitempty"`
 }
 
 func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
@@ -250,4 +251,19 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
+}
+
+type RqResendInvoice struct {
+	AttachmentBase64 string `json:"attachment_base64,omitempty"`
+}
+
+type RqSaveMailTemplate struct {
+	Subject string `json:"mail_subject" validate:"required"`
+	Body    string `json:"mail_body" validate:"required"`
+}
+
+type RsInvoiceMailTemplate struct {
+	Subject  string `json:"mail_subject"`
+	Body     string `json:"mail_body"`
+	IsCustom bool   `json:"is_custom"`
 }

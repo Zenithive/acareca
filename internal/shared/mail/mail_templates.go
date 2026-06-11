@@ -15,6 +15,12 @@ import (
 
 const resendURL = "https://api.resend.com/emails"
 
+// Attachment defines the Resend API payload footprint for passing raw data files
+type Attachment struct {
+	Content  string `json:"content"` // Base64 encoded string payload
+	Filename string `json:"filename"`
+}
+
 // Client sends transactional emails via the Resend API.
 type Client struct {
 	apiKey    string
@@ -26,6 +32,10 @@ func NewClient(apiKey, fromEmail string) *Client {
 }
 
 func (c *Client) send(to, subject, html string) error {
+	return c.sendWithAttachments(to, subject, html, nil)
+}
+
+func (c *Client) sendWithAttachments(to, subject, html string, attachments []Attachment) error {
 	from := fmt.Sprintf("Acareca <%s>", c.fromEmail)
 
 	payload := map[string]interface{}{
@@ -33,6 +43,10 @@ func (c *Client) send(to, subject, html string) error {
 		"to":      []string{to},
 		"subject": subject,
 		"html":    html,
+	}
+
+	if len(attachments) > 0 {
+		payload["attachments"] = attachments
 	}
 
 	data, err := json.Marshal(payload)
@@ -140,4 +154,19 @@ func (c *Client) SendInvitationEmail(to, senderName, inviteLink string) error {
 
 	subject := fmt.Sprintf("Invitation: Manage %s's files on Acareca", senderName)
 	return c.send(to, subject, html)
+}
+
+// SendInvoicePaidEmail sends invoice pdf as attachment to intented contact after payment status is "paid".
+func (c *Client) SendInvoicePaidEmail(to, invoiceNumber, base64PDF, subject, renderedHTML string) error {
+	var attachments []Attachment
+	if base64PDF != "" {
+		attachments = []Attachment{
+			{
+				Content:  base64PDF,
+				Filename: fmt.Sprintf("%s.pdf", invoiceNumber),
+			},
+		}
+	}
+
+	return c.sendWithAttachments(to, subject, renderedHTML, attachments)
 }
