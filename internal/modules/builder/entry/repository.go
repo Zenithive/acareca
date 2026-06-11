@@ -22,7 +22,7 @@ type IRepository interface {
 	Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	DeleteSingleEntryValue(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
-	GetByValueID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
+	GetByValueID(ctx context.Context, tx *sqlx.Tx, entryId uuid.UUID, valId uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*FormEntry, error)
 	CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error)
 	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
@@ -89,16 +89,7 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 	return &e, values, nil
 }
 
-func (r *Repository) GetByValueID(ctx context.Context, tx *sqlx.Tx, valueID uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
-	// Find the target parent entry_id
-	var entryID uuid.UUID
-	findEntryQuery := `SELECT entry_id FROM tbl_form_entry_value WHERE id = $1 AND deleted_at IS NULL`
-	if err := tx.GetContext(ctx, &entryID, findEntryQuery, valueID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil, ErrNotFound
-		}
-		return nil, nil, fmt.Errorf("find entry_id from value_id: %w", err)
-	}
+func (r *Repository) GetByValueID(ctx context.Context, tx *sqlx.Tx, entryId uuid.UUID, valId uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
 
 	// Use the entryID to load the parent entry
 	query := `SELECT 
@@ -110,7 +101,7 @@ func (r *Repository) GetByValueID(ctx context.Context, tx *sqlx.Tx, valueID uuid
         WHERE e.id = $1 AND e.deleted_at IS NULL`
 
 	var e FormEntry
-	if err := tx.QueryRowContext(ctx, query, entryID).Scan(
+	if err := tx.QueryRowContext(ctx, query, entryId).Scan(
 		&e.ID, &e.FormVersionID, &e.ClinicID, &e.SubmittedBy, &e.SubmittedAt, &e.Status, &e.Date, &e.CreatedAt, &e.UpdatedAt, &e.PractitionerID,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -125,7 +116,7 @@ func (r *Repository) GetByValueID(ctx context.Context, tx *sqlx.Tx, valueID uuid
         WHERE entry_id = $1 AND deleted_at IS NULL AND form_field_id IS NOT NULL`
 
 	var values []*FormEntryValue
-	if err := tx.SelectContext(ctx, &values, valQuery, entryID); err != nil {
+	if err := tx.SelectContext(ctx, &values, valQuery, entryId); err != nil {
 		return nil, nil, fmt.Errorf("get entry values: %w", err)
 	}
 
@@ -715,6 +706,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	base := `
 		SELECT
 			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
+			v.form_entry_value_id                                        AS form_entry_value_id,
 			v.entry_id                                                     AS entry_id,
 			v.form_field_id                                                AS form_field_id,
 			v.coa_id                                                       AS coa_id,
@@ -769,6 +761,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	type detailRow struct {
 		ID                 uuid.UUID  `db:"id"`
+		FormEntryValueID   *string    `db:"form_entry_value_id"`
 		EntryID            uuid.UUID  `db:"entry_id"`
 		FormFieldID        *string    `db:"form_field_id"`
 		CoaID              uuid.UUID  `db:"coa_id"`
@@ -812,6 +805,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 		detail := &RsCoaEntryDetail{
 			ID:                 row.ID.String(),
+			FormEntryValueID:   row.FormEntryValueID,
 			EntryID:            row.EntryID.String(),
 			CoaID:              row.CoaID.String(),
 			TaxTypeID:          row.TaxTypeID,

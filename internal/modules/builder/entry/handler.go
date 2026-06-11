@@ -198,12 +198,17 @@ func (h *handler) Delete(c *gin.Context) {
 // @Security BearerToken
 // @Router /entry/value/{id} [delete]
 func (h *handler) DeleteEntryValue(c *gin.Context) {
-	valId, ok := util.ParseUuidID(c, "id")
+	id, ok := util.ParseUuidID(c, "id")
 	if !ok {
 		return
 	}
 
-	if err := h.svc.DeleteSingleEntryValue(c.Request.Context(), valId); err != nil {
+	valId, ok := util.ParseUuidID(c, "val_id")
+	if !ok {
+		return
+	}
+
+	if err := h.svc.DeleteSingleEntryValue(c.Request.Context(), id, valId); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return

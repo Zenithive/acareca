@@ -42,7 +42,7 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID) error
+	DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
@@ -389,9 +389,9 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	})
 }
 
-func (s *Service) DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID) error {
+func (s *Service) DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error {
 	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		existing, values, err := s.repo.GetByValueID(ctx, tx, valueID)
+		existing, values, err := s.repo.GetByValueID(ctx, tx, id, valueID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
@@ -407,6 +407,20 @@ func (s *Service) DeleteSingleEntryValue(ctx context.Context, valueID uuid.UUID)
 
 		if err := s.repo.DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
 			return err
+		}
+
+		// Check if all remaining entry values are deleted; if so, cascade delete the parent entry
+		var remainingCount int
+		countQuery := `SELECT COUNT(*) FROM tbl_form_entry_value WHERE entry_id = $1 AND deleted_at IS NULL`
+		if err := tx.QueryRowContext(ctx, countQuery, id).Scan(&remainingCount); err != nil {
+			return fmt.Errorf("check remaining entry values: %w", err)
+		}
+		if remainingCount == 0 {
+			// All values are deleted, soft-delete the parent entry
+			deleteQuery := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+			if _, err := tx.ExecContext(ctx, deleteQuery, id); err != nil {
+				return fmt.Errorf("cascade delete form entry: %w", err)
+			}
 		}
 
 		valueIDStr := valueID.String()

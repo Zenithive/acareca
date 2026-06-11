@@ -25,16 +25,16 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, permAdapter *middleware.Per
 		coaGroup.GET("/export", h.HandleExport)
 	}
 
-	valueGroup := rg.Group("/value/:id")
-	{
-		valueGroup.DELETE("", h.DeleteEntryValue)
-	}
-
 	// ID-based routes
 	idGroup := rg.Group("/:id")
 	{
 		idGroup.GET("", h.Get)
 		idGroup.PATCH("", h.Update)
 		idGroup.DELETE("", h.Delete)
+		valueGroup := idGroup.Group("/value/:val_id")
+		{
+			valueGroup.DELETE("", h.DeleteEntryValue)
+		}
+
 	}
 }
