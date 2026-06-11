@@ -32,15 +32,34 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 
 # ── Runtime stage ─────────────────────────────────────────────
-FROM scratch
+FROM debian:bookworm-slim
 
 WORKDIR /
 
+# Install Chromium + all deps chromedp needs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-sandbox \
+    ca-certificates \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Writable tmp for chromium crash dumps + profile
+RUN mkdir -p /tmp/chromedp-profile && chmod 1777 /tmp
+
 # Non-root user (carried from builder)
 COPY --from=builder /etc/passwd /etc/passwd
-
-# SSL certificates (required for HTTPS outbound calls)
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Binary
 COPY --from=builder /app/server /server

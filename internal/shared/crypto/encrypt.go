@@ -39,3 +39,42 @@ func EncryptAndCompress(plainText string, secretKey []byte) ([]byte, error) {
 
 	return aesGCM.Seal(nonce, nonce, compressed, nil), nil
 }
+
+func DecryptAndDecompress(cipherText []byte, secretKey []byte) (string, error) {
+	if len(secretKey) != 32 {
+		return "", fmt.Errorf("crypto: secret key must be exactly 32 bytes")
+	}
+
+	block, err := aes.NewCipher(secretKey)
+	if err != nil {
+		return "", err
+	}
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonceSize := aesGCM.NonceSize()
+	if len(cipherText) < nonceSize {
+		return "", fmt.Errorf("crypto: ciphertext too short")
+	}
+
+	nonce, cipherText := cipherText[:nonceSize], cipherText[nonceSize:]
+	compressed, err := aesGCM.Open(nil, nonce, cipherText, nil)
+	if err != nil {
+		return "", fmt.Errorf("crypto: decryption failed: %w", err)
+	}
+
+	gr, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return "", fmt.Errorf("crypto: gzip reader failed: %w", err)
+	}
+	defer gr.Close()
+
+	plain, err := io.ReadAll(gr)
+	if err != nil {
+		return "", fmt.Errorf("crypto: decompression failed: %w", err)
+	}
+
+	return string(plain), nil
+}

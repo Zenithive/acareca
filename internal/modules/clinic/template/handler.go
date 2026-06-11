@@ -18,6 +18,7 @@ type IHandler interface {
 	List(c *gin.Context)
 	GetSetting(c *gin.Context)
 	UpdateSetting(c *gin.Context)
+	GeneratePDF(c *gin.Context)
 }
 
 type Handler struct {
@@ -232,4 +233,50 @@ func (h *Handler) UpdateSetting(c *gin.Context) {
 		return
 	}
 	response.JSON(c, http.StatusOK, rs, "")
+}
+
+// GeneratePDF implements [IHandler].
+// @Summary Generate PDF for a template
+// @Tags template
+// @Produce application/pdf
+// @Param id path string true "Template ID"
+// @Success 200 {file} binary
+// @Failure 400 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /template/{id}/pdf [get]
+func (h *Handler) GeneratePDF(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clinic id"})
+		return
+	}
+
+	var data InvoiceData
+	if err := c.ShouldBindJSON(&data); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pdf, err := h.svc.GeneratePDF(c.Request.Context(), RqGeneratePDF{
+		TemplateId: id,
+		ClinicId:   clinicId,
+		Data:       data,
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=invoice.pdf")
+	c.Data(http.StatusOK, "application/pdf", pdf)
 }
