@@ -750,7 +750,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 					WHEN COALESCE(v.net_amount, 0) < 0 THEN -ABS(COALESCE(v.gross_amount, 0))
 					ELSE ABS(COALESCE(v.gross_amount, 0))
 				END::numeric, 2)::float8                                   AS gross_amount,
-			COALESCE(v.business_percentage, 100.00::float8)                AS business_percentage,
+			COALESCE(v.business_percentage::float8, 100.00::float8)        AS business_percentage,
 			COALESCE(v.description, '-')                                   AS description,
 			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
 		FROM vw_double_entry_line_items v

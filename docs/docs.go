@@ -4729,6 +4729,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/clinic/invoice/email-templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice settings"
+                ],
+                "summary": "Fetch current invoice template context settings or system defaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/invoice.RsInvoiceMailTemplate"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice settings"
+                ],
+                "summary": "Save modified template layout overrides for the active clinic identity context",
+                "parameters": [
+                    {
+                        "description": "Custom structural templates body configurations",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invoice.RqSaveMailTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    }
+                }
+            }
+        },
         "/clinic/invoice/{id}": {
             "get": {
                 "security": [
@@ -4863,6 +4926,54 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Invoice ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/invoice/{id}/resend": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Manually re-fire a generated paid invoice statement notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID string format token",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -10470,6 +10581,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/template/{id}/pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "template"
+                ],
+                "summary": "Generate PDF for a template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/template/{id}/setting": {
             "get": {
                 "security": [
@@ -14270,9 +14426,27 @@ const docTemplate = `{
                 }
             }
         },
+        "invoice.RqSaveMailTemplate": {
+            "type": "object",
+            "required": [
+                "mail_body",
+                "mail_subject"
+            ],
+            "properties": {
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
+                    "type": "string"
+                }
+            }
+        },
         "invoice.RqUpdateInvoice": {
             "type": "object",
             "properties": {
+                "attachment_base64": {
+                    "type": "string"
+                },
                 "contact_id": {
                     "type": "string"
                 },
@@ -14378,6 +14552,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RsInvoiceMailTemplate": {
+            "type": "object",
+            "properties": {
+                "is_custom": {
+                    "type": "boolean"
+                },
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -14807,6 +14995,9 @@ const docTemplate = `{
                 "is_active": {
                     "type": "boolean"
                 },
+                "is_visible": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255
@@ -14883,6 +15074,9 @@ const docTemplate = `{
                     "minimum": 1
                 },
                 "is_active": {
+                    "type": "boolean"
+                },
+                "is_visible": {
                     "type": "boolean"
                 },
                 "name": {
@@ -15007,6 +15201,7 @@ const docTemplate = `{
             "enum": [
                 "new.transaction",
                 "accountant.activity.alert",
+                "practitioner.activity.alert",
                 "system.activity.alert",
                 "system.error.alert",
                 "system.warning.alert",
@@ -15025,6 +15220,7 @@ const docTemplate = `{
             "x-enum-descriptions": [
                 "",
                 "",
+                "",
                 "general audit log activity",
                 "system.error only (critical)",
                 "system.warning only",
@@ -15035,6 +15231,7 @@ const docTemplate = `{
             "x-enum-varnames": [
                 "EventNewTransaction",
                 "EventAccountantActivityAlert",
+                "EventPractitionerActivityAlert",
                 "EventSystemActivityAlert",
                 "EventSystemErrorAlert",
                 "EventSystemWarningAlert",

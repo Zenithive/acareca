@@ -2490,8 +2490,20 @@ definitions:
     - name
     - template_id
     type: object
+  invoice.RqSaveMailTemplate:
+    properties:
+      mail_body:
+        type: string
+      mail_subject:
+        type: string
+    required:
+    - mail_body
+    - mail_subject
+    type: object
   invoice.RqUpdateInvoice:
     properties:
+      attachment_base64:
+        type: string
       contact_id:
         type: string
       due_date:
@@ -2563,6 +2575,15 @@ definitions:
       template_id:
         type: string
       updated_at:
+        type: string
+    type: object
+  invoice.RsInvoiceMailTemplate:
+    properties:
+      is_custom:
+        type: boolean
+      mail_body:
+        type: string
+      mail_subject:
         type: string
     type: object
   item.RqItem:
@@ -2846,6 +2867,8 @@ definitions:
         type: integer
       is_active:
         type: boolean
+      is_visible:
+        type: boolean
       name:
         maxLength: 255
         type: string
@@ -2900,6 +2923,8 @@ definitions:
         minimum: 1
         type: integer
       is_active:
+        type: boolean
+      is_visible:
         type: boolean
       name:
         maxLength: 255
@@ -2987,6 +3012,7 @@ definitions:
     enum:
     - new.transaction
     - accountant.activity.alert
+    - practitioner.activity.alert
     - system.activity.alert
     - system.error.alert
     - system.warning.alert
@@ -3004,6 +3030,7 @@ definitions:
     x-enum-descriptions:
     - ""
     - ""
+    - ""
     - general audit log activity
     - system.error only (critical)
     - system.warning only
@@ -3013,6 +3040,7 @@ definitions:
     x-enum-varnames:
     - EventNewTransaction
     - EventAccountantActivityAlert
+    - EventPractitionerActivityAlert
     - EventSystemActivityAlert
     - EventSystemErrorAlert
     - EventSystemWarningAlert
@@ -6318,6 +6346,72 @@ paths:
       summary: Update an invoice by ID
       tags:
       - invoice
+  /clinic/invoice/{id}/resend:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice UUID string format token
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Manually re-fire a generated paid invoice statement notification
+      tags:
+      - invoice
+  /clinic/invoice/email-templates:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/invoice.RsInvoiceMailTemplate'
+              type: object
+      security:
+      - BearerToken: []
+      summary: Fetch current invoice template context settings or system defaults
+      tags:
+      - invoice settings
+    post:
+      parameters:
+      - description: Custom structural templates body configurations
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invoice.RqSaveMailTemplate'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      security:
+      - BearerToken: []
+      summary: Save modified template layout overrides for the active clinic identity
+        context
+      tags:
+      - invoice settings
   /clinic/login:
     post:
       consumes:
@@ -9775,6 +9869,34 @@ paths:
       security:
       - BearerToken: []
       summary: Update an template by ID
+      tags:
+      - template
+  /template/{id}/pdf:
+    get:
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Generate PDF for a template
       tags:
       - template
   /template/{id}/setting:

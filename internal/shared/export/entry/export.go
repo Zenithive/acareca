@@ -73,7 +73,6 @@ func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatD
 		}
 	}
 
-	// Dynamic layout blueprint fallback if filtering array yields empty matches
 	if len(enabledCols) == 0 {
 		enabledCols = []ColumnDefinition{
 			catalog["date"], catalog["supplier_name"], catalog["description"],
@@ -94,32 +93,34 @@ func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatD
 	}
 
 	styleHeaderBlue, _ := xl.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Size: 14, Color: "FFFFFF"},
+		Font:      &excelize.Font{Bold: true, Size: 14, Color: "FFFFFF", Family: "Segoe UI"},
 		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"1F4E78"}, Pattern: 1},
 	})
 	headerStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+		Font: &excelize.Font{Bold: true, Size: 10, Color: "FFFFFF", Family: "Segoe UI"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"1F4E78"}, Pattern: 1},
 	})
 	groupHeaderStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+		Font: &excelize.Font{Bold: true, Size: 10, Family: "Segoe UI", Color: "1F4E78"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"DAEEF3"}, Pattern: 1},
 	})
 	normalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
-		CustomNumFmt: lo.ToPtr("$#,##0.00;($#,##0.00);\"-\""),
+		Font:         &excelize.Font{Size: 10, Family: "Segoe UI"},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;($#,##0.00);$0.00"),
 	})
 	percentStyle, _ := xl.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Size: 10, Family: "Segoe UI"},
 		CustomNumFmt: lo.ToPtr("0.00%"),
 	})
 	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1E1E1"}, Pattern: 1},
+		Font: &excelize.Font{Bold: true, Size: 10, Family: "Segoe UI"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"F2F2F2"}, Pattern: 1},
 	})
 	totalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#E1E1E1"}, Pattern: 1},
-		CustomNumFmt: lo.ToPtr("$#,##0.00;($#,##0.00);\"-\""),
+		Font:         &excelize.Font{Bold: true, Size: 10, Family: "Segoe UI", Color: "1F4E78"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"F2F2F2"}, Pattern: 1},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;($#,##0.00);$0.00"),
 	})
 
 	getFloat := func(f *float64) float64 { return export.GetFloatValue(f) }
@@ -133,8 +134,8 @@ func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatD
 		cell := fmt.Sprintf("A%d", row)
 		xl.MergeCell(sheet, cell, lastColLetter+strconv.Itoa(row))
 		xl.SetCellRichText(sheet, cell, []excelize.RichTextRun{
-			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
-			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Segoe UI", Size: 10, Color: "595959"}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Segoe UI", Size: 10, Color: "262626"}},
 		})
 	}
 
@@ -153,7 +154,10 @@ func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatD
 	setRichMeta(metaRow, "Generated:", config.GeneratedTime)
 	metaRow++
 
-	headerRow := metaRow + 1
+	xl.MergeCell(sheet, fmt.Sprintf("A%d", metaRow), fmt.Sprintf("%s%d", lastColLetter, metaRow))
+	metaRow++
+
+	headerRow := metaRow
 	for idx, col := range enabledCols {
 		cell, _ := excelize.CoordinatesToCellName(idx+1, headerRow)
 		xl.SetCellValue(sheet, cell, col.Header)
@@ -219,6 +223,9 @@ func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatD
 			switch col.Key {
 			case "net_amount":
 				xl.SetCellValue(sheet, cell, g.TotalNetAmount)
+				xl.SetCellStyle(sheet, cell, cell, totalCurrencyStyle)
+			case "gst_amount":
+				xl.SetCellValue(sheet, cell, g.TotalGrossAmount-g.TotalNetAmount)
 				xl.SetCellStyle(sheet, cell, cell, totalCurrencyStyle)
 			case "gross_amount":
 				xl.SetCellValue(sheet, cell, g.TotalGrossAmount)
