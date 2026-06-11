@@ -55,6 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Writable tmp for chromium crash dumps + profile
+RUN mkdir -p /tmp/chromedp-profile && chmod 1777 /tmp
+
 # Non-root user (carried from builder)
 COPY --from=builder /etc/passwd /etc/passwd
 
