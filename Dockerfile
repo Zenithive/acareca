@@ -36,7 +36,6 @@ FROM debian:bookworm-slim
 
 WORKDIR /
 
-# Install Chromium + all deps chromedp needs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates curl \
     && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
@@ -50,25 +49,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
-# Writable tmp for chromium crash dumps + profile
-RUN mkdir -p /tmp/chromedp-profile && chmod 1777 /tmp
-
-# Non-root user (carried from builder)
-COPY --from=builder /etc/passwd /etc/passwd
-
-RUN mkdir -p /home/appuser/.local/share/applications \
+# Create user properly in this stage (not copied from alpine builder)
+RUN useradd -m -u 1001 appuser \
+    && mkdir -p /home/appuser/.local/share/applications \
     && touch /home/appuser/.local/share/applications/mimeapps.list \
     && chown -R appuser:appuser /home/appuser \
     && mkdir -p /tmp/chromedp-profile \
     && chmod 1777 /tmp
 
-# Binary
 COPY --from=builder /app/server /server
-
-# Migrations (goose reads these at startup via db.RunMigrations)
 COPY --from=builder /app/migrations /migrations
 
-# Run as non-root
 USER appuser
 
 EXPOSE 8080
