@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/iamarpitzala/acareca/pkg/chromepdf"
 	"github.com/iamarpitzala/acareca/pkg/config"
 )
 
@@ -20,6 +21,8 @@ type IService interface {
 	List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
+
+	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 }
 
 type Service struct {
@@ -222,4 +225,123 @@ func (s *Service) Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) 
 
 func (s *Service) List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error) {
 	return s.repo.List(ctx, clinicId)
+}
+func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error) {
+	t, err := s.repo.Get(ctx, rq.ClinicId, rq.TemplateId)
+	if err != nil {
+		return nil, err
+	}
+
+	html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt html: %w", err)
+	}
+	css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt css: %w", err)
+	}
+
+	// Pull settings so CSS vars (primary_color, fonts etc.) resolve correctly
+	st, err := s.repo.GetSetting(ctx, rq.TemplateId)
+	if err != nil {
+		return nil, err
+	}
+	if st != nil {
+		rq.Data.PrimaryColor = st.PrimaryColor
+		rq.Data.AccentColor = st.AccentColor
+		rq.Data.BodyFontFamily = st.BodyFontFamily
+		rq.Data.HeaderFontFamily = st.HeaderFontFamily
+		if st.IsTax {
+			rq.Data.ShowTax = true
+		}
+		if st.TableStyle != nil {
+			rq.Data.TableStyleClass = *st.TableStyle
+		}
+		if st.IsWaterMark && st.WaterMarkText != nil {
+			rq.Data.WatermarkEnabled = true
+			rq.Data.WatermarkText = *st.WaterMarkText
+		}
+		if st.TermText != nil && rq.Data.Notes == "" {
+			// only fall back to setting terms if caller didn't supply notes
+		}
+	}
+
+	data := invoiceDataToMap(rq.Data)
+
+	fullHTML, err := chromepdf.Render(html, css, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return chromepdf.Generate(ctx, fullHTML)
+}
+
+func invoiceDataToMap(d InvoiceData) map[string]any {
+	return map[string]any{
+		"clinic_name":          d.ClinicName,
+		"invoice_number":       d.InvoiceNumber,
+		"issue_date_display":   d.IssueDateDisplay,
+		"due_date_display":     d.DueDateDisplay,
+		"reference":            d.Reference,
+		"payment_method_label": d.PaymentMethodLabel,
+		"tax_method_label":     d.TaxMethodLabel,
+		"show_logo":            d.ShowLogo,
+		"show_logo_image":      d.ShowLogoImage,
+		"logo_url":             d.LogoURL,
+		"logo_initial":         d.LogoInitial,
+		"watermark_enabled":    d.WatermarkEnabled,
+		"watermark_text":       d.WatermarkText,
+		"show_tax":             d.ShowTax,
+		"letterhead_html":      d.LetterheadHTML,
+		"footer_html":          d.FooterHTML,
+		"notes":                d.Notes,
+		"amount_in_words":      d.AmountInWords,
+		"has_attachments":      d.HasAttachments,
+		"bill_from": map[string]any{
+			"name": d.BillFrom.Name, "address": d.BillFrom.Address,
+			"abn": d.BillFrom.ABN, "email": d.BillFrom.Email, "phone": d.BillFrom.Phone,
+		},
+		"bill_to": map[string]any{
+			"name": d.BillTo.Name, "address": d.BillTo.Address,
+			"abn": d.BillTo.ABN, "email": d.BillTo.Email, "phone": d.BillTo.Phone,
+		},
+		"items":                  lineItemsToMap(d.Items),
+		"subtotal":               d.Subtotal,
+		"tax_total":              d.TaxTotal,
+		"discount_total":         d.DiscountTotal,
+		"grand_total":            d.GrandTotal,
+		"totals_amounts_caption": d.TotalsAmountsCaption,
+		"totals_subtotal_label":  d.TotalsSubtotalLabel,
+		"totals_tax_label":       d.TotalsTaxLabel,
+		"totals_discount_label":  d.TotalsDiscountLabel,
+		"totals_grand_label":     d.TotalsGrandLabel,
+		"table_style_class":      d.TableStyleClass,
+		"attachments":            attachmentsToMap(d.Attachments),
+		"primary_color":          d.PrimaryColor,
+		"accent_color":           d.AccentColor,
+		"body_font_family":       d.BodyFontFamily,
+		"header_font_family":     d.HeaderFontFamily,
+	}
+}
+
+func lineItemsToMap(items []LineItem) []map[string]any {
+	out := make([]map[string]any, len(items))
+	for i, it := range items {
+		out[i] = map[string]any{
+			"name": it.Name, "description": it.Description,
+			"unit_price": it.UnitPrice, "qty": it.Qty,
+			"discount_amount": it.DiscountAmount,
+			"tax_percent":     it.TaxPercent, "tax_amount": it.TaxAmount,
+			"line_total": it.LineTotal,
+		}
+	}
+	return out
+}
+
+func attachmentsToMap(items []Attachment) []map[string]any {
+	out := make([]map[string]any, len(items))
+	for i, a := range items {
+		out[i] = map[string]any{"file_name": a.FileName}
+	}
+	return out
 }

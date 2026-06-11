@@ -222,3 +222,81 @@ type RsSetting struct {
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
+
+type RqGeneratePDF struct {
+	TemplateId uuid.UUID
+	ClinicId   uuid.UUID
+	Data       InvoiceData
+}
+
+// InvoiceData holds all Handlebars variables the templates expect
+type InvoiceData struct {
+	ClinicName         string `json:"clinic_name"`
+	InvoiceNumber      string `json:"invoice_number"`
+	IssueDateDisplay   string `json:"issue_date_display"`
+	DueDateDisplay     string `json:"due_date_display"`
+	Reference          string `json:"reference"`
+	PaymentMethodLabel string `json:"payment_method_label"`
+	TaxMethodLabel     string `json:"tax_method_label"`
+	ShowLogo           bool   `json:"show_logo"`
+	ShowLogoImage      bool   `json:"show_logo_image"`
+	LogoURL            string `json:"logo_url"`
+	LogoInitial        string `json:"logo_initial"`
+	WatermarkEnabled   bool   `json:"watermark_enabled"`
+	WatermarkText      string `json:"watermark_text"`
+	ShowTax            bool   `json:"show_tax"`
+	LetterheadHTML     string `json:"letterhead_html"`
+	FooterHTML         string `json:"footer_html"`
+	Notes              string `json:"notes"`
+	AmountInWords      string `json:"amount_in_words"`
+	HasAttachments     bool   `json:"has_attachments"`
+	Reference2         string `json:"reference2"`
+
+	BillFrom PartyInfo  `json:"bill_from"`
+	BillTo   PartyInfo  `json:"bill_to"`
+	Items    []LineItem `json:"items"`
+
+	Subtotal      float64 `json:"subtotal"`
+	TaxTotal      float64 `json:"tax_total"`
+	DiscountTotal float64 `json:"discount_total"`
+	GrandTotal    float64 `json:"grand_total"`
+
+	TotalsAmountsCaption string `json:"totals_amounts_caption"`
+	TotalsSubtotalLabel  string `json:"totals_subtotal_label"`
+	TotalsTaxLabel       string `json:"totals_tax_label"`
+	TotalsDiscountLabel  string `json:"totals_discount_label"`
+	TotalsGrandLabel     string `json:"totals_grand_label"`
+
+	TableStyleClass string `json:"table_style_class"`
+
+	Attachments []Attachment `json:"attachments"`
+
+	// Settings-derived — injected by service before render
+	PrimaryColor     string `json:"-"`
+	AccentColor      string `json:"-"`
+	BodyFontFamily   string `json:"-"`
+	HeaderFontFamily string `json:"-"`
+}
+
+type PartyInfo struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	ABN     string `json:"abn"`
+	Email   string `json:"email"`
+	Phone   string `json:"phone"`
+}
+
+type LineItem struct {
+	Name           string  `json:"name"`
+	Description    string  `json:"description"`
+	UnitPrice      float64 `json:"unit_price"`
+	Qty            int     `json:"qty"`
+	DiscountAmount float64 `json:"discount_amount"`
+	TaxPercent     float64 `json:"tax_percent"`
+	TaxAmount      float64 `json:"tax_amount"`
+	LineTotal      float64 `json:"line_total"`
+}
+
+type Attachment struct {
+	FileName string `json:"file_name"`
+}
