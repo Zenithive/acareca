@@ -2,13 +2,17 @@ package invoice
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
+	"github.com/samber/lo"
 )
 
 type IService interface {
@@ -19,20 +23,23 @@ type IService interface {
 	List(ctx context.Context, clinicID uuid.UUID, ft *Filter) (*util.RsList, error)
 	GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*RsInvoiceMailTemplate, error)
 	SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq *RqSaveMailTemplate) error
-	ResendInvoiceEmail(ctx context.Context, id uuid.UUID, rq *RqResendInvoice) error
+	ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error
 }
 
 type Service struct {
-	repo   IRepository
-	cfg    *config.Config
-	mailer *mail.Client
+	repo       IRepository
+	cfg        *config.Config
+	mailer     *mail.Client
+	tplService template.IService
 }
 
-func NewService(repo IRepository, cfg *config.Config) IService {
+func NewService(repo IRepository, cfg *config.Config, tplService template.IService) IService {
 	return &Service{
-		repo:   repo,
-		cfg:    cfg,
-		mailer: mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail)}
+		repo:       repo,
+		cfg:        cfg,
+		mailer:     mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
+		tplService: tplService,
+	}
 }
 
 // Create implements [IService].
@@ -74,7 +81,6 @@ func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) 
 	return &rsList, nil
 }
 
-// Update implements [IService].
 func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 	existing, err := s.repo.Get(ctx, invoice.ID)
 	if err != nil {
@@ -102,16 +108,23 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 	if hydrated.Status != nil && *hydrated.Status == "paid" && !wasPaid {
 		if hydrated.ContactTo != nil && hydrated.ContactTo.Email != "" {
 
-			name := hydrated.ContactTo.Fname + " " + hydrated.ContactTo.Lname
-			dbSubject, dbBody, _ := s.repo.GetSavedClinicMailTemplate(ctx, hydrated.ClinicID)
-			chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
-			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, hydrated.InvoiceNumber)
+			rsInvoice := hydrated.ToRsInvoice()
 
-			go func(to, sub, html, pdf string) {
-				if err := s.mailer.SendInvoicePaidEmail(to, hydrated.InvoiceNumber, pdf, sub, html); err != nil {
+			pdfBase64, err := s.compileInvoicePDF(ctx, rsInvoice)
+			if err != nil {
+				log.Printf("[PDF-WARN] Skipping attachment compilation error trace: %v", err)
+			}
+
+			name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
+			dbSubject, dbBody, _ := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
+			chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
+			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.InvoiceNumber)
+
+			go func(to, invNum, sub, html, pdf string) {
+				if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
 					log.Printf("[MAIL-ERR] Firing automated payment confirmation receipt failed: %v", err)
 				}
-			}(hydrated.ContactTo.Email, subject, htmlBody, invoice.AttachmentBase64)
+			}(rsInvoice.ContactTo.Email, rsInvoice.InvoiceNumber, subject, htmlBody, pdfBase64)
 		}
 	}
 
@@ -137,31 +150,103 @@ func (s *Service) SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq
 	return s.repo.SaveClinicMailTemplate(ctx, clinicID, rq.Subject, rq.Body)
 }
 
-func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID, rq *RqResendInvoice) error {
+func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 	hydrated, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	if hydrated.ContactTo == nil || hydrated.ContactTo.Email == "" {
+	rsInvoice := hydrated.ToRsInvoice()
+
+	if rsInvoice.ContactTo == nil || rsInvoice.ContactTo.Email == "" {
 		return errors.New("cannot resend: missing contact email field")
 	}
 
-	dbSubject, dbBody, err := s.repo.GetSavedClinicMailTemplate(ctx, hydrated.ClinicID)
+	// Generate PDF binary attachment directly from backend cross-service calls
+	pdfBase64, err := s.compileInvoicePDF(ctx, rsInvoice)
+	if err != nil {
+		return fmt.Errorf("failed to generate invoice attachment document: %w", err)
+	}
+
+	dbSubject, dbBody, err := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
 	if err != nil {
 		dbSubject, dbBody = "", ""
 	}
 
 	chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
-	name := hydrated.ContactTo.Fname + " " + hydrated.ContactTo.Lname
+	name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
 
-	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, hydrated.InvoiceNumber)
+	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.InvoiceNumber)
 
-	go func(to, sub, html, pdf string) {
-		if err := s.mailer.SendInvoicePaidEmail(to, hydrated.InvoiceNumber, pdf, sub, html); err != nil {
+	go func(to, invNum, sub, html, pdf string) {
+		if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
 			log.Printf("[MAIL-ERR] Running async template mail worker failed processing invoice task context: %v", err)
 		}
-	}(hydrated.ContactTo.Email, subject, htmlBody, rq.AttachmentBase64)
+	}(rsInvoice.ContactTo.Email, rsInvoice.InvoiceNumber, subject, htmlBody, pdfBase64)
 
 	return nil
+}
+
+// Internal Backend Helper: Maps RsInvoice data models directly into template.RqGeneratePDF configurations
+func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string, error) {
+	var billToName, billToEmail string
+	if inv.ContactTo != nil {
+		billToName = inv.ContactTo.Fname + " " + inv.ContactTo.Lname
+		billToEmail = inv.ContactTo.Email
+	}
+
+	pdfItems := make([]template.LineItem, 0, len(inv.Items))
+	var subtotal, taxTotal, grandTotal float64
+
+	for _, it := range inv.Items {
+		pdfItems = append(pdfItems, template.LineItem{
+			Name:        it.Name,
+			Description: *it.Description,
+			UnitPrice:   it.UnitPrice,
+			Qty:         it.Quantity,
+			TaxPercent:  *it.TaxRate,
+			TaxAmount:   *it.TaxAmount,
+			LineTotal:   it.TotalAmount,
+		})
+		taxTotal += *it.TaxAmount
+		grandTotal += it.TotalAmount
+	}
+	subtotal = grandTotal - taxTotal
+
+	var paymentLabel, taxLabel string
+	if inv.PaymentMethod != nil {
+		paymentLabel = *inv.PaymentMethod
+	}
+	if inv.TaxMethod != nil {
+		taxLabel = *inv.TaxMethod
+	}
+
+	// Safely map values into the cross-module Template DTO footprint definitions
+	pdfRq := template.RqGeneratePDF{
+		ClinicId:   inv.ClinicID,
+		TemplateId: inv.TemplateID,
+		Data: template.InvoiceData{
+			InvoiceNumber:      inv.InvoiceNumber,
+			IssueDateDisplay:   inv.IssueDate,
+			DueDateDisplay:     lo.FromPtrOr(inv.DueDate, ""),
+			Reference:          lo.FromPtrOr(inv.Reference, ""),
+			PaymentMethodLabel: paymentLabel,
+			TaxMethodLabel:     taxLabel,
+			BillTo: template.PartyInfo{
+				Name:  billToName,
+				Email: billToEmail,
+			},
+			Items:      pdfItems,
+			Subtotal:   subtotal,
+			TaxTotal:   taxTotal,
+			GrandTotal: grandTotal,
+		},
+	}
+
+	pdfBytes, err := s.tplService.GeneratePDF(ctx, pdfRq)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.StdEncoding.EncodeToString(pdfBytes), nil
 }

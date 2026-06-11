@@ -226,14 +226,14 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	preferenceHandler := preference.NewHandler(preferenceSvc)
 	preference.RegisterRoutes(nft, preferenceHandler)
 
-	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn), cfg)
-	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
-
 	// ============ INVOICE MODULE ============
 	tmpRepo := template.NewRepository(dbConn)
 	tempSvc := template.NewService(tmpRepo, cfg)
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
+
+	contactSvc := contact.NewService(contact.NewRepository(dbConn))
+	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn), cfg, tempSvc)
+	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := worker.NewPublisher(events)

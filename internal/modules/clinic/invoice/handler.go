@@ -191,7 +191,6 @@ func (h *Handler) Update(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Invoice UUID string format token"
-// @Param request body RqResendInvoice true "Attachment Payload"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -204,13 +203,7 @@ func (h *Handler) Resend(c *gin.Context) {
 		return
 	}
 
-	var rq RqResendInvoice
-	if err := c.ShouldBindJSON(&rq); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
-
-	if err := h.svc.ResendInvoiceEmail(c.Request.Context(), id, &rq); err != nil {
+	if err := h.svc.ResendInvoiceEmail(c.Request.Context(), id); err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
 	}

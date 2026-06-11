@@ -4977,15 +4977,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Attachment Payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/invoice.RqResendInvoice"
-                        }
                     }
                 ],
                 "responses": {
@@ -10590,6 +10581,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/template/{id}/pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "template"
+                ],
+                "summary": "Generate PDF for a template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/template/{id}/setting": {
             "get": {
                 "security": [
@@ -14386,14 +14422,6 @@ const docTemplate = `{
                     ]
                 },
                 "template_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "invoice.RqResendInvoice": {
-            "type": "object",
-            "properties": {
-                "attachment_base64": {
                     "type": "string"
                 }
             }

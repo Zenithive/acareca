@@ -253,10 +253,6 @@ func (filter *Filter) MapToFilter() common.Filter {
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
 }
 
-type RqResendInvoice struct {
-	AttachmentBase64 string `json:"attachment_base64,omitempty"`
-}
-
 type RqSaveMailTemplate struct {
 	Subject string `json:"mail_subject" validate:"required"`
 	Body    string `json:"mail_body" validate:"required"`

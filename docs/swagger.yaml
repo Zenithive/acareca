@@ -2490,11 +2490,6 @@ definitions:
     - name
     - template_id
     type: object
-  invoice.RqResendInvoice:
-    properties:
-      attachment_base64:
-        type: string
-    type: object
   invoice.RqSaveMailTemplate:
     properties:
       mail_body:
@@ -6361,12 +6356,6 @@ paths:
         name: id
         required: true
         type: string
-      - description: Attachment Payload
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/invoice.RqResendInvoice'
       produces:
       - application/json
       responses:
@@ -9880,6 +9869,34 @@ paths:
       security:
       - BearerToken: []
       summary: Update an template by ID
+      tags:
+      - template
+  /template/{id}/pdf:
+    get:
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Generate PDF for a template
       tags:
       - template
   /template/{id}/setting:
