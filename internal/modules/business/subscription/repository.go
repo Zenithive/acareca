@@ -25,6 +25,7 @@ type Repository interface {
 	GetActiveSubscription(ctx context.Context, practitionerID uuid.UUID) (*RsActiveSubscription, error)
 	UpsertFromWebhook(ctx context.Context, s *WebhookUpsert) error
 	UpdateStripeFields(ctx context.Context, stripeSubID string, invoiceID *string, status Status, endDate time.Time) error
+	UpdatePractitionerSubscription(ctx context.Context, practitionerID uuid.UUID, subscriptionId int, state string) error
 }
 
 type repository struct {
@@ -251,8 +252,14 @@ func (r *repository) UpdateStripeFields(ctx context.Context, stripeSubID string,
 		paymentStatus = PaymentStatusExpired
 	case StatusPastDue:
 		paymentStatus = PaymentStatusUnpaid
+	case StatusInactive:
+		paymentStatus = PaymentStatusPending
+	case StatusPaused:
+		paymentStatus = PaymentStatusPending
+	default:
+		paymentStatus = PaymentStatusPending
 	}
-	
+
 	res, err := r.db.ExecContext(ctx, query, stripeSubID, string(status), endDate, invoiceID, string(paymentStatus))
 	if err != nil {
 		return fmt.Errorf("update stripe fields: %w", err)
@@ -280,4 +287,38 @@ func (r *repository) mapToActiveSubscription(row *dbSubscriptionRow) *RsActiveSu
 			Description: row.SDescription,
 		},
 	}
+}
+
+func (r *repository) UpdatePractitionerSubscription(ctx context.Context, practitionerID uuid.UUID, subscriptionId int, state string) error {
+	query := `
+		UPDATE tbl_practitioner_subscription
+		SET
+			subscription_id = $1,
+			status = $2,
+			updated_at = NOW()
+		WHERE id = (
+			SELECT id 
+			FROM tbl_practitioner_subscription
+			WHERE practitioner_id = $3
+				AND deleted_at IS NULL
+			ORDER BY created_at DESC
+			LIMIT 1
+		)
+	`
+
+	result, err := r.db.ExecContext(ctx, query, subscriptionId, state, practitionerID)
+	if err != nil {
+		return fmt.Errorf("update practitioner subscription: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get affected rows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }

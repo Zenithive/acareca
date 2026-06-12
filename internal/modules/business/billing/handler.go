@@ -23,7 +23,6 @@ func NewHandler(svc Service) *Handler {
 }
 func (h *Handler) Checkout(c *gin.Context) {
 
-	// 1 Get user_id from middleware
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))

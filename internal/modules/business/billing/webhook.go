@@ -72,6 +72,10 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		return fmt.Errorf("checkout session has no subscription")
 	}
 
+	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, subscriptionID, "ACTIVE"); err != nil {
+		return fmt.Errorf("failed to complete and update state: %w", err)
+	}
+
 	// Retrieve the Stripe subscription to get period end from items
 	stripeSub, err := s.stripeClient.RetrieveSubscription(session.Subscription.ID)
 	if err != nil {
@@ -92,6 +96,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		StripeSubscriptionID: stripeSub.ID,
 		StripeInvoiceID:      invoiceIDPtr,
 		Status:               subscription.StatusActive,
+		PaymentStatus:        subscription.PaymentStatusActive,
 		StartDate:            time.Now(),
 		EndDate:              endDate,
 	}
@@ -129,20 +134,42 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 		return fmt.Errorf("parse invoice: %w", err)
 	}
 
-	stripeSubID := invoice.Parent.SubscriptionDetails.Subscription.ID
-	invoiceID := invoice.ID
-
 	// In stripe-go v82, subscription is accessed via Parent.SubscriptionDetails
 	if invoice.Parent == nil || invoice.Parent.SubscriptionDetails == nil || invoice.Parent.SubscriptionDetails.Subscription == nil {
 		return fmt.Errorf("invoice has no subscription reference")
 	}
 
-	err := s.subRepo.UpdateStripeFields(ctx, stripeSubID, &invoiceID, subscription.StatusPastDue, time.Time{})
+	stripeSubID := invoice.Parent.SubscriptionDetails.Subscription.ID
+	invoiceID := invoice.ID
+
+	practitionerIDStr, ok := invoice.Metadata["practitioner_id"]
+	if !ok {
+		return fmt.Errorf("missing practitioner_id in checkout session metadata")
+	}
+	subscriptionIDStr, ok := invoice.Metadata["subscription_id"]
+	if !ok {
+		return fmt.Errorf("missing subscription_id in checkout session metadata")
+	}
+
+	practitionerID, err := uuid.Parse(practitionerIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid practitioner_id: %w", err)
+	}
+	subscriptionID, err := strconv.Atoi(subscriptionIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid subscription_id: %w", err)
+	}
+
+	err = s.subRepo.UpdateStripeFields(ctx, stripeSubID, &invoiceID, subscription.StatusPastDue, time.Time{})
 	if err != nil {
 		// Warning: System couldn't mark account as past_due — route to system.warning.alert
 		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemWarning, auditctx.ActionBillingStatusUpdateFailed,
 			err, "", stripeSubID, auditctx.EntitySubscription, auditctx.ModuleBilling)
 		return err
+	}
+
+	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, subscriptionID, "UNPAID"); err != nil {
+		return fmt.Errorf("failed to complete and update state: %w", err)
 	}
 
 	// Log payment failure as a billing event so admins with billing.alert preference are notified
@@ -165,6 +192,28 @@ func (s *service) handleSubscriptionDeleted(ctx context.Context, event stripe.Ev
 	var stripeSub stripe.Subscription
 	if err := json.Unmarshal(event.Data.Raw, &stripeSub); err != nil {
 		return fmt.Errorf("parse subscription: %w", err)
+	}
+
+	practitionerIDStr, ok := stripeSub.Metadata["practitioner_id"]
+	if !ok {
+		return fmt.Errorf("missing practitioner_id in checkout session metadata")
+	}
+	subscriptionIDStr, ok := stripeSub.Metadata["subscription_id"]
+	if !ok {
+		return fmt.Errorf("missing subscription_id in checkout session metadata")
+	}
+
+	practitionerID, err := uuid.Parse(practitionerIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid practitioner_id: %w", err)
+	}
+	subscriptionID, err := strconv.Atoi(subscriptionIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid subscription_id: %w", err)
+	}
+
+	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, subscriptionID, "CANCELLED"); err != nil {
+		return fmt.Errorf("failed to complete and update state: %w", err)
 	}
 
 	return s.subRepo.UpdateStripeFields(ctx, stripeSub.ID, nil, subscription.StatusCancelled, time.Time{})
