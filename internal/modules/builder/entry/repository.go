@@ -20,7 +20,9 @@ type IRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
 	Update(ctx context.Context, tx *sqlx.Tx, e *FormEntry, values []*FormEntryValue) error
 	Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
+	DeleteSingleEntryValue(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*FormEntry, []*FormEntryValue, error)
+	GetByValueID(ctx context.Context, tx *sqlx.Tx, entryId uuid.UUID, valId uuid.UUID) (*FormEntry, []*FormEntryValue, error)
 	ListByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) ([]*FormEntry, error)
 	CountByFormVersionID(ctx context.Context, formVersionID uuid.UUID, f common.Filter, actorID uuid.UUID, role string) (int, error)
 	HasSubmittedEntryValuesForField(ctx context.Context, formFieldID uuid.UUID) (bool, error)
@@ -84,6 +86,40 @@ func (r *Repository) GetByID(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) (*F
 	if err := tx.SelectContext(ctx, &values, valQuery, id); err != nil {
 		return nil, nil, fmt.Errorf("get entry values: %w", err)
 	}
+	return &e, values, nil
+}
+
+func (r *Repository) GetByValueID(ctx context.Context, tx *sqlx.Tx, entryId uuid.UUID, valId uuid.UUID) (*FormEntry, []*FormEntryValue, error) {
+
+	// Use the entryID to load the parent entry
+	query := `SELECT 
+            e.id, e.form_version_id, e.clinic_id, e.submitted_by, e.submitted_at, 
+            e.status, e.date, e.created_at, e.updated_at,
+            v.practitioner_id 
+        FROM tbl_form_entry e 
+        INNER JOIN tbl_custom_form_version v ON e.form_version_id = v.id 
+        WHERE e.id = $1 AND e.deleted_at IS NULL`
+
+	var e FormEntry
+	if err := tx.QueryRowContext(ctx, query, entryId).Scan(
+		&e.ID, &e.FormVersionID, &e.ClinicID, &e.SubmittedBy, &e.SubmittedAt, &e.Status, &e.Date, &e.CreatedAt, &e.UpdatedAt, &e.PractitionerID,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, ErrNotFound
+		}
+		return nil, nil, fmt.Errorf("get form entry: %w", err)
+	}
+
+	// Load all active values under this parent entry container
+	valQuery := `SELECT id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, description, date, business_percentage, created_at, updated_at
+        FROM tbl_form_entry_value
+        WHERE entry_id = $1 AND deleted_at IS NULL AND form_field_id IS NOT NULL`
+
+	var values []*FormEntryValue
+	if err := tx.SelectContext(ctx, &values, valQuery, entryId); err != nil {
+		return nil, nil, fmt.Errorf("get entry values: %w", err)
+	}
+
 	return &e, values, nil
 }
 
@@ -436,6 +472,19 @@ func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) erro
 	return nil
 }
 
+func (r *Repository) DeleteSingleEntryValue(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error {
+	query := `UPDATE tbl_form_entry_value SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`
+	res, err := tx.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("delete form entry value tx: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repository) GetSummedValuesByFieldID(ctx context.Context, fieldID uuid.UUID) (*RsFieldSummary, error) {
 	query := `
 		SELECT 
@@ -657,6 +706,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	base := `
 		SELECT
 			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
+			v.form_entry_value_id                                        AS form_entry_value_id,
 			v.entry_id                                                     AS entry_id,
 			v.form_field_id                                                AS form_field_id,
 			v.coa_id                                                       AS coa_id,
@@ -692,7 +742,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 					WHEN COALESCE(v.net_amount, 0) < 0 THEN -ABS(COALESCE(v.gross_amount, 0))
 					ELSE ABS(COALESCE(v.gross_amount, 0))
 				END::numeric, 2)::float8                                   AS gross_amount,
-			COALESCE(v.business_percentage, 100.00::float8)                AS business_percentage,
+			COALESCE(v.business_percentage::float8, 100.00::float8)        AS business_percentage,
 			COALESCE(v.description, '-')                                   AS description,
 			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
 		FROM vw_double_entry_line_items v
@@ -711,6 +761,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	type detailRow struct {
 		ID                 uuid.UUID  `db:"id"`
+		FormEntryValueID   *string    `db:"form_entry_value_id"`
 		EntryID            uuid.UUID  `db:"entry_id"`
 		FormFieldID        *string    `db:"form_field_id"`
 		CoaID              uuid.UUID  `db:"coa_id"`
@@ -754,6 +805,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 		detail := &RsCoaEntryDetail{
 			ID:                 row.ID.String(),
+			FormEntryValueID:   row.FormEntryValueID,
 			EntryID:            row.EntryID.String(),
 			CoaID:              row.CoaID.String(),
 			TaxTypeID:          row.TaxTypeID,

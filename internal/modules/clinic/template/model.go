@@ -222,3 +222,202 @@ type RsSetting struct {
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
+
+type RqGeneratePDF struct {
+	TemplateId uuid.UUID
+	ClinicId   uuid.UUID
+	Data       InvoiceData
+}
+
+// InvoiceData holds all Handlebars variables the templates expect
+type InvoiceData struct {
+	ClinicName         string `json:"clinic_name"`
+	InvoiceNumber      string `json:"invoice_number"`
+	IssueDateDisplay   string `json:"issue_date_display"`
+	DueDateDisplay     string `json:"due_date_display"`
+	Reference          string `json:"reference"`
+	PaymentMethodLabel string `json:"payment_method_label"`
+	TaxMethodLabel     string `json:"tax_method_label"`
+	ShowLogo           bool   `json:"show_logo"`
+	ShowLogoImage      bool   `json:"show_logo_image"`
+	LogoURL            string `json:"logo_url"`
+	LogoInitial        string `json:"logo_initial"`
+	WatermarkEnabled   bool   `json:"watermark_enabled"`
+	WatermarkText      string `json:"watermark_text"`
+	ShowTax            bool   `json:"show_tax"`
+	LetterheadHTML     string `json:"letterhead_html"`
+	FooterHTML         string `json:"footer_html"`
+	Notes              string `json:"notes"`
+	AmountInWords      string `json:"amount_in_words"`
+	HasAttachments     bool   `json:"has_attachments"`
+	Reference2         string `json:"reference2"`
+
+	BillFrom PartyInfo  `json:"bill_from"`
+	BillTo   PartyInfo  `json:"bill_to"`
+	Items    []LineItem `json:"items"`
+
+	Subtotal      float64 `json:"subtotal"`
+	TaxTotal      float64 `json:"tax_total"`
+	DiscountTotal float64 `json:"discount_total"`
+	GrandTotal    float64 `json:"grand_total"`
+
+	TotalsAmountsCaption string `json:"totals_amounts_caption"`
+	TotalsSubtotalLabel  string `json:"totals_subtotal_label"`
+	TotalsTaxLabel       string `json:"totals_tax_label"`
+	TotalsDiscountLabel  string `json:"totals_discount_label"`
+	TotalsGrandLabel     string `json:"totals_grand_label"`
+
+	TableStyleClass string `json:"table_style_class"`
+
+	Attachments []Attachment `json:"attachments"`
+
+	// Settings-derived — injected by service before render
+	PrimaryColor     string `json:"-"`
+	AccentColor      string `json:"-"`
+	BodyFontFamily   string `json:"-"`
+	HeaderFontFamily string `json:"-"`
+}
+
+type PartyInfo struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	ABN     string `json:"abn"`
+	Email   string `json:"email"`
+	Phone   string `json:"phone"`
+}
+
+type LineItem struct {
+	Name           string  `json:"name"`
+	Description    string  `json:"description"`
+	UnitPrice      float64 `json:"unit_price"`
+	Qty            int     `json:"qty"`
+	DiscountAmount float64 `json:"discount_amount"`
+	TaxPercent     float64 `json:"tax_percent"`
+	TaxAmount      float64 `json:"tax_amount"`
+	LineTotal      float64 `json:"line_total"`
+}
+
+type Attachment struct {
+	FileName string `json:"file_name"`
+}
+
+type InvoiceResponse struct {
+	ID            uuid.UUID      `json:"id"`
+	ClinicID      uuid.UUID      `json:"clinic_id"`
+	ClinicName    string         `json:"clinic_name"`
+	TemplateID    uuid.UUID      `json:"template_id"`
+	InvoiceNumber string         `json:"invoice_number"`
+	Reference     string         `json:"reference"`
+	PaymentMethod string         `json:"payment_method"`
+	TaxMethod     string         `json:"tax_method"`
+	IssueDate     string         `json:"issue_date"`
+	DueDate       string         `json:"due_date"`
+	Status        string         `json:"status"`
+	SentTo        InvoiceContact `json:"sent_to"`
+	Items         []InvoiceItem  `json:"items"`
+}
+
+type InvoiceContact struct {
+	ID      uuid.UUID `db:"id" json:"id"`
+	FName   string    `db:"fname" json:"fname"`
+	LName   string    `db:"lname" json:"lname"`
+	Phone   string    `db:"phone" json:"phone"`
+	Email   string    `db:"email" json:"email"`
+	ABN     string    `db:"abn" json:"abn"`
+	Address []string  `db:"address" json:"address"`
+}
+
+type InvoiceItem struct {
+	ID          uuid.UUID `db:"id" json:"id"`
+	Name        string    `db:"name" json:"name"`
+	Description string    `db:"description" json:"description"`
+	Quantity    int       `db:"quantity" json:"quantity"`
+	UnitPrice   float64   `db:"unit_price" json:"unit_price"`
+	Discount    float64   `db:"discount" json:"discount"`
+	TaxRate     float64   `db:"tax_rate" json:"tax_rate"`
+	TaxAmount   float64   `db:"tax_amount" json:"tax_amount"`
+	TotalAmount float64   `db:"total_amount" json:"total_amount"`
+}
+
+func invoiceToData(inv *InvoiceResponse) InvoiceData {
+	items := make([]LineItem, len(inv.Items))
+	var subtotal, taxTotal, discountTotal float64
+
+	for i, it := range inv.Items {
+		subtotal += it.UnitPrice * float64(it.Quantity)
+		taxTotal += it.TaxAmount
+		discountTotal += it.Discount
+		items[i] = LineItem{
+			Name:           it.Name,
+			Description:    it.Description,
+			UnitPrice:      it.UnitPrice,
+			Qty:            it.Quantity,
+			DiscountAmount: it.Discount,
+			TaxPercent:     it.TaxRate,
+			TaxAmount:      it.TaxAmount,
+			LineTotal:      it.TotalAmount,
+		}
+	}
+
+	grandTotal := subtotal + taxTotal - discountTotal
+
+	billTo := PartyInfo{
+		Name:  inv.SentTo.FName + " " + inv.SentTo.LName,
+		Email: inv.SentTo.Email,
+		Phone: inv.SentTo.Phone,
+		ABN:   inv.SentTo.ABN,
+	}
+	if len(inv.SentTo.Address) > 0 {
+		billTo.Address = inv.SentTo.Address[0]
+	}
+
+	return InvoiceData{
+		ClinicName:         inv.ClinicName,
+		InvoiceNumber:      inv.InvoiceNumber,
+		IssueDateDisplay:   inv.IssueDate,
+		DueDateDisplay:     inv.DueDate,
+		Reference:          inv.Reference,
+		PaymentMethodLabel: inv.PaymentMethod,
+		TaxMethodLabel:     inv.TaxMethod,
+		BillFrom: PartyInfo{
+			Name: inv.ClinicName,
+		},
+		BillTo:               billTo,
+		Items:                items,
+		Subtotal:             subtotal,
+		TaxTotal:             taxTotal,
+		DiscountTotal:        discountTotal,
+		GrandTotal:           grandTotal,
+		TotalsAmountsCaption: "All amounts in INR",
+		TotalsSubtotalLabel:  "Subtotal",
+		TotalsTaxLabel:       "GST",
+		TotalsDiscountLabel:  "Discount",
+		TotalsGrandLabel:     "Total Due",
+		HasAttachments:       false,
+		Attachments:          []Attachment{},
+	}
+}
+
+type invoiceRow struct {
+	Id            uuid.UUID `db:"id"`
+	ClinicId      uuid.UUID `db:"clinic_id"`
+	TemplateId    uuid.UUID `db:"template_id"`
+	InvoiceNumber string    `db:"invoice_number"`
+	Reference     string    `db:"reference"`
+	PaymentMethod string    `db:"payment_method"`
+	TaxMethod     string    `db:"tax_method"`
+	IssueDate     string    `db:"issue_date"`
+	DueDate       string    `db:"due_date"`
+	Status        string    `db:"status"`
+	FName         string    `db:"fname"`
+	LName         string    `db:"lname"`
+	Email         string    `db:"email"`
+	Phone         string    `db:"phone"`
+	ABN           string    `db:"abn"`
+	ClinicName    string    `db:"clinic_name"`
+	AddressLine1  string    `db:"address_line1"`
+	City          string    `db:"city"`
+	State         string    `db:"state"`
+	PostalCode    string    `db:"postal_code"`
+	Country       string    `db:"country"`
+}

@@ -257,6 +257,9 @@ func applyUpdate(s *Subscription, req *RqUpdateSubscription) {
 	if req.IsActive != nil {
 		s.IsActive = *req.IsActive
 	}
+	if req.IsVisible != nil {
+		s.IsVisible = *req.IsVisible
+	}
 	s.UpdatedAt = time.Now()
 }
 

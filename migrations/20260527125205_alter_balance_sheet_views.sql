@@ -15,6 +15,7 @@ SELECT fe.clinic_id,
     fe.date AS entry_date,
     DATE_TRUNC('month', fe.date) AS period_month,
     DATE_TRUNC('year', fe."date"::date) AS period_year,
+    fev.id AS form_entry_value_id,
     ff.id AS form_field_id,
     ff.section_type,
     COALESCE(fev.coa_id, ff.coa_id) AS coa_id,
@@ -101,6 +102,7 @@ WHERE fe.status = 'SUBMITTED'
             AND fev.coa_id IS NOT NULL
         )
     );
+
 
 
 CREATE OR REPLACE VIEW vw_double_entry_entry_summary AS

@@ -8,8 +8,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	sharedstripe "github.com/iamarpitzala/acareca/internal/shared/stripe"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	stripe "github.com/stripe/stripe-go/v82"
@@ -30,6 +32,8 @@ type service struct {
 	subRepo          subscription.Repository
 	stripeClient     sharedstripe.StripeClient
 	auditSvc         audit.Service
+	notificationPub  *sharednotification.Publisher
+	adminRepo        admin.Repository
 }
 
 // NewService constructs a billing Service.
@@ -39,6 +43,8 @@ func NewService(
 	subRepo subscription.Repository,
 	stripeClient sharedstripe.StripeClient,
 	audit audit.Service,
+	notificationPub *sharednotification.Publisher,
+	adminRepo admin.Repository,
 ) Service {
 	return &service{
 		repo:             repo,
@@ -46,6 +52,8 @@ func NewService(
 		subRepo:          subRepo,
 		stripeClient:     stripeClient,
 		auditSvc:         audit,
+		notificationPub:  notificationPub,
+		adminRepo:        adminRepo,
 	}
 }
 

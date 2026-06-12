@@ -317,6 +317,7 @@ type RsCoaEntry struct {
 
 type RsCoaEntryDetail struct {
 	ID                 string   `json:"id"`
+	FormEntryValueID   *string  `json:"form_entry_value_id,omitempty"`
 	EntryID            string   `json:"entry_id"`
 	FormFieldID        string   `json:"form_field_id"`
 	CoaID              string   `json:"coa_id"`

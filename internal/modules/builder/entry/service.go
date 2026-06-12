@@ -2,6 +2,8 @@ package entry
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -40,6 +42,7 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
@@ -51,6 +54,7 @@ type IService interface {
 }
 
 type Service struct {
+	db              *sqlx.DB
 	repo            IRepository
 	fieldRepo       field.IRepository
 	methodSvc       method.IService
@@ -78,6 +82,7 @@ type Service struct {
 
 func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
 	return &Service{
+		db:              db,
 		repo:            repo,
 		fieldRepo:       fieldRepo,
 		methodSvc:       methodSvc,
@@ -109,7 +114,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	var result *RsFormEntry
 	var realOwnerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
 		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 		if err != nil {
@@ -218,7 +223,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	var e *FormEntry
 	var values []*FormEntryValue
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var err error
 
 		e, values, err = s.repo.GetByID(ctx, tx, id)
@@ -245,7 +250,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 	var beforeState any
 	var practitionerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
 
 		existing, values, innerErr := s.repo.GetByID(ctx, tx, id)
@@ -353,7 +358,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		existing, values, err := s.repo.GetByID(ctx, tx, id)
 		if err != nil {
 			return err
@@ -377,6 +382,53 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			Module:      auditctx.ModuleForms,
 			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 			EntityID:    &idStr,
+			BeforeState: beforeState,
+		})
+
+		return nil
+	})
+}
+
+func (s *Service) DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, values, err := s.repo.GetByValueID(ctx, tx, id, valueID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		beforeState := existing.ToRs(values)
+
+		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
+			return err
+		}
+
+		if err := s.repo.DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
+			return err
+		}
+
+		// Check if all remaining entry values are deleted; if so, cascade delete the parent entry
+		var remainingCount int
+		countQuery := `SELECT COUNT(*) FROM tbl_form_entry_value WHERE entry_id = $1 AND deleted_at IS NULL`
+		if err := tx.QueryRowContext(ctx, countQuery, id).Scan(&remainingCount); err != nil {
+			return fmt.Errorf("check remaining entry values: %w", err)
+		}
+		if remainingCount == 0 {
+			// All values are deleted, soft-delete the parent entry
+			deleteQuery := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+			if _, err := tx.ExecContext(ctx, deleteQuery, id); err != nil {
+				return fmt.Errorf("cascade delete form entry: %w", err)
+			}
+		}
+
+		valueIDStr := valueID.String()
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+			Action:      auditctx.ActionEntryDeleted,
+			Module:      auditctx.ModuleForms,
+			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
+			EntityID:    &valueIDStr,
 			BeforeState: beforeState,
 		})
 
@@ -1150,7 +1202,7 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		selectedColumns = []string{"date", "supplier_name", "description", "clinic", "expenses", "net_amount", "gst_amount", "gross_amount", "gst_type", "business_percentage", "note"}
 	}
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			return err

@@ -13,4 +13,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 
 	template.PUT("/:id/setting", h.UpdateSetting)
 	template.GET("/:id/setting", h.GetSetting)
+
+	template.POST("/:id/pdf", h.GeneratePDF)
+	template.GET("/:id/pdf/:invoice_id", h.DownloadPDF)
 }

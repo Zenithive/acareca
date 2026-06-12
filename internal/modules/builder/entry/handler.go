@@ -21,6 +21,7 @@ type IHandler interface {
 	Get(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	DeleteEntryValue(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
 
@@ -175,6 +176,39 @@ func (h *handler) Delete(c *gin.Context) {
 	}
 
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusNoContent, nil, "Form entry deleted successfully")
+}
+
+// @Summary Delete a form entry value
+// @Description Remove a specific entry from the system
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param id path string true "Entry Value ID"
+// @Success 204 "No Content"
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/value/{id} [delete]
+func (h *handler) DeleteEntryValue(c *gin.Context) {
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	valId, ok := util.ParseUuidID(c, "val_id")
+	if !ok {
+		return
+	}
+
+	if err := h.svc.DeleteSingleEntryValue(c.Request.Context(), id, valId); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return

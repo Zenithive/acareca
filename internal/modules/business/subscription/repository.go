@@ -51,6 +51,7 @@ type dbSubscriptionRow struct {
 	PractitionerSubscription
 	SName        string  `db:"s_name"`
 	SDescription *string `db:"s_description"`
+	SIsVisible   bool    `db:"s_is_visible"`
 }
 
 func (r *repository) Create(ctx context.Context, s *PractitionerSubscription, tx *sqlx.Tx) (*PractitionerSubscription, error) {
@@ -109,7 +110,7 @@ func (r *repository) ListHistoryByPractitionerID(ctx context.Context, practition
             s.name AS s_name, s.description AS s_description
         FROM tbl_practitioner_subscription ps
         INNER JOIN tbl_subscription s ON ps.subscription_id = s.id
-        WHERE ps.practitioner_id = ? AND ps.deleted_at IS NULL
+        WHERE ps.practitioner_id = ? AND ps.deleted_at IS NULL AND s.is_visible = true
     `
 	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchCols, false)
 	args := append([]interface{}{practitionerID}, filterArgs...)
@@ -182,6 +183,7 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 		  AND ps.end_date >= NOW()
 		  AND ps.deleted_at IS NULL
 		  AND s.deleted_at IS NULL
+		  AND s.is_visible = true
 		ORDER BY ps.created_at DESC
 		LIMIT 1
 	`
@@ -285,8 +287,42 @@ func (r *repository) mapToActiveSubscription(row *dbSubscriptionRow) *RsActiveSu
 			ID:          row.SubscriptionID,
 			Name:        row.SName,
 			Description: row.SDescription,
+			IsVisible:   row.SIsVisible,
 		},
 	}
+}
+
+func (r *repository) UpdatePractitionerSubscription(ctx context.Context, practitionerID uuid.UUID, state string) error {
+	query := `
+		UPDATE tbl_practitioner_subscription
+		SET
+			status = $1,
+			updated_at = NOW()
+		WHERE id = (
+			SELECT id 
+			FROM tbl_practitioner_subscription
+			WHERE practitioner_id = $2
+				AND deleted_at IS NULL
+			ORDER BY created_at DESC
+			LIMIT 1
+		)
+	`
+
+	result, err := r.db.ExecContext(ctx, query, state, practitionerID)
+	if err != nil {
+		return fmt.Errorf("update practitioner subscription: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get affected rows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 func (r *repository) UpdatePractitionerSubscription(ctx context.Context, practitionerID uuid.UUID, state string) error {

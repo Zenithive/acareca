@@ -98,4 +98,5 @@ type RsSubscriptionPlan struct {
 	Description  *string `json:"description"`
 	Price        float64 `json:"price"`
 	DurationDays int     `json:"duration_days"`
+	IsVisible    bool    `json:"is_visible"`
 }

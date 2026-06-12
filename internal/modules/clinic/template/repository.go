@@ -25,6 +25,8 @@ type IRepository interface {
 	UpdateSetting(ctx context.Context, st *Setting) error
 	CreateSetting(ctx context.Context, st *Setting) error
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
+
+	GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error)
 }
 
 type Repository struct {
@@ -203,4 +205,82 @@ func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.D
 		return nil, err
 	}
 	return &doc, nil
+}
+
+func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error) {
+	const q = `
+        SELECT
+            i.id, i.clinic_id, i.template_id, i.invoice_number, i.reference,
+            i.payment_method, i.tax_method, i.issue_date::text, i.due_date::text,
+            i.status,
+            cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
+            cl.clinic_name as clinic_name,
+            COALESCE(a.address_line1, '') as address_line1,
+            COALESCE(a.city, '') as city,
+            COALESCE(a.state, '') as state,
+            COALESCE(a.postal_code, '') as postal_code,
+            COALESCE(a.country, '') as country
+        FROM tbl_invoice i
+        JOIN tbl_invoice_clinic cl ON cl.id = i.clinic_id AND cl.deleted_at IS NULL
+        JOIN tbl_clinic_contact_person cp ON cp.clinic_id = i.clinic_id AND cp.deleted_at IS NULL
+        LEFT JOIN tbl_clinic_contact_person_address a ON a.contact_id = cp.id AND a.is_primary = TRUE AND a.deleted_at IS NULL
+        WHERE i.id = $1 AND i.clinic_id = $2 AND i.deleted_at IS NULL`
+
+	var row invoiceRow
+	if err := r.db.GetContext(ctx, &row, q, invoiceId, clinicId); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	const itemQ = `
+        SELECT name, description, quantity, unit_price, discount, tax_rate, tax_amount, total_amount
+        FROM tbl_invoice_item
+        WHERE invoice_id = $1`
+	var items []InvoiceItem
+	if err := r.db.SelectContext(ctx, &items, itemQ, row.Id); err != nil {
+		return nil, err
+	}
+
+	address := []string{}
+	if row.AddressLine1 != "" {
+		addr := row.AddressLine1
+		if row.City != "" {
+			addr += ", " + row.City
+		}
+		if row.State != "" {
+			addr += ", " + row.State
+		}
+		if row.PostalCode != "" {
+			addr += " " + row.PostalCode
+		}
+		if row.Country != "" {
+			addr += ", " + row.Country
+		}
+		address = append(address, addr)
+	}
+
+	return &InvoiceResponse{
+		ID:            row.Id,
+		ClinicID:      row.ClinicId,
+		TemplateID:    row.TemplateId,
+		InvoiceNumber: row.InvoiceNumber,
+		Reference:     row.Reference,
+		PaymentMethod: row.PaymentMethod,
+		TaxMethod:     row.TaxMethod,
+		IssueDate:     row.IssueDate,
+		DueDate:       row.DueDate,
+		Status:        row.Status,
+		ClinicName:    row.ClinicName,
+		SentTo: InvoiceContact{
+			FName:   row.FName,
+			LName:   row.LName,
+			Email:   row.Email,
+			Phone:   row.Phone,
+			ABN:     row.ABN,
+			Address: address,
+		},
+		Items: items,
+	}, nil
 }

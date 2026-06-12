@@ -23,6 +23,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
+	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
@@ -226,17 +227,17 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	preferenceHandler := preference.NewHandler(preferenceSvc)
 	preference.RegisterRoutes(nft, preferenceHandler)
 
-	// ============ BILLING MODULE ============
-	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
-
-	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
-	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
-
 	// ============ INVOICE MODULE ============
 	tmpRepo := template.NewRepository(dbConn)
 	tempSvc := template.NewService(tmpRepo, cfg)
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
+
+	clinicAuthRepo := clinicauth.NewRepository(dbConn)
+	clinicAuthSvc := clinicauth.NewService(clinicAuthRepo, cfg, dbConn, auditSvc, tempSvc)
+
+	contactSvc := contact.NewService(contact.NewRepository(dbConn))
+	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc)
+	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := worker.NewPublisher(events)
@@ -257,6 +258,9 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// Register file routes
 	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
+
+	// ============ BILLING MODULE ============
+	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc, notificationSvc, adminRepo)
 
 	// ============ BUILDER ROUTES (requires notificationPublisher) ============
 	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
