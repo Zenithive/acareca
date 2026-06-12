@@ -11,8 +11,13 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
 			Name:     "Default Template",
 			Html: `
 <div class="invoice{{#if watermark_enabled}} watermark-on{{/if}}"{{#if watermark_enabled}} data-watermark="{{watermark_text}}"{{/if}}>
-  {{#if letterhead_html}}<div class="letterhead">{{letterhead_html}}</div>{{/if}}
+  {{#if letterhead_url}}
+    <div class="letterhead-banner"><img src="{{letterhead_url}}" alt="Letterhead" class="letterhead-banner-img" /></div>
+  {{else}}
+    {{#if letterhead_html}}<div class="letterhead-placeholder"><div class="letterhead">{{letterhead_html}}</div></div>{{else}}<div class="letterhead-placeholder letterhead-placeholder-empty"></div>{{/if}}
+  {{/if}}
 
+  <div class="invoice-body">
   <header class="doc-header">
     <div class="brand">
       {{#if show_logo_image}}
@@ -24,8 +29,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
     </div>
   </header>
 
-  <section class="info-grid">
-    <div class="info-block">
+  <section class="info-grid">    <div class="info-block">
       <h4>Billed by</h4>
       <p class="name">{{bill_from.name}}</p>
       {{#if bill_from.address}}<p>{{bill_from.address}}</p>{{/if}}
@@ -126,7 +130,13 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
   </section>
   {{/if}}
 
-  {{#if footer_html}}<footer class="doc-footer">{{footer_html}}</footer>{{/if}}
+  </div><!-- /invoice-body -->
+
+  {{#if footer_html}}
+  <footer class="doc-footer-banner"><img src="{{footer_html}}" alt="Footer" class="doc-footer-banner-img" /></footer>
+  {{else}}
+  <footer class="doc-footer-placeholder"></footer>
+  {{/if}}
 </div>
 `,
 			Css: `:root {
@@ -147,8 +157,11 @@ body {
   position: relative;
   max-width: 820px;
   margin: 0 auto;
-  padding: 28px 32px 36px;
+  padding: 0;
   background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 .invoice.watermark-on::before {
   content: attr(data-watermark);
@@ -167,19 +180,39 @@ body {
   white-space: nowrap;
 }
 .invoice > * { position: relative; z-index: 1; }
+.letterhead-banner {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
+}
+.letterhead-banner-img {
+  width: 100%;
+  height: 120px;
+  max-height: 130px;
+  object-fit: cover;
+  display: block;
+}
+.letterhead-placeholder {
+  padding: 16px 32px 0;
+  min-height: 40px;
+}
+.letterhead-placeholder-empty {
+  min-height: 28px;
+  padding: 0;
+}
 .letterhead {
-  margin-bottom: 12px;
   font-size: 12px;
   color: #6b7280;
   white-space: pre-wrap;
 }
-.letterhead:empty { display: none; }
 .doc-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
   margin-bottom: 28px;
+  padding: 28px 32px 0;
 }
 .brand {
   display: flex;
@@ -190,6 +223,8 @@ body {
 .brand-logo {
   width: 52px;
   height: 52px;
+  max-width: 180px;
+  max-height: 52px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -336,15 +371,27 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   text-align: center;
   padding: 8px;
 }
-.doc-footer {
-  margin-top: 24px;
-  padding-top: 12px;
-  font-size: 11px;
-  color: #9ca3af;
-  text-align: center;
-  white-space: pre-wrap;
+.doc-footer-banner {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
 }
-.doc-footer:empty { display: none; }
+.doc-footer-banner-img {
+  width: 100%;
+  height: 100px;
+  max-height: 120px;
+  object-fit: cover;
+  display: block;
+}
+.doc-footer-placeholder {
+  min-height: 28px;
+  display: block;
+}
+.invoice-body {
+  flex-grow: 1;
+  padding: 0 32px 28px;
+}
 .attachments { margin-top: 20px; font-size: 12px; }
 .attachments h4 { font-size: 12px; font-weight: 600; margin: 0 0 8px; color: #374151; }
 .attachment-list { margin: 0; padding-left: 18px; color: #4b5563; }
@@ -361,31 +408,36 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 			ClinicId: clinicId,
 			Name:     "MediCare Invoice",
 			Html: `<div class="inv-root">
-  <div class="inv-top-stripe"></div>
-
-  <div class="inv-letterhead">{{letterhead_html}}</div>
+  {{#if letterhead_url}}
+    <div class="inv-letterhead-banner"><img src="{{letterhead_url}}" alt="Letterhead" class="inv-letterhead-banner-img" /></div>
+  {{else}}
+    <div class="inv-top-stripe"></div>
+    {{#if letterhead_html}}<div class="inv-letterhead-text-wrap"><div class="inv-letterhead">{{letterhead_html}}</div></div>{{else}}<div class="inv-letterhead-placeholder"></div>{{/if}}
+  {{/if}}
 
   <div class="inv-header">
-  <div class="inv-clinic-block">
-    {{#if show_logo_image}}
-      <img class="brand-logo" src="{{logo_url}}" alt="{{clinic_name}}" />
-    {{else}}
-      {{#if show_logo}}<div class="inv-logo-circle"><div class="inv-logo-cross"></div></div>{{/if}}
-    {{/if}}
-    {{#if show_logo}}<div>
-      <p class="inv-clinic-name">{{clinic_name}}</p>
-      <p class="inv-clinic-tagline">Medical &amp; Healthcare Services</p>
-    </div>{{/if}}
+    <div class="inv-clinic-block">
+      {{#if show_logo_image}}
+        <div class="inv-logo-circle"><img class="brand-logo" src="{{logo_url}}" alt="{{clinic_name}}" /></div>
+      {{else}}
+        {{#if show_logo}}<div class="inv-logo-circle"><div class="inv-logo-cross"></div></div>{{/if}}
+      {{/if}}
+      {{#if show_logo}}<div>
+        <p class="inv-clinic-name">{{clinic_name}}</p>
+        <p class="inv-clinic-tagline">Medical &amp; Healthcare Services</p>
+      </div>{{/if}}
+    </div>
+    <div class="inv-doc-badge">
+      <p class="inv-doc-number">No. {{invoice_number}}</p>
+    </div>
   </div>
-  <div class="inv-doc-badge">
-    <p class="inv-doc-number">No. {{invoice_number}}</p>
-  </div>
-</div>
 
-  <div class="inv-status-ribbon">
-    <span class="inv-status-left">Patient / Client Billing Summary</span>
-    <div class="inv-status-right">
-      <span class="inv-status-pill">{{payment_method_label}}</span>
+  <div class="inv-status-ribbon-wrap">
+    <div class="inv-status-ribbon">
+      <span class="inv-status-left">Patient / Client Billing Summary</span>
+      <div class="inv-status-right">
+        <span class="inv-status-pill">{{payment_method_label}}</span>
+      </div>
     </div>
   </div>
 
@@ -524,21 +576,27 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   </div>
   {{/if}}
 
-  <div class="inv-payment-footer">
-    <div>
-      <p class="inv-pay-block-label">Payment method</p>
-      <p class="inv-pay-block-value">{{payment_method_label}}</p>
+  <div class="inv-footer-anchor">
+    <div class="inv-payment-footer">
+      <div>
+        <p class="inv-pay-block-label">Payment method</p>
+        <p class="inv-pay-block-value">{{payment_method_label}}</p>
+      </div>
+      <div>
+        <p class="inv-pay-block-label">Tax method</p>
+        <p class="inv-pay-block-value">{{tax_method_label}}</p>
+      </div>
+      <div class="inv-qr-box">QR / UPI<br>(coming soon)</div>
     </div>
-    <div>
-      <p class="inv-pay-block-label">Tax method</p>
-      <p class="inv-pay-block-value">{{tax_method_label}}</p>
-    </div>
-    <div class="inv-qr-box">QR / UPI<br>(coming soon)</div>
-  </div>
 
-  {{#if footer_html}}
-  <div class="inv-doc-footer">{{footer_html}}</div>
-  {{/if}}
+    {{#if footer_html}}
+    <div class="inv-doc-footer-graphic">
+      <img src="{{footer_html}}" alt="Footer Graphic" class="footer-img" />
+    </div>
+    {{else}}
+    <div class="inv-doc-footer-placeholder"></div>
+    {{/if}}
+  </div>
 
 </div>`,
 			Css: `@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,400;0,600;1,400&display=swap');
@@ -552,6 +610,12 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 
 * { box-sizing: border-box; }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
 .inv-root {
   font-family: var(--inv-font-body), 'Plus Jakarta Sans', system-ui, sans-serif;
   font-size: 13px;
@@ -560,18 +624,63 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   background: #ffffff;
   max-width: 780px;
   margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .inv-top-stripe {
   height: 4px;
   background: var(--inv-primary);
+  width: 100%;
+}
+
+.inv-letterhead-banner {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
+}
+
+.inv-letterhead-banner-img {
+  width: 100%;
+  height: 120px;
+  max-height: 130px;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-letterhead-placeholder {
+  min-height: 20px;
+}
+
+.inv-letterhead-media {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.inv-letterhead-media .letterhead-img {
+  width: 100%;
+  height: 120px;
+  max-height: 130px;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-letterhead-text-wrap {
+  padding: 10px 36px 0;
+}
+
+.inv-letterhead {
+  font-size: 12px; color: #6b8299; white-space: pre-wrap;
 }
 
 .inv-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 28px 36px 20px;
+  padding: 24px 36px 20px;
   border-bottom: 1px solid #e8edf2;
 }
 
@@ -583,6 +692,7 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .inv-logo-cross { position: relative; width: 22px; height: 22px; }
@@ -592,6 +702,20 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 }
 .inv-logo-cross::before { width: 6px; height: 22px; left: 8px; top: 0; }
 .inv-logo-cross::after  { width: 22px; height: 6px; left: 0; top: 8px; }
+
+.brand-logo {
+  width: 52px;
+  height: 52px;
+  max-width: 180px;
+  max-height: 52px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.inv-logo-circle .brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
 .inv-clinic-name {
   font-size: 18px; font-weight: 700;
@@ -603,18 +727,16 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 }
 
 .inv-doc-badge { text-align: right; }
-.inv-doc-type {
-  font-family: var(--inv-font-header), 'Fraunces', Georgia, serif;
-  font-size: 36px; font-weight: 600;
-  color: var(--inv-primary);
-  margin: 0; line-height: 1; letter-spacing: -0.02em;
-}
 .inv-doc-number { font-size: 12px; color: #6b8299; margin-top: 4px; letter-spacing: 0.04em; }
+
+.inv-status-ribbon-wrap {
+  padding: 0 36px;
+  margin-top: 14px;
+}
 
 .inv-status-ribbon {
   background: #f0f8f5;
   border-left: 3px solid var(--inv-primary);
-  margin: 0 36px;
   padding: 10px 16px;
   display: flex; justify-content: space-between; align-items: center;
   border-radius: 0 6px 6px 0;
@@ -628,7 +750,10 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   letter-spacing: 0.04em; text-transform: uppercase;
 }
 
-.inv-body { padding: 24px 36px; }
+.inv-body { 
+  padding: 24px 36px; 
+  flex-grow: 1;
+}
 
 .inv-watermark-wrap { position: relative; overflow: hidden; }
 .inv-watermark-wrap.watermark-on::after {
@@ -694,14 +819,8 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
 .inv-item-name { font-weight: 600; font-size: 13px; color: #1a2332; margin: 0 0 2px; }
 .inv-item-desc { font-size: 11px; color: #8fa3b4; }
 
-.inv-table.striped tbody tr:nth-child(even) {
-  background: #f0f8f5;
-}
-
-.inv-table.bordered td,
-.inv-table.bordered th {
-  border: 1px solid #e8edf2;
-}
+.inv-table.striped tbody tr:nth-child(even) { background: #f0f8f5; }
+.inv-table.bordered td, .inv-table.bordered th { border: 1px solid #e8edf2; }
 
 .inv-lower {
   display: grid; grid-template-columns: 1fr 280px;
@@ -725,10 +844,7 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   border-radius: 6px; padding: 12px; margin-bottom: 16px;
 }
 
-.inv-totals-caption {
-  font-size: 10px; color: #8fa3b4;
-  text-align: right; margin: 0 0 6px;
-}
+.inv-totals-caption { font-size: 10px; color: #8fa3b4; text-align: right; margin: 0 0 6px; }
 .inv-totals-row {
   display: flex; justify-content: space-between;
   padding: 7px 0; font-size: 12px;
@@ -744,39 +860,32 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 12px;
 }
-.inv-grand-label {
-  font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.1em; color: #6b8299;
-}
+.inv-grand-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #6b8299; }
 .inv-grand-amount {
   font-family: var(--inv-font-header), 'Fraunces', Georgia, serif;
   font-size: 28px; font-weight: 600;
   color: var(--inv-primary); letter-spacing: -0.01em;
 }
-.inv-amount-words {
-  font-size: 10px; color: #8fa3b4;
-  text-align: right; margin-top: 8px; font-style: italic;
-}
+.inv-amount-words { font-size: 10px; color: #8fa3b4; text-align: right; margin-top: 8px; font-style: italic; }
 
 .inv-attachments { padding: 0 36px 20px; }
-.inv-attach-head {
-  font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--inv-primary); margin: 0 0 8px;
-}
+.inv-attach-head { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--inv-primary); margin: 0 0 8px; }
 .inv-attach-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .inv-attach-item {
-  font-size: 11px; background: #f0f8f5;
-  border: 1px solid #b2ddd0;
-  color: var(--inv-primary); border-radius: 4px;
-  padding: 4px 10px; font-weight: 500;
+  font-size: 11px; background: #f0f8f5; border: 1px solid #b2ddd0;
+  color: var(--inv-primary); border-radius: 4px; padding: 4px 10px; font-weight: 500;
+}
+
+.inv-footer-anchor {
+  margin-top: auto;
+  width: 100%;
 }
 
 .inv-payment-footer {
   background: #f8fafc; border-top: 1px solid #e8edf2;
   padding: 16px 36px;
   display: grid; grid-template-columns: 1fr 1fr auto;
-  gap: 20px; align-items: center; margin-top: 24px;
+  gap: 20px; align-items: center;
 }
 .inv-pay-block-label {
   font-size: 10px; font-weight: 700;
@@ -792,22 +901,30 @@ table.items.bordered th { border: 1px solid #e5e7eb; }
   font-size: 9px; color: #a8bccf; text-align: center; gap: 4px;
 }
 
-.inv-doc-footer {
-  padding: 14px 36px; text-align: center;
-  font-size: 11px; color: #a8bccf;
-  border-top: 1px solid #e8edf2;
-  font-style: italic; white-space: pre-wrap;
+.inv-doc-footer-graphic {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  line-height: 0;
 }
-.inv-doc-footer:empty { display: none; }
 
-.inv-letterhead {
-  padding: 10px 36px 0;
-  font-size: 12px; color: #6b8299; white-space: pre-wrap;
+.inv-doc-footer-graphic .footer-img {
+  width: 100%;
+  height: 100px;
+  max-height: 120px;
+  object-fit: cover;
+  display: block;
 }
-.inv-letterhead:empty { display: none; }`,
+
+.inv-doc-footer-placeholder {
+  min-height: 28px;
+  display: block;
+}
+`,
 			IsDefault: false,
 			IsActive:  false,
-		}}
+		},
+	}
 }
 
 func DefaultSettings(templateId uuid.UUID) Setting {
@@ -820,7 +937,7 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		AccentColor:      "#2dd4a4",           // Mint accent — modern, fresh
 		BodyFontFamily:   "Plus Jakarta Sans", // Clean, modern, highly legible
 		HeaderFontFamily: "Fraunces",          // Elegant serif for invoice title & totals
-		IsLogo:           false,
+		IsLogo:           true,
 		LogoId:           nil,
 		LetterHeadId:     nil,
 		FooterId:         nil,

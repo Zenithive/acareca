@@ -310,7 +310,7 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		if tplSetting.IsLogo {
 			showLogo = true
 			if tplSetting.Logo != nil && tplSetting.Logo.FileKey != "" {
-				logoURL = strings.TrimRight(s.cfg.R2PublicURL, "/") + "/" + tplSetting.Logo.FileKey
+				logoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Logo.FileKey
 				showLogoImage = true
 			} else if clinicName != "" {
 				// Fall back to initial when no logo image is set
@@ -321,10 +321,10 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 			}
 		}
 		if tplSetting.LetterHead != nil && tplSetting.LetterHead.FileKey != "" {
-			letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2PublicURL, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
+			letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
 		}
 		if tplSetting.Footer != nil && tplSetting.Footer.FileKey != "" {
-			footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2PublicURL, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
+			footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
 		}
 		if tplSetting.TermText != nil {
 			notes = *tplSetting.TermText
