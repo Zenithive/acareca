@@ -2,7 +2,6 @@ package billing
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -23,10 +22,8 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 func (h *Handler) Checkout(c *gin.Context) {
-	fmt.Println("===================")
 
 	practitionerID, ok := util.GetPractitionerID(c)
-	fmt.Println(practitionerID)
 	if !ok {
 		response.Error(c, http.StatusBadRequest, errors.New("practitioner id is required"))
 		return
@@ -60,7 +57,6 @@ func (h *Handler) Checkout(c *gin.Context) {
 func (h *Handler) Portal(c *gin.Context) {
 	// 1 Get user_id from middleware
 	practitionerID, ok := util.GetPractitionerID(c)
-	fmt.Println(practitionerID)
 	if !ok {
 		response.Error(c, http.StatusBadRequest, errors.New("practitioner id is required"))
 		return
