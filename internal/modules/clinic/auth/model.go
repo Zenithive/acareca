@@ -183,10 +183,6 @@ type VerificationToken struct {
 	ExpiresAt time.Time `db:"expires_at"`
 }
 
-// ==========================================
-// RESPONSE STRUCTURES
-// ==========================================
-
 type RsToken struct {
 	AccessToken  string  `json:"access_token"`
 	RefreshToken string  `json:"refresh_token"`

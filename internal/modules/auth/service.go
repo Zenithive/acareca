@@ -46,7 +46,7 @@ type Service interface {
 	Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error
 	GoogleAuthURL(state string) *RsGoogleAuthURL
 	GoogleCallback(ctx context.Context, code string) (*RsToken, error)
-	VerifyEmail(ctx context.Context, tokenStr string) (string, error)
+	VerifyEmail(ctx context.Context, tokenStr string) (*RsToken, string, error)
 	ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error
 	GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
@@ -445,31 +445,40 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) VerifyEmail(ctx context.Context, tokenStr string) (string, error) {
+func (s *service) VerifyEmail(ctx context.Context, tokenStr string) (*RsToken, string, error) {
 	tokenID, err := uuid.Parse(tokenStr)
 	if err != nil {
-		return "", errors.New("invalid token format")
+		return nil, "", errors.New("invalid token format")
 	}
 
 	token, err := s.repo.GetToken(ctx, tokenID)
 	if err != nil {
-		return "", errors.New("verification link not found")
+		return nil, "", errors.New("verification link not found")
 	}
 
 	if token.Status != TokenStatusPending {
-		return "", fmt.Errorf("this link has already been %s", strings.ToLower(token.Status))
+		return nil, "", fmt.Errorf("this link has already been %s", strings.ToLower(token.Status))
 	}
 
 	if time.Now().After(token.ExpiresAt) {
-		return "", errors.New("verification link has expired")
+		return nil, "", errors.New("verification link has expired")
 	}
+
 	var redirectURL string
+	var user *User
+
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		user_id, err := s.repo.MarkUserVerified(ctx, token, tx)
 		if err != nil {
 			return err
 		}
 		id, _ := uuid.Parse(user_id)
+
+		// Get user details for token generation
+		user, err = s.repo.FindByID(ctx, id)
+		if err != nil {
+			return fmt.Errorf("failed to fetch user: %w", err)
+		}
 
 		if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
 			return fmt.Errorf("failed to set notification preferences: %w", err)
@@ -479,8 +488,20 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) (string, err
 	})
 
 	if err != nil {
-		return "", errors.New("failed to verified" + err.Error())
+		return nil, "", errors.New("failed to verified" + err.Error())
 	}
+
+	// Issue tokens for auto-login after verification
+	entityID, err := s.resolveEntityID(ctx, user)
+	if err != nil {
+		return nil, redirectURL, fmt.Errorf("failed to resolve entity: %w", err)
+	}
+
+	tokens, err := s.issueTokens(ctx, user, entityID)
+	if err != nil {
+		return nil, redirectURL, fmt.Errorf("failed to issue tokens: %w", err)
+	}
+
 	userIDStr := token.EntityID.String()
 	tokenIDStr := token.ID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -492,7 +513,8 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) (string, err
 		BeforeState: map[string]interface{}{"status": token.Status},
 		AfterState:  map[string]interface{}{"status": "USED"},
 	})
-	return redirectURL, nil
+
+	return tokens, redirectURL, nil
 }
 
 func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error {

@@ -336,22 +336,36 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	redirectURL, err := h.svc.VerifyEmail(c.Request.Context(), token)
+	tokens, redirectURL, err := h.svc.VerifyEmail(c.Request.Context(), token)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	// Practitioner flow
+	// Set tokens as HTTP-only cookies
+	c.SetCookie(
+		"access_token",           // name
+		tokens.AccessToken,       // value
+		15*60*60,                 // maxAge in seconds (15 hours)
+		"/",                      // path
+		"",                       // domain (empty for same domain)
+		true,                     // secure (HTTPS only in production)
+		true,                     // httpOnly
+	)
+
+	// Practitioner flow - needs payment
 	if redirectURL != "" {
 		response.JSON(c, http.StatusOK, gin.H{
 			"redirect_url": redirectURL,
+			"role":         tokens.Role,
 		}, "Email verified successfully")
 		return
 	}
 
-	// Normal user flow
-	response.JSON(c, http.StatusOK, nil, "Email verified successfully. You can now log in.")
+	// Normal user flow - auto-login
+	response.JSON(c, http.StatusOK, gin.H{
+		"role": tokens.Role,
+	}, "Email verified successfully. You are now logged in.")
 }
 
 // ForgotPassword godoc
