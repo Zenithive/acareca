@@ -213,17 +213,17 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
             i.id, i.clinic_id, i.template_id, i.invoice_number, i.reference,
             i.payment_method, i.tax_method, i.issue_date::text, i.due_date::text,
             i.status,
-            c.fname, c.lname, c.email, c.phone, c.abn,
-            cl.name as clinic_name,
+            cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
+            cl.clinic_name as clinic_name,
             COALESCE(a.address_line1, '') as address_line1,
             COALESCE(a.city, '') as city,
             COALESCE(a.state, '') as state,
             COALESCE(a.postal_code, '') as postal_code,
             COALESCE(a.country, '') as country
         FROM tbl_invoice i
-        JOIN tbl_clinic cl ON cl.id = i.clinic_id AND cl.deleted_at IS NULL
-        LEFT JOIN tbl_clinic_contact_person c ON c.clinic_id = i.clinic_id AND c.deleted_at IS NULL
-        LEFT JOIN tbl_clinic_contact_person_address a ON a.contact_id = c.id AND a.is_primary = TRUE AND a.deleted_at IS NULL
+        JOIN tbl_invoice_clinic cl ON cl.id = i.clinic_id AND cl.deleted_at IS NULL
+        JOIN tbl_clinic_contact_person cp ON cp.clinic_id = i.clinic_id AND cp.deleted_at IS NULL
+        LEFT JOIN tbl_clinic_contact_person_address a ON a.contact_id = cp.id AND a.is_primary = TRUE AND a.deleted_at IS NULL
         WHERE i.id = $1 AND i.clinic_id = $2 AND i.deleted_at IS NULL`
 
 	var row invoiceRow
