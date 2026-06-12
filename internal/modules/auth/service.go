@@ -355,6 +355,8 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 	user, findErr := s.repo.FindByEmail(ctx, googleUser.Email)
 	isNewUser := false
 
+	var authProvider *AuthProvider
+
 	if err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if findErr != nil {
 			if !errors.Is(findErr, ErrNotFound) {
@@ -386,15 +388,15 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 			ap.RefreshToken = &refreshTokenStr
 		}
 
-		if _, err := s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
+		if authProvider, err = s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
 			return err
 		}
 
-		if isNewUser {
-			if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
-				return err
-			}
-		}
+		// if isNewUser {
+		// 	if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
+		// 		return err
+		// 	}
+		// }
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("google oauth transaction: %w", err)
@@ -414,12 +416,12 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 		AfterState: map[string]interface{}{"email": user.Email, "provider": "google"},
 	})
 
-	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
-	if err != nil {
-		return nil, err
-	}
+	// practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return s.issueTokens(ctx, user, practitionerID.ID.String())
+	return s.issueTokens(ctx, user, authProvider.UserID.String())
 }
 
 func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*GoogleUserInfo, error) {
