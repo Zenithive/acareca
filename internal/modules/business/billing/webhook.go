@@ -72,7 +72,7 @@ func (s *service) handleCheckoutCompleted(ctx context.Context, event stripe.Even
 		return fmt.Errorf("checkout session has no subscription")
 	}
 
-	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, subscriptionID, "ACTIVE"); err != nil {
+	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, "ACTIVE"); err != nil {
 		return fmt.Errorf("failed to complete and update state: %w", err)
 	}
 
@@ -146,18 +146,10 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 	if !ok {
 		return fmt.Errorf("missing practitioner_id in checkout session metadata")
 	}
-	subscriptionIDStr, ok := invoice.Metadata["subscription_id"]
-	if !ok {
-		return fmt.Errorf("missing subscription_id in checkout session metadata")
-	}
 
 	practitionerID, err := uuid.Parse(practitionerIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid practitioner_id: %w", err)
-	}
-	subscriptionID, err := strconv.Atoi(subscriptionIDStr)
-	if err != nil {
-		return fmt.Errorf("invalid subscription_id: %w", err)
 	}
 
 	err = s.subRepo.UpdateStripeFields(ctx, stripeSubID, &invoiceID, subscription.StatusPastDue, time.Time{})
@@ -168,7 +160,7 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 		return err
 	}
 
-	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, subscriptionID, "UNPAID"); err != nil {
+	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, "UNPAID"); err != nil {
 		return fmt.Errorf("failed to complete and update state: %w", err)
 	}
 
@@ -198,21 +190,13 @@ func (s *service) handleSubscriptionDeleted(ctx context.Context, event stripe.Ev
 	if !ok {
 		return fmt.Errorf("missing practitioner_id in checkout session metadata")
 	}
-	subscriptionIDStr, ok := stripeSub.Metadata["subscription_id"]
-	if !ok {
-		return fmt.Errorf("missing subscription_id in checkout session metadata")
-	}
 
 	practitionerID, err := uuid.Parse(practitionerIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid practitioner_id: %w", err)
 	}
-	subscriptionID, err := strconv.Atoi(subscriptionIDStr)
-	if err != nil {
-		return fmt.Errorf("invalid subscription_id: %w", err)
-	}
 
-	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, subscriptionID, "CANCELLED"); err != nil {
+	if err := s.subRepo.UpdatePractitionerSubscription(ctx, practitionerID, "CANCELLED"); err != nil {
 		return fmt.Errorf("failed to complete and update state: %w", err)
 	}
 
