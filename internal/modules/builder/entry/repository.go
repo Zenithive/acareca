@@ -702,11 +702,11 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		"end_date":        "v.entry_date",
 		"created_at":      "v.entry_date",
 	}
-
-	base := `
+	
+		base := `
 		SELECT
 			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
-			v.form_entry_value_id                                        AS form_entry_value_id,
+			fev.id                                                         AS form_entry_value_id,
 			v.entry_id                                                     AS entry_id,
 			v.form_field_id                                                AS form_field_id,
 			v.coa_id                                                       AS coa_id,
@@ -721,11 +721,6 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 			COALESCE(f.name, '')                                           AS form_name,
 			COALESCE(f.method::text, '')                                   AS form_method,
 			COALESCE(c.name, '')                                           AS clinic_name,
-			-- transaction_type reflects the actual movement direction of money for this row:
-			-- A normal-balance DEBIT account with positive net_amount = DEBIT (money in/used)
-			-- A normal-balance DEBIT account with negative net_amount = CREDIT (money returned/reversed)
-			-- A normal-balance CREDIT account with positive net_amount = CREDIT (income received)
-			-- A normal-balance CREDIT account with negative net_amount = DEBIT (expense against income)
 			CASE
 				WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) >= 0 THEN 'DEBIT'
 				WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) <  0 THEN 'CREDIT'
@@ -733,7 +728,6 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 				WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) <  0 THEN 'DEBIT'
 				ELSE 'UNKNOWN'
 			END                                                            AS transaction_type,
-			-- account_type used to classify is_expense via COA, not section_type or form_method
 			COALESCE(v.account_type, '')                                   AS account_type,
 			ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8          AS net_amount,
 			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8     AS gst_amount,
@@ -750,7 +744,14 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
 		LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
 		LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
-
+		INNER JOIN tbl_form_entry_value fev
+   		ON fev.entry_id = v.entry_id
+			AND fev.deleted_at IS NULL
+			AND (
+			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+			OR
+			(v.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+		)
 		WHERE v.account_name = ?` + permissionClause
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
@@ -794,10 +795,10 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	result := make([]*RsCoaEntryDetail, 0, len(rows))
 	for _, row := range rows {
-		accountTypeLower := strings.ToLower(row.AccountType)
-		isExpense := strings.Contains(accountTypeLower, "expense") ||
-			strings.Contains(accountTypeLower, "asset")
-
+		var isExpense bool
+		if row.FormMethod != nil && *row.FormMethod != "" {
+			isExpense = (*row.FormMethod == "EXPENSE_ENTRY")
+		}
 		netVal := row.NetAmount
 		gstVal := row.GstAmount
 		grossVal := row.GrossAmount

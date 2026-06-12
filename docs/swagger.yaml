@@ -10017,6 +10017,39 @@ paths:
       summary: Generate PDF for a template
       tags:
       - template
+  /template/{id}/pdf/{invoice_id}:
+    get:
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Invoice ID
+        in: path
+        name: invoice_id
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Download PDF for a template using invoice data
+      tags:
+      - template
   /template/{id}/setting:
     get:
       consumes:
