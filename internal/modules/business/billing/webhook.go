@@ -183,7 +183,6 @@ func (s *service) handleInvoicePaymentFailed(ctx context.Context, event stripe.E
 		},
 	})
 
-	var practitionerID uuid.UUID
 	if invoice.Parent.SubscriptionDetails.Subscription.Metadata != nil {
 		if pracIDStr, ok := invoice.Parent.SubscriptionDetails.Subscription.Metadata["practitioner_id"]; ok {
 			practitionerID, _ = uuid.Parse(pracIDStr)

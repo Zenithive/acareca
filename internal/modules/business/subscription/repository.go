@@ -324,36 +324,3 @@ func (r *repository) UpdatePractitionerSubscription(ctx context.Context, practit
 
 	return nil
 }
-
-func (r *repository) UpdatePractitionerSubscription(ctx context.Context, practitionerID uuid.UUID, state string) error {
-	query := `
-		UPDATE tbl_practitioner_subscription
-		SET
-			status = $1,
-			updated_at = NOW()
-		WHERE id = (
-			SELECT id 
-			FROM tbl_practitioner_subscription
-			WHERE practitioner_id = $2
-				AND deleted_at IS NULL
-			ORDER BY created_at DESC
-			LIMIT 1
-		)
-	`
-
-	result, err := r.db.ExecContext(ctx, query, state, practitionerID)
-	if err != nil {
-		return fmt.Errorf("update practitioner subscription: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get affected rows: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return ErrNotFound
-	}
-
-	return nil
-}

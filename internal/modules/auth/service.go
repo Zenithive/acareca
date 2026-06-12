@@ -266,7 +266,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, string, er
 	}
 
 	// Non-admin users must have an active subscription with valid payment status
-	if user.Role != util.RoleAdmin {
+	if user.Role != util.RoleAdmin && user.Role != util.RoleAccountant {
 		entityID, err := s.resolveEntityID(ctx, user)
 		if err != nil {
 			return nil, "", err
@@ -511,7 +511,6 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) (string, err
 		}
 		if *token.Role != "" && *token.Role == util.RolePractitioner {
 			redirectURL, _ = s.buildPaymentRedirectURL(id)
-			fmt.Println("redirectURL=====", redirectURL)
 		}
 		return nil
 	})
