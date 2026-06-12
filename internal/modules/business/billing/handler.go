@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
@@ -20,11 +21,18 @@ type Handler struct {
 func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
-
-// Checkout handles POST /billing/checkout
 func (h *Handler) Checkout(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
+
+	// 1 Get user_id from middleware
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	userUUID, ok := userIDVal.(uuid.UUID)
 	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user id"))
 		return
 	}
 
@@ -34,7 +42,8 @@ func (h *Handler) Checkout(c *gin.Context) {
 		return
 	}
 
-	session, err := h.svc.CreateCheckoutSession(c.Request.Context(), practitionerID, &req)
+	session, err := h.svc.CreateCheckoutSession(
+		c.Request.Context(), userUUID.String(), &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrTrialPlanNotPurchasable):
@@ -54,12 +63,19 @@ func (h *Handler) Checkout(c *gin.Context) {
 
 // Portal handles POST /billing/portal
 func (h *Handler) Portal(c *gin.Context) {
-	practitionerID, ok := util.GetPractitionerID(c)
-	if !ok {
+	// 1 Get user_id from middleware
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
 		return
 	}
 
-	session, err := h.svc.CreatePortalSession(c.Request.Context(), practitionerID)
+	userUUID, ok := userIDVal.(uuid.UUID)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("invalid user id"))
+		return
+	}
+	session, err := h.svc.CreatePortalSession(c.Request.Context(), userUUID)
 	if err != nil {
 		if errors.Is(err, ErrNoBillingAccount) {
 			response.Error(c, http.StatusNotFound, err)

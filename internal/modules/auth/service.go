@@ -43,11 +43,11 @@ type OnUserCreated func(ctx context.Context, userID string) error
 
 type Service interface {
 	Register(ctx context.Context, req *RqUser) (*RsUser, error)
-	Login(ctx context.Context, req *RqLogin) (*RsToken, error)
+	Login(ctx context.Context, req *RqLogin) (*RsToken, string, error)
 	Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error
 	GoogleAuthURL(state string) *RsGoogleAuthURL
 	GoogleCallback(ctx context.Context, code string) (*RsToken, error)
-	VerifyEmail(ctx context.Context, tokenStr string) error
+	VerifyEmail(ctx context.Context, tokenStr string) (string, error)
 	ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error
 	GetProfile(ctx context.Context, userID uuid.UUID) (*RsUser, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUpdateUser) (*RsUser, error)
@@ -238,30 +238,30 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 	return created.ToRsUser(), nil
 }
 
-func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
+func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, string, error) {
 	user, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
-		return nil, ErrInvalidPassword
+		return nil, "", ErrInvalidPassword
 	}
 
 	if user.Password == nil || *user.Password == "" {
 		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
-		return nil, ErrOAuthOnly
+		return nil, "", ErrOAuthOnly
 	}
 
 	if err := util.CompareHash(req.Password, *user.Password); err != nil {
-		return nil, ErrInvalidPassword
+		return nil, "", ErrInvalidPassword
 	}
 
 	// Check email verification first
 	if user.Role != util.RoleAdmin {
 		isVerified, err := s.isUserVerified(ctx, user)
 		if err != nil {
-			return nil, fmt.Errorf("verification check: %w", err)
+			return nil, "", fmt.Errorf("verification check: %w", err)
 		}
 		if !isVerified {
-			return nil, ErrEmailVerificationRequired
+			return nil, "", ErrEmailVerificationRequired
 		}
 	}
 
@@ -269,28 +269,30 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	if user.Role != util.RoleAdmin {
 		entityID, err := s.resolveEntityID(ctx, user)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		practitionerID := uuid.MustParse(entityID)
 
 		activeSub, err := s.practitionerSubRepo.GetActiveSubscription(ctx, practitionerID)
 		if err != nil && !errors.Is(err, subscription.ErrNotFound) {
-			return nil, fmt.Errorf("subscription check: %w", err)
+			return nil, "", fmt.Errorf("subscription check: %w", err)
 		}
 
 		if activeSub == nil {
 			status := "PENDING"
 			var filter common.Filter
-			subs, err := s.practitionerSubRepo.ListByPractitionerID(ctx, practitionerID, filter)
-			if err == nil && len(subs) > 0 {
+			subs, listErr := s.practitionerSubRepo.ListByPractitionerID(ctx, practitionerID, filter)
+			if listErr == nil && len(subs) > 0 {
 				status = string(subs[0].Status)
 			}
-			return nil, &SubscriptionRequiredError{SubscriptionStatus: status}
+			redirectURL, _ := s.buildPaymentRedirectURL(user.ID)
+			return nil, redirectURL, &SubscriptionRequiredError{SubscriptionStatus: status}
 		}
 
 		if activeSub.PaymentStatus != subscription.PaymentStatusActive {
-			return nil, &PaymentRequiredError{
+			redirectURL, _ := s.buildPaymentRedirectURL(user.ID)
+			return nil, redirectURL, &PaymentRequiredError{
 				PaymentStatus:      string(activeSub.PaymentStatus),
 				SubscriptionStatus: string(activeSub.Status),
 			}
@@ -299,7 +301,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 
 	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	userIDStr := user.ID.String()
@@ -314,7 +316,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 
 	rs, err := s.issueTokens(ctx, user, entityID)
 	if err != nil {
-		return nil, fmt.Errorf("issue tokens: %w", err)
+		return nil, "", fmt.Errorf("issue tokens: %w", err)
 	}
 	if user.Role == util.RoleAdmin {
 		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
@@ -325,7 +327,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 		})
 
 	}
-	return rs, err
+	return rs, "", err
 }
 
 func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error {
@@ -478,24 +480,25 @@ func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) 
 	return &info, nil
 }
 
-func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
+func (s *service) VerifyEmail(ctx context.Context, tokenStr string) (string, error) {
 	tokenID, err := uuid.Parse(tokenStr)
 	if err != nil {
-		return errors.New("invalid token format")
+		return "", errors.New("invalid token format")
 	}
 
 	token, err := s.repo.GetToken(ctx, tokenID)
 	if err != nil {
-		return errors.New("verification link not found")
+		return "", errors.New("verification link not found")
 	}
 
 	if token.Status != TokenStatusPending {
-		return fmt.Errorf("this link has already been %s", strings.ToLower(token.Status))
+		return "", fmt.Errorf("this link has already been %s", strings.ToLower(token.Status))
 	}
 
 	if time.Now().After(token.ExpiresAt) {
-		return errors.New("verification link has expired")
+		return "", errors.New("verification link has expired")
 	}
+	var redirectURL string
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		user_id, err := s.repo.MarkUserVerified(ctx, token, tx)
 		if err != nil {
@@ -506,11 +509,15 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
 			return fmt.Errorf("failed to set notification preferences: %w", err)
 		}
+		if *token.Role != "" && *token.Role == util.RolePractitioner {
+			redirectURL, _ = s.buildPaymentRedirectURL(id)
+			fmt.Println("redirectURL=====", redirectURL)
+		}
 		return nil
 	})
 
 	if err != nil {
-		return errors.New("failed to verified" + err.Error())
+		return "", errors.New("failed to verified" + err.Error())
 	}
 	userIDStr := token.EntityID.String()
 	tokenIDStr := token.ID.String()
@@ -523,7 +530,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		BeforeState: map[string]interface{}{"status": token.Status},
 		AfterState:  map[string]interface{}{"status": "USED"},
 	})
-	return nil
+	return redirectURL, nil
 }
 
 func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqChangePassword) error {
@@ -859,6 +866,19 @@ func (s *service) resolveEntityID(ctx context.Context, user *User) (string, erro
 	default:
 		return user.ID.String(), nil
 	}
+}
+
+// buildPaymentRedirectURL generates a scoped payment JWT and returns the frontend redirect URL.
+func (s *service) buildPaymentRedirectURL(userID uuid.UUID) (string, error) {
+	token, err := middleware.GeneratePaymentToken(userID, s.cfg.JWTSecret)
+	if err != nil {
+		return "", err
+	}
+	frontendURL := s.cfg.FrontendURL
+	if s.cfg.Env == "local" {
+		frontendURL = s.cfg.LocalUrl
+	}
+	return fmt.Sprintf("%s/billing/payment-required?token=%s", frontendURL, token), nil
 }
 
 // logSystemError is a convenience wrapper for audit system error logging.

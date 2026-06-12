@@ -98,8 +98,8 @@ type RqUpdateUser struct {
 }
 
 type RqLogin struct {
-	Email    string `json:"email"    validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	Email    string `json:"email"       validate:"required,email"`
+	Password string `json:"password"    validate:"required"` // optional path to redirect after payment, e.g. "/dashboard"
 }
 
 type RqLogout struct {
@@ -209,6 +209,7 @@ type RsErrorSubscriptionRequired struct {
 	Code               string `json:"code"`
 	SubscriptionStatus string `json:"subscription_status"`
 	Message            string `json:"message"`
+	RedirectURL        string `json:"redirect_url,omitempty"`
 }
 
 type RsErrorPaymentRequired struct {
@@ -217,6 +218,7 @@ type RsErrorPaymentRequired struct {
 	PaymentStatus      string `json:"payment_status"`
 	SubscriptionStatus string `json:"subscription_status"`
 	Message            string `json:"message"`
+	RedirectURL        string `json:"redirect_url,omitempty"`
 }
 
 // Sentinel errors

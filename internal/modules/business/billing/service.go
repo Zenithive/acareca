@@ -17,8 +17,8 @@ import (
 
 // Service defines all billing operations.
 type Service interface {
-	CreateCheckoutSession(ctx context.Context, practitionerID uuid.UUID, req *RqCheckout) (*RsCheckoutSession, error)
-	CreatePortalSession(ctx context.Context, practitionerID uuid.UUID) (*RsPortalSession, error)
+	CreateCheckoutSession(ctx context.Context, userID string, req *RqCheckout) (*RsCheckoutSession, error)
+	CreatePortalSession(ctx context.Context, userID uuid.UUID) (*RsPortalSession, error)
 	HandleWebhook(ctx context.Context, payload []byte, sigHeader string) error
 	ListBillingHistory(ctx context.Context, f *BillingHistoryFilter) (*util.RsList, error)
 	ListSubscriptions(ctx context.Context) ([]*RsSubscriptionPlan, error)
@@ -50,9 +50,14 @@ func NewService(
 }
 
 // CreateCheckoutSession creates a Stripe Checkout session for a practitioner upgrading to a paid plan.
-func (s *service) CreateCheckoutSession(ctx context.Context, practitionerID uuid.UUID, req *RqCheckout) (*RsCheckoutSession, error) {
+func (s *service) CreateCheckoutSession(ctx context.Context, userID string, req *RqCheckout) (*RsCheckoutSession, error) {
+
 	// Fetch practitioner and subscription read models
-	prac, err := s.repo.GetPractitionerWithStripe(ctx, practitionerID)
+	practitioner, err := s.practitionerRepo.GetPractitionerByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get practitioner: %w", err)
+	}
+	prac, err := s.repo.GetPractitionerWithStripe(ctx, practitioner.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get practitioner: %w", err)
 	}
@@ -73,7 +78,7 @@ func (s *service) CreateCheckoutSession(ctx context.Context, practitionerID uuid
 	}
 
 	// Guard: No existing active subscription for this plan
-	activeSub, err := s.subRepo.GetActiveSubscription(ctx, practitionerID)
+	activeSub, err := s.subRepo.GetActiveSubscription(ctx, practitioner.ID)
 	if err != nil && !errors.Is(err, subscription.ErrNotFound) {
 		return nil, fmt.Errorf("check active subscription: %w", err)
 	}
@@ -91,7 +96,7 @@ func (s *service) CreateCheckoutSession(ctx context.Context, practitionerID uuid
 		if err != nil {
 			return nil, fmt.Errorf("create stripe customer: %w", err)
 		}
-		if err := s.practitionerRepo.UpdateStripeCustomerID(ctx, practitionerID, cid); err != nil {
+		if err := s.practitionerRepo.UpdateStripeCustomerID(ctx, practitioner.ID, cid); err != nil {
 			return nil, fmt.Errorf("persist stripe customer id: %w", err)
 		}
 		customerID = cid
@@ -112,7 +117,7 @@ func (s *service) CreateCheckoutSession(ctx context.Context, practitionerID uuid
 		SuccessURL: stripe.String(successURL),
 		CancelURL:  stripe.String(cancelURL),
 		Metadata: map[string]string{
-			"practitioner_id": practitionerID.String(),
+			"practitioner_id": practitioner.ID.String(),
 			"subscription_id": fmt.Sprintf("%d", req.SubscriptionID),
 		},
 	}
@@ -126,8 +131,13 @@ func (s *service) CreateCheckoutSession(ctx context.Context, practitionerID uuid
 }
 
 // CreatePortalSession creates a Stripe Billing Portal session for a practitioner.
-func (s *service) CreatePortalSession(ctx context.Context, practitionerID uuid.UUID) (*RsPortalSession, error) {
-	prac, err := s.repo.GetPractitionerWithStripe(ctx, practitionerID)
+func (s *service) CreatePortalSession(ctx context.Context, userID uuid.UUID) (*RsPortalSession, error) {
+	practitioner, err := s.practitionerRepo.GetPractitionerByUserID(ctx, userID.String())
+	if err != nil {
+		return nil, fmt.Errorf("get practitioner: %w", err)
+	}
+
+	prac, err := s.repo.GetPractitionerWithStripe(ctx, practitioner.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get practitioner: %w", err)
 	}

@@ -104,7 +104,7 @@ func (h *handler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.svc.Login(c.Request.Context(), &req)
+	token, paymentToken, err := h.svc.Login(c.Request.Context(), &req)
 	if err != nil {
 		if errors.Is(err, ErrInvalidPassword) || errors.Is(err, ErrOAuthOnly) {
 			response.Error(c, http.StatusUnauthorized, err)
@@ -126,6 +126,7 @@ func (h *handler) Login(c *gin.Context) {
 				Code:               "SUBSCRIPTION_REQUIRED",
 				SubscriptionStatus: subErr.SubscriptionStatus,
 				Message:            "An active subscription is required to access the application.",
+				RedirectURL:        paymentToken,
 			})
 			return
 		}
@@ -137,7 +138,9 @@ func (h *handler) Login(c *gin.Context) {
 				PaymentStatus:      paymentErr.PaymentStatus,
 				SubscriptionStatus: paymentErr.SubscriptionStatus,
 				Message:            "Payment is required to access the application. Please complete your payment.",
+				RedirectURL:        paymentToken,
 			})
+
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, err)
@@ -370,11 +373,21 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.VerifyEmail(c.Request.Context(), token); err != nil {
+	redirectURL, err := h.svc.VerifyEmail(c.Request.Context(), token)
+	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
+	// Practitioner flow
+	if redirectURL != "" {
+		response.JSON(c, http.StatusOK, gin.H{
+			"redirect_url": redirectURL,
+		}, "Email verified successfully")
+		return
+	}
+
+	// Normal user flow
 	response.JSON(c, http.StatusOK, nil, "Email verified successfully. You can now log in.")
 }
 
