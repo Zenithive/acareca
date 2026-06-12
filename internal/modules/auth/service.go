@@ -20,7 +20,6 @@ import (
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
-	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -261,39 +260,7 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 			return nil, fmt.Errorf("verification check: %w", err)
 		}
 		if !isVerified {
-			return nil, ErrEmailVerificationRequired
-		}
-	}
-
-	// Non-admin users must have an active subscription with valid payment status
-	if user.Role != util.RoleAdmin && user.Role != util.RoleAccountant {
-		entityID, err := s.resolveEntityID(ctx, user)
-		if err != nil {
 			return nil, err
-		}
-
-		practitionerID := uuid.MustParse(entityID)
-
-		activeSub, err := s.practitionerSubRepo.GetActiveSubscription(ctx, practitionerID)
-		if err != nil && !errors.Is(err, subscription.ErrNotFound) {
-			return nil, fmt.Errorf("subscription check: %w", err)
-		}
-
-		if activeSub == nil {
-			status := "PENDING"
-			var filter common.Filter
-			subs, listErr := s.practitionerSubRepo.ListByPractitionerID(ctx, practitionerID, filter)
-			if listErr == nil && len(subs) > 0 {
-				status = string(subs[0].Status)
-			}
-			return nil, &SubscriptionRequiredError{SubscriptionStatus: status}
-		}
-
-		if activeSub.PaymentStatus != subscription.PaymentStatusActive {
-			return nil, &PaymentRequiredError{
-				PaymentStatus:      string(activeSub.PaymentStatus),
-				SubscriptionStatus: string(activeSub.Status),
-			}
 		}
 	}
 

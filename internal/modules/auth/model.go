@@ -220,29 +220,3 @@ type RsErrorPaymentRequired struct {
 	Message            string `json:"message"`
 	RedirectURL        string `json:"redirect_url,omitempty"`
 }
-
-// Sentinel errors
-var ErrEmailVerificationRequired = &EmailVerificationRequiredError{}
-
-type EmailVerificationRequiredError struct{}
-
-func (e *EmailVerificationRequiredError) Error() string {
-	return "please verify your email address before continuing"
-}
-
-type SubscriptionRequiredError struct {
-	SubscriptionStatus string
-}
-
-func (e *SubscriptionRequiredError) Error() string {
-	return "an active subscription is required to access the application"
-}
-
-type PaymentRequiredError struct {
-	PaymentStatus      string
-	SubscriptionStatus string
-}
-
-func (e *PaymentRequiredError) Error() string {
-	return "payment is required to access the application"
-}
