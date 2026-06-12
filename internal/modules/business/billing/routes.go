@@ -13,7 +13,7 @@ func RegisterRoutes(v1 *gin.RouterGroup, h *Handler, cfg *config.Config) {
 
 	// Practitioner-facing billing routes
 	billing := v1.Group("/billing")
-	billing.Use(middleware.JWTAuthMiddleware(cfg.JWTSecret), middleware.PaymentAuthMiddleware())
+	billing.Use(middleware.Auth(cfg))
 	billing.POST("/checkout", h.Checkout)
 	billing.POST("/portal", h.Portal)
 

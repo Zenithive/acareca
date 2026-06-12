@@ -104,12 +104,8 @@ func (h *handler) Login(c *gin.Context) {
 		return
 	}
 
-	token, paymentToken, err := h.svc.Login(c.Request.Context(), &req)
+	token, err := h.svc.Login(c.Request.Context(), &req)
 	if err != nil {
-		if errors.Is(err, ErrInvalidPassword) || errors.Is(err, ErrOAuthOnly) {
-			response.Error(c, http.StatusUnauthorized, err)
-			return
-		}
 		var emailVerErr *EmailVerificationRequiredError
 		if errors.As(err, &emailVerErr) {
 			c.JSON(http.StatusForbidden, RsErrorEmailVerificationRequired{
@@ -119,6 +115,7 @@ func (h *handler) Login(c *gin.Context) {
 			})
 			return
 		}
+
 		var subErr *SubscriptionRequiredError
 		if errors.As(err, &subErr) {
 			c.JSON(http.StatusForbidden, RsErrorSubscriptionRequired{
@@ -126,10 +123,10 @@ func (h *handler) Login(c *gin.Context) {
 				Code:               "SUBSCRIPTION_REQUIRED",
 				SubscriptionStatus: subErr.SubscriptionStatus,
 				Message:            "An active subscription is required to access the application.",
-				RedirectURL:        paymentToken,
 			})
 			return
 		}
+
 		var paymentErr *PaymentRequiredError
 		if errors.As(err, &paymentErr) {
 			c.JSON(http.StatusPaymentRequired, RsErrorPaymentRequired{
@@ -138,12 +135,18 @@ func (h *handler) Login(c *gin.Context) {
 				PaymentStatus:      paymentErr.PaymentStatus,
 				SubscriptionStatus: paymentErr.SubscriptionStatus,
 				Message:            "Payment is required to access the application. Please complete your payment.",
-				RedirectURL:        paymentToken,
 			})
-
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, err)
+
+		switch {
+		case errors.Is(err, ErrInvalidPassword),
+			errors.Is(err, ErrOAuthOnly):
+			response.Error(c, http.StatusUnauthorized, err)
+
+		default:
+			response.Error(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
 
