@@ -2,6 +2,7 @@ package billing
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -22,19 +23,14 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 func (h *Handler) Checkout(c *gin.Context) {
+	fmt.Println("===================")
 
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
-		return
-	}
-
-	userUUID, ok := userIDVal.(uuid.UUID)
+	practitionerID, ok := util.GetPractitionerID(c)
+	fmt.Println(practitionerID)
 	if !ok {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid user id"))
+		response.Error(c, http.StatusBadRequest, errors.New("practitioner id is required"))
 		return
 	}
-
 	var req RqCheckout
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
@@ -42,7 +38,7 @@ func (h *Handler) Checkout(c *gin.Context) {
 	}
 
 	session, err := h.svc.CreateCheckoutSession(
-		c.Request.Context(), userUUID.String(), &req)
+		c.Request.Context(), uuid.MustParse(practitionerID.String()), &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrTrialPlanNotPurchasable):
@@ -63,18 +59,14 @@ func (h *Handler) Checkout(c *gin.Context) {
 // Portal handles POST /billing/portal
 func (h *Handler) Portal(c *gin.Context) {
 	// 1 Get user_id from middleware
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+	practitionerID, ok := util.GetPractitionerID(c)
+	fmt.Println(practitionerID)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("practitioner id is required"))
 		return
 	}
 
-	userUUID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, errors.New("invalid user id"))
-		return
-	}
-	session, err := h.svc.CreatePortalSession(c.Request.Context(), userUUID)
+	session, err := h.svc.CreatePortalSession(c.Request.Context(), uuid.MustParse(practitionerID.String()))
 	if err != nil {
 		if errors.Is(err, ErrNoBillingAccount) {
 			response.Error(c, http.StatusNotFound, err)
