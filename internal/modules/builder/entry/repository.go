@@ -744,13 +744,14 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
 		LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
 		LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
-		LEFT JOIN tbl_form_entry_value fev ON fev.entry_id = v.entry_id 
+		INNER JOIN tbl_form_entry_value fev
+   		ON fev.entry_id = v.entry_id
 			AND fev.deleted_at IS NULL
 			AND (
-				(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id) OR
-				(v.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-			)
-
+			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+			OR
+			(v.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+		)
 		WHERE v.account_name = ?` + permissionClause
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
