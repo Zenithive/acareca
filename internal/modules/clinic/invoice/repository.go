@@ -99,7 +99,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 					return err
 				}
 				sectionIDMap[section.SectionType] = sectionID
-				
+
 				// Link entries from this section to the section ID
 				for _, entry := range section.Entries {
 					entry.InvoiceSectionID = &sectionID
@@ -463,14 +463,11 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		// Build new section map and update/insert sections
 		sectionIDMap := make(map[string]uuid.UUID)
 		requestedSectionTypes := make(map[string]bool)
-		
+
 		if len(invoice.Sections) > 0 {
 			for _, section := range invoice.Sections {
 				requestedSectionTypes[section.SectionType] = true
-				
-				// Check if section already exists
 				if existingID, exists := existingSections[section.SectionType]; exists {
-					// Update existing section
 					_, err := tx.ExecContext(ctx, `
 						UPDATE tbl_map_invoice_section 
 						SET document_number = $1, updated_at = NOW()
@@ -542,9 +539,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		// Link items to their sections or default section
 		for _, item := range invoice.Items {
 			item.ID = uuid.New()
-			// If item doesn't have a section assigned, use the first available section
 			if item.InvoiceSectionID == nil && len(sectionIDMap) > 0 {
-				// Get first section ID from map
 				for _, secID := range sectionIDMap {
 					item.InvoiceSectionID = &secID
 					break

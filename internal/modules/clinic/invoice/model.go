@@ -73,8 +73,8 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		ContactID:         &r.ContactID,
 		TemplateID:        r.TemplateID,
 		Name:              r.Name,
-		BillingPeriodFrom: r.BillingPeriodFrom,
-		BillingPeriodTo:   r.BillingPeriodTo,
+		BillingPeriodFrom: &r.BillingPeriodFrom,
+		BillingPeriodTo:   &r.BillingPeriodTo,
 		InvoiceFrequency:  r.InvoiceFrequency,
 		IssueDate:         r.IssueDate,
 		Status:            status,
@@ -85,19 +85,19 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 }
 
 type RqUpdateInvoice struct {
-	ID                *uuid.UUID           `json:"id" validate:"-"`
-	ContactID         *uuid.UUID           `json:"contactId,omitempty"`
-	TemplateID        *uuid.UUID             `json:"templateId,omitempty"`
-	Name              *string                `json:"name,omitempty"`
-	BillingPeriodFrom *string                `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	BillingPeriodTo   *string                `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	InvoiceFrequency  *string                `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         *string                `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	DueDate           *string                `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	Status            *string                `json:"status,omitempty"`
-	Sections          []InvoiceSection       `json:"sections,omitempty" validate:"omitempty,dive"`
-	Entries           []*item.RqUpdateEntry  `json:"entries,omitempty" validate:"omitempty,dive"`
-	AttachmentBase64  string                 `json:"attachmentBase64,omitempty"`
+	ID                *uuid.UUID            `json:"id" validate:"-"`
+	ContactID         *uuid.UUID            `json:"contactId,omitempty"`
+	TemplateID        *uuid.UUID            `json:"templateId,omitempty"`
+	Name              *string               `json:"name,omitempty"`
+	BillingPeriodFrom *string               `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	BillingPeriodTo   *string               `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	InvoiceFrequency  *string               `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
+	IssueDate         *string               `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	DueDate           *string               `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status            *string               `json:"status,omitempty"`
+	Sections          []InvoiceSection      `json:"sections,omitempty" validate:"omitempty,dive"`
+	Entries           []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
+	AttachmentBase64  string                `json:"attachmentBase64,omitempty"`
 }
 
 func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
@@ -114,10 +114,10 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		inv.Name = *r.Name
 	}
 	if r.BillingPeriodFrom != nil {
-		inv.BillingPeriodFrom = *r.BillingPeriodFrom
+		inv.BillingPeriodFrom = r.BillingPeriodFrom
 	}
 	if r.BillingPeriodTo != nil {
-		inv.BillingPeriodTo = *r.BillingPeriodTo
+		inv.BillingPeriodTo = r.BillingPeriodTo
 	}
 	if r.InvoiceFrequency != nil {
 		inv.InvoiceFrequency = r.InvoiceFrequency
@@ -143,6 +143,13 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 
 	if r.Sections != nil {
 		inv.Sections = r.Sections
+		items := make([]*item.Item, 0)
+		for _, section := range r.Sections {
+			if section.Entries != nil {
+				items = append(items, section.Entries...)
+			}
+		}
+		inv.Items = items
 	} else if len(inv.Sections) == 0 {
 		// Ensure at least one section exists
 		inv.Sections = []InvoiceSection{
@@ -163,8 +170,8 @@ type Invoice struct {
 	ContactID         *uuid.UUID       `db:"contact_id"`
 	TemplateID        uuid.UUID        `db:"template_id"`
 	Name              string           `db:"name"`
-	BillingPeriodFrom string           `db:"billing_period_from"`
-	BillingPeriodTo   string           `db:"billing_period_to"`
+	BillingPeriodFrom *string          `db:"billing_period_from"`
+	BillingPeriodTo   *string          `db:"billing_period_to"`
 	InvoiceFrequency  *string          `db:"invoice_frequency,omitempty"`
 	IssueDate         string           `db:"issue_date"`
 	DueDate           *string          `db:"due_date,omitempty"`
@@ -188,6 +195,16 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		contactTo = &rsContact
 	}
 
+	// Handle nullable billing period fields
+	billingPeriodFrom := ""
+	if i.BillingPeriodFrom != nil {
+		billingPeriodFrom = *i.BillingPeriodFrom
+	}
+	billingPeriodTo := ""
+	if i.BillingPeriodTo != nil {
+		billingPeriodTo = *i.BillingPeriodTo
+	}
+
 	return &RsInvoice{
 		ID:                i.ID,
 		ClinicID:          i.ClinicID,
@@ -196,8 +213,8 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		SentTo:            contactTo,
 		TemplateID:        i.TemplateID,
 		Name:              i.Name,
-		BillingPeriodFrom: i.BillingPeriodFrom,
-		BillingPeriodTo:   i.BillingPeriodTo,
+		BillingPeriodFrom: billingPeriodFrom,
+		BillingPeriodTo:   billingPeriodTo,
 		InvoiceFrequency:  i.InvoiceFrequency,
 		IssueDate:         i.IssueDate,
 		DueDate:           i.DueDate,

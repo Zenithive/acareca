@@ -10,6 +10,7 @@ import (
 type IRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error
 	GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID uuid.UUID) ([]*Item, error)
+	Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error
 }
 
 type Repository struct {
@@ -113,4 +114,48 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 	}
 
 	return items, rows.Err()
+}
+
+// Update implements [IRepository].
+func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error {
+	for _, invoiceItem := range items {
+		if invoiceItem.ID == uuid.Nil {
+			invoiceItem.ID = uuid.New()
+		}
+
+		// Calculate total_amount as quantity * unit_price
+		totalAmount := float64(invoiceItem.Quantity) * invoiceItem.UnitPrice
+
+		_, err := tx.ExecContext(ctx, `
+			UPDATE tbl_invoice_item
+			SET
+				name = $2,
+				description = $3,
+				entry_type = $4,
+				bas_code = $5,
+				quantity = $6,
+				unit_price = $7,
+				total_amount = $8,
+				invoice_section_id = $9,
+				sort_order = $10,
+				updated_at = NOW()
+			WHERE id = $1
+			AND deleted_at IS NULL
+		`,
+			invoiceItem.ID,
+			invoiceItem.Name,
+			invoiceItem.Description,
+			invoiceItem.EntryType,
+			invoiceItem.BASCode,
+			invoiceItem.Quantity,
+			invoiceItem.UnitPrice,
+			totalAmount,
+			invoiceItem.InvoiceSectionID,
+			invoiceItem.SortOrder,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
