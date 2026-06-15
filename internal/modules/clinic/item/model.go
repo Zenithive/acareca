@@ -3,14 +3,14 @@ package item
 import "github.com/google/uuid"
 
 type RqEntry struct {
-	Name             string  `json:"name" validate:"required"`
-	Description      *string `json:"description,omitempty"`
-	EntryType        *string `json:"entryType,omitempty"`
-	BASCode          *string `json:"basCode,omitempty"`
-	Quantity         int     `json:"quantity,omitempty" validate:"omitempty,gt=0"`
-	UnitPrice        float64 `json:"unitPrice,omitempty" validate:"omitempty,gt=0"`
-	SortOrder        int     `json:"sortOrder" validate:"required"`
-	InvoiceSectionID *string `json:"invoiceSectionId,omitempty"`
+	Name             string   `json:"name" validate:"required"`
+	Description      *string  `json:"description,omitempty"`
+	EntryType        *string  `json:"entryType,omitempty"`
+	BASCode          *string  `json:"basCode,omitempty"`
+	Quantity         int      `json:"quantity,omitempty" validate:"omitempty,gt=0"`
+	UnitPrice        *float64 `json:"unitPrice,omitempty" validate:"omitempty,gt=0"`
+	SortOrder        int      `json:"sortOrder" validate:"required"`
+	InvoiceSectionID *string  `json:"invoiceSectionId,omitempty"`
 }
 
 func (r *RqEntry) ToItem() *Item {
@@ -21,16 +21,20 @@ func (r *RqEntry) ToItem() *Item {
 		}
 	}
 
-	// Default quantity to 1 if not provided
-	quantity := r.Quantity
-	if quantity == 0 {
-		quantity = 1
-	}
+	var quantity int
+	var unitPrice float64
+	var amount float64
 
-	// Default unit_price to amount if not provided
-	unitPrice := r.UnitPrice
-	if unitPrice == 0 {
-		unitPrice = r.UnitPrice
+	if r.UnitPrice != nil && *r.UnitPrice > 0 {
+		quantity = 1
+		unitPrice = *r.UnitPrice
+	} else {
+		quantity = r.Quantity
+		if quantity == 0 {
+			quantity = 1
+		}
+		unitPrice = *r.UnitPrice
+		amount = float64(quantity) * unitPrice
 	}
 
 	return &Item{
@@ -41,6 +45,7 @@ func (r *RqEntry) ToItem() *Item {
 		BASCode:          r.BASCode,
 		Quantity:         quantity,
 		UnitPrice:        unitPrice,
+		TotalAmount:      amount,
 		SortOrder:        r.SortOrder,
 		InvoiceSectionID: invoiceSectionID,
 	}
@@ -52,7 +57,6 @@ type RqUpdateEntry struct {
 	Description      *string   `json:"description,omitempty"`
 	EntryType        *string   `json:"entryType,omitempty"`
 	BASCode          *string   `json:"basCode,omitempty"`
-	Amount           *float64  `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	Quantity         *int      `json:"quantity,omitempty" validate:"omitempty,gt=0"`
 	UnitPrice        *float64  `json:"unitPrice,omitempty" validate:"omitempty,gt=0"`
 	SortOrder        *int      `json:"sortOrder,omitempty"`
@@ -98,7 +102,6 @@ type Item struct {
 	Description      *string    `db:"description,omitempty"`
 	EntryType        *string    `db:"entry_type,omitempty"`
 	BASCode          *string    `db:"bas_code,omitempty"`
-	Amount           float64    `db:"amount"`
 	Quantity         int        `db:"quantity"`
 	UnitPrice        float64    `db:"unit_price"`
 	TotalAmount      float64    `db:"total_amount"`

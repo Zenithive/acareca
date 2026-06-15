@@ -2447,48 +2447,63 @@ definitions:
     - email
     - permissions
     type: object
-  invoice.RqInvoice:
+  invoice.InvoiceSection:
     properties:
-      clinic_id:
+      documentNumber:
         type: string
-      contact_id:
-        type: string
-      due_date:
-        type: string
-      invoice_number:
-        type: string
-      issue_date:
-        type: string
-      items:
+      entries:
         items:
-          $ref: '#/definitions/item.RqItem'
+          $ref: '#/definitions/item.Item'
         type: array
-      name:
-        type: string
-      payment_method:
+      sectionType:
         enum:
-        - CASH
-        - CARD
-        - ONLINE
-        type: string
-      reference:
-        type: string
-      status:
-        type: string
-      tax_method:
-        enum:
-        - EXCLUSIVE
-        - INCLUSIVE
-        type: string
-      template_id:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
         type: string
     required:
-    - contact_id
-    - invoice_number
-    - issue_date
-    - items
+    - documentNumber
+    - entries
+    - sectionType
+    type: object
+  invoice.RqInvoice:
+    properties:
+      billingPeriodFrom:
+        type: string
+      billingPeriodTo:
+        type: string
+      clinicId:
+        type: string
+      contactId:
+        type: string
+      dueDate:
+        type: string
+      invoiceFrequency:
+        enum:
+        - DAILY
+        - WEEKLY
+        - MONTHLY
+        - YEARLY
+        type: string
+      issueDate:
+        type: string
+      name:
+        type: string
+      sections:
+        items:
+          $ref: '#/definitions/invoice.InvoiceSection'
+        type: array
+      status:
+        type: string
+      templateId:
+        type: string
+    required:
+    - billingPeriodFrom
+    - billingPeriodTo
+    - contactId
+    - issueDate
     - name
-    - template_id
+    - templateId
     type: object
   invoice.RqSaveMailTemplate:
     properties:
@@ -2502,79 +2517,81 @@ definitions:
     type: object
   invoice.RqUpdateInvoice:
     properties:
-      attachment_base64:
+      attachmentBase64:
         type: string
-      contact_id:
+      billingPeriodFrom:
         type: string
-      due_date:
+      billingPeriodTo:
         type: string
+      contactId:
+        type: string
+      dueDate:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RqUpdateEntry'
+        type: array
       id:
         type: string
-      invoice_number:
+      invoiceFrequency:
+        enum:
+        - DAILY
+        - WEEKLY
+        - MONTHLY
+        - YEARLY
         type: string
-      issue_date:
+      issueDate:
         type: string
-      items:
-        items:
-          $ref: '#/definitions/item.RqUpdateItem'
-        type: array
       name:
         type: string
-      payment_method:
-        enum:
-        - CASH
-        - CARD
-        - ONLINE
-        type: string
-      reference:
-        type: string
+      sections:
+        items:
+          $ref: '#/definitions/invoice.InvoiceSection'
+        type: array
       status:
         type: string
-      tax_method:
-        enum:
-        - EXCLUSIVE
-        - INCLUSIVE
-        type: string
-      template_id:
+      templateId:
         type: string
     type: object
   invoice.RsInvoice:
     properties:
-      clinic_id:
+      billingPeriodFrom:
         type: string
-      contact_id:
+      billingPeriodTo:
         type: string
-      contact_to:
+      clinicId:
+        type: string
+      contactId:
+        type: string
+      contactTo:
         $ref: '#/definitions/contact.RsContact'
-      created_at:
+      createdAt:
         type: string
-      due_date:
+      dueDate:
         type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RsEntry'
+        type: array
       id:
         type: string
-      invoice_number:
+      invoiceFrequency:
         type: string
-      issue_date:
+      issueDate:
         type: string
-      items:
-        items:
-          $ref: '#/definitions/item.RsItem'
-        type: array
       name:
         type: string
-      payment_method:
-        type: string
-      reference:
-        type: string
-      sent_to:
+      sections:
+        items:
+          $ref: '#/definitions/invoice.InvoiceSection'
+        type: array
+      sentTo:
         $ref: '#/definitions/contact.RsContact'
       status:
         type: string
-      tax_method:
+      templateId:
         type: string
-      template_id:
-        type: string
-      updated_at:
+      updatedAt:
         type: string
     type: object
   invoice.RsInvoiceMailTemplate:
@@ -2586,80 +2603,79 @@ definitions:
       mail_subject:
         type: string
     type: object
-  item.RqItem:
+  item.Item:
     properties:
+      amount:
+        type: number
+      bascode:
+        type: string
       description:
         type: string
-      discount:
-        minimum: 0
-        type: number
-      name:
+      entryType:
         type: string
-      quantity:
-        type: integer
-      tax_amount:
-        minimum: 0
-        type: number
-      tax_rate:
-        minimum: 0
-        type: number
-      total_amount:
-        type: number
-      unit_price:
-        type: number
-    required:
-    - name
-    - quantity
-    - total_amount
-    - unit_price
-    type: object
-  item.RqUpdateItem:
-    properties:
-      description:
-        type: string
-      discount:
-        minimum: 0
-        type: number
       id:
         type: string
+      invoiceSectionID:
+        type: string
       name:
         type: string
       quantity:
         type: integer
-      tax_amount:
-        minimum: 0
+      sortOrder:
+        type: integer
+      totalAmount:
         type: number
-      tax_rate:
-        minimum: 0
+      unitPrice:
         type: number
-      total_amount:
+    type: object
+  item.RqUpdateEntry:
+    properties:
+      amount:
         type: number
-      unit_price:
+      basCode:
+        type: string
+      description:
+        type: string
+      entryType:
+        type: string
+      id:
+        type: string
+      invoiceSectionId:
+        type: string
+      name:
+        type: string
+      quantity:
+        type: integer
+      sortOrder:
+        type: integer
+      unitPrice:
         type: number
     required:
     - id
     type: object
-  item.RsItem:
+  item.RsEntry:
     properties:
+      basCode:
+        type: string
       description:
         type: string
-      discount:
-        type: number
+      entryType:
+        type: string
       id:
         type: string
-      invoice_id:
+      invoiceId:
+        type: string
+      invoiceSectionId:
         type: string
       name:
         type: string
       quantity:
         type: integer
-      tax_amount:
+      sortOrder:
+        type: integer
+      totalAmount:
         type: number
-      tax_rate:
-        type: number
-      total_amount:
-        type: number
-      unit_price:
+      unitPrice:
         type: number
     type: object
   notification.RqBulkDismiss:
@@ -2998,10 +3014,10 @@ definitions:
         $ref: '#/definitions/template.PartyInfo'
       bill_to:
         $ref: '#/definitions/template.PartyInfo'
+      billing_period:
+        type: string
       clinic_name:
         type: string
-      discount_total:
-        type: number
       due_date_display:
         type: string
       footer_html:
@@ -3010,7 +3026,7 @@ definitions:
         type: number
       has_attachments:
         type: boolean
-      invoice_number:
+      invoice_frequency:
         type: string
       issue_date_display:
         type: string
@@ -3026,35 +3042,17 @@ definitions:
         type: string
       notes:
         type: string
-      payment_method_label:
-        type: string
-      reference:
-        type: string
-      reference2:
-        type: string
       show_logo:
         type: boolean
       show_logo_image:
         type: boolean
       show_tax:
         type: boolean
-      subtotal:
-        type: number
       table_style_class:
         type: string
-      tax_method_label:
-        type: string
-      tax_total:
-        type: number
       totals_amounts_caption:
         type: string
-      totals_discount_label:
-        type: string
       totals_grand_label:
-        type: string
-      totals_subtotal_label:
-        type: string
-      totals_tax_label:
         type: string
       watermark_enabled:
         type: boolean
@@ -3065,18 +3063,12 @@ definitions:
     properties:
       description:
         type: string
-      discount_amount:
-        type: number
       line_total:
         type: number
       name:
         type: string
       qty:
         type: integer
-      tax_amount:
-        type: number
-      tax_percent:
-        type: number
       unit_price:
         type: number
     type: object
