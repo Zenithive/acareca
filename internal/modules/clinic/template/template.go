@@ -19,46 +19,49 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
 
   <div class="invoice-body">
 
-  <!-- ── HEADER: clinic info left | doc title + meta right ── -->
-  <header class="doc-header">
-    <!-- LEFT: clinic name / address / contact line (no logo) -->
-    <div class="header-left">
-      <div class="header-clinic">
-        <h2 class="brand-name">{{bill_from.name}}</h2>
-        {{#if bill_from.address}}<p class="header-line">{{bill_from.address}}</p>{{/if}}
-        <p class="header-contact">
-          {{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}
-          {{#if bill_from.phone}}&nbsp;&nbsp;|&nbsp;&nbsp;Ph {{bill_from.phone}}{{/if}}
-          {{#if bill_from.email}}&nbsp;&nbsp;|&nbsp;&nbsp;{{bill_from.email}}{{/if}}
-        </p>
-      </div>
+  <!-- ══════════════════════════════════════════
+       HEADER — two-column grid
+       Left : clinic name + address + contact
+       Right: "CALCULATION STATEMENT" + meta rows
+       Below left: PREPARED FOR banner + recipient
+       Below right: meta rows continue alongside
+  ══════════════════════════════════════════ -->
+  <div class="doc-header">
+
+    <!-- top row: clinic block (left) | title (right) -->
+    <div class="header-clinic">
+      <h2 class="brand-name">{{bill_from.name}}</h2>
+      {{#if bill_from.address}}<p class="header-line">{{bill_from.address}}</p>{{/if}}
+      <p class="header-contact">{{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}{{#if bill_from.phone}}&nbsp;&nbsp;|&nbsp;&nbsp;Ph {{bill_from.phone}}{{/if}}{{#if bill_from.email}}&nbsp;&nbsp;|&nbsp;&nbsp;{{bill_from.email}}{{/if}}</p>
     </div>
-    <!-- RIGHT: document title + statement metadata -->
+
     <div class="header-right">
       <p class="doc-title">CALCULATION STATEMENT</p>
-      <div class="header-meta">
-        <div class="meta-row"><span class="label">Statement No.</span><span class="value">{{invoice_number}}</span></div>
-        <div class="meta-row"><span class="label">Issue Date</span><span class="value">{{issue_date_display}}</span></div>
-        <div class="meta-row"><span class="label">Billing Period</span><span class="value">{{due_date_display}}</span></div>
-        <div class="meta-row"><span class="label">Invoice Frequency</span><span class="value">{{payment_method_label}}</span></div>
-        {{#if reference}}<div class="meta-row"><span class="label">Reference</span><span class="value">{{reference}}</span></div>{{/if}}
+      <table class="header-meta">
+        <tr><td class="hm-label">Statement No.</td><td class="hm-value">{{invoice_number}}</td></tr>
+        <tr><td class="hm-label">Issue Date</td><td class="hm-value">{{issue_date_display}}</td></tr>
+        <tr><td class="hm-label">Billing Period</td><td class="hm-value">{{due_date_display}}</td></tr>
+        <tr><td class="hm-label">Invoice Frequency</td><td class="hm-value">{{payment_method_label}}</td></tr>
+        {{#if reference}}<tr><td class="hm-label">Reference</td><td class="hm-value">{{reference}}</td></tr>{{/if}}
+      </table>
+    </div>
+
+    <!-- prepared-for banner spans left column only -->
+    <div class="prepared-col">
+      <div class="prepared-banner">PREPARED FOR</div>
+      <div class="prepared-body">
+        <p class="prepared-name">{{bill_to.name}}</p>
+        {{#if bill_to.address}}<p class="prepared-line">{{bill_to.address}}</p>{{/if}}
+        {{#if bill_to.abn}}<p class="prepared-line">ABN {{bill_to.abn}}</p>{{/if}}
+        {{#if bill_to.email}}<p class="prepared-line">{{bill_to.email}}</p>{{/if}}
+        {{#if bill_to.phone}}<p class="prepared-line">{{bill_to.phone}}</p>{{/if}}
       </div>
     </div>
-  </header>
 
-  <!-- ── PREPARED FOR banner + recipient ── -->
-  <section class="prepared-section">
-    <div class="prepared-banner">PREPARED FOR</div>
-    <div class="prepared-body">
-      <p class="name">{{bill_to.name}}</p>
-      {{#if bill_to.address}}<p>{{bill_to.address}}</p>{{/if}}
-      {{#if bill_to.abn}}<p>ABN {{bill_to.abn}}</p>{{/if}}
-      {{#if bill_to.email}}<p>{{bill_to.email}}</p>{{/if}}
-      {{#if bill_to.phone}}<p>{{bill_to.phone}}</p>{{/if}}
-    </div>
-  </section>
+    <!-- right column spacer — keeps grid aligned -->
+    <div class="prepared-right-spacer"></div>
 
-  <div class="invoice-body">
+  </div>
 
   <table class="items {{table_style_class}}">
     <thead>
@@ -211,69 +214,51 @@ body {
   color: #6b7280;
   white-space: pre-wrap;
 }
+/* ══════════════════════════════════════
+   HEADER  —  CSS Grid, 2 columns
+   col 1 (left ~55%): clinic info + prepared-for
+   col 2 (right ~45%): doc title + meta table
+══════════════════════════════════════ */
 .doc-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 32px;
-  margin-bottom: 0;
-  padding: 28px 32px 20px;
+  display: grid;
+  grid-template-columns: 55fr 45fr;
+  gap: 0 32px;
+  padding: 28px 32px 24px;
   border-bottom: 2px solid #e5e7eb;
+  margin-bottom: 0;
 }
 
-/* ── LEFT column ── */
-.header-left {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex: 1 1 auto;
-  min-width: 0;
+/* ── LEFT col top: clinic name / address / contact ── */
+.header-clinic {
+  grid-column: 1;
+  grid-row: 1;
 }
-.brand-logo {
-  width: 52px;
-  height: 52px;
-  max-width: 180px;
-  max-height: 52px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-.brand-logo-placeholder {
-  width: 48px;
-  height: 48px;
-  background: var(--invoice-primary);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 20px;
-  flex-shrink: 0;
-}
-.header-clinic { min-width: 0; }
 .brand-name {
   font-size: 16px;
   font-weight: 700;
   color: var(--invoice-primary);
-  letter-spacing: 0.01em;
-  margin: 0 0 3px;
+  margin: 0 0 4px;
+  white-space: nowrap;
   font-family: var(--invoice-font-body), sans-serif;
 }
 .header-line {
   font-size: 12px;
   color: #374151;
   margin: 2px 0;
+  white-space: nowrap;
 }
 .header-contact {
   font-size: 12px;
   color: #374151;
   margin: 4px 0 0;
+  white-space: nowrap;
 }
 
-/* ── RIGHT column ── */
+/* ── RIGHT col: doc title + meta ── */
 .header-right {
-  flex: 0 0 auto;
+  grid-column: 2;
+  grid-row: 1 / 3;
   text-align: right;
-  min-width: 260px;
 }
 .doc-title {
   font-family: var(--invoice-font-header), Georgia, "Times New Roman", serif;
@@ -282,20 +267,34 @@ body {
   color: var(--invoice-primary);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   line-height: 1.1;
+  white-space: nowrap;
 }
-.header-meta { display: table; margin-left: auto; }
-.meta-row { display: table-row; }
-.meta-row .label,
-.meta-row .value { display: table-cell; font-size: 12px; padding: 2px 0; vertical-align: top; }
-.meta-row .label { font-weight: 600; color: #374151; padding-right: 16px; text-align: right; white-space: nowrap; }
-.meta-row .value { color: #1a2332; text-align: right; white-space: nowrap; }
-.meta-row.due .value { font-weight: 700; }
+.header-meta {
+  border-collapse: collapse;
+  margin-left: auto;
+  font-size: 12px;
+}
+.header-meta td { padding: 2px 0; vertical-align: top; }
+.hm-label {
+  font-weight: 700;
+  color: #374151;
+  text-align: right;
+  padding-right: 14px;
+  white-space: nowrap;
+}
+.hm-value {
+  color: #1a2332;
+  text-align: right;
+  white-space: nowrap;
+}
 
-/* ── PREPARED FOR ── */
-.prepared-section {
-  margin: 0 32px 24px;
+/* ── LEFT col bottom: PREPARED FOR ── */
+.prepared-col {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 18px;
 }
 .prepared-banner {
   background: var(--invoice-primary);
@@ -305,14 +304,28 @@ body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 7px 14px;
-  margin-top: 20px;
+  display: block;
 }
 .prepared-body {
-  padding: 10px 14px 0;
-  font-size: 13px;
+  padding: 10px 0 0;
 }
-.prepared-body p { margin: 3px 0; }
-.prepared-body .name { font-weight: 700; color: #111827; font-size: 14px; }
+.prepared-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px;
+}
+.prepared-line {
+  font-size: 12px;
+  color: #374151;
+  margin: 2px 0;
+}
+
+/* spacer keeps grid rows balanced */
+.prepared-right-spacer {
+  grid-column: 2;
+  grid-row: 2;
+}
 table.items {
   width: 100%;
   border-collapse: collapse;

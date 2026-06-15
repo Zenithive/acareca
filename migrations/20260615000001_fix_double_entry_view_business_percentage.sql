@@ -1,5 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
+
+-- Recreate vw_double_entry_line_items and dependent views now that
+-- business_percentage column exists on tbl_form_entry_value
+-- (added in 20260604120941_add_business_percentage_and_notes_to_entry_value.sql).
+-- The 20260527 migration referenced this column before it was created.
+
 DROP VIEW IF EXISTS vw_balance_sheet_summary CASCADE;
 DROP VIEW IF EXISTS vw_balance_sheet_line_items CASCADE;
 DROP VIEW IF EXISTS vw_double_entry_entry_summary CASCADE;
@@ -28,7 +34,7 @@ SELECT fe.clinic_id,
     COALESCE(fev.gst_amount, 0) AS gst_amount,
     COALESCE(fev.gross_amount, 0) AS gross_amount,
     fev.description,
-    NULL::numeric AS business_percentage,
+    fev.business_percentage,
     cfv.form_id AS form_id,
     coa.account_tax_id AS tax_id,
     CASE
@@ -76,7 +82,8 @@ FROM tbl_form_entry fe
             net_amount,
             gst_amount,
             gross_amount,
-            description
+            description,
+            business_percentage
         FROM tbl_form_entry_value
         WHERE updated_at IS NULL
         ORDER BY entry_id,
@@ -101,8 +108,6 @@ WHERE fe.status = 'SUBMITTED'
             AND fev.coa_id IS NOT NULL
         )
     );
-
-
 
 CREATE OR REPLACE VIEW vw_double_entry_entry_summary AS
 SELECT practitioner_id,
@@ -179,6 +184,7 @@ GROUP BY practitioner_id,
 ORDER BY account_type,
     account_classification,
     account_code;
+
 -- +goose StatementEnd
 
 -- +goose Down
