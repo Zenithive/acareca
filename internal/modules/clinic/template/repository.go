@@ -210,8 +210,9 @@ func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.D
 func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error) {
 	const q = `
         SELECT
-            i.id, i.clinic_id, i.template_id, i.invoice_number, 
-            i.billing_period, i.invoice_frequency, i.issue_date::text, i.due_date::text,
+            i.id, i.clinic_id, i.template_id, 
+            i.billing_period_from::text, i.billing_period_to::text,
+            i.invoice_frequency, i.issue_date::text, i.due_date::text,
             i.status,
             cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
             cl.clinic_name as clinic_name,
@@ -262,12 +263,12 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	return &InvoiceResponse{
-		ID:               row.Id,
-		ClinicID:         row.ClinicId,
-		TemplateID:       row.TemplateId,
-		InvoiceNumber:    row.InvoiceNumber,
-		BillingPeriod:    row.BillingPeriod,
-		InvoiceFrequency: row.InvoiceFrequency,
+		ID:                row.Id,
+		ClinicID:          row.ClinicId,
+		TemplateID:        row.TemplateId,
+		BillingPeriodFrom: row.BillingPeriodFrom,
+		BillingPeriodTo:   row.BillingPeriodTo,
+		InvoiceFrequency:  row.InvoiceFrequency,
 		IssueDate:        row.IssueDate,
 		DueDate:          row.DueDate,
 		Status:           row.Status,

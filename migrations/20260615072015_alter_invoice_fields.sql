@@ -15,6 +15,7 @@ CREATE TYPE invoice_frequency AS ENUM (
 );
 
 ALTER TABLE tbl_invoice
+    DROP COLUMN IF EXISTS invoice_number,
     DROP COLUMN IF EXISTS reference,
     DROP COLUMN IF EXISTS payment_method,
     DROP COLUMN IF EXISTS tax_method,
@@ -23,7 +24,8 @@ ALTER TABLE tbl_invoice
     DROP COLUMN IF EXISTS grand_total;
 
 ALTER TABLE tbl_invoice
-    ADD COLUMN IF NOT EXISTS billing_period VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS billing_period_from DATE NOT NULL,
+    ADD COLUMN IF NOT EXISTS billing_period_to DATE NOT NULL,
     ADD COLUMN IF NOT EXISTS invoice_frequency invoice_frequency;
 
 ALTER TABLE tbl_invoice_item
@@ -47,8 +49,7 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
 
 ALTER TABLE tbl_invoice_item
     ADD COLUMN IF NOT EXISTS bas_code VARCHAR(20),
-    ADD COLUMN IF NOT EXISTS invoice_section_id UUID,
-    ADD COLUMN IF NOT EXISTS invoice_frequency invoice_frequency;
+    ADD COLUMN IF NOT EXISTS invoice_section_id UUID;
 
 ALTER TABLE tbl_invoice_item
     ADD CONSTRAINT fk_invoice_item_invoice_section
@@ -66,13 +67,13 @@ ALTER TABLE tbl_invoice_item
 
 ALTER TABLE tbl_invoice_item
     DROP COLUMN IF EXISTS bas_code,
-    DROP COLUMN IF EXISTS invoice_section_id,
-    DROP COLUMN IF EXISTS invoice_frequency;
+    DROP COLUMN IF EXISTS invoice_section_id;
 
 DROP TABLE IF EXISTS tbl_map_invoice_section;
 
 ALTER TABLE tbl_invoice
-    DROP COLUMN IF EXISTS billing_period,
+    DROP COLUMN IF EXISTS billing_period_from,
+    DROP COLUMN IF EXISTS billing_period_to,
     DROP COLUMN IF EXISTS invoice_frequency;
 
 ALTER TABLE tbl_invoice

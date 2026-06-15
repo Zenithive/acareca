@@ -57,8 +57,8 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 				contact_id,
 				template_id,
 				name,
-				invoice_number,
-				billing_period,
+				billing_period_from,
+				billing_period_to,
 				invoice_frequency,
 				issue_date,
 				due_date,
@@ -71,8 +71,8 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			invoice.ContactID,
 			invoice.TemplateID,
 			invoice.Name,
-			invoice.InvoiceNumber,
-			invoice.BillingPeriod,
+			invoice.BillingPeriodFrom,
+			invoice.BillingPeriodTo,
 			invoice.InvoiceFrequency,
 			invoice.IssueDate,
 			invoice.DueDate,
@@ -86,10 +86,10 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		if len(invoice.InvoiceSections) > 0 {
 			for _, section := range invoice.InvoiceSections {
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section)
-					VALUES ($1, $2)
-					ON CONFLICT (invoice_id, invoice_section) DO NOTHING
-				`, invoice.ID, section)
+					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section, document_number)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET document_number = EXCLUDED.document_number
+				`, invoice.ID, section.InvoiceSection, section.DocumentNumber)
 				if err != nil {
 					return err
 				}
@@ -142,8 +142,8 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 			contact_id::text,
 			template_id,
 			name,
-			invoice_number,
-			billing_period,
+			billing_period_from::text,
+			billing_period_to::text,
 			invoice_frequency,
 			status,
 			issue_date::text,
@@ -159,8 +159,8 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		&invoice.ContactID,
 		&invoice.TemplateID,
 		&invoice.Name,
-		&invoice.InvoiceNumber,
-		&invoice.BillingPeriod,
+		&invoice.BillingPeriodFrom,
+		&invoice.BillingPeriodTo,
 		&invoice.InvoiceFrequency,
 		&invoice.Status,
 		&invoice.IssueDate,
@@ -186,7 +186,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 
 	// Get invoice sections
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT invoice_section
+		SELECT id, invoice_section, document_number
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1
 		AND deleted_at IS NULL
@@ -196,10 +196,11 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	}
 	defer rows.Close()
 
-	sections := make([]string, 0)
+	sections := make([]InvoiceSectionItem, 0)
 	for rows.Next() {
-		var section string
-		if err := rows.Scan(&section); err != nil {
+		var section InvoiceSectionItem
+		var sectionID uuid.UUID
+		if err := rows.Scan(&sectionID, &section.InvoiceSection, &section.DocumentNumber); err != nil {
 			return nil, err
 		}
 		sections = append(sections, section)
@@ -222,14 +223,13 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 		"name":             "name",
 		"status":           "status",
 		"contact_id":       "contact_id",
-		"invoice_number":   "invoice_number",
 		"amount":           "amount",
 		"date_range_start": "issue_date",
 		"date_range_end":   "issue_date",
 		"created_at":       "created_at",
 	}
 
-	searchCols := []string{"name", "invoice_number"}
+	searchCols := []string{"name"}
 
 	baseQuery := `FROM tbl_invoice WHERE deleted_at IS NULL AND clinic_id = ?`
 	baseArgs := []interface{}{clinicID}
@@ -248,8 +248,8 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 			contact_id::text,
 			template_id,
 			name,
-			invoice_number,
-			billing_period,
+			billing_period_from::text,
+			billing_period_to::text,
 			invoice_frequency,
 			status,
 			issue_date::text,
@@ -276,8 +276,8 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 			&invoice.ContactID,
 			&invoice.TemplateID,
 			&invoice.Name,
-			&invoice.InvoiceNumber,
-			&invoice.BillingPeriod,
+			&invoice.BillingPeriodFrom,
+			&invoice.BillingPeriodTo,
 			&invoice.InvoiceFrequency,
 			&invoice.Status,
 			&invoice.IssueDate,
@@ -290,7 +290,7 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 
 		// Get invoice sections for this invoice
 		sectionRows, err := r.db.QueryContext(ctx, `
-			SELECT invoice_section
+			SELECT id, invoice_section, document_number
 			FROM tbl_map_invoice_section
 			WHERE invoice_id = $1
 			AND deleted_at IS NULL
@@ -299,10 +299,11 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 			return nil, 0, err
 		}
 
-		sections := make([]string, 0)
+		sections := make([]InvoiceSectionItem, 0)
 		for sectionRows.Next() {
-			var section string
-			if err := sectionRows.Scan(&section); err != nil {
+			var section InvoiceSectionItem
+			var sectionID uuid.UUID
+			if err := sectionRows.Scan(&sectionID, &section.InvoiceSection, &section.DocumentNumber); err != nil {
 				sectionRows.Close()
 				return nil, 0, err
 			}
@@ -334,8 +335,8 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 				contact_id = $1,
 				template_id = $2,
 				name = $3,
-				invoice_number = $4,
-				billing_period = $5,
+				billing_period_from = $4,
+				billing_period_to = $5,
 				invoice_frequency = $6,
 				issue_date = $7,
 				due_date = $8,
@@ -347,8 +348,8 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			invoice.ContactID,
 			invoice.TemplateID,
 			invoice.Name,
-			invoice.InvoiceNumber,
-			invoice.BillingPeriod,
+			invoice.BillingPeriodFrom,
+			invoice.BillingPeriodTo,
 			invoice.InvoiceFrequency,
 			invoice.IssueDate,
 			invoice.DueDate,
@@ -380,10 +381,10 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		if len(invoice.InvoiceSections) > 0 {
 			for _, section := range invoice.InvoiceSections {
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section)
-					VALUES ($1, $2)
-					ON CONFLICT (invoice_id, invoice_section) DO NOTHING
-				`, invoice.ID, section)
+					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section, document_number)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET document_number = EXCLUDED.document_number
+				`, invoice.ID, section.InvoiceSection, section.DocumentNumber)
 				if err != nil {
 					return err
 				}

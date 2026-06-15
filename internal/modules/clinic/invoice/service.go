@@ -86,7 +86,7 @@ func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) 
 }
 
 func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
-	existing, err := s.repo.Get(ctx, invoice.ID)
+	existing, err := s.repo.Get(ctx, *invoice.ID)
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 	}
 
 	// Fetch fully loaded data row from db to get client fields securely
-	hydrated, err := s.repo.Get(ctx, invoice.ID)
+	hydrated, err := s.repo.Get(ctx, *invoice.ID)
 	if err != nil {
 		return err
 	}
@@ -122,13 +122,13 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 			name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
 			dbSubject, dbBody, _ := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
 			chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
-			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.InvoiceNumber)
+			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.ID.String()[:8])
 
 			go func(to, invNum, sub, html, pdf string) {
 				if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
 					log.Printf("[MAIL-ERR] Firing automated payment confirmation receipt failed: %v", err)
 				}
-			}(rsInvoice.ContactTo.Email, rsInvoice.InvoiceNumber, subject, htmlBody, pdfBase64)
+			}(rsInvoice.ContactTo.Email, rsInvoice.ID.String()[:8], subject, htmlBody, pdfBase64)
 		}
 	}
 
@@ -180,13 +180,13 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 	chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
 	name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
 
-	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.InvoiceNumber)
+	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.ID.String()[:8])
 
 	go func(to, invNum, sub, html, pdf string) {
 		if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
 			log.Printf("[MAIL-ERR] Running async template mail worker failed processing invoice task context: %v", err)
 		}
-	}(rsInvoice.ContactTo.Email, rsInvoice.InvoiceNumber, subject, htmlBody, pdfBase64)
+	}(rsInvoice.ContactTo.Email, rsInvoice.ID.String()[:8], subject, htmlBody, pdfBase64)
 
 	return nil
 }
@@ -316,19 +316,19 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		ClinicId:   inv.ClinicID,
 		TemplateId: inv.TemplateID,
 		Data: template.InvoiceData{
-			ClinicName:         clinicName,
-			InvoiceNumber:      inv.InvoiceNumber,
-			IssueDateDisplay:   inv.IssueDate,
-			DueDateDisplay:     lo.FromPtrOr(inv.DueDate, ""),
-			BillingPeriod:      lo.FromPtrOr(inv.BillingPeriod, ""),
-			InvoiceFrequency:   lo.FromPtrOr(inv.InvoiceFrequency, ""),
-			ShowLogo:           showLogo,
-			ShowLogoImage:      showLogoImage,
-			LogoURL:            logoURL,
-			LogoInitial:        logoInitial,
-			LetterheadHTML:     letterheadHTML,
-			FooterHTML:         footerHTML,
-			Notes:              notes,
+			ClinicName:       clinicName,
+			InvoiceNumber:    inv.ID.String()[:8],
+			IssueDateDisplay: inv.IssueDate,
+			DueDateDisplay:   lo.FromPtrOr(inv.DueDate, ""),
+			BillingPeriod:    inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo,
+			InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, ""),
+			ShowLogo:         showLogo,
+			ShowLogoImage:    showLogoImage,
+			LogoURL:          logoURL,
+			LogoInitial:      logoInitial,
+			LetterheadHTML:   letterheadHTML,
+			FooterHTML:       footerHTML,
+			Notes:            notes,
 			BillFrom: template.PartyInfo{
 				Name:    billFromName,
 				Address: billFromAddress,

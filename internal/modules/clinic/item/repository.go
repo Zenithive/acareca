@@ -32,23 +32,25 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO tbl_invoice_item (
 				id,
-				invoice_id,
 				name,
 				description,
 				quantity,
 				unit_price,
 				total_amount,
+				bas_code,
+				invoice_section_id,
 				sort_order
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		`,
 			invoiceItem.ID,
-			invoiceID,
 			invoiceItem.Name,
 			invoiceItem.Description,
 			invoiceItem.Quantity,
 			invoiceItem.UnitPrice,
 			invoiceItem.TotalAmount,
+			invoiceItem.BASCode,
+			invoiceItem.InvoiceSectionID,
 			idx,
 		)
 		if err != nil {
@@ -68,9 +70,13 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			description,
 			quantity,
 			unit_price,
-			total_amount
+			total_amount,
+			bas_code,
+			invoice_section_id
 		FROM tbl_invoice_item
-		WHERE invoice_id = $1
+		WHERE invoice_section_id IN (
+			SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1 AND deleted_at IS NULL
+		)
 		AND deleted_at IS NULL
 		ORDER BY sort_order ASC, created_at ASC
 	`, invoiceID)
@@ -89,6 +95,8 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.Quantity,
 			&invoiceItem.UnitPrice,
 			&invoiceItem.TotalAmount,
+			&invoiceItem.BASCode,
+			&invoiceItem.InvoiceSectionID,
 		); err != nil {
 			return nil, err
 		}

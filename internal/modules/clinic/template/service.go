@@ -279,24 +279,24 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 
 func invoiceDataToMap(d InvoiceData) map[string]any {
 	return map[string]any{
-		"clinic_name":          d.ClinicName,
-		"invoice_number":       d.InvoiceNumber,
-		"issue_date_display":   d.IssueDateDisplay,
-		"due_date_display":     d.DueDateDisplay,
-		"billing_period":       d.BillingPeriod,
-		"invoice_frequency":    d.InvoiceFrequency,
-		"show_logo":            d.ShowLogo,
-		"show_logo_image":      d.ShowLogoImage,
-		"logo_url":             d.LogoURL,
-		"logo_initial":         d.LogoInitial,
-		"watermark_enabled":    d.WatermarkEnabled,
-		"watermark_text":       d.WatermarkText,
-		"show_tax":             d.ShowTax,
-		"letterhead_html":      d.LetterheadHTML,
-		"footer_html":          d.FooterHTML,
-		"notes":                d.Notes,
-		"amount_in_words":      d.AmountInWords,
-		"has_attachments":      d.HasAttachments,
+		"clinic_name":        d.ClinicName,
+		"invoice_number":     d.InvoiceNumber,
+		"issue_date_display": d.IssueDateDisplay,
+		"due_date_display":   d.DueDateDisplay,
+		"billing_period":     d.BillingPeriod,
+		"invoice_frequency":  d.InvoiceFrequency,
+		"show_logo":          d.ShowLogo,
+		"show_logo_image":    d.ShowLogoImage,
+		"logo_url":           d.LogoURL,
+		"logo_initial":       d.LogoInitial,
+		"watermark_enabled":  d.WatermarkEnabled,
+		"watermark_text":     d.WatermarkText,
+		"show_tax":           d.ShowTax,
+		"letterhead_html":    d.LetterheadHTML,
+		"footer_html":        d.FooterHTML,
+		"notes":              d.Notes,
+		"amount_in_words":    d.AmountInWords,
+		"has_attachments":    d.HasAttachments,
 		"bill_from": map[string]any{
 			"name": d.BillFrom.Name, "address": d.BillFrom.Address,
 			"abn": d.BillFrom.ABN, "email": d.BillFrom.Email, "phone": d.BillFrom.Phone,
@@ -407,6 +407,6 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", err
 	}
 
-	filename := fmt.Sprintf("%s-%s", inv.InvoiceNumber, inv.ClinicName)
+	filename := fmt.Sprintf("invoice-%s-%s", inv.ID.String()[:8], inv.ClinicName)
 	return pdf, filename, nil
 }

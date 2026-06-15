@@ -176,7 +176,7 @@ func (h *Handler) Update(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	rq.ID = id
+	rq.ID = &id
 
 	if err := h.svc.Update(c.Request.Context(), &rq); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
