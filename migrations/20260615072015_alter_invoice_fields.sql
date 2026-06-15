@@ -14,6 +14,12 @@ CREATE TYPE invoice_frequency AS ENUM (
     'YEARLY'
 );
 
+CREATE TYPE tax_method AS ENUM (
+    'INCLUSIVE',
+    'EXCLUSIVE',
+    'NO_TAX'
+);
+
 ALTER TABLE tbl_invoice
     DROP COLUMN IF EXISTS invoice_number,
     DROP COLUMN IF EXISTS reference,
@@ -40,6 +46,8 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
     invoice_id UUID NOT NULL REFERENCES tbl_invoice(id) ON DELETE CASCADE,
     invoice_section invoice_section NOT NULL,
     document_number VARCHAR(100) NOT NULL,
+    tax_method tax_method DEFAULT 'NO_TAX',
+    tax_rate NUMERIC(5,2) DEFAULT 0.00,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
@@ -120,5 +128,6 @@ ALTER TABLE tbl_invoice_item
 -- Drop custom types
 DROP TYPE IF EXISTS invoice_frequency;
 DROP TYPE IF EXISTS invoice_section;
+DROP TYPE IF EXISTS tax_method;
 
 -- +goose StatementEnd

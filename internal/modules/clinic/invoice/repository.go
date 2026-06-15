@@ -87,14 +87,20 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		if len(invoice.Sections) > 0 {
 			for _, section := range invoice.Sections {
 				sectionID := uuid.New()
+
+				// Calculate totals before saving
+				section.CalculateTotals()
+
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
-					VALUES ($1, $2, $3, $4)
+					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate)
+					VALUES ($1, $2, $3, $4, $5, $6)
 					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET 
 						document_number = EXCLUDED.document_number,
+						tax_method = EXCLUDED.tax_method,
+						tax_rate = EXCLUDED.tax_rate,
 						updated_at = NOW()
 					RETURNING id
-				`, sectionID, invoice.ID, section.SectionType, section.DocumentNumber)
+				`, sectionID, invoice.ID, section.SectionType, section.DocumentNumber, section.TaxMethod, section.TaxRate)
 				if err != nil {
 					return err
 				}
@@ -108,10 +114,12 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		} else {
 			// If no sections provided, create a default CALCULATION_STATEMENT section
 			sectionID := uuid.New()
+			defaultTaxMethod := "NO_TAX"
+			defaultTaxRate := 0.0
 			_, err := tx.ExecContext(ctx, `
-				INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
-				VALUES ($1, $2, $3, $4)
-			`, sectionID, invoice.ID, "CALCULATION_STATEMENT", invoice.ID.String()[:8])
+				INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate)
+				VALUES ($1, $2, $3, $4, $5, $6)
+			`, sectionID, invoice.ID, "CALCULATION_STATEMENT", invoice.ID.String()[:8], defaultTaxMethod, defaultTaxRate)
 			if err != nil {
 				return err
 			}
@@ -233,7 +241,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 
 	// Get invoice sections
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, invoice_section, document_number
+		SELECT id, invoice_section, document_number, tax_method, tax_rate
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1
 		AND deleted_at IS NULL
@@ -248,7 +256,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	for rows.Next() {
 		var section InvoiceSection
 		var sectionID uuid.UUID
-		if err := rows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber); err != nil {
+		if err := rows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber, &section.TaxMethod, &section.TaxRate); err != nil {
 			return nil, err
 		}
 		section.Entries = make([]*item.Item, 0)
@@ -270,6 +278,11 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 				invoice.Sections[idx].Entries = append(invoice.Sections[idx].Entries, itm)
 			}
 		}
+	}
+
+	// Calculate totals for each section
+	for i := range invoice.Sections {
+		invoice.Sections[i].CalculateTotals()
 	}
 
 	return &invoice, nil
@@ -349,7 +362,7 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 
 		// Get invoice sections for this invoice
 		sectionRows, err := r.db.QueryContext(ctx, `
-			SELECT id, invoice_section, document_number
+			SELECT id, invoice_section, document_number, tax_method, tax_rate
 			FROM tbl_map_invoice_section
 			WHERE invoice_id = $1
 			AND deleted_at IS NULL
@@ -363,7 +376,7 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 		for sectionRows.Next() {
 			var section InvoiceSection
 			var sectionID uuid.UUID
-			if err := sectionRows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber); err != nil {
+			if err := sectionRows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber, &section.TaxMethod, &section.TaxRate); err != nil {
 				sectionRows.Close()
 				return nil, 0, err
 			}
@@ -387,6 +400,12 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 				}
 			}
 		}
+
+		// Calculate totals for each section
+		for i := range invoice.Sections {
+			invoice.Sections[i].CalculateTotals()
+		}
+
 		invoices = append(invoices, &invoice)
 	}
 
@@ -467,12 +486,16 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		if len(invoice.Sections) > 0 {
 			for _, section := range invoice.Sections {
 				requestedSectionTypes[section.SectionType] = true
+
+				// Calculate totals before saving
+				section.CalculateTotals()
+
 				if existingID, exists := existingSections[section.SectionType]; exists {
 					_, err := tx.ExecContext(ctx, `
 						UPDATE tbl_map_invoice_section 
-						SET document_number = $1, updated_at = NOW()
-						WHERE id = $2
-					`, section.DocumentNumber, existingID)
+						SET document_number = $1, tax_method = $2, tax_rate = $3, updated_at = NOW()
+						WHERE id = $4
+					`, section.DocumentNumber, section.TaxMethod, section.TaxRate, existingID)
 					if err != nil {
 						return err
 					}
@@ -481,9 +504,9 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 					// Insert new section
 					sectionID := uuid.New()
 					_, err := tx.ExecContext(ctx, `
-						INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
-						VALUES ($1, $2, $3, $4)
-					`, sectionID, invoice.ID, section.SectionType, section.DocumentNumber)
+						INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate)
+						VALUES ($1, $2, $3, $4, $5, $6)
+					`, sectionID, invoice.ID, section.SectionType, section.DocumentNumber, section.TaxMethod, section.TaxRate)
 					if err != nil {
 						return err
 					}
@@ -496,10 +519,12 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 				sectionIDMap["CALCULATION_STATEMENT"] = existingID
 			} else {
 				sectionID := uuid.New()
+				defaultTaxMethod := "NO_TAX"
+				defaultTaxRate := 0.0
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
-					VALUES ($1, $2, $3, $4)
-				`, sectionID, invoice.ID, "CALCULATION_STATEMENT", invoice.ID.String()[:8])
+					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate)
+					VALUES ($1, $2, $3, $4, $5, $6)
+				`, sectionID, invoice.ID, "CALCULATION_STATEMENT", invoice.ID.String()[:8], defaultTaxMethod, defaultTaxRate)
 				if err != nil {
 					return err
 				}
