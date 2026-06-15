@@ -232,7 +232,6 @@ type RqGeneratePDF struct {
 // InvoiceData holds all Handlebars variables the templates expect
 type InvoiceData struct {
 	ClinicName       string `json:"clinic_name"`
-	InvoiceNumber    string `json:"invoice_number"`
 	IssueDateDisplay string `json:"issue_date_display"`
 	DueDateDisplay   string `json:"due_date_display"`
 	BillingPeriod    string `json:"billing_period"`
@@ -350,12 +349,11 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 	}
 
 	return InvoiceData{
-		ClinicName:           inv.ClinicName,
-		InvoiceNumber:        "", // Invoice number is now stored in invoice sections
-		IssueDateDisplay:     inv.IssueDate,
-		DueDateDisplay:       inv.DueDate,
-		BillingPeriod:        inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo,
-		InvoiceFrequency:     inv.InvoiceFrequency,
+		ClinicName:       inv.ClinicName,
+		IssueDateDisplay: inv.IssueDate,
+		DueDateDisplay:   inv.DueDate,
+		BillingPeriod:    inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo,
+		InvoiceFrequency: inv.InvoiceFrequency,
 		BillFrom: PartyInfo{
 			Name: inv.ClinicName,
 		},
@@ -370,24 +368,24 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 }
 
 type invoiceRow struct {
-	Id                  uuid.UUID `db:"id"`
-	ClinicId            uuid.UUID `db:"clinic_id"`
-	TemplateId          uuid.UUID `db:"template_id"`
-	BillingPeriodFrom   string    `db:"billing_period_from"`
-	BillingPeriodTo     string    `db:"billing_period_to"`
-	InvoiceFrequency    string    `db:"invoice_frequency"`
-	IssueDate           string    `db:"issue_date"`
-	DueDate             string    `db:"due_date"`
-	Status              string    `db:"status"`
-	FName               string    `db:"fname"`
-	LName               string    `db:"lname"`
-	Email               string    `db:"email"`
-	Phone               string    `db:"phone"`
-	ABN                 string    `db:"abn"`
-	ClinicName          string    `db:"clinic_name"`
-	AddressLine1        string    `db:"address_line1"`
-	City                string    `db:"city"`
-	State               string    `db:"state"`
-	PostalCode          string    `db:"postal_code"`
-	Country             string    `db:"country"`
+	Id                uuid.UUID `db:"id"`
+	ClinicId          uuid.UUID `db:"clinic_id"`
+	TemplateId        uuid.UUID `db:"template_id"`
+	BillingPeriodFrom string    `db:"billing_period_from"`
+	BillingPeriodTo   string    `db:"billing_period_to"`
+	InvoiceFrequency  string    `db:"invoice_frequency"`
+	IssueDate         string    `db:"issue_date"`
+	DueDate           string    `db:"due_date"`
+	Status            string    `db:"status"`
+	FName             string    `db:"fname"`
+	LName             string    `db:"lname"`
+	Email             string    `db:"email"`
+	Phone             string    `db:"phone"`
+	ABN               string    `db:"abn"`
+	ClinicName        string    `db:"clinic_name"`
+	AddressLine1      string    `db:"address_line1"`
+	City              string    `db:"city"`
+	State             string    `db:"state"`
+	PostalCode        string    `db:"postal_code"`
+	Country           string    `db:"country"`
 }

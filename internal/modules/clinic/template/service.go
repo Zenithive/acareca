@@ -280,7 +280,6 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 func invoiceDataToMap(d InvoiceData) map[string]any {
 	return map[string]any{
 		"clinic_name":        d.ClinicName,
-		"invoice_number":     d.InvoiceNumber,
 		"issue_date_display": d.IssueDateDisplay,
 		"due_date_display":   d.DueDateDisplay,
 		"billing_period":     d.BillingPeriod,

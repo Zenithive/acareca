@@ -264,10 +264,10 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 	}
 
 	// --- Line items ---
-	pdfItems := make([]template.LineItem, 0, len(inv.Items))
+	pdfItems := make([]template.LineItem, 0, len(inv.Entries))
 	var grandTotal float64
 
-	for _, it := range inv.Items {
+	for _, it := range inv.Entries {
 		var desc string
 		if it.Description != nil {
 			desc = *it.Description
@@ -317,7 +317,6 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		TemplateId: inv.TemplateID,
 		Data: template.InvoiceData{
 			ClinicName:       clinicName,
-			InvoiceNumber:    inv.ID.String()[:8],
 			IssueDateDisplay: inv.IssueDate,
 			DueDateDisplay:   lo.FromPtrOr(inv.DueDate, ""),
 			BillingPeriod:    inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo,

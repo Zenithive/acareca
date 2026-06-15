@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
 ALTER TABLE tbl_invoice_item
     ADD COLUMN IF NOT EXISTS bas_code VARCHAR(20),
     ADD COLUMN IF NOT EXISTS invoice_section_id UUID,
-    ADD COLUMN IF NOT EXISTS sort_order INT DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS entry_type VARCHAR(50);
 
 -- Add foreign key constraint for invoice section
 ALTER TABLE tbl_invoice_item
@@ -88,7 +88,8 @@ ALTER TABLE tbl_invoice_item
 ALTER TABLE tbl_invoice_item
     DROP COLUMN IF EXISTS bas_code,
     DROP COLUMN IF EXISTS invoice_section_id,
-    DROP COLUMN IF EXISTS sort_order;
+    DROP COLUMN IF EXISTS entry_type,
+    DROP COLUMN IF EXISTS amount;
 
 -- Drop the mapping table
 DROP TABLE IF EXISTS tbl_map_invoice_section;

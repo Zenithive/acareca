@@ -24,34 +24,39 @@ func NewRepository(db *sqlx.DB) IRepository {
 
 // Create implements [IRepository].
 func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error {
-	for idx, invoiceItem := range items {
+	for _, invoiceItem := range items {
 		if invoiceItem.ID == uuid.Nil {
 			invoiceItem.ID = uuid.New()
 		}
+
+		// Calculate total_amount as quantity * unit_price
+		totalAmount := float64(invoiceItem.Quantity) * invoiceItem.UnitPrice
 
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO tbl_invoice_item (
 				id,
 				name,
 				description,
+				entry_type,
+				bas_code,
 				quantity,
 				unit_price,
 				total_amount,
-				bas_code,
 				invoice_section_id,
 				sort_order
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		`,
 			invoiceItem.ID,
 			invoiceItem.Name,
 			invoiceItem.Description,
+			invoiceItem.EntryType,
+			invoiceItem.BASCode,
 			invoiceItem.Quantity,
 			invoiceItem.UnitPrice,
-			invoiceItem.TotalAmount,
-			invoiceItem.BASCode,
+			totalAmount,
 			invoiceItem.InvoiceSectionID,
-			idx,
+			invoiceItem.SortOrder,
 		)
 		if err != nil {
 			return err
@@ -68,11 +73,13 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			id,
 			name,
 			description,
+			entry_type,
+			bas_code,
 			quantity,
 			unit_price,
 			total_amount,
-			bas_code,
-			invoice_section_id
+			invoice_section_id,
+			sort_order
 		FROM tbl_invoice_item
 		WHERE invoice_section_id IN (
 			SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -92,11 +99,13 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.ID,
 			&invoiceItem.Name,
 			&invoiceItem.Description,
+			&invoiceItem.EntryType,
+			&invoiceItem.BASCode,
 			&invoiceItem.Quantity,
 			&invoiceItem.UnitPrice,
 			&invoiceItem.TotalAmount,
-			&invoiceItem.BASCode,
 			&invoiceItem.InvoiceSectionID,
+			&invoiceItem.SortOrder,
 		); err != nil {
 			return nil, err
 		}
