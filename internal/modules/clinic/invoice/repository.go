@@ -82,16 +82,45 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		// Insert invoice sections
+		// Insert invoice sections and build a map of section type to section ID
+		sectionIDMap := make(map[string]uuid.UUID)
 		if len(invoice.InvoiceSections) > 0 {
 			for _, section := range invoice.InvoiceSections {
+				sectionID := uuid.New()
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section, document_number)
-					VALUES ($1, $2, $3)
-					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET document_number = EXCLUDED.document_number
-				`, invoice.ID, section.InvoiceSection, section.DocumentNumber)
+					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
+					VALUES ($1, $2, $3, $4)
+					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET 
+						document_number = EXCLUDED.document_number,
+						id = tbl_map_invoice_section.id
+					RETURNING id
+				`, sectionID, invoice.ID, section.InvoiceSection, section.DocumentNumber)
 				if err != nil {
 					return err
+				}
+				sectionIDMap[section.InvoiceSection] = sectionID
+			}
+		} else {
+			// If no sections provided, create a default CALCULATION_STATEMENT section
+			sectionID := uuid.New()
+			_, err := tx.ExecContext(ctx, `
+				INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
+				VALUES ($1, $2, $3, $4)
+			`, sectionID, invoice.ID, "CALCULATION_STATEMENT", invoice.ID.String()[:8])
+			if err != nil {
+				return err
+			}
+			sectionIDMap["CALCULATION_STATEMENT"] = sectionID
+		}
+
+		// Link items to their sections or default section
+		for _, item := range invoice.Items {
+			// If item doesn't have a section assigned, use the first available section
+			if item.InvoiceSectionID == nil && len(sectionIDMap) > 0 {
+				// Get first section ID from map
+				for _, secID := range sectionIDMap {
+					item.InvoiceSectionID = &secID
+					break
 				}
 			}
 		}
@@ -377,32 +406,57 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		// Then insert new sections
+		// Then insert new sections and build section ID map
+		sectionIDMap := make(map[string]uuid.UUID)
 		if len(invoice.InvoiceSections) > 0 {
 			for _, section := range invoice.InvoiceSections {
+				sectionID := uuid.New()
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section, document_number)
-					VALUES ($1, $2, $3)
-					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET document_number = EXCLUDED.document_number
-				`, invoice.ID, section.InvoiceSection, section.DocumentNumber)
+					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
+					VALUES ($1, $2, $3, $4)
+				`, sectionID, invoice.ID, section.InvoiceSection, section.DocumentNumber)
 				if err != nil {
 					return err
 				}
+				sectionIDMap[section.InvoiceSection] = sectionID
 			}
+		} else {
+			// If no sections provided, create a default CALCULATION_STATEMENT section
+			sectionID := uuid.New()
+			_, err := tx.ExecContext(ctx, `
+				INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number)
+				VALUES ($1, $2, $3, $4)
+			`, sectionID, invoice.ID, "CALCULATION_STATEMENT", invoice.ID.String()[:8])
+			if err != nil {
+				return err
+			}
+			sectionIDMap["CALCULATION_STATEMENT"] = sectionID
 		}
 
+		// Delete old items (they will be recreated)
 		_, err = tx.ExecContext(ctx, `
 			UPDATE tbl_invoice_item
 			SET deleted_at = NOW(), updated_at = NOW()
-			WHERE invoice_id = $1
+			WHERE invoice_section_id IN (
+				SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1
+			)
 			AND deleted_at IS NULL
 		`, invoice.ID)
 		if err != nil {
 			return err
 		}
 
-		for _, invoiceItem := range invoice.Items {
-			invoiceItem.ID = uuid.New()
+		// Link items to their sections or default section
+		for _, item := range invoice.Items {
+			item.ID = uuid.New()
+			// If item doesn't have a section assigned, use the first available section
+			if item.InvoiceSectionID == nil && len(sectionIDMap) > 0 {
+				// Get first section ID from map
+				for _, secID := range sectionIDMap {
+					item.InvoiceSectionID = &secID
+					break
+				}
+			}
 		}
 
 		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)

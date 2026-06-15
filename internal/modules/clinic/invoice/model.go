@@ -10,7 +10,7 @@ import (
 )
 
 type InvoiceSectionItem struct {
-	InvoiceSection string `json:"invoice_section" validate:"required,oneof=SINGLE_INVOICE CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	InvoiceSection string `json:"invoice_section" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
 	DocumentNumber string `json:"document_number" validate:"required"`
 }
 
@@ -52,6 +52,17 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		status = &defaultStatus
 	}
 
+	// If no sections provided, create a default CALCULATION_STATEMENT section
+	sections := r.InvoiceSections
+	if len(sections) == 0 {
+		sections = []InvoiceSectionItem{
+			{
+				InvoiceSection: "CALCULATION_STATEMENT",
+				DocumentNumber: uuid.New().String()[:8], // Generate a short doc number
+			},
+		}
+	}
+
 	return &Invoice{
 		ClinicID:          r.ClinicID,
 		ContactID:         &r.ContactID,
@@ -63,7 +74,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		IssueDate:         r.IssueDate,
 		Status:            status,
 		DueDate:           r.DueDate,
-		InvoiceSections:   r.InvoiceSections,
+		InvoiceSections:   sections,
 		Items:             items,
 	}
 }
@@ -127,6 +138,14 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 
 	if r.InvoiceSections != nil {
 		inv.InvoiceSections = r.InvoiceSections
+	} else if len(inv.InvoiceSections) == 0 {
+		// Ensure at least one section exists
+		inv.InvoiceSections = []InvoiceSectionItem{
+			{
+				InvoiceSection: "CALCULATION_STATEMENT",
+				DocumentNumber: inv.ID.String()[:8],
+			},
+		}
 	}
 
 	return inv
