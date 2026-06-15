@@ -14658,9 +14658,6 @@ const docTemplate = `{
         "item.Item": {
             "type": "object",
             "properties": {
-                "amount": {
-                    "type": "number"
-                },
                 "bascode": {
                     "type": "string"
                 },
@@ -14699,9 +14696,6 @@ const docTemplate = `{
                 "id"
             ],
             "properties": {
-                "amount": {
-                    "type": "number"
-                },
                 "basCode": {
                     "type": "string"
                 },

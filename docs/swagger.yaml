@@ -2605,8 +2605,6 @@ definitions:
     type: object
   item.Item:
     properties:
-      amount:
-        type: number
       bascode:
         type: string
       description:
@@ -2630,8 +2628,6 @@ definitions:
     type: object
   item.RqUpdateEntry:
     properties:
-      amount:
-        type: number
       basCode:
         type: string
       description:

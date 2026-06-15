@@ -14650,9 +14650,6 @@
         "item.Item": {
             "type": "object",
             "properties": {
-                "amount": {
-                    "type": "number"
-                },
                 "bascode": {
                     "type": "string"
                 },
@@ -14691,9 +14688,6 @@
                 "id"
             ],
             "properties": {
-                "amount": {
-                    "type": "number"
-                },
                 "basCode": {
                     "type": "string"
                 },
