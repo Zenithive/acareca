@@ -10,18 +10,18 @@ import (
 )
 
 type RqInvoice struct {
-	ClinicID      uuid.UUID      `json:"clinic_id" validate:"-"`
-	ContactID     uuid.UUID      `json:"contact_id" validate:"required"`
-	TemplateID    uuid.UUID      `json:"template_id" validate:"required"`
-	Name          string         `json:"name" validate:"required"`
-	InvoiceNumber string         `json:"invoice_number" validate:"required"`
-	Reference     *string        `json:"reference,omitempty"`
-	PaymentMethod *string        `json:"payment_method" validate:"omitempty,oneof=CASH CARD ONLINE"`
-	TaxMethod     *string        `json:"tax_method" validate:"omitempty,oneof=EXCLUSIVE INCLUSIVE"`
-	IssueDate     string         `json:"issue_date" validate:"required,datetime=2006-01-02"`
-	DueDate       *string        `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	Status        *string        `json:"status"`
-	Items         []*item.RqItem `json:"items" validate:"required,dive"`
+	ClinicID         uuid.UUID      `json:"clinic_id" validate:"-"`
+	ContactID        uuid.UUID      `json:"contact_id" validate:"required"`
+	TemplateID       uuid.UUID      `json:"template_id" validate:"required"`
+	Name             string         `json:"name" validate:"required"`
+	InvoiceNumber    string         `json:"invoice_number" validate:"required"`
+	BillingPeriod    *string        `json:"billing_period,omitempty"`
+	InvoiceFrequency *string        `json:"invoice_frequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
+	IssueDate        string         `json:"issue_date" validate:"required,datetime=2006-01-02"`
+	DueDate          *string        `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status           *string        `json:"status"`
+	InvoiceSections  []string       `json:"invoice_sections,omitempty" validate:"omitempty,dive,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	Items            []*item.RqItem `json:"items" validate:"required,dive"`
 }
 
 func (r *RqInvoice) ToInvoice() *Invoice {
@@ -38,18 +38,18 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 	}
 
 	return &Invoice{
-		ClinicID:      r.ClinicID,
-		ContactID:     &r.ContactID,
-		TemplateID:    r.TemplateID,
-		Name:          r.Name,
-		InvoiceNumber: r.InvoiceNumber,
-		Reference:     r.Reference,
-		PaymentMethod: r.PaymentMethod,
-		TaxMethod:     r.TaxMethod,
-		IssueDate:     r.IssueDate,
-		Status:        status,
-		DueDate:       r.DueDate,
-		Items:         items,
+		ClinicID:         r.ClinicID,
+		ContactID:        &r.ContactID,
+		TemplateID:       r.TemplateID,
+		Name:             r.Name,
+		InvoiceNumber:    r.InvoiceNumber,
+		BillingPeriod:    r.BillingPeriod,
+		InvoiceFrequency: r.InvoiceFrequency,
+		IssueDate:        r.IssueDate,
+		Status:           status,
+		DueDate:          r.DueDate,
+		InvoiceSections:  r.InvoiceSections,
+		Items:            items,
 	}
 }
 
@@ -59,12 +59,12 @@ type RqUpdateInvoice struct {
 	TemplateID       *uuid.UUID           `json:"template_id,omitempty"`
 	Name             *string              `json:"name,omitempty"`
 	InvoiceNumber    *string              `json:"invoice_number,omitempty"`
-	Reference        *string              `json:"reference,omitempty"`
-	PaymentMethod    *string              `json:"payment_method,omitempty" validate:"omitempty,oneof=CASH CARD ONLINE"`
-	TaxMethod        *string              `json:"tax_method,omitempty" validate:"omitempty,oneof=EXCLUSIVE INCLUSIVE"`
+	BillingPeriod    *string              `json:"billing_period,omitempty"`
+	InvoiceFrequency *string              `json:"invoice_frequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
 	IssueDate        *string              `json:"issue_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	DueDate          *string              `json:"due_date,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	Status           *string              `json:"status,omitempty"`
+	InvoiceSections  []string             `json:"invoice_sections,omitempty" validate:"omitempty,dive,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
 	Items            []*item.RqUpdateItem `json:"items,omitempty" validate:"omitempty,dive"`
 	AttachmentBase64 string               `json:"attachment_base64,omitempty"`
 }
@@ -83,14 +83,11 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	if r.InvoiceNumber != nil {
 		inv.InvoiceNumber = *r.InvoiceNumber
 	}
-	if r.Reference != nil {
-		inv.Reference = r.Reference
+	if r.BillingPeriod != nil {
+		inv.BillingPeriod = r.BillingPeriod
 	}
-	if r.PaymentMethod != nil {
-		inv.PaymentMethod = r.PaymentMethod
-	}
-	if r.TaxMethod != nil {
-		inv.TaxMethod = r.TaxMethod
+	if r.InvoiceFrequency != nil {
+		inv.InvoiceFrequency = r.InvoiceFrequency
 	}
 	if r.IssueDate != nil {
 		inv.IssueDate = *r.IssueDate
@@ -111,26 +108,30 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		inv.Status = r.Status
 	}
 
+	if r.InvoiceSections != nil {
+		inv.InvoiceSections = r.InvoiceSections
+	}
+
 	return inv
 }
 
 type Invoice struct {
-	ID            uuid.UUID        `db:"id"`
-	ClinicID      uuid.UUID        `db:"clinic_id"`
-	ContactID     *uuid.UUID       `db:"contact_id"`
-	TemplateID    uuid.UUID        `db:"template_id"`
-	Name          string           `db:"name"`
-	InvoiceNumber string           `db:"invoice_number"`
-	Reference     *string          `db:"reference,omitempty"`
-	PaymentMethod *string          `db:"payment_method,omitempty"`
-	TaxMethod     *string          `db:"tax_method,omitempty"`
-	IssueDate     string           `db:"issue_date"`
-	DueDate       *string          `db:"due_date,omitempty"`
-	Status        *string          `db:"status"`
-	ContactTo     *contact.Contact `db:"-"`
-	Items         []*item.Item     `db:"-"`
-	CreatedAt     string           `db:"created_at"`
-	UpdatedAt     string           `db:"updated_at"`
+	ID               uuid.UUID        `db:"id"`
+	ClinicID         uuid.UUID        `db:"clinic_id"`
+	ContactID        *uuid.UUID       `db:"contact_id"`
+	TemplateID       uuid.UUID        `db:"template_id"`
+	Name             string           `db:"name"`
+	InvoiceNumber    string           `db:"invoice_number"`
+	BillingPeriod    *string          `db:"billing_period,omitempty"`
+	InvoiceFrequency *string          `db:"invoice_frequency,omitempty"`
+	IssueDate        string           `db:"issue_date"`
+	DueDate          *string          `db:"due_date,omitempty"`
+	Status           *string          `db:"status"`
+	ContactTo        *contact.Contact `db:"-"`
+	InvoiceSections  []string         `db:"-"`
+	Items            []*item.Item     `db:"-"`
+	CreatedAt        string           `db:"created_at"`
+	UpdatedAt        string           `db:"updated_at"`
 }
 
 func (i *Invoice) ToRsInvoice() *RsInvoice {
@@ -146,44 +147,44 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 	}
 
 	return &RsInvoice{
-		ID:            i.ID,
-		ClinicID:      i.ClinicID,
-		ContactID:     i.ContactID,
-		ContactTo:     contactTo,
-		SentTo:        contactTo,
-		TemplateID:    i.TemplateID,
-		Name:          i.Name,
-		InvoiceNumber: i.InvoiceNumber,
-		Reference:     i.Reference,
-		PaymentMethod: i.PaymentMethod,
-		TaxMethod:     i.TaxMethod,
-		IssueDate:     i.IssueDate,
-		DueDate:       i.DueDate,
-		Status:        i.Status,
-		Items:         items,
-		CreatedAt:     i.CreatedAt,
-		UpdatedAt:     i.UpdatedAt,
+		ID:               i.ID,
+		ClinicID:         i.ClinicID,
+		ContactID:        i.ContactID,
+		ContactTo:        contactTo,
+		SentTo:           contactTo,
+		TemplateID:       i.TemplateID,
+		Name:             i.Name,
+		InvoiceNumber:    i.InvoiceNumber,
+		BillingPeriod:    i.BillingPeriod,
+		InvoiceFrequency: i.InvoiceFrequency,
+		IssueDate:        i.IssueDate,
+		DueDate:          i.DueDate,
+		Status:           i.Status,
+		InvoiceSections:  i.InvoiceSections,
+		Items:            items,
+		CreatedAt:        i.CreatedAt,
+		UpdatedAt:        i.UpdatedAt,
 	}
 }
 
 type RsInvoice struct {
-	ID            uuid.UUID          `json:"id"`
-	ClinicID      uuid.UUID          `json:"clinic_id"`
-	ContactID     *uuid.UUID         `json:"contact_id,omitempty"`
-	ContactTo     *contact.RsContact `json:"contact_to,omitempty"`
-	SentTo        *contact.RsContact `json:"sent_to,omitempty"`
-	TemplateID    uuid.UUID          `json:"template_id"`
-	Name          string             `json:"name"`
-	InvoiceNumber string             `json:"invoice_number"`
-	Reference     *string            `json:"reference,omitempty"`
-	PaymentMethod *string            `json:"payment_method,omitempty"`
-	TaxMethod     *string            `json:"tax_method,omitempty"`
-	IssueDate     string             `json:"issue_date"`
-	DueDate       *string            `json:"due_date,omitempty"`
-	Status        *string            `json:"status"`
-	Items         []*item.RsItem     `json:"items,omitempty"`
-	CreatedAt     string             `json:"created_at"`
-	UpdatedAt     string             `json:"updated_at"`
+	ID               uuid.UUID          `json:"id"`
+	ClinicID         uuid.UUID          `json:"clinic_id"`
+	ContactID        *uuid.UUID         `json:"contact_id,omitempty"`
+	ContactTo        *contact.RsContact `json:"contact_to,omitempty"`
+	SentTo           *contact.RsContact `json:"sent_to,omitempty"`
+	TemplateID       uuid.UUID          `json:"template_id"`
+	Name             string             `json:"name"`
+	InvoiceNumber    string             `json:"invoice_number"`
+	BillingPeriod    *string            `json:"billing_period,omitempty"`
+	InvoiceFrequency *string            `json:"invoice_frequency,omitempty"`
+	IssueDate        string             `json:"issue_date"`
+	DueDate          *string            `json:"due_date,omitempty"`
+	Status           *string            `json:"status"`
+	InvoiceSections  []string           `json:"invoice_sections,omitempty"`
+	Items            []*item.RsItem     `json:"items,omitempty"`
+	CreatedAt        string             `json:"created_at"`
+	UpdatedAt        string             `json:"updated_at"`
 }
 
 type Filter struct {

@@ -265,40 +265,21 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 
 	// --- Line items ---
 	pdfItems := make([]template.LineItem, 0, len(inv.Items))
-	var subtotal, taxTotal, grandTotal float64
+	var grandTotal float64
 
 	for _, it := range inv.Items {
 		var desc string
 		if it.Description != nil {
 			desc = *it.Description
 		}
-		var taxRate, taxAmt float64
-		if it.TaxRate != nil {
-			taxRate = *it.TaxRate
-		}
-		if it.TaxAmount != nil {
-			taxAmt = *it.TaxAmount
-		}
 		pdfItems = append(pdfItems, template.LineItem{
 			Name:        it.Name,
 			Description: desc,
 			UnitPrice:   it.UnitPrice,
 			Qty:         it.Quantity,
-			TaxPercent:  taxRate,
-			TaxAmount:   taxAmt,
 			LineTotal:   it.TotalAmount,
 		})
-		taxTotal += taxAmt
 		grandTotal += it.TotalAmount
-	}
-	subtotal = grandTotal - taxTotal
-
-	var paymentLabel, taxLabel string
-	if inv.PaymentMethod != nil {
-		paymentLabel = *inv.PaymentMethod
-	}
-	if inv.TaxMethod != nil {
-		taxLabel = *inv.TaxMethod
 	}
 
 	// --- Template settings: logo, letterhead, footer, terms ---
@@ -339,9 +320,8 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 			InvoiceNumber:      inv.InvoiceNumber,
 			IssueDateDisplay:   inv.IssueDate,
 			DueDateDisplay:     lo.FromPtrOr(inv.DueDate, ""),
-			Reference:          lo.FromPtrOr(inv.Reference, ""),
-			PaymentMethodLabel: paymentLabel,
-			TaxMethodLabel:     taxLabel,
+			BillingPeriod:      lo.FromPtrOr(inv.BillingPeriod, ""),
+			InvoiceFrequency:   lo.FromPtrOr(inv.InvoiceFrequency, ""),
 			ShowLogo:           showLogo,
 			ShowLogoImage:      showLogoImage,
 			LogoURL:            logoURL,
@@ -364,15 +344,10 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 				Phone:   billToPhone,
 			},
 			Items:      pdfItems,
-			Subtotal:   subtotal,
-			TaxTotal:   taxTotal,
 			GrandTotal: grandTotal,
 
 			// UI Component Display Variables and Table Captions
 			TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
-			TotalsSubtotalLabel:  "Subtotal",
-			TotalsTaxLabel:       "Included tax (GST)",
-			TotalsDiscountLabel:  "Discount",
 			TotalsGrandLabel:     "Total (AUD)",
 		},
 	}

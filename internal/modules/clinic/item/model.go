@@ -3,14 +3,11 @@ package item
 import "github.com/google/uuid"
 
 type RqItem struct {
-	Name        string   `json:"name" validate:"required"`
-	Description *string  `json:"description,omitempty"`
-	Quantity    int      `json:"quantity" validate:"required,gt=0"`
-	UnitPrice   float64  `json:"unit_price" validate:"required,gt=0"`
-	Discount    *float64 `json:"discount,omitempty" validate:"omitempty,gte=0"`
-	TaxRate     *float64 `json:"tax_rate,omitempty" validate:"omitempty,gte=0"`
-	TaxAmount   *float64 `json:"tax_amount,omitempty" validate:"omitempty,gte=0"`
-	TotalAmount float64  `json:"total_amount" validate:"required,gt=0"`
+	Name        string  `json:"name" validate:"required"`
+	Description *string `json:"description,omitempty"`
+	Quantity    int     `json:"quantity" validate:"required,gt=0"`
+	UnitPrice   float64 `json:"unit_price" validate:"required,gt=0"`
+	TotalAmount float64 `json:"total_amount" validate:"required,gt=0"`
 }
 
 func (r *RqItem) ToItem() *Item {
@@ -20,9 +17,6 @@ func (r *RqItem) ToItem() *Item {
 		Description: r.Description,
 		Quantity:    r.Quantity,
 		UnitPrice:   r.UnitPrice,
-		Discount:    r.Discount,
-		TaxRate:     r.TaxRate,
-		TaxAmount:   r.TaxAmount,
 		TotalAmount: r.TotalAmount,
 	}
 }
@@ -33,9 +27,6 @@ type RqUpdateItem struct {
 	Description *string   `json:"description,omitempty"`
 	Quantity    *int      `json:"quantity,omitempty" validate:"omitempty,gt=0"`
 	UnitPrice   *float64  `json:"unit_price,omitempty" validate:"omitempty,gt=0"`
-	Discount    *float64  `json:"discount,omitempty" validate:"omitempty,gte=0"`
-	TaxRate     *float64  `json:"tax_rate,omitempty" validate:"omitempty,gte=0"`
-	TaxAmount   *float64  `json:"tax_amount,omitempty" validate:"omitempty,gte=0"`
 	TotalAmount *float64  `json:"total_amount,omitempty" validate:"omitempty,gt=0"`
 }
 
@@ -52,15 +43,6 @@ func (r *RqUpdateItem) ApplyToItem(item *Item) *Item {
 	if r.UnitPrice != nil {
 		item.UnitPrice = *r.UnitPrice
 	}
-	if r.Discount != nil {
-		item.Discount = r.Discount
-	}
-	if r.TaxRate != nil {
-		item.TaxRate = r.TaxRate
-	}
-	if r.TaxAmount != nil {
-		item.TaxAmount = r.TaxAmount
-	}
 	if r.TotalAmount != nil {
 		item.TotalAmount = *r.TotalAmount
 	}
@@ -73,9 +55,6 @@ type Item struct {
 	Description *string   `db:"description,omitempty"`
 	Quantity    int       `db:"quantity"`
 	UnitPrice   float64   `db:"unit_price"`
-	Discount    *float64  `db:"discount"`
-	TaxRate     *float64  `db:"tax_rate"`
-	TaxAmount   *float64  `db:"tax_amount"`
 	TotalAmount float64   `db:"total_amount"`
 }
 
@@ -87,9 +66,6 @@ func (i *Item) ToRsItem(invoiceID uuid.UUID) *RsItem {
 		Description: i.Description,
 		Quantity:    i.Quantity,
 		UnitPrice:   i.UnitPrice,
-		Discount:    i.Discount,
-		TaxRate:     i.TaxRate,
-		TaxAmount:   i.TaxAmount,
 		TotalAmount: i.TotalAmount,
 	}
 }
@@ -101,8 +77,5 @@ type RsItem struct {
 	Description *string   `json:"description,omitempty"`
 	Quantity    int       `json:"quantity"`
 	UnitPrice   float64   `json:"unit_price"`
-	Discount    *float64  `json:"discount,omitempty"`
-	TaxRate     *float64  `json:"tax_rate,omitempty"`
-	TaxAmount   *float64  `json:"tax_amount,omitempty"`
 	TotalAmount float64   `json:"total_amount"`
 }

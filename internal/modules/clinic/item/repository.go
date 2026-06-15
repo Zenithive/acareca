@@ -37,13 +37,10 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				description,
 				quantity,
 				unit_price,
-				discount,
-				tax_rate,
-				tax_amount,
 				total_amount,
 				sort_order
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		`,
 			invoiceItem.ID,
 			invoiceID,
@@ -51,9 +48,6 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.Description,
 			invoiceItem.Quantity,
 			invoiceItem.UnitPrice,
-			invoiceItem.Discount,
-			invoiceItem.TaxRate,
-			invoiceItem.TaxAmount,
 			invoiceItem.TotalAmount,
 			idx,
 		)
@@ -74,9 +68,6 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			description,
 			quantity,
 			unit_price,
-			discount,
-			tax_rate,
-			tax_amount,
 			total_amount
 		FROM tbl_invoice_item
 		WHERE invoice_id = $1
@@ -97,9 +88,6 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.Description,
 			&invoiceItem.Quantity,
 			&invoiceItem.UnitPrice,
-			&invoiceItem.Discount,
-			&invoiceItem.TaxRate,
-			&invoiceItem.TaxAmount,
 			&invoiceItem.TotalAmount,
 		); err != nil {
 			return nil, err

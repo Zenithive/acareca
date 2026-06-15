@@ -210,8 +210,8 @@ func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.D
 func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error) {
 	const q = `
         SELECT
-            i.id, i.clinic_id, i.template_id, i.invoice_number, i.reference,
-            i.payment_method, i.tax_method, i.issue_date::text, i.due_date::text,
+            i.id, i.clinic_id, i.template_id, i.invoice_number, 
+            i.billing_period, i.invoice_frequency, i.issue_date::text, i.due_date::text,
             i.status,
             cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
             cl.clinic_name as clinic_name,
@@ -235,7 +235,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	const itemQ = `
-        SELECT name, description, quantity, unit_price, discount, tax_rate, tax_amount, total_amount
+        SELECT name, description, quantity, unit_price, total_amount
         FROM tbl_invoice_item
         WHERE invoice_id = $1`
 	var items []InvoiceItem
@@ -262,17 +262,16 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	return &InvoiceResponse{
-		ID:            row.Id,
-		ClinicID:      row.ClinicId,
-		TemplateID:    row.TemplateId,
-		InvoiceNumber: row.InvoiceNumber,
-		Reference:     row.Reference,
-		PaymentMethod: row.PaymentMethod,
-		TaxMethod:     row.TaxMethod,
-		IssueDate:     row.IssueDate,
-		DueDate:       row.DueDate,
-		Status:        row.Status,
-		ClinicName:    row.ClinicName,
+		ID:               row.Id,
+		ClinicID:         row.ClinicId,
+		TemplateID:       row.TemplateId,
+		InvoiceNumber:    row.InvoiceNumber,
+		BillingPeriod:    row.BillingPeriod,
+		InvoiceFrequency: row.InvoiceFrequency,
+		IssueDate:        row.IssueDate,
+		DueDate:          row.DueDate,
+		Status:           row.Status,
+		ClinicName:       row.ClinicName,
 		SentTo: InvoiceContact{
 			FName:   row.FName,
 			LName:   row.LName,

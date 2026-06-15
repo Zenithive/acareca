@@ -50,8 +50,6 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		subtotal, taxTotal, grandTotal := calculateTotals(invoice.Items)
-
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO tbl_invoice (
 				id,
@@ -60,17 +58,13 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 				template_id,
 				name,
 				invoice_number,
-				reference,
-				payment_method,
-				tax_method,
+				billing_period,
+				invoice_frequency,
 				issue_date,
 				due_date,
-				subtotal,
-				tax_total,
-				grand_total,
 				status
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		`,
 			invoice.ID,
 			invoice.ClinicID,
@@ -78,18 +72,28 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			invoice.TemplateID,
 			invoice.Name,
 			invoice.InvoiceNumber,
-			invoice.Reference,
-			invoice.PaymentMethod,
-			invoice.TaxMethod,
+			invoice.BillingPeriod,
+			invoice.InvoiceFrequency,
 			invoice.IssueDate,
 			invoice.DueDate,
-			subtotal,
-			taxTotal,
-			grandTotal,
 			invoice.Status,
 		)
 		if err != nil {
 			return err
+		}
+
+		// Insert invoice sections
+		if len(invoice.InvoiceSections) > 0 {
+			for _, section := range invoice.InvoiceSections {
+				_, err := tx.ExecContext(ctx, `
+					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section)
+					VALUES ($1, $2)
+					ON CONFLICT (invoice_id, invoice_section) DO NOTHING
+				`, invoice.ID, section)
+				if err != nil {
+					return err
+				}
+			}
 		}
 
 		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)
@@ -139,9 +143,8 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 			template_id,
 			name,
 			invoice_number,
-			reference,
-			payment_method,
-			tax_method,
+			billing_period,
+			invoice_frequency,
 			status,
 			issue_date::text,
 			due_date::text,
@@ -157,9 +160,8 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 		&invoice.TemplateID,
 		&invoice.Name,
 		&invoice.InvoiceNumber,
-		&invoice.Reference,
-		&invoice.PaymentMethod,
-		&invoice.TaxMethod,
+		&invoice.BillingPeriod,
+		&invoice.InvoiceFrequency,
 		&invoice.Status,
 		&invoice.IssueDate,
 		&invoice.DueDate,
@@ -181,6 +183,28 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 
 		invoice.ContactTo = &contact
 	}
+
+	// Get invoice sections
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT invoice_section
+		FROM tbl_map_invoice_section
+		WHERE invoice_id = $1
+		AND deleted_at IS NULL
+	`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sections := make([]string, 0)
+	for rows.Next() {
+		var section string
+		if err := rows.Scan(&section); err != nil {
+			return nil, err
+		}
+		sections = append(sections, section)
+	}
+	invoice.InvoiceSections = sections
 
 	items, err := r.itemRepo.GetByInvoiceID(ctx, nil, invoice.ID)
 	if err != nil {
@@ -225,9 +249,8 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 			template_id,
 			name,
 			invoice_number,
-			reference,
-			payment_method,
-			tax_method,
+			billing_period,
+			invoice_frequency,
 			status,
 			issue_date::text,
 			due_date::text,
@@ -254,9 +277,8 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 			&invoice.TemplateID,
 			&invoice.Name,
 			&invoice.InvoiceNumber,
-			&invoice.Reference,
-			&invoice.PaymentMethod,
-			&invoice.TaxMethod,
+			&invoice.BillingPeriod,
+			&invoice.InvoiceFrequency,
 			&invoice.Status,
 			&invoice.IssueDate,
 			&invoice.DueDate,
@@ -265,6 +287,29 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 		); err != nil {
 			return nil, 0, err
 		}
+
+		// Get invoice sections for this invoice
+		sectionRows, err := r.db.QueryContext(ctx, `
+			SELECT invoice_section
+			FROM tbl_map_invoice_section
+			WHERE invoice_id = $1
+			AND deleted_at IS NULL
+		`, invoice.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		sections := make([]string, 0)
+		for sectionRows.Next() {
+			var section string
+			if err := sectionRows.Scan(&section); err != nil {
+				sectionRows.Close()
+				return nil, 0, err
+			}
+			sections = append(sections, section)
+		}
+		sectionRows.Close()
+		invoice.InvoiceSections = sections
 
 		invoice.Items, err = r.itemRepo.GetByInvoiceID(ctx, r.db, invoice.ID)
 		if err != nil {
@@ -283,8 +328,6 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		subtotal, taxTotal, grandTotal := calculateTotals(invoice.Items)
-
 		result, err := tx.ExecContext(ctx, `
 			UPDATE tbl_invoice
 			SET
@@ -292,31 +335,23 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 				template_id = $2,
 				name = $3,
 				invoice_number = $4,
-				reference = $5,
-				payment_method = $6,
-				tax_method = $7,
-				issue_date = $8,
-				due_date = $9,
-				subtotal = $10,
-				tax_total = $11,
-				grand_total = $12,
-				status = $13,
+				billing_period = $5,
+				invoice_frequency = $6,
+				issue_date = $7,
+				due_date = $8,
+				status = $9,
 				updated_at = NOW()
-			WHERE id = $14
+			WHERE id = $10
 			AND deleted_at IS NULL
 		`,
 			invoice.ContactID,
 			invoice.TemplateID,
 			invoice.Name,
 			invoice.InvoiceNumber,
-			invoice.Reference,
-			invoice.PaymentMethod,
-			invoice.TaxMethod,
+			invoice.BillingPeriod,
+			invoice.InvoiceFrequency,
 			invoice.IssueDate,
 			invoice.DueDate,
-			subtotal,
-			taxTotal,
-			grandTotal,
 			invoice.Status,
 			invoice.ID,
 		)
@@ -330,6 +365,29 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		}
 		if rowsAffected == 0 {
 			return ErrNotFound
+		}
+
+		// Update invoice sections
+		// First delete existing sections
+		_, err = tx.ExecContext(ctx, `
+			DELETE FROM tbl_map_invoice_section WHERE invoice_id = $1
+		`, invoice.ID)
+		if err != nil {
+			return err
+		}
+
+		// Then insert new sections
+		if len(invoice.InvoiceSections) > 0 {
+			for _, section := range invoice.InvoiceSections {
+				_, err := tx.ExecContext(ctx, `
+					INSERT INTO tbl_map_invoice_section (invoice_id, invoice_section)
+					VALUES ($1, $2)
+					ON CONFLICT (invoice_id, invoice_section) DO NOTHING
+				`, invoice.ID, section)
+				if err != nil {
+					return err
+				}
+			}
 		}
 
 		_, err = tx.ExecContext(ctx, `
@@ -367,20 +425,6 @@ func (r *Repository) validateContactTo(ctx context.Context, invoice *Invoice) er
 	}
 
 	return nil
-}
-
-func calculateTotals(items []*item.Item) (float64, float64, float64) {
-	var taxTotal float64
-	var grandTotal float64
-
-	for _, invoiceItem := range items {
-		if invoiceItem.TaxAmount != nil {
-			taxTotal += *invoiceItem.TaxAmount
-		}
-		grandTotal += invoiceItem.TotalAmount
-	}
-
-	return grandTotal - taxTotal, taxTotal, grandTotal
 }
 
 func (r *Repository) GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error) {
