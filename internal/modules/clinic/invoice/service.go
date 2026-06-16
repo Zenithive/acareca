@@ -5,6 +5,8 @@ import (
 
 	"github.com/google/uuid"
 	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -45,7 +47,22 @@ func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService te
 
 // Create implements [IService].
 func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
-	return s.repo.Create(ctx, invoice.ToInvoice())
+	inv := invoice.ToInvoice()
+
+	// Ensure at least one default section exists if none provided
+	if len(inv.Sections) == 0 {
+		inv.Sections = []section.Section{
+			{
+				ID:             uuid.New(),
+				InvoiceID:      inv.ID,
+				InvoiceSection: section.CALCULATIONSTATEMENT,
+				DocumentNumber: inv.ID.String()[:8],
+				Entries:        []*item.Item{},
+			},
+		}
+	}
+
+	return s.repo.Create(ctx, inv)
 }
 
 // Delete implements [IService].

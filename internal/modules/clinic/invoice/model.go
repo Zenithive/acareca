@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
@@ -101,24 +100,6 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 
 	if r.Sections != nil {
 		inv.Sections = r.Sections
-		items := make([]*item.Item, 0)
-		for _, section := range r.Sections {
-			if section.Entries != nil {
-				items = append(items, section.Entries...)
-			}
-		}
-	}
-
-	if len(inv.Sections) == 0 {
-		inv.Sections = []section.Section{
-			{
-				ID:             uuid.New(),
-				InvoiceID:      inv.ID,
-				InvoiceSection: section.CALCULATIONSTATEMENT,
-				DocumentNumber: inv.ID.String()[:8],
-				Entries:        []*item.Item{},
-			},
-		}
 	}
 
 	return inv
@@ -163,7 +144,6 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		ClinicID:          i.ClinicID,
 		ContactID:         i.ContactID,
 		ContactTo:         contactTo,
-		SentTo:            contactTo,
 		TemplateID:        i.TemplateID,
 		Name:              i.Name,
 		BillingPeriodFrom: billingPeriodFrom,
@@ -183,7 +163,6 @@ type RsInvoice struct {
 	ClinicID          uuid.UUID          `json:"clinicId"`
 	ContactID         *uuid.UUID         `json:"contactId,omitempty"`
 	ContactTo         *contact.RsContact `json:"contactTo,omitempty"`
-	SentTo            *contact.RsContact `json:"sentTo,omitempty"`
 	TemplateID        uuid.UUID          `json:"templateId"`
 	Name              string             `json:"name"`
 	BillingPeriodFrom string             `json:"billingPeriodFrom"`
@@ -231,16 +210,24 @@ func (filter *Filter) MapToFilter() common.Filter {
 		case "last_7":
 			sevenDaysAgo := now.AddDate(0, 0, -7)
 			startTime := time.Date(sevenDaysAgo.Year(), sevenDaysAgo.Month(), sevenDaysAgo.Day(), 0, 0, 0, 0, time.UTC)
+			endTime := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, time.UTC)
 
 			filters["date_range_start"] = startTime.Format("2006-01-02")
 			operators["date_range_start"] = common.OpGte
+
+			filters["date_range_end"] = endTime.Format("2006-01-02")
+			operators["date_range_end"] = common.OpLte
 
 		case "last_30":
 			thirtyDaysAgo := now.AddDate(0, 0, -30)
 			startTime := time.Date(thirtyDaysAgo.Year(), thirtyDaysAgo.Month(), thirtyDaysAgo.Day(), 0, 0, 0, 0, time.UTC)
+			endTime := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, time.UTC)
 
 			filters["date_range_start"] = startTime.Format("2006-01-02")
 			operators["date_range_start"] = common.OpGte
+
+			filters["date_range_end"] = endTime.Format("2006-01-02")
+			operators["date_range_end"] = common.OpLte
 
 		case "this_month":
 			firstDayOfThisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)

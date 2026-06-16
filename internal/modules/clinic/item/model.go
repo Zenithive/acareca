@@ -37,13 +37,18 @@ func (r *RqEntry) ToItem() *Item {
 		invoiceSectionID = r.InvoiceSectionID
 	}
 
+	amount := 0.0
+	if r.Amount != nil {
+		amount = *r.Amount
+	}
+
 	return &Item{
 		ID:               uuid.New(),
 		Name:             r.Name,
 		Description:      r.Description,
 		EntryType:        r.EntryType,
 		BASCode:          r.BASCode,
-		Amount:           *r.Amount,
+		Amount:           amount,
 		SortOrder:        r.SortOrder,
 		InvoiceSectionID: invoiceSectionID,
 	}

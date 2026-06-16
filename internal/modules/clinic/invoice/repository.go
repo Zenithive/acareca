@@ -234,28 +234,22 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 		invoices = append(invoices, invoice)
 	}
 
-	// return invoices, rows.Err()
-
-	// Load sections for each invoice
 	for _, invoice := range invoices {
 		sections, err := r.sectionRepo.ListByInvoiceID(ctx, invoice.ID)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to load sections for invoice %s: %w", invoice.ID, err)
 		}
+		invoice.Sections = sections
 
-		for _, inv := range invoice.Sections {
-			inv.Entries = make([]*item.Item, 0, len(inv.Entries))
-			for _, sec := range sections {
-				inv.Entries = append(inv.Entries, sec.Entries...)
-			}
+		if err := r.getInvoiceContact(ctx, invoice); err != nil {
+			return nil, 0, fmt.Errorf("failed to load contact for invoice %s: %w", invoice.ID, err)
 		}
-
 	}
 
 	return invoices, total, nil
 }
 
-// getInvoiceByID retrieves the base invoice record
+// GetByID retrieves the base invoice record with sections and contact information
 func (r *Repository) GetByID(ctx context.Context, db sqlx.QueryerContext, id uuid.UUID) (*Invoice, error) {
 	query := `
 		SELECT
@@ -291,22 +285,17 @@ func (r *Repository) GetByID(ctx context.Context, db sqlx.QueryerContext, id uui
 		return nil, err
 	}
 
-	return &invoice, nil
-}
-
-// loadInvoiceContact loads contact information for an invoice
-func (r *Repository) InvoiceContact(ctx context.Context, invoice *Invoice) error {
-	if invoice.ContactID == nil {
-		return nil
-	}
-
-	contact, err := r.contactRepo.Get(ctx, *invoice.ContactID)
+	sections, err := r.sectionRepo.ListByInvoiceID(ctx, invoice.ID)
 	if err != nil {
-		return fmt.Errorf("failed to load contact: %w", err)
+		return nil, fmt.Errorf("failed to load sections: %w", err)
+	}
+	invoice.Sections = sections
+
+	if err := r.getInvoiceContact(ctx, &invoice); err != nil {
+		return nil, fmt.Errorf("failed to load contact: %w", err)
 	}
 
-	invoice.ContactTo = &contact
-	return nil
+	return &invoice, nil
 }
 
 // countInvoices counts total invoices matching filter
