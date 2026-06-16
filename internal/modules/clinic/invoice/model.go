@@ -153,6 +153,11 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		billingPeriodTo = *i.BillingPeriodTo
 	}
 
+	rsSection := make([]section.RsSection, 0, len(i.Sections))
+	for _, v := range i.Sections {
+		rsSection = append(rsSection, *v.ToRsSection())
+	}
+
 	return &RsInvoice{
 		ID:                i.ID,
 		ClinicID:          i.ClinicID,
@@ -166,28 +171,28 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		IssueDate:         i.IssueDate,
 		DueDate:           i.DueDate,
 		Status:            i.Status,
-		Sections:          i.Sections,
+		Sections:          rsSection,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
 }
 
 type RsInvoice struct {
-	ID                uuid.UUID          `json:"id"`
-	ClinicID          uuid.UUID          `json:"clinicId"`
-	ContactID         *uuid.UUID         `json:"contactId,omitempty"`
-	ContactTo         *contact.RsContact `json:"contactTo,omitempty"`
-	TemplateID        uuid.UUID          `json:"templateId"`
-	Name              string             `json:"name"`
-	BillingPeriodFrom string             `json:"billingPeriodFrom"`
-	BillingPeriodTo   string             `json:"billingPeriodTo"`
-	InvoiceFrequency  *string            `json:"invoiceFrequency,omitempty"`
-	IssueDate         string             `json:"issueDate"`
-	DueDate           *string            `json:"dueDate,omitempty"`
-	Status            *string            `json:"status"`
-	Sections          []section.Section  `json:"sections,omitempty"`
-	CreatedAt         string             `json:"createdAt"`
-	UpdatedAt         string             `json:"updatedAt"`
+	ID                uuid.UUID           `json:"id"`
+	ClinicID          uuid.UUID           `json:"clinicId"`
+	ContactID         *uuid.UUID          `json:"contactId,omitempty"`
+	ContactTo         *contact.RsContact  `json:"contactTo,omitempty"`
+	TemplateID        uuid.UUID           `json:"templateId"`
+	Name              string              `json:"name"`
+	BillingPeriodFrom string              `json:"billingPeriodFrom"`
+	BillingPeriodTo   string              `json:"billingPeriodTo"`
+	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty"`
+	IssueDate         string              `json:"issueDate"`
+	DueDate           *string             `json:"dueDate,omitempty"`
+	Status            *string             `json:"status"`
+	Sections          []section.RsSection `json:"sections,omitempty"`
+	CreatedAt         string              `json:"createdAt"`
+	UpdatedAt         string              `json:"updatedAt"`
 }
 
 type Filter struct {

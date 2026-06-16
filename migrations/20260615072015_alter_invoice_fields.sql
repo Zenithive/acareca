@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
 );
 
 -- Add new columns to invoice items
@@ -80,6 +80,9 @@ CREATE INDEX IF NOT EXISTS idx_invoice_section_invoice_id
 CREATE INDEX IF NOT EXISTS idx_invoice_item_section_id
     ON tbl_invoice_item(invoice_section_id)
     WHERE deleted_at IS NULL;
+
+ALTER TABLE tbl_invoice_item
+    ALTER COLUMN amount TYPE DOUBLE PRECISION;
 
 -- +goose StatementEnd
 
@@ -107,7 +110,6 @@ DROP TABLE IF EXISTS tbl_map_invoice_section;
 
 -- Remove new invoice columns
 ALTER TABLE tbl_invoice
-    DROP COLUMN IF EXISTS contact_id,
     DROP COLUMN IF EXISTS billing_period_from,
     DROP COLUMN IF EXISTS billing_period_to,
     DROP COLUMN IF EXISTS invoice_frequency;
@@ -133,4 +135,7 @@ DROP TYPE IF EXISTS invoice_frequency;
 DROP TYPE IF EXISTS invoice_section;
 DROP TYPE IF EXISTS tax_method;
 
+
+-- In Down:
+ALTER TABLE tbl_invoice_item RENAME COLUMN amount TO total_amount;
 -- +goose StatementEnd

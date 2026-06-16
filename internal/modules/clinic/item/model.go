@@ -62,7 +62,7 @@ type RqUpdateEntry struct {
 	BASCode          *BasCode   `json:"basCode,omitempty"`
 	Amount           *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	SortOrder        *int       `json:"sortOrder,omitempty"`
-	InvoiceSectionID *string    `json:"invoiceSectionId,omitempty"`
+	InvoiceSectionID *uuid.UUID `json:"invoiceSectionId,omitempty"`
 }
 
 func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
@@ -90,11 +90,7 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 		item.SortOrder = *r.SortOrder
 	}
 	if r.InvoiceSectionID != nil {
-		if *r.InvoiceSectionID == "" {
-			item.InvoiceSectionID = nil
-		} else if parsed, err := uuid.Parse(*r.InvoiceSectionID); err == nil {
-			item.InvoiceSectionID = &parsed
-		}
+		item.InvoiceSectionID = r.InvoiceSectionID
 	}
 	return item
 }
