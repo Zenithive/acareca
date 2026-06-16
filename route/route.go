@@ -22,8 +22,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
-	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/bas"
@@ -236,7 +236,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	clinicAuthSvc := clinicauth.NewService(clinicAuthRepo, cfg, dbConn, auditSvc, tempSvc)
 
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc)
+	invoiceSvc := invoice.NewService(dbConn, invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc)
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// Initialize notification consumer (separate from service)

@@ -38,7 +38,13 @@ ALTER TABLE tbl_invoice
 ALTER TABLE tbl_invoice_item
     DROP COLUMN IF EXISTS discount,
     DROP COLUMN IF EXISTS tax_rate,
+    DROP COLUMN IF EXISTS quantity,
+    DROP COLUMN IF EXISTS unit_price,
     DROP COLUMN IF EXISTS tax_amount;
+
+
+ALTER TABLE tbl_invoice_item
+    RENAME COLUMN total_amount TO amount;
 
 -- Create invoice sections mapping table
 CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
@@ -46,8 +52,7 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
     invoice_id UUID NOT NULL REFERENCES tbl_invoice(id) ON DELETE CASCADE,
     invoice_section invoice_section NOT NULL,
     document_number VARCHAR(100) NOT NULL,
-    tax_method tax_method DEFAULT 'NO_TAX',
-    tax_rate NUMERIC(5,2) DEFAULT 0.00,
+    tax_method tax_method DEFAULT 'INCLUSIVE',
 
     -- Explicit Remittance Payment Fields (Null for other sections)
     payment_method VARCHAR(100),
@@ -59,9 +64,7 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
-    deleted_at TIMESTAMPTZ,
-
-    UNIQUE (invoice_id, invoice_section)
+    deleted_at TIMESTAMPTZ
 );
 
 -- Add new columns to invoice items
@@ -85,6 +88,9 @@ CREATE INDEX IF NOT EXISTS idx_invoice_section_invoice_id
 CREATE INDEX IF NOT EXISTS idx_invoice_item_section_id
     ON tbl_invoice_item(invoice_section_id)
     WHERE deleted_at IS NULL;
+
+ALTER TABLE tbl_invoice_item
+    ALTER COLUMN amount TYPE DOUBLE PRECISION;
 
 -- +goose StatementEnd
 
@@ -112,7 +118,6 @@ DROP TABLE IF EXISTS tbl_map_invoice_section;
 
 -- Remove new invoice columns
 ALTER TABLE tbl_invoice
-    DROP COLUMN IF EXISTS contact_id,
     DROP COLUMN IF EXISTS billing_period_from,
     DROP COLUMN IF EXISTS billing_period_to,
     DROP COLUMN IF EXISTS invoice_frequency;
@@ -138,4 +143,7 @@ DROP TYPE IF EXISTS invoice_frequency;
 DROP TYPE IF EXISTS invoice_section;
 DROP TYPE IF EXISTS tax_method;
 
+
+-- In Down:
+ALTER TABLE tbl_invoice_item RENAME COLUMN amount TO total_amount;
 -- +goose StatementEnd

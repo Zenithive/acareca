@@ -324,7 +324,7 @@ func lineItemsToMap(items []LineItem) []map[string]any {
 	for i, it := range items {
 		out[i] = map[string]any{
 			"name": it.Name, "description": it.Description,
-			"unit_price": it.UnitPrice, "qty": it.Qty,
+			"unit_price": it.Amount,
 			"line_total": it.LineTotal,
 		}
 	}

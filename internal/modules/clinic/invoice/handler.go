@@ -16,9 +16,9 @@ type IHandler interface {
 	Delete(c *gin.Context)
 	Get(c *gin.Context)
 	List(c *gin.Context)
-	Resend(c *gin.Context)
-	GetEmailTemplate(c *gin.Context)
-	SaveEmailTemplate(c *gin.Context)
+	// Resend(c *gin.Context)
+	// GetEmailTemplate(c *gin.Context)
+	// SaveEmailTemplate(c *gin.Context)
 }
 
 type Handler struct {
@@ -196,41 +196,41 @@ func (h *Handler) Update(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /clinic/invoice/{id}/resend [post]
-func (h *Handler) Resend(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, errors.New("invalid route id token structure format"))
-		return
-	}
+// func (h *Handler) Resend(c *gin.Context) {
+// 	id, err := uuid.Parse(c.Param("id"))
+// 	if err != nil {
+// 		response.Error(c, http.StatusBadRequest, errors.New("invalid route id token structure format"))
+// 		return
+// 	}
 
-	if err := h.svc.ResendInvoiceEmail(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
+// 	if err := h.svc.ResendInvoiceEmail(c.Request.Context(), id); err != nil {
+// 		response.Error(c, http.StatusInternalServerError, err)
+// 		return
+// 	}
 
-	response.JSON(c, http.StatusOK, nil, "invoice payment email resent successfully to contact customer")
-}
+// 	response.JSON(c, http.StatusOK, nil, "invoice payment email resent successfully to contact customer")
+// }
 
 // @Summary Fetch current invoice template context settings or system defaults
 // @Tags invoice settings
 // @Success 200 {object} response.RsBase{data=RsInvoiceMailTemplate}
 // @Security BearerToken
 // @Router /clinic/invoice/email-templates [get]
-func (h *Handler) GetEmailTemplate(c *gin.Context) {
-	clinicId, ok := util.GetEntityID(c)
-	if !ok {
-		response.Error(c, http.StatusBadRequest, errors.New("clinic session missing parameters"))
-		return
-	}
+// func (h *Handler) GetEmailTemplate(c *gin.Context) {
+// 	clinicId, ok := util.GetEntityID(c)
+// 	if !ok {
+// 		response.Error(c, http.StatusBadRequest, errors.New("clinic session missing parameters"))
+// 		return
+// 	}
 
-	data, err := h.svc.GetClinicTemplate(c.Request.Context(), clinicId)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
+// 	data, err := h.svc.GetClinicTemplate(c.Request.Context(), clinicId)
+// 	if err != nil {
+// 		response.Error(c, http.StatusInternalServerError, err)
+// 		return
+// 	}
 
-	response.JSON(c, http.StatusOK, data, "mail template retrieved successfully")
-}
+// 	response.JSON(c, http.StatusOK, data, "mail template retrieved successfully")
+// }
 
 // @Summary Save modified template layout overrides for the active clinic identity context
 // @Tags invoice settings
@@ -238,23 +238,23 @@ func (h *Handler) GetEmailTemplate(c *gin.Context) {
 // @Success 200 {object} response.RsBase
 // @Security BearerToken
 // @Router /clinic/invoice/email-templates [post]
-func (h *Handler) SaveEmailTemplate(c *gin.Context) {
-	clinicId, ok := util.GetEntityID(c)
-	if !ok {
-		response.Error(c, http.StatusBadRequest, errors.New("clinic context invalid"))
-		return
-	}
+// func (h *Handler) SaveEmailTemplate(c *gin.Context) {
+// 	clinicId, ok := util.GetEntityID(c)
+// 	if !ok {
+// 		response.Error(c, http.StatusBadRequest, errors.New("clinic context invalid"))
+// 		return
+// 	}
 
-	var rq RqSaveMailTemplate
-	if err := util.BindAndValidate(c, &rq); err != nil {
-		response.Error(c, http.StatusBadRequest, err)
-		return
-	}
+// 	var rq RqSaveMailTemplate
+// 	if err := util.BindAndValidate(c, &rq); err != nil {
+// 		response.Error(c, http.StatusBadRequest, err)
+// 		return
+// 	}
 
-	if err := h.svc.SaveClinicTemplate(c.Request.Context(), clinicId, &rq); err != nil {
-		response.Error(c, http.StatusInternalServerError, err)
-		return
-	}
+// 	if err := h.svc.SaveClinicTemplate(c.Request.Context(), clinicId, &rq); err != nil {
+// 		response.Error(c, http.StatusInternalServerError, err)
+// 		return
+// 	}
 
-	response.JSON(c, http.StatusOK, nil, "custom mail template configured successfully")
-}
+// 	response.JSON(c, http.StatusOK, nil, "custom mail template configured successfully")
+// }
