@@ -51,15 +51,15 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 
 	// Ensure at least one default section exists if none provided
 	if len(inv.Sections) == 0 {
-		inv.Sections = []section.Section{
-			{
-				ID:             uuid.New(),
-				InvoiceID:      &inv.ID,
-				InvoiceSection: section.CALCULATIONSTATEMENT,
-				DocumentNumber: inv.ID.String()[:8],
-				Entries:        []*item.Item{},
-			},
+		cs := section.CalculationStatement{
+			DocumentNumber: inv.ID.String()[:8],
+			Entries:        []*item.Item{},
 		}
+		built, err := cs.Build(ctx, &inv.ID)
+		if err != nil {
+			return err
+		}
+		inv.Sections = []section.Section{built}
 	}
 
 	return s.repo.Create(ctx, inv)
