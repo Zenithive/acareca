@@ -30,12 +30,19 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		status = &defaultStatus
 	}
 
+	invoiceID := uuid.New()
+
 	sections := make([]section.Section, 0, len(r.Sections))
 	for _, v := range r.Sections {
-		sections = append(sections, *v.ToSection())
+		sec := v.ToSection()
+		if sec.InvoiceID == nil {
+			sec.InvoiceID = &invoiceID
+		}
+		sections = append(sections, *sec)
 	}
 
 	return &Invoice{
+		ID:                invoiceID,
 		ClinicID:          r.ClinicID,
 		ContactID:         &r.ContactID,
 		TemplateID:        r.TemplateID,
@@ -51,18 +58,18 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 }
 
 type RqUpdateInvoice struct {
-	ID                *uuid.UUID        `json:"id" validate:"-"`
-	ContactID         *uuid.UUID        `json:"contactId,omitempty"`
-	TemplateID        *uuid.UUID        `json:"templateId,omitempty"`
-	Name              *string           `json:"name,omitempty"`
-	BillingPeriodFrom *string           `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	BillingPeriodTo   *string           `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	InvoiceFrequency  *string           `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         *string           `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	DueDate           *string           `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	Status            *string           `json:"status,omitempty"`
-	Sections          []section.Section `json:"sections,omitempty" validate:"omitempty,dive"`
-	AttachmentBase64  string            `json:"attachmentBase64,omitempty"`
+	ID                *uuid.UUID                `json:"id" validate:"-"`
+	ContactID         *uuid.UUID                `json:"contactId,omitempty"`
+	TemplateID        *uuid.UUID                `json:"templateId,omitempty"`
+	Name              *string                   `json:"name,omitempty"`
+	BillingPeriodFrom *string                   `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	BillingPeriodTo   *string                   `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	InvoiceFrequency  *string                   `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
+	IssueDate         *string                   `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status            *string                   `json:"status,omitempty"`
+	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
+	AttachmentBase64  string                    `json:"attachmentBase64,omitempty"`
 }
 
 func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
@@ -99,7 +106,12 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	}
 
 	if r.Sections != nil {
-		inv.Sections = r.Sections
+		sections := make([]section.Section, 0, len(r.Sections))
+		for _, rqSec := range r.Sections {
+			sections = append(sections, *rqSec.ToSection())
+		}
+
+		inv.Sections = sections
 	}
 
 	return inv

@@ -54,7 +54,7 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 		inv.Sections = []section.Section{
 			{
 				ID:             uuid.New(),
-				InvoiceID:      inv.ID,
+				InvoiceID:      &inv.ID,
 				InvoiceSection: section.CALCULATIONSTATEMENT,
 				DocumentNumber: inv.ID.String()[:8],
 				Entries:        []*item.Item{},

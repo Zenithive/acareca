@@ -8,7 +8,7 @@ import (
 )
 
 type ISection interface {
-	Build(ctx context.Context, invoiceId uuid.UUID) (Section, error)
+	Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error)
 }
 
 type CalculationStatement struct {
@@ -29,7 +29,7 @@ type RemittanceInvoice struct {
 	Entries        []*item.Item
 }
 
-func (ct CalculationStatement) Build(ctx context.Context, invoiceId uuid.UUID) (Section, error) {
+func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
@@ -57,7 +57,7 @@ func (ct CalculationStatement) Build(ctx context.Context, invoiceId uuid.UUID) (
 	}, nil
 }
 
-func (ct SfaInvoice) Build(ctx context.Context, invoiceId uuid.UUID) (Section, error) {
+func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
@@ -85,7 +85,7 @@ func (ct SfaInvoice) Build(ctx context.Context, invoiceId uuid.UUID) (Section, e
 	}, nil
 }
 
-func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId uuid.UUID) (Section, error) {
+func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided

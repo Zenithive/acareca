@@ -46,9 +46,9 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, sections []Section
 		return nil
 	}
 
-	for _, section := range sections {
-		if section.ID == uuid.Nil {
-			section.ID = uuid.New()
+	for i := range sections {
+		if sections[i].ID == uuid.Nil {
+			sections[i].ID = uuid.New()
 		}
 
 		query := `
@@ -56,29 +56,29 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, sections []Section
 			id, invoice_id, invoice_section, document_number, tax_method
 		)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING created_at, updated_at
+		RETURNING created_at
 	`
 
 		err := tx.QueryRowContext(
 			ctx,
 			query,
-			section.ID,
-			section.InvoiceID,
-			section.InvoiceSection,
-			section.DocumentNumber,
-			section.TaxMethod,
-		).Scan(&section.CreatedAt, &section.UpdatedAt)
+			sections[i].ID,
+			sections[i].InvoiceID,
+			sections[i].InvoiceSection,
+			sections[i].DocumentNumber,
+			sections[i].TaxMethod,
+		).Scan(&sections[i].CreatedAt)
 
 		if err != nil {
 			return fmt.Errorf("failed to create section: %w", err)
 		}
 
 		// Link all entries to this section
-		if len(section.Entries) > 0 {
-			for _, entry := range section.Entries {
-				entry.InvoiceSectionID = &section.ID
+		if len(sections[i].Entries) > 0 {
+			for _, entry := range sections[i].Entries {
+				entry.InvoiceSectionID = &sections[i].ID
 			}
-			if err := r.itemRepo.Create(ctx, tx, section.InvoiceID, section.Entries); err != nil {
+			if err := r.itemRepo.Create(ctx, tx, *sections[i].InvoiceID, sections[i].Entries); err != nil {
 				return fmt.Errorf("failed to create section entries: %w", err)
 			}
 		}
@@ -134,7 +134,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 				for _, entry := range section.Entries {
 					entry.InvoiceSectionID = &section.ID
 				}
-				if err := r.itemRepo.Create(ctx, tx, section.InvoiceID, section.Entries); err != nil {
+				if err := r.itemRepo.Create(ctx, tx, *section.InvoiceID, section.Entries); err != nil {
 					return fmt.Errorf("failed to update section entries: %w", err)
 				}
 			}
