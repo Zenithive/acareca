@@ -57,8 +57,6 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ,
-
-    UNIQUE (invoice_id, invoice_section)
 );
 
 -- Add new columns to invoice items
