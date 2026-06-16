@@ -101,7 +101,7 @@ type Item struct {
 	InvoiceSectionID *uuid.UUID `db:"invoice_section_id,omitempty"`
 }
 
-func (i *Item) ToRsEntry(invoiceID uuid.UUID) *RsEntry {
+func (i *Item) ToRsEntry() *RsEntry {
 	var invoiceSectionID *uuid.UUID
 	if i.InvoiceSectionID != nil {
 		invoiceSectionID = i.InvoiceSectionID
@@ -109,7 +109,6 @@ func (i *Item) ToRsEntry(invoiceID uuid.UUID) *RsEntry {
 
 	return &RsEntry{
 		ID:               i.ID,
-		InvoiceID:        invoiceID,
 		Name:             i.Name,
 		Description:      i.Description,
 		EntryType:        i.EntryType,
@@ -122,7 +121,6 @@ func (i *Item) ToRsEntry(invoiceID uuid.UUID) *RsEntry {
 
 type RsEntry struct {
 	ID               uuid.UUID  `json:"id"`
-	InvoiceID        uuid.UUID  `json:"invoiceId"`
 	Name             string     `json:"name"`
 	Description      *string    `json:"description,omitempty"`
 	EntryType        *EntryType `json:"entryType,omitempty"`

@@ -27,6 +27,8 @@ type IRepository interface {
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
 
 	GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error)
+	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
+	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
 }
 
 type Repository struct {
@@ -269,10 +271,10 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		BillingPeriodFrom: row.BillingPeriodFrom,
 		BillingPeriodTo:   row.BillingPeriodTo,
 		InvoiceFrequency:  row.InvoiceFrequency,
-		IssueDate:        row.IssueDate,
-		DueDate:          row.DueDate,
-		Status:           row.Status,
-		ClinicName:       row.ClinicName,
+		IssueDate:         row.IssueDate,
+		DueDate:           row.DueDate,
+		Status:            row.Status,
+		ClinicName:        row.ClinicName,
 		SentTo: InvoiceContact{
 			FName:   row.FName,
 			LName:   row.LName,
@@ -283,4 +285,34 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		},
 		Items: items,
 	}, nil
+}
+
+func (r *Repository) GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error) {
+	var subject, body string
+
+	err := r.db.QueryRowContext(ctx, `
+		SELECT mail_subject, mail_body 
+		FROM tbl_clinic_invoice_mail_templates 
+		WHERE clinic_id = $1
+	`, clinicID).Scan(&subject, &body)
+
+	if err != nil {
+		return "", "", err // Service defaults automatically capture sql.ErrNoRows fallbacks gracefully
+	}
+
+	return subject, body, nil
+}
+
+func (r *Repository) SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO tbl_clinic_invoice_mail_templates (clinic_id, mail_subject, mail_body)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (clinic_id) 
+		DO UPDATE SET 
+			mail_subject = EXCLUDED.mail_subject,
+			mail_body = EXCLUDED.mail_body,
+			updated_at = NOW()
+	`, clinicID, subject, body)
+
+	return err
 }

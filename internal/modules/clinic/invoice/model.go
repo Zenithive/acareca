@@ -5,124 +5,35 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
-type TaxMethod string
-
-const (
-	NOTAX     TaxMethod = "NO_TAX"
-	INCLUSIVE TaxMethod = "INCLUSIVE"
-	EXCLUSIVE TaxMethod = "EXCLUSIVE"
-)
-
-type SectionType string
-
-const (
-	CALCULATIONSTATEMENT SectionType = "CALCULATION_STATEMENT"
-	SFAINVOICE           SectionType = "SFA_INVOICE"
-	REMITTANCEINVOICE    SectionType = "REMITTANCE_INVOICE"
-)
-
-type InvoiceSection struct {
-	SectionType    SectionType  `json:"sectionType" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
-	DocumentNumber string       `json:"documentNumber" validate:"required"`
-	TaxMethod      *TaxMethod   `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
-	TaxRate        *float64     `json:"taxRate,omitempty" validate:"omitempty,gte=0,lte=100"`
-	Entries        []*item.Item `json:"entries" validate:"required,dive"`
-	NetAmount      float64      `json:"netAmount"`
-	GSTAmount      float64      `json:"gstAmount"`
-	GrossAmount    float64      `json:"grossAmount"`
-}
-
-func (s *InvoiceSection) CalculateTotals() {
-	s.NetAmount = 0
-	s.GSTAmount = 0
-	s.GrossAmount = 0
-
-	// Calculate sum of all entry amounts
-	for _, entry := range s.Entries {
-		s.GrossAmount += entry.Amount
-	}
-
-	taxRateDecimal := *s.TaxRate / 100.0
-
-	switch *s.TaxMethod {
-	case NOTAX:
-		s.NetAmount = s.GrossAmount
-		s.GSTAmount = 0
-	case INCLUSIVE:
-		// Tax inclusive: gross amount already includes tax
-		// Net = Gross / (1 + tax_rate)
-		// GST = Gross - Net
-		s.NetAmount = s.GrossAmount / (1 + taxRateDecimal)
-		s.GSTAmount = s.GrossAmount - s.NetAmount
-	case EXCLUSIVE:
-		// Tax exclusive: tax is added on top
-		// Net = Gross (sum of entries)
-		// GST = Net * tax_rate
-		// Gross = Net + GST
-		s.NetAmount = s.GrossAmount
-		s.GSTAmount = s.NetAmount * taxRateDecimal
-		s.GrossAmount = s.NetAmount + s.GSTAmount
-	}
-
-}
-
-type InvoiceSectionDB struct {
-	ID             uuid.UUID  `db:"id"`
-	InvoiceID      uuid.UUID  `db:"invoice_id"`
-	InvoiceSection string     `db:"invoice_section"`
-	DocumentNumber string     `db:"document_number"`
-	TaxMethod      *TaxMethod `db:"tax_method"`
-	TaxRate        *float64   `db:"tax_rate"`
-	CreatedAt      string     `db:"created_at"`
-	UpdatedAt      string     `db:"updated_at"`
-	DeleteAt       string     `db:"delete_at"`
-}
-
 type RqInvoice struct {
-	ClinicID          uuid.UUID        `json:"clinicId" validate:"-"`
-	ContactID         uuid.UUID        `json:"contactId" validate:"required"`
-	TemplateID        uuid.UUID        `json:"templateId" validate:"required"`
-	Name              string           `json:"name" validate:"required"`
-	BillingPeriodFrom string           `json:"billingPeriodFrom" validate:"required,datetime=2006-01-02"`
-	BillingPeriodTo   string           `json:"billingPeriodTo" validate:"required,datetime=2006-01-02"`
-	InvoiceFrequency  *string          `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         string           `json:"issueDate" validate:"required,datetime=2006-01-02"`
-	DueDate           *string          `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	Status            *string          `json:"status"`
-	Sections          []InvoiceSection `json:"sections,omitempty" validate:"omitempty,dive"`
+	ClinicID          uuid.UUID           `json:"clinicId" validate:"-"`
+	ContactID         uuid.UUID           `json:"contactId" validate:"required"`
+	TemplateID        uuid.UUID           `json:"templateId" validate:"required"`
+	Name              string              `json:"name" validate:"required"`
+	BillingPeriodFrom string              `json:"billingPeriodFrom" validate:"required,datetime=2006-01-02"`
+	BillingPeriodTo   string              `json:"billingPeriodTo" validate:"required,datetime=2006-01-02"`
+	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
+	IssueDate         string              `json:"issueDate" validate:"required,datetime=2006-01-02"`
+	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status            *string             `json:"status"`
+	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 }
 
 func (r *RqInvoice) ToInvoice() *Invoice {
-
-	// Set default status to "draft" if not provided
 	status := r.Status
 	if status == nil {
 		defaultStatus := "draft"
 		status = &defaultStatus
 	}
 
-	// If no sections provided, create a default CALCULATION_STATEMENT section
-	sections := r.Sections
-	if len(sections) == 0 {
-		sections = []InvoiceSection{
-			{
-				SectionType:    CALCULATIONSTATEMENT,
-				DocumentNumber: uuid.New().String()[:8], // Generate a short doc number
-				Entries:        []*item.Item{},
-			},
-		}
-	}
-
-	// Collect all items from all sections
-	items := make([]*item.Item, 0)
-	for _, section := range sections {
-		if section.Entries != nil {
-			items = append(items, section.Entries...)
-		}
+	sections := make([]section.Section, 0, len(r.Sections))
+	for _, v := range r.Sections {
+		sections = append(sections, *v.ToSection())
 	}
 
 	return &Invoice{
@@ -137,24 +48,22 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		Status:            status,
 		DueDate:           r.DueDate,
 		Sections:          sections,
-		Items:             items,
 	}
 }
 
 type RqUpdateInvoice struct {
-	ID                *uuid.UUID            `json:"id" validate:"-"`
-	ContactID         *uuid.UUID            `json:"contactId,omitempty"`
-	TemplateID        *uuid.UUID            `json:"templateId,omitempty"`
-	Name              *string               `json:"name,omitempty"`
-	BillingPeriodFrom *string               `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	BillingPeriodTo   *string               `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	InvoiceFrequency  *string               `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         *string               `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	DueDate           *string               `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	Status            *string               `json:"status,omitempty"`
-	Sections          []InvoiceSection      `json:"sections,omitempty" validate:"omitempty,dive"`
-	Entries           []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
-	AttachmentBase64  string                `json:"attachmentBase64,omitempty"`
+	ID                *uuid.UUID        `json:"id" validate:"-"`
+	ContactID         *uuid.UUID        `json:"contactId,omitempty"`
+	TemplateID        *uuid.UUID        `json:"templateId,omitempty"`
+	Name              *string           `json:"name,omitempty"`
+	BillingPeriodFrom *string           `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	BillingPeriodTo   *string           `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	InvoiceFrequency  *string           `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
+	IssueDate         *string           `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	DueDate           *string           `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	Status            *string           `json:"status,omitempty"`
+	Sections          []section.Section `json:"sections,omitempty" validate:"omitempty,dive"`
+	AttachmentBase64  string            `json:"attachmentBase64,omitempty"`
 }
 
 func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
@@ -185,14 +94,6 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	if r.DueDate != nil {
 		inv.DueDate = r.DueDate
 	}
-	if r.Entries != nil {
-		items := make([]*item.Item, 0, len(r.Entries))
-		for _, rqEntry := range r.Entries {
-			invoiceItem := &item.Item{ID: rqEntry.ID}
-			items = append(items, rqEntry.ApplyToItem(invoiceItem))
-		}
-		inv.Items = items
-	}
 
 	if r.Status != nil {
 		inv.Status = r.Status
@@ -206,12 +107,14 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 				items = append(items, section.Entries...)
 			}
 		}
-		inv.Items = items
-	} else if len(inv.Sections) == 0 {
-		// Ensure at least one section exists
-		inv.Sections = []InvoiceSection{
+	}
+
+	if len(inv.Sections) == 0 {
+		inv.Sections = []section.Section{
 			{
-				SectionType:    CALCULATIONSTATEMENT,
+				ID:             uuid.New(),
+				InvoiceID:      inv.ID,
+				InvoiceSection: section.CALCULATIONSTATEMENT,
 				DocumentNumber: inv.ID.String()[:8],
 				Entries:        []*item.Item{},
 			},
@@ -222,37 +125,30 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 }
 
 type Invoice struct {
-	ID                uuid.UUID        `db:"id"`
-	ClinicID          uuid.UUID        `db:"clinic_id"`
-	ContactID         *uuid.UUID       `db:"contact_id"`
-	TemplateID        uuid.UUID        `db:"template_id"`
-	Name              string           `db:"name"`
-	BillingPeriodFrom *string          `db:"billing_period_from"`
-	BillingPeriodTo   *string          `db:"billing_period_to"`
-	InvoiceFrequency  *string          `db:"invoice_frequency,omitempty"`
-	IssueDate         string           `db:"issue_date"`
-	DueDate           *string          `db:"due_date,omitempty"`
-	Status            *string          `db:"status"`
-	ContactTo         *contact.Contact `db:"-"`
-	Sections          []InvoiceSection `db:"-"`
-	Items             []*item.Item     `db:"-"`
-	CreatedAt         string           `db:"created_at"`
-	UpdatedAt         string           `db:"updated_at"`
+	ID                uuid.UUID         `db:"id"`
+	ClinicID          uuid.UUID         `db:"clinic_id"`
+	ContactID         *uuid.UUID        `db:"contact_id"`
+	TemplateID        uuid.UUID         `db:"template_id"`
+	Name              string            `db:"name"`
+	BillingPeriodFrom *string           `db:"billing_period_from"`
+	BillingPeriodTo   *string           `db:"billing_period_to"`
+	InvoiceFrequency  *string           `db:"invoice_frequency,omitempty"`
+	IssueDate         string            `db:"issue_date"`
+	DueDate           *string           `db:"due_date,omitempty"`
+	Status            *string           `db:"status"`
+	ContactTo         *contact.Contact  `db:"-"`
+	Sections          []section.Section `db:"-"`
+	CreatedAt         string            `db:"created_at"`
+	UpdatedAt         string            `db:"updated_at"`
 }
 
 func (i *Invoice) ToRsInvoice() *RsInvoice {
-	entries := make([]*item.RsEntry, 0, len(i.Items))
-	for _, itm := range i.Items {
-		entries = append(entries, itm.ToRsEntry(i.ID))
-	}
-
 	var contactTo *contact.RsContact
 	if i.ContactTo != nil {
 		rsContact := i.ContactTo.ToRsContact()
 		contactTo = &rsContact
 	}
 
-	// Handle nullable billing period fields
 	billingPeriodFrom := ""
 	if i.BillingPeriodFrom != nil {
 		billingPeriodFrom = *i.BillingPeriodFrom
@@ -277,7 +173,6 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		DueDate:           i.DueDate,
 		Status:            i.Status,
 		Sections:          i.Sections,
-		Entries:           entries,
 		CreatedAt:         i.CreatedAt,
 		UpdatedAt:         i.UpdatedAt,
 	}
@@ -297,8 +192,7 @@ type RsInvoice struct {
 	IssueDate         string             `json:"issueDate"`
 	DueDate           *string            `json:"dueDate,omitempty"`
 	Status            *string            `json:"status"`
-	Sections          []InvoiceSection   `json:"sections,omitempty"`
-	Entries           []*item.RsEntry    `json:"entries,omitempty"`
+	Sections          []section.Section  `json:"sections,omitempty"`
 	CreatedAt         string             `json:"createdAt"`
 	UpdatedAt         string             `json:"updatedAt"`
 }
