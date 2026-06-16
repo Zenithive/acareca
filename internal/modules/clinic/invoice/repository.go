@@ -83,7 +83,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		}
 
 		// Insert invoice sections and build a map of section type to section ID
-		sectionIDMap := make(map[string]uuid.UUID)
+		sectionIDMap := make(map[SectionType]uuid.UUID)
 		if len(invoice.Sections) > 0 {
 			for _, section := range invoice.Sections {
 				sectionID := uuid.New()
@@ -460,7 +460,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 
 		// Update invoice sections
 		// First, get existing section IDs for this invoice
-		existingSections := make(map[string]uuid.UUID) // sectionType -> sectionID
+		existingSections := make(map[SectionType]uuid.UUID) // sectionType -> sectionID
 		rows, err := tx.QueryContext(ctx, `
 			SELECT id, invoice_section FROM tbl_map_invoice_section 
 			WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -470,7 +470,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		}
 		for rows.Next() {
 			var sectionID uuid.UUID
-			var sectionType string
+			var sectionType SectionType
 			if err := rows.Scan(&sectionID, &sectionType); err != nil {
 				rows.Close()
 				return err
@@ -480,8 +480,8 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		rows.Close()
 
 		// Build new section map and update/insert sections
-		sectionIDMap := make(map[string]uuid.UUID)
-		requestedSectionTypes := make(map[string]bool)
+		sectionIDMap := make(map[SectionType]uuid.UUID)
+		requestedSectionTypes := make(map[SectionType]bool)
 
 		if len(invoice.Sections) > 0 {
 			for _, section := range invoice.Sections {

@@ -2,39 +2,39 @@ package item
 
 import "github.com/google/uuid"
 
+type EntryType string
+
+const (
+	DEBIT  EntryType = "DEBIT"
+	CREDIT EntryType = "CREDIT"
+)
+
+type BasCode string
+
+const (
+	// G1, 1A, G3, G11, 1B
+	CodeG1  BasCode = "G1"
+	Code1A  BasCode = "1A"
+	CodeG3  BasCode = "G3"
+	CodeG11 BasCode = "G11"
+	Code1B  BasCode = "1B"
+)
+
 type RqEntry struct {
-	Name             string   `json:"name" validate:"required"`
-	Description      *string  `json:"description,omitempty"`
-	EntryType        *string  `json:"entryType,omitempty"`
-	BASCode          *string  `json:"basCode,omitempty"`
-	Quantity         int      `json:"quantity,omitempty" validate:"omitempty,gt=0"`
-	UnitPrice        *float64 `json:"unitPrice,omitempty" validate:"omitempty,gt=0"`
-	SortOrder        int      `json:"sortOrder" validate:"required"`
-	InvoiceSectionID *string  `json:"invoiceSectionId,omitempty"`
+	Name        string     `json:"name" validate:"required"`
+	Description *string    `json:"description,omitempty"`
+	EntryType   *EntryType `json:"entryType,omitempty"`
+	BASCode     *BasCode   `json:"basCode,omitempty"`
+	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	SortOrder   int        `json:"sortOrder" validate:"required"`
+
+	InvoiceSectionID *uuid.UUID `json:"invoiceSectionId,omitempty"`
 }
 
 func (r *RqEntry) ToItem() *Item {
 	var invoiceSectionID *uuid.UUID
-	if r.InvoiceSectionID != nil && *r.InvoiceSectionID != "" {
-		if parsed, err := uuid.Parse(*r.InvoiceSectionID); err == nil {
-			invoiceSectionID = &parsed
-		}
-	}
-
-	var quantity int
-	var unitPrice float64
-	var amount float64
-
-	if r.UnitPrice != nil && *r.UnitPrice > 0 {
-		quantity = 1
-		unitPrice = *r.UnitPrice
-	} else {
-		quantity = r.Quantity
-		if quantity == 0 {
-			quantity = 1
-		}
-		unitPrice = *r.UnitPrice
-		amount = float64(quantity) * unitPrice
+	if r.InvoiceSectionID != nil {
+		invoiceSectionID = r.InvoiceSectionID
 	}
 
 	return &Item{
@@ -43,24 +43,21 @@ func (r *RqEntry) ToItem() *Item {
 		Description:      r.Description,
 		EntryType:        r.EntryType,
 		BASCode:          r.BASCode,
-		Quantity:         quantity,
-		UnitPrice:        unitPrice,
-		TotalAmount:      amount,
+		Amount:           *r.Amount,
 		SortOrder:        r.SortOrder,
 		InvoiceSectionID: invoiceSectionID,
 	}
 }
 
 type RqUpdateEntry struct {
-	ID               uuid.UUID `json:"id" validate:"required"`
-	Name             *string   `json:"name,omitempty"`
-	Description      *string   `json:"description,omitempty"`
-	EntryType        *string   `json:"entryType,omitempty"`
-	BASCode          *string   `json:"basCode,omitempty"`
-	Quantity         *int      `json:"quantity,omitempty" validate:"omitempty,gt=0"`
-	UnitPrice        *float64  `json:"unitPrice,omitempty" validate:"omitempty,gt=0"`
-	SortOrder        *int      `json:"sortOrder,omitempty"`
-	InvoiceSectionID *string   `json:"invoiceSectionId,omitempty"`
+	ID               uuid.UUID  `json:"id" validate:"required"`
+	Name             *string    `json:"name,omitempty"`
+	Description      *string    `json:"description,omitempty"`
+	EntryType        *EntryType `json:"entryType,omitempty"`
+	BASCode          *BasCode   `json:"basCode,omitempty"`
+	Amount           *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	SortOrder        *int       `json:"sortOrder,omitempty"`
+	InvoiceSectionID *string    `json:"invoiceSectionId,omitempty"`
 }
 
 func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
@@ -77,11 +74,8 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 		item.BASCode = r.BASCode
 	}
 
-	if r.Quantity != nil {
-		item.Quantity = *r.Quantity
-	}
-	if r.UnitPrice != nil {
-		item.UnitPrice = *r.UnitPrice
+	if r.Amount != nil {
+		item.Amount = *r.Amount
 	}
 	if r.SortOrder != nil {
 		item.SortOrder = *r.SortOrder
@@ -100,20 +94,17 @@ type Item struct {
 	ID               uuid.UUID  `db:"id"`
 	Name             string     `db:"name"`
 	Description      *string    `db:"description,omitempty"`
-	EntryType        *string    `db:"entry_type,omitempty"`
-	BASCode          *string    `db:"bas_code,omitempty"`
-	Quantity         int        `db:"quantity"`
-	UnitPrice        float64    `db:"unit_price"`
-	TotalAmount      float64    `db:"total_amount"`
+	EntryType        *EntryType `db:"entry_type,omitempty"`
+	BASCode          *BasCode   `db:"bas_code,omitempty"`
+	Amount           float64    `db:"amount"`
 	SortOrder        int        `db:"sort_order"`
 	InvoiceSectionID *uuid.UUID `db:"invoice_section_id,omitempty"`
 }
 
 func (i *Item) ToRsEntry(invoiceID uuid.UUID) *RsEntry {
-	var invoiceSectionIDStr *string
+	var invoiceSectionID *uuid.UUID
 	if i.InvoiceSectionID != nil {
-		idStr := i.InvoiceSectionID.String()
-		invoiceSectionIDStr = &idStr
+		invoiceSectionID = i.InvoiceSectionID
 	}
 
 	return &RsEntry{
@@ -123,24 +114,20 @@ func (i *Item) ToRsEntry(invoiceID uuid.UUID) *RsEntry {
 		Description:      i.Description,
 		EntryType:        i.EntryType,
 		BASCode:          i.BASCode,
-		Quantity:         i.Quantity,
-		UnitPrice:        i.UnitPrice,
-		TotalAmount:      i.TotalAmount,
+		Amount:           i.Amount,
 		SortOrder:        i.SortOrder,
-		InvoiceSectionID: invoiceSectionIDStr,
+		InvoiceSectionID: invoiceSectionID,
 	}
 }
 
 type RsEntry struct {
-	ID               uuid.UUID `json:"id"`
-	InvoiceID        uuid.UUID `json:"invoiceId"`
-	Name             string    `json:"name"`
-	Description      *string   `json:"description,omitempty"`
-	EntryType        *string   `json:"entryType,omitempty"`
-	BASCode          *string   `json:"basCode,omitempty"`
-	Quantity         int       `json:"quantity"`
-	UnitPrice        float64   `json:"unitPrice"`
-	TotalAmount      float64   `json:"totalAmount"`
-	SortOrder        int       `json:"sortOrder"`
-	InvoiceSectionID *string   `json:"invoiceSectionId,omitempty"`
+	ID               uuid.UUID  `json:"id"`
+	InvoiceID        uuid.UUID  `json:"invoiceId"`
+	Name             string     `json:"name"`
+	Description      *string    `json:"description,omitempty"`
+	EntryType        *EntryType `json:"entryType,omitempty"`
+	BASCode          *BasCode   `json:"basCode,omitempty"`
+	Amount           float64    `json:"amount"`
+	SortOrder        int        `json:"sortOrder"`
+	InvoiceSectionID *uuid.UUID `json:"invoiceSectionId,omitempty"`
 }

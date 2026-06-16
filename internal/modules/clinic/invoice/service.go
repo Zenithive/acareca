@@ -275,11 +275,9 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		pdfItems = append(pdfItems, template.LineItem{
 			Name:        it.Name,
 			Description: desc,
-			UnitPrice:   it.UnitPrice,
-			Qty:         it.Quantity,
-			LineTotal:   it.TotalAmount,
+			LineTotal:   it.Amount,
 		})
-		grandTotal += it.TotalAmount
+		grandTotal += it.Amount
 	}
 
 	// --- Template settings: logo, letterhead, footer, terms ---

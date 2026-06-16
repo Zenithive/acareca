@@ -280,8 +280,7 @@ type PartyInfo struct {
 type LineItem struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
-	UnitPrice   float64 `json:"unit_price"`
-	Qty         int     `json:"qty"`
+	Amount      float64 `json:"amount"`
 	LineTotal   float64 `json:"line_total"`
 }
 
@@ -318,9 +317,7 @@ type InvoiceItem struct {
 	ID          uuid.UUID `db:"id" json:"id"`
 	Name        string    `db:"name" json:"name"`
 	Description string    `db:"description" json:"description"`
-	Quantity    int       `db:"quantity" json:"quantity"`
-	UnitPrice   float64   `db:"unit_price" json:"unit_price"`
-	TotalAmount float64   `db:"total_amount" json:"total_amount"`
+	Amount      float64   `db:"amount" json:"unit_price"`
 }
 
 func invoiceToData(inv *InvoiceResponse) InvoiceData {
@@ -328,13 +325,12 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 	var grandTotal float64
 
 	for i, it := range inv.Items {
-		grandTotal += it.TotalAmount
+		grandTotal += it.Amount
 		items[i] = LineItem{
 			Name:        it.Name,
 			Description: it.Description,
-			UnitPrice:   it.UnitPrice,
-			Qty:         it.Quantity,
-			LineTotal:   it.TotalAmount,
+			Amount:      it.Amount,
+			LineTotal:   grandTotal,
 		}
 	}
 

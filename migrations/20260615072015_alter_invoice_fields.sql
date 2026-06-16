@@ -38,7 +38,13 @@ ALTER TABLE tbl_invoice
 ALTER TABLE tbl_invoice_item
     DROP COLUMN IF EXISTS discount,
     DROP COLUMN IF EXISTS tax_rate,
+    DROP COLUMN IF EXISTS quantity,
+    DROP COLUMN IF EXISTS unit_price,
     DROP COLUMN IF EXISTS tax_amount;
+
+
+ALTER TABLE tbl_invoice_item
+    RENAME COLUMN total_amount TO amount;
 
 -- Create invoice sections mapping table
 CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
@@ -46,8 +52,7 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
     invoice_id UUID NOT NULL REFERENCES tbl_invoice(id) ON DELETE CASCADE,
     invoice_section invoice_section NOT NULL,
     document_number VARCHAR(100) NOT NULL,
-    tax_method tax_method DEFAULT 'NO_TAX',
-    tax_rate NUMERIC(5,2) DEFAULT 0.00,
+    tax_method tax_method DEFAULT 'INCLUSIVE',
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,

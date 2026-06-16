@@ -30,9 +30,6 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.ID = uuid.New()
 		}
 
-		// Calculate total_amount as quantity * unit_price
-		totalAmount := float64(invoiceItem.Quantity) * invoiceItem.UnitPrice
-
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO tbl_invoice_item (
 				id,
@@ -40,22 +37,18 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				description,
 				entry_type,
 				bas_code,
-				quantity,
-				unit_price,
-				total_amount,
+				amount,
 				invoice_section_id,
 				sort_order
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		`,
 			invoiceItem.ID,
 			invoiceItem.Name,
 			invoiceItem.Description,
 			invoiceItem.EntryType,
 			invoiceItem.BASCode,
-			invoiceItem.Quantity,
-			invoiceItem.UnitPrice,
-			totalAmount,
+			invoiceItem.Amount,
 			invoiceItem.InvoiceSectionID,
 			invoiceItem.SortOrder,
 		)
@@ -76,9 +69,7 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			description,
 			entry_type,
 			bas_code,
-			quantity,
-			unit_price,
-			total_amount,
+			amount,
 			invoice_section_id,
 			sort_order
 		FROM tbl_invoice_item
@@ -102,9 +93,7 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.Description,
 			&invoiceItem.EntryType,
 			&invoiceItem.BASCode,
-			&invoiceItem.Quantity,
-			&invoiceItem.UnitPrice,
-			&invoiceItem.TotalAmount,
+			&invoiceItem.Amount,
 			&invoiceItem.InvoiceSectionID,
 			&invoiceItem.SortOrder,
 		); err != nil {
@@ -123,9 +112,6 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.ID = uuid.New()
 		}
 
-		// Calculate total_amount as quantity * unit_price
-		totalAmount := float64(invoiceItem.Quantity) * invoiceItem.UnitPrice
-
 		_, err := tx.ExecContext(ctx, `
 			UPDATE tbl_invoice_item
 			SET
@@ -133,11 +119,9 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				description = $3,
 				entry_type = $4,
 				bas_code = $5,
-				quantity = $6,
-				unit_price = $7,
-				total_amount = $8,
-				invoice_section_id = $9,
-				sort_order = $10,
+				amount = $6,
+				invoice_section_id = $7,
+				sort_order = $8,
 				updated_at = NOW()
 			WHERE id = $1
 			AND deleted_at IS NULL
@@ -147,9 +131,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.Description,
 			invoiceItem.EntryType,
 			invoiceItem.BASCode,
-			invoiceItem.Quantity,
-			invoiceItem.UnitPrice,
-			totalAmount,
+			invoiceItem.Amount,
 			invoiceItem.InvoiceSectionID,
 			invoiceItem.SortOrder,
 		)

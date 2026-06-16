@@ -9,10 +9,26 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 )
 
+type TaxMethod string
+
+const (
+	NOTAX     TaxMethod = "NO_TAX"
+	INCLUSIVE TaxMethod = "INCLUSIVE"
+	EXCLUSIVE TaxMethod = "EXCLUSIVE"
+)
+
+type SectionType string
+
+const (
+	CALCULATIONSTATEMENT SectionType = "CALCULATION_STATEMENT"
+	SFAINVOICE           SectionType = "SFA_INVOICE"
+	REMITTANCEINVOICE    SectionType = "REMITTANCE_INVOICE"
+)
+
 type InvoiceSection struct {
-	SectionType    string       `json:"sectionType" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	SectionType    SectionType  `json:"sectionType" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
 	DocumentNumber string       `json:"documentNumber" validate:"required"`
-	TaxMethod      *string      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
+	TaxMethod      *TaxMethod   `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	TaxRate        *float64     `json:"taxRate,omitempty" validate:"omitempty,gte=0,lte=100"`
 	Entries        []*item.Item `json:"entries" validate:"required,dive"`
 	NetAmount      float64      `json:"netAmount"`
@@ -20,7 +36,6 @@ type InvoiceSection struct {
 	GrossAmount    float64      `json:"grossAmount"`
 }
 
-// CalculateTotals calculates net amount, GST amount, and gross amount based on tax method
 func (s *InvoiceSection) CalculateTotals() {
 	s.NetAmount = 0
 	s.GSTAmount = 0
@@ -28,45 +43,43 @@ func (s *InvoiceSection) CalculateTotals() {
 
 	// Calculate sum of all entry amounts
 	for _, entry := range s.Entries {
-		s.GrossAmount += entry.TotalAmount
+		s.GrossAmount += entry.Amount
 	}
 
-	if s.TaxMethod == nil || *s.TaxMethod == "NO_TAX" || s.TaxRate == nil || *s.TaxRate == 0 {
-		// No tax: net = gross, gst = 0
+	taxRateDecimal := *s.TaxRate / 100.0
+
+	switch *s.TaxMethod {
+	case NOTAX:
 		s.NetAmount = s.GrossAmount
 		s.GSTAmount = 0
-	} else {
-		taxRateDecimal := *s.TaxRate / 100.0
-
-		switch *s.TaxMethod {
-		case "INCLUSIVE":
-			// Tax inclusive: gross amount already includes tax
-			// Net = Gross / (1 + tax_rate)
-			// GST = Gross - Net
-			s.NetAmount = s.GrossAmount / (1 + taxRateDecimal)
-			s.GSTAmount = s.GrossAmount - s.NetAmount
-		case "EXCLUSIVE":
-			// Tax exclusive: tax is added on top
-			// Net = Gross (sum of entries)
-			// GST = Net * tax_rate
-			// Gross = Net + GST
-			s.NetAmount = s.GrossAmount
-			s.GSTAmount = s.NetAmount * taxRateDecimal
-			s.GrossAmount = s.NetAmount + s.GSTAmount
-		}
+	case INCLUSIVE:
+		// Tax inclusive: gross amount already includes tax
+		// Net = Gross / (1 + tax_rate)
+		// GST = Gross - Net
+		s.NetAmount = s.GrossAmount / (1 + taxRateDecimal)
+		s.GSTAmount = s.GrossAmount - s.NetAmount
+	case EXCLUSIVE:
+		// Tax exclusive: tax is added on top
+		// Net = Gross (sum of entries)
+		// GST = Net * tax_rate
+		// Gross = Net + GST
+		s.NetAmount = s.GrossAmount
+		s.GSTAmount = s.NetAmount * taxRateDecimal
+		s.GrossAmount = s.NetAmount + s.GSTAmount
 	}
+
 }
 
 type InvoiceSectionDB struct {
-	ID             uuid.UUID `db:"id"`
-	InvoiceID      uuid.UUID `db:"invoice_id"`
-	InvoiceSection string    `db:"invoice_section"`
-	DocumentNumber string    `db:"document_number"`
-	TaxMethod      *string   `db:"tax_method"`
-	TaxRate        *float64  `db:"tax_rate"`
-	CreatedAt      string    `db:"created_at"`
-	UpdatedAt      string    `db:"updated_at"`
-	DeleteAt       string    `db:"delete_at"`
+	ID             uuid.UUID  `db:"id"`
+	InvoiceID      uuid.UUID  `db:"invoice_id"`
+	InvoiceSection string     `db:"invoice_section"`
+	DocumentNumber string     `db:"document_number"`
+	TaxMethod      *TaxMethod `db:"tax_method"`
+	TaxRate        *float64   `db:"tax_rate"`
+	CreatedAt      string     `db:"created_at"`
+	UpdatedAt      string     `db:"updated_at"`
+	DeleteAt       string     `db:"delete_at"`
 }
 
 type RqInvoice struct {
@@ -97,7 +110,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 	if len(sections) == 0 {
 		sections = []InvoiceSection{
 			{
-				SectionType:    "CALCULATION_STATEMENT",
+				SectionType:    CALCULATIONSTATEMENT,
 				DocumentNumber: uuid.New().String()[:8], // Generate a short doc number
 				Entries:        []*item.Item{},
 			},
@@ -198,7 +211,7 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		// Ensure at least one section exists
 		inv.Sections = []InvoiceSection{
 			{
-				SectionType:    "CALCULATION_STATEMENT",
+				SectionType:    CALCULATIONSTATEMENT,
 				DocumentNumber: inv.ID.String()[:8],
 				Entries:        []*item.Item{},
 			},
