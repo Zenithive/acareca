@@ -232,78 +232,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
 
 ` + defaultTemplateHeader() + `
 
-    {{#if has_calc_sections}}
-      {{#each calc_sections}}
-      <div class="cs-section">
-        <div class="cs-sec-hdr">
-          <span class="cs-sec-title">{{number}}.&nbsp;&nbsp;{{title}}</span>
-          <span class="cs-col-amount">Amount</span>
-          {{#if show_bas_column}}<span class="cs-col-bas">BAS Code</span>{{/if}}
-        </div>
-        {{#each rows}}
-        {{#if fee_rate}}
-        <div class="cs-row{{#if is_bold}} cs-bold{{/if}}{{#if indent}} cs-indent{{/if}}">
-          <span class="cs-lbl">{{label}}</span>
-          <span class="cs-amt"><span class="cs-fee-lbl">Fee rate</span>&nbsp;<span class="cs-fee-val">{{fee_rate}}</span></span>
-          {{#if ../show_bas_column}}<span class="cs-bas">{{bas_code}}</span>{{/if}}
-        </div>
-        {{else}}
-        <div class="cs-row{{#if is_bold}} cs-bold{{/if}}{{#if indent}} cs-indent{{/if}}">
-          <span class="cs-lbl">{{label}}</span>
-          <span class="cs-amt{{#if is_blue}} cs-blue{{/if}}{{#if is_negative}} cs-neg{{/if}}">{{format_currency amount}}</span>
-          {{#if ../show_bas_column}}<span class="cs-bas">{{bas_code}}</span>{{/if}}
-        </div>
-        {{/if}}
-        {{/each}}
-        {{#if service_items}}
-        <ul class="cs-svc-list">
-          {{#each service_items}}<li>{{label}}</li>{{/each}}
-        </ul>
-        {{/if}}
-      </div>
-      {{/each}}
-      {{#if footer_note}}<p class="cs-footer-note">{{footer_note}}</p>{{/if}}
-      {{#if notes}}<div class="cs-notes-block"><p class="cs-notes-text">{{notes}}</p></div>{{/if}}
-    {{else}}
-      <table class="items {{table_style_class}}">
-        <thead>
-          <tr>
-            <th>Name</th><th>Description</th>
-            <th class="num">Price</th><th class="num">Qty</th><th class="num">Discount</th>
-            {{#if show_tax}}<th class="num">Tax %</th><th class="num">Tax</th>{{/if}}
-            <th class="num">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{#each items}}
-          <tr>
-            <td>{{name}}</td><td>{{description}}</td>
-            <td class="num">{{format_currency unit_price}}</td><td class="num">{{qty}}</td>
-            <td class="num">{{format_currency discount_amount}}</td>
-            {{#if ../show_tax}}<td class="num">{{tax_percent}}%</td><td class="num">{{format_currency tax_amount}}</td>{{/if}}
-            <td class="num">{{format_currency line_total}}</td>
-          </tr>
-          {{/each}}
-        </tbody>
-      </table>
-      <div class="lower">
-        <div>
-          {{#if terms_text}}<h4>Terms and Conditions</h4><div class="text-block">{{terms_text}}</div>{{/if}}
-          {{#if notes}}<h4>Notes</h4><div class="text-block">{{notes}}</div>{{/if}}
-        </div>
-        <div class="summary">
-          <p class="totals-caption">{{totals_amounts_caption}}</p>
-          <div class="row"><span>{{totals_subtotal_label}}</span><span>{{format_currency subtotal}}</span></div>
-          {{#if show_tax}}<div class="row"><span>{{totals_tax_label}}</span><span>{{format_currency tax_total}}</span></div>{{/if}}
-          <div class="row"><span>{{totals_discount_label}}</span><span>{{format_currency discount_total}}</span></div>
-          <div class="total-due-box">
-            <span class="tdb-label">{{totals_grand_label}}</span>
-            <span class="tdb-amount">{{format_currency grand_total}}</span>
-          </div>
-          {{#if amount_in_words}}<p class="amount-words">{{amount_in_words}}</p>{{/if}}
-        </div>
-      </div>
-    {{/if}}
+` + defaultTemplateMainSections() + `
 
     {{#if has_attachments}}
     <div class="attachments">
@@ -353,51 +282,7 @@ body {
 .lh-empty { min-height: 20px; }
 .invoice-body { flex-grow: 1; padding: 0 0 32px; }
 ` + defaultTemplateHeaderCSS() + `
-.cs-section { border: 1px solid #d1d5db; margin: 20px 36px 0; }
-.cs-sec-hdr {
-  display: flex; align-items: center;
-  background: var(--invoice-primary); color: #fff;
-  padding: 9px 14px; font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.05em;
-}
-.cs-sec-title { flex: 1; }
-.cs-col-amount { width: 120px; text-align: right; }
-.cs-col-bas { width: 80px; text-align: right; }
-.cs-row {
-  display: flex; align-items: baseline;
-  padding: 7px 14px; font-size: 12px;
-  border-bottom: 1px solid #f3f4f6; background: #fff;
-}
-.cs-row:last-child { border-bottom: none; }
-.cs-row:nth-child(even) { background: #fafafa; }
-.cs-bold { font-weight: 700; background: #f3f4f6 !important; }
-.cs-indent .cs-lbl { padding-left: 28px; }
-.cs-lbl { flex: 1; color: #374151; font-size: 12px; }
-.cs-bold .cs-lbl { color: #111827; }
-.cs-amt { width: 120px; text-align: right; font-size: 12px; color: #111827; white-space: nowrap; }
-.cs-bold .cs-amt { font-weight: 700; }
-.cs-blue { color: #2563eb; }
-.cs-neg::before { content: "("; }
-.cs-neg::after  { content: ")"; }
-.cs-bas { width: 80px; text-align: right; font-size: 12px; color: #6b7280; }
-.cs-bold .cs-bas { font-weight: 700; color: #111827; }
-.cs-fee-lbl { font-weight: 700; color: #111827; margin-right: 6px; }
-.cs-fee-val { color: #2563eb; font-weight: 700; }
-.cs-svc-list {
-  list-style: decimal; margin: 0; padding: 6px 14px 10px 46px;
-  background: #fafafa; font-size: 12px; color: #374151;
-}
-.cs-svc-list li { padding: 3px 0; }
-.cs-footer-note {
-  font-size: 11px; color: #6b7280; font-style: italic;
-  line-height: 1.6; margin: 20px 36px 0; padding-top: 12px;
-  border-top: 1px solid #d1d5db;
-}
-.cs-notes-block {
-  margin: 12px 36px 0; padding: 12px 14px;
-  background: #f3f4f6; border-left: 3px solid var(--invoice-primary);
-}
-.cs-notes-text { font-size: 12px; color: #374151; white-space: pre-wrap; }
+` + defaultTemplateMainCSS() + `
 table.items {
   width: calc(100% - 72px); margin: 20px 36px 0;
   border-collapse: collapse; font-size: 12px;
@@ -963,10 +848,10 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 
 	return Setting{
 		TemplateId:       templateId,
-		PrimaryColor:     "#1a6b5a",           // Deep clinic green — trust, health, care
-		AccentColor:      "#2dd4a4",           // Mint accent — modern, fresh
-		BodyFontFamily:   "Plus Jakarta Sans", // Clean, modern, highly legible
-		HeaderFontFamily: "Fraunces",          // Elegant serif for invoice title & totals
+		PrimaryColor:     "#1a6b5a",
+		AccentColor:      "#2dd4a4",
+		BodyFontFamily:   "Plus Jakarta Sans",
+		HeaderFontFamily: "Fraunces",
 		IsLogo:           true,
 		LogoId:           nil,
 		LetterHeadId:     nil,
@@ -978,3 +863,273 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		TableStyle:       nil,
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DefaultCalcConsts — all constant labels, BAS codes, bullet items and the
+// fee/GST rates for the 3-section Calculation Statement layout.
+//
+// NONE of these values come from the frontend or the database.
+// They are fixed accounting document constants, defined here the same way
+// DefaultSettings defines colours and fonts.
+// The service calls DefaultCalcConsts() to build []CalcSection at render time,
+// using only the invoice monetary totals as dynamic inputs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// CalcConsts holds every constant needed to render the 3 sections.
+type CalcConsts struct {
+	// ── Rates ──────────────────────────────────────────────────────
+	FeeRatePct float64 // Clinic service/facility fee rate (e.g. 60.0 = 60%)
+	GSTRatePct float64 // GST rate applied to the service fee (default 10%)
+
+	// ── Section titles ─────────────────────────────────────────────
+	Sec1Title string
+	Sec2Title string
+	Sec3Title string
+
+	// ── Section 1 row labels: Patient Fees Collected ───────────────
+	Sec1TotalCollected string // G1 row
+	Sec1GSTCollected   string // 1A row
+	Sec1GSTFreeSales   string // G3 row
+	Sec1LessLabFees    string // lab fees row
+	Sec1NetPatientFees string // net total row (bold)
+
+	// ── Section 2 row labels: Service & Facility Fee ───────────────
+	Sec2ServicesIntro   string // intro row with fee-rate pill
+	Sec2ServiceFee      string // calculated fee row (bold)
+	Sec2GSTOnServiceFee string // GST row
+	Sec2TotalServiceFee string // total incl GST (bold)
+
+	// ── Section 2 bullet items (dynamically rendered as a numbered list) ──
+	// Add, remove or reorder items freely — the template loops over them.
+	ServiceItems []string
+
+	// ── Section 3 row labels: Net Settlement ──────────────────────
+	Sec3TotalCollected  string // G1 echo row
+	Sec3LessLabFees     string // negative lab row
+	Sec3LessServiceFee  string // negative service fee row
+	Sec3AmountDue       string // amount due row (bold)
+	Sec3LessRetainers   string // retainers/drawings row (blue, negative)
+	Sec3BalanceRemitted string // final balance (bold)
+
+	// ── Footer note ───────────────────────────────────────────────
+	FooterNote string
+
+	// ── Dummy constant amounts used when real values are not available ─
+	// These are display-only defaults. They make the template render a
+	// realistic-looking document without any frontend / DB input.
+	// Replace with real DB-sourced values once the data pipeline exists.
+	DefaultLabFees   float64 // laboratory fees (net of GST) — default constant
+	DefaultRetainers float64 // drawings / retainers previously paid — default constant
+}
+
+// DefaultCalcConsts returns the built-in constants for the Calculation Statement.
+// Change a label, BAS code, rate or bullet item here and it reflects everywhere.
+func DefaultCalcConsts() CalcConsts {
+	return CalcConsts{
+		FeeRatePct: 60.0,
+		GSTRatePct: 10.0,
+
+		Sec1Title: "PATIENT FEES COLLECTED ON YOUR BEHALF",
+		Sec2Title: "SERVICE & FACILITY FEE  (see Tax Invoice \u2014 page 2)",
+		Sec3Title: "NET SETTLEMENT  (see Remittance Advice \u2014 page 3)",
+
+		// Section 1
+		Sec1TotalCollected: "Total patient fees collected (incl. GST)",
+		Sec1GSTCollected:   "GST collected on patient fees (taxable services)",
+		Sec1GSTFreeSales:   "GST-free sales  [G1 \u2212 (1A \u00d7 11)]",
+		Sec1LessLabFees:    "Less: laboratory fees (net of GST)",
+		Sec1NetPatientFees: "Net patient fees  [G1 \u2212 1A \u2212 lab fees]",
+
+		// Section 2
+		Sec2ServicesIntro:   "Services rendered to you for the period, including:",
+		Sec2ServiceFee:      "Service & Facility Fee  [net patient fees \u00d7 fee rate]",
+		Sec2GSTOnServiceFee: "GST on Service & Facility Fee (10%)",
+		Sec2TotalServiceFee: "Total Service & Facility Fee (incl. GST)",
+
+		// Bullet items — fully dynamic array, add/remove freely
+		ServiceItems: []string{
+			"Rent of dental surgery/room",
+			"Patient booking & reception",
+			"Fee collection & banking",
+			"Equipment & instrument hire",
+			"General administration & support staff",
+		},
+
+		// Section 3
+		Sec3TotalCollected:  "Total patient fees collected (incl. GST)  [G1]",
+		Sec3LessLabFees:     "Less: laboratory fees (net of GST)",
+		Sec3LessServiceFee:  "Less: Total Service & Facility Fee (incl. GST)",
+		Sec3AmountDue:       "Amount due to dentist",
+		Sec3LessRetainers:   "Less: retainers / drawings previously paid this period",
+		Sec3BalanceRemitted: "BALANCE REMITTED TO DENTIST",
+
+		FooterNote: "Notes: Total patient fees, GST collected (1A) and laboratory fees are sourced from the " +
+			"practice management system for the billing period. Blue cells are inputs; all other figures are " +
+			"calculated. BAS codes are shown for the clinic\u2019s activity statement.",
+
+		// Constant dummy amounts — shown when real values are not yet wired in.
+		// These match the sample figures in the target Calculation Statement image.
+		DefaultLabFees:   3150.00, // laboratory fees (net of GST)
+		DefaultRetainers: 5000.00, // retainers / drawings previously paid this period
+	}
+}
+
+// defaultTemplateMainSections returns the Handlebars HTML for the 3-section
+// calculation body. It is separate from the header so each part can be read,
+// tested and maintained independently.
+func defaultTemplateMainSections() string {
+	return `
+    {{!-- ══════════════════════════════════════════════════════════════
+         CALCULATION STATEMENT — 3 numbered sections
+         Data is built entirely by buildCalcSections() in service.go.
+         No frontend or DB input reaches this block.
+    ══════════════════════════════════════════════════════════════════ --}}
+    {{#each calc_sections}}
+    <div class="cs-section">
+
+      {{!-- Section header bar: number + title + Amount col + optional BAS col --}}
+      <div class="cs-sec-hdr">
+        <span class="cs-sec-title">{{number}}.&nbsp;&nbsp;{{title}}</span>
+        <span class="cs-col-hdr cs-col-amount">Amount</span>
+        {{#if show_bas_column}}<span class="cs-col-hdr cs-col-bas">BAS Code</span>{{/if}}
+      </div>
+
+      {{!-- Data rows — each row is a CalcRow struct converted to map --}}
+      {{#each rows}}
+        {{#if fee_rate}}
+        {{!-- Special intro row: shows "Fee rate  60.0%" instead of a money amount --}}
+        <div class="cs-row{{#if is_bold}} cs-bold{{/if}}{{#if indent}} cs-indent{{/if}}">
+          <span class="cs-lbl">{{label}}</span>
+          <span class="cs-amt">
+            <span class="cs-fee-lbl">Fee rate</span>
+            <span class="cs-fee-val">{{fee_rate}}</span>
+          </span>
+          {{#if ../show_bas_column}}<span class="cs-bas">{{bas_code}}</span>{{/if}}
+        </div>
+        {{else}}
+        {{!-- Normal money row --}}
+        <div class="cs-row{{#if is_bold}} cs-bold{{/if}}{{#if indent}} cs-indent{{/if}}">
+          <span class="cs-lbl">{{label}}</span>
+          <span class="cs-amt{{#if is_blue}} cs-blue{{/if}}{{#if is_negative}} cs-neg{{/if}}">
+            {{format_currency amount}}
+          </span>
+          {{#if ../show_bas_column}}<span class="cs-bas">{{bas_code}}</span>{{/if}}
+        </div>
+        {{/if}}
+      {{/each}}
+
+      {{!-- Optional numbered bullet list (Section 2 service items) --}}
+      {{#if service_items}}
+      <ul class="cs-svc-list">
+        {{#each service_items}}<li>{{label}}</li>{{/each}}
+      </ul>
+      {{/if}}
+
+    </div>{{!-- /cs-section --}}
+    {{/each}}
+
+    {{!-- Italic footer note below all sections --}}
+    {{#if footer_note}}<p class="cs-footer-note">{{footer_note}}</p>{{/if}}
+
+    {{!-- Optional notes block (terms text injected from settings) --}}
+    {{#if notes}}<div class="cs-notes-block"><p class="cs-notes-text">{{notes}}</p></div>{{/if}}`
+}
+
+// defaultTemplateMainCSS returns only the CSS rules for the 3 calculation
+// sections and the footer note. Scoped to cs-* classes.
+func defaultTemplateMainCSS() string {
+	return `
+/* ══ Calculation sections ══════════════════════════════════════════
+   Each .cs-section has:
+     • .cs-sec-hdr  — dark primary header bar (number + title + col headers)
+     • .cs-row      — data row (flex, baseline-aligned)
+     • .cs-svc-list — numbered bullet list (Section 2 only)
+   Column widths mirror the image: label flex-1, amount 120px, BAS 80px
+═══════════════════════════════════════════════════════════════════ */
+.cs-section {
+  border: 1px solid #d1d5db;
+  margin: 20px 36px 0;
+}
+
+/* Section header bar */
+.cs-sec-hdr {
+  display: flex;
+  align-items: center;
+  background: var(--invoice-primary);
+  color: #ffffff;
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.cs-sec-title { flex: 1; }
+.cs-col-hdr   { font-weight: 700; white-space: nowrap; }
+.cs-col-amount { width: 120px; text-align: right; }
+.cs-col-bas    { width: 80px;  text-align: right; }
+
+/* Data rows */
+.cs-row {
+  display: flex;
+  align-items: baseline;
+  padding: 7px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #ffffff;
+}
+.cs-row:last-child          { border-bottom: none; }
+.cs-row:nth-child(even)     { background: #fafafa; }
+.cs-bold                    { font-weight: 700; background: #f3f4f6 !important; }
+.cs-indent .cs-lbl          { padding-left: 28px; }
+
+/* Row label */
+.cs-lbl           { flex: 1; font-size: 12px; color: #374151; }
+.cs-bold .cs-lbl  { color: #111827; }
+
+/* Amount cell */
+.cs-amt           { width: 120px; text-align: right; font-size: 12px; color: #111827; white-space: nowrap; }
+.cs-bold .cs-amt  { font-weight: 700; }
+.cs-blue          { color: #2563eb; }           /* input / user-entered values */
+.cs-neg::before   { content: "("; }             /* negative parenthesis prefix */
+.cs-neg::after    { content: ")"; }
+
+/* BAS Code cell */
+.cs-bas           { width: 80px; text-align: right; font-size: 12px; color: #6b7280; }
+.cs-bold .cs-bas  { font-weight: 700; color: #111827; }
+
+/* Fee-rate inline pill (Section 2 intro row) */
+.cs-fee-lbl { font-weight: 700; color: #111827; margin-right: 8px; }
+.cs-fee-val { color: #2563eb; font-weight: 700; }
+
+/* Numbered service bullet list */
+.cs-svc-list {
+  list-style: decimal;
+  margin: 0;
+  padding: 6px 14px 10px 52px;
+  background: #fafafa;
+  font-size: 12px;
+  color: #374151;
+}
+.cs-svc-list li { padding: 3px 0; }
+
+/* Italic footer note */
+.cs-footer-note {
+  font-size: 11px;
+  color: #6b7280;
+  font-style: italic;
+  line-height: 1.6;
+  margin: 20px 36px 0;
+  padding-top: 12px;
+  border-top: 1px solid #d1d5db;
+}
+
+/* Notes / terms block */
+.cs-notes-block {
+  margin: 12px 36px 0;
+  padding: 12px 14px;
+  background: #f3f4f6;
+  border-left: 3px solid var(--invoice-primary);
+}
+.cs-notes-text { font-size: 12px; color: #374151; white-space: pre-wrap; }`
+}
+

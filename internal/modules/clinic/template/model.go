@@ -229,6 +229,40 @@ type RqGeneratePDF struct {
 	Data       InvoiceData
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Calculation Statement data structures
+// These are never received from frontend or DB — they are built entirely from
+// backend constants (DefaultCalcConsts) + invoice totals at render time.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// CalcRow is one data row inside a numbered Calculation Statement section.
+type CalcRow struct {
+	Label      string  `json:"label"`       // Row description text
+	Amount     float64 `json:"amount"`      // Monetary value
+	BASCode    string  `json:"bas_code"`    // BAS activity-statement code, e.g. "G1", "1A" (empty = none)
+	IsBold     bool    `json:"is_bold"`     // Render row in bold (subtotals / key figures)
+	IsBlue     bool    `json:"is_blue"`     // Render amount in blue (user-input / dynamic cells)
+	IsNegative bool    `json:"is_negative"` // Wrap amount in parentheses, e.g. ($3,150.00)
+	Indent     bool    `json:"indent"`      // Add left indent (nested rows)
+	FeeRate    string  `json:"fee_rate"`    // When non-empty: show "Fee rate  60.0%" instead of amount
+}
+
+// ServiceItem is one bullet point in the Service & Facility section list.
+type ServiceItem struct {
+	Label string `json:"label"`
+}
+
+// CalcSection is one numbered section block in the Calculation Statement.
+type CalcSection struct {
+	Number        string        `json:"number"`          // "1", "2", "3"
+	Title         string        `json:"title"`           // Section heading text
+	ShowBASColumn bool          `json:"show_bas_column"` // Whether to render the BAS Code column
+	Rows          []CalcRow     `json:"rows"`            // Data rows (variable length — add/remove freely)
+	ServiceItems  []ServiceItem `json:"service_items"`   // Optional bullet list (Section 2)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // InvoiceData holds all Handlebars variables the templates expect
 type InvoiceData struct {
 	ClinicName         string `json:"clinic_name"`
@@ -270,6 +304,14 @@ type InvoiceData struct {
 	TableStyleClass string `json:"table_style_class"`
 
 	Attachments []Attachment `json:"attachments"`
+
+	// CalcSections drives the 3-section Calculation Statement layout.
+	// Never sent by frontend — always built by buildCalcSections() in service.go.
+	CalcSections []CalcSection `json:"calc_sections"`
+
+	// FooterNote is the italic disclaimer printed below all sections.
+	// Never sent by frontend — injected from DefaultCalcConsts().FooterNote.
+	FooterNote string `json:"footer_note"`
 
 	// Settings-derived — injected by service before render
 	PrimaryColor     string `json:"-"`

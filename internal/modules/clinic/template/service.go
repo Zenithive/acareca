@@ -262,10 +262,20 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 			rq.Data.WatermarkEnabled = true
 			rq.Data.WatermarkText = *st.WaterMarkText
 		}
+		// Apply terms text from settings when caller didn't supply notes
 		if st.TermText != nil && rq.Data.Notes == "" {
-			// only fall back to setting terms if caller didn't supply notes
+			rq.Data.Notes = *st.TermText
 		}
 	}
+
+	// Build the 3 calc sections — all values come from DefaultCalcConsts() + invoice totals.
+	// Nothing from frontend or DB.
+	rq.Data.CalcSections = buildCalcSections(
+		rq.Data.GrandTotal,
+		rq.Data.TaxTotal,
+		rq.Data.Subtotal,
+	)
+	rq.Data.FooterNote = DefaultCalcConsts().FooterNote
 
 	data := invoiceDataToMap(rq.Data)
 
@@ -322,7 +332,129 @@ func invoiceDataToMap(d InvoiceData) map[string]any {
 		"accent_color":           d.AccentColor,
 		"body_font_family":       d.BodyFontFamily,
 		"header_font_family":     d.HeaderFontFamily,
+		// Calc sections — built from DefaultCalcConsts + invoice totals
+		"calc_sections": calcSectionsToMap(d.CalcSections),
+		"footer_note":   d.FooterNote,
 	}
+}
+
+// calcSectionsToMap converts []CalcSection → []map[string]any for raymond.
+func calcSectionsToMap(sections []CalcSection) []map[string]any {
+	out := make([]map[string]any, len(sections))
+	for i, s := range sections {
+		rows := make([]map[string]any, len(s.Rows))
+		for j, r := range s.Rows {
+			rows[j] = map[string]any{
+				"label":       r.Label,
+				"amount":      r.Amount,
+				"bas_code":    r.BASCode,
+				"is_bold":     r.IsBold,
+				"is_blue":     r.IsBlue,
+				"is_negative": r.IsNegative,
+				"indent":      r.Indent,
+				"fee_rate":    r.FeeRate,
+			}
+		}
+		svcItems := make([]map[string]any, len(s.ServiceItems))
+		for k, si := range s.ServiceItems {
+			svcItems[k] = map[string]any{"label": si.Label}
+		}
+		out[i] = map[string]any{
+			"number":          s.Number,
+			"title":           s.Title,
+			"show_bas_column": s.ShowBASColumn,
+			"rows":            rows,
+			"service_items":   svcItems,
+		}
+	}
+	return out
+}
+
+// buildCalcSections constructs the 3 CalcSection values from DefaultCalcConsts
+// (all labels, rates, bullets, and default amounts) + the real invoice monetary
+// totals (grandTotal, taxTotal, subtotal).
+//
+// Value sources — nothing comes from frontend or DB:
+//   grandTotal            ← invoice total incl. GST  (from InvoiceData)
+//   taxTotal              ← GST collected             (from InvoiceData)
+//   subtotal              ← sum of unit prices × qty  (from InvoiceData)
+//   c.DefaultLabFees      ← constant default (DefaultCalcConsts)
+//   c.DefaultRetainers    ← constant default (DefaultCalcConsts)
+//   c.FeeRatePct          ← constant (DefaultCalcConsts)
+//   c.GSTRatePct          ← constant (DefaultCalcConsts)
+func buildCalcSections(grandTotal, taxTotal, subtotal float64) []CalcSection {
+	c := DefaultCalcConsts()
+	feeRateStr := fmt.Sprintf("%.1f%%", c.FeeRatePct)
+
+	labFees := c.DefaultLabFees
+	retainers := c.DefaultRetainers
+
+	// ── Section 1: Patient Fees Collected ─────────────────────────
+	// G3 (GST-free sales) = subtotal − (1A × 11)
+	gstFreeSales := subtotal - (taxTotal * 11)
+	if gstFreeSales < 0 {
+		gstFreeSales = 0
+	}
+	// Net patient fees = G1 − 1A − lab fees
+	netPatientFees := grandTotal - taxTotal - labFees
+
+	section1 := CalcSection{
+		Number:        "1",
+		Title:         c.Sec1Title,
+		ShowBASColumn: true,
+		Rows: []CalcRow{
+			{Label: c.Sec1TotalCollected, Amount: grandTotal, BASCode: "G1", IsBold: true, IsBlue: true},
+			{Label: c.Sec1GSTCollected, Amount: taxTotal, BASCode: "1A", IsBlue: true},
+			{Label: c.Sec1GSTFreeSales, Amount: gstFreeSales, BASCode: "G3"},
+			{Label: c.Sec1LessLabFees, Amount: labFees, IsBlue: true},
+			{Label: c.Sec1NetPatientFees, Amount: netPatientFees, IsBold: true},
+		},
+	}
+
+	// ── Section 2: Service & Facility Fee ─────────────────────────
+	serviceFeeNet := netPatientFees * (c.FeeRatePct / 100)
+	gstOnServiceFee := serviceFeeNet * (c.GSTRatePct / 100)
+	totalServiceFee := serviceFeeNet + gstOnServiceFee
+
+	svcItems := make([]ServiceItem, len(c.ServiceItems))
+	for i, label := range c.ServiceItems {
+		svcItems[i] = ServiceItem{Label: label}
+	}
+
+	section2 := CalcSection{
+		Number:        "2",
+		Title:         c.Sec2Title,
+		ShowBASColumn: true,
+		Rows: []CalcRow{
+			{Label: c.Sec2ServicesIntro, FeeRate: feeRateStr},
+			{Label: c.Sec2ServiceFee, Amount: serviceFeeNet, IsBold: true},
+			{Label: c.Sec2GSTOnServiceFee, Amount: gstOnServiceFee, BASCode: "1B"},
+			{Label: c.Sec2TotalServiceFee, Amount: totalServiceFee, BASCode: "G11", IsBold: true},
+		},
+		ServiceItems: svcItems,
+	}
+
+	// ── Section 3: Net Settlement ──────────────────────────────────
+	// Amount due = G1 − lab fees − total service fee (incl. GST)
+	amountDue := grandTotal - labFees - totalServiceFee
+	// Balance = amount due − retainers/drawings previously paid
+	balance := amountDue - retainers
+
+	section3 := CalcSection{
+		Number:        "3",
+		Title:         c.Sec3Title,
+		ShowBASColumn: false,
+		Rows: []CalcRow{
+			{Label: c.Sec3TotalCollected, Amount: grandTotal},
+			{Label: c.Sec3LessLabFees, Amount: labFees, IsNegative: true},
+			{Label: c.Sec3LessServiceFee, Amount: totalServiceFee, IsNegative: true},
+			{Label: c.Sec3AmountDue, Amount: amountDue, IsBold: true},
+			{Label: c.Sec3LessRetainers, Amount: retainers, IsBlue: true, IsNegative: true},
+			{Label: c.Sec3BalanceRemitted, Amount: balance, IsBold: true},
+		},
+	}
+
+	return []CalcSection{section1, section2, section3}
 }
 
 func lineItemsToMap(items []LineItem) []map[string]any {
@@ -405,6 +537,15 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			}
 		}
 	}
+
+	// Build the 3 calc sections — all values come from DefaultCalcConsts() + invoice totals.
+	// Nothing from frontend or DB.
+	data.CalcSections = buildCalcSections(
+		data.GrandTotal,
+		data.TaxTotal,
+		data.Subtotal,
+	)
+	data.FooterNote = DefaultCalcConsts().FooterNote
 
 	fullHTML, err := chromepdf.Render(html, css, invoiceDataToMap(data))
 	if err != nil {
