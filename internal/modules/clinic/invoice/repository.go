@@ -24,6 +24,7 @@ var (
 type IRepository interface {
 	Create(ctx context.Context, invoice *Invoice) error
 	Update(ctx context.Context, invoice *Invoice) error
+	UpdateWithSections(ctx context.Context, invoice *Invoice, sections []section.Section, deleteSectionIDs []uuid.UUID, deleteItemIDs map[uuid.UUID][]uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, int64, error)
 	GetByID(ctx context.Context, db sqlx.QueryerContext, id uuid.UUID) (*Invoice, error)
@@ -95,6 +96,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
+		// Update invoice base fields
 		query := `
 		UPDATE tbl_invoice
 		SET contact_id = $1, template_id = $2, name = $3,
@@ -414,4 +416,48 @@ func (r *Repository) getInvoiceContact(ctx context.Context, invoice *Invoice) er
 
 	invoice.ContactTo = &contact
 	return nil
+}
+
+// UpdateWithSections updates invoice with support for section and item update/delete arrays
+func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, sections []section.Section, deleteSectionIDs []uuid.UUID, deleteItemIDs map[uuid.UUID][]uuid.UUID) error {
+	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		if err := r.validateContact(ctx, invoice.ClinicID, invoice.ContactID); err != nil {
+			return err
+		}
+
+		query := `
+		UPDATE tbl_invoice
+		SET contact_id = $1, template_id = $2, name = $3,
+			billing_period_from = $4, billing_period_to = $5,
+			invoice_frequency = $6, issue_date = $7, due_date = $8,
+			status = $9, updated_at = NOW()
+		WHERE id = $10 AND deleted_at IS NULL
+	`
+
+		result, err := tx.ExecContext(ctx, query,
+			invoice.ContactID,
+			invoice.TemplateID,
+			invoice.Name,
+			invoice.BillingPeriodFrom,
+			invoice.BillingPeriodTo,
+			invoice.InvoiceFrequency,
+			invoice.IssueDate,
+			invoice.DueDate,
+			invoice.Status,
+			invoice.ID,
+		)
+		if err != nil {
+			return err
+		}
+
+		if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
+			return ErrNotFound
+		}
+
+		if err := r.sectionRepo.UpsertSections(ctx, tx, invoice.ID, sections, deleteSectionIDs, deleteItemIDs); err != nil {
+			return fmt.Errorf("failed to upsert sections: %w", err)
+		}
+
+		return nil
+	})
 }

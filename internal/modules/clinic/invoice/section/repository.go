@@ -20,11 +20,12 @@ var (
 // IRepository defines the contract for section data operations
 type IRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, sections []Section) error
-	Update(ctx context.Context, tx *sqlx.Tx, section []Section) error
+	Update(ctx context.Context, tx *sqlx.Tx, sections []Section) error
 	Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) error
 	GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID) (*Section, error)
 	ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) ([]Section, error)
 	GetByType(ctx context.Context, invoiceID uuid.UUID, sectionType SectionType) (*Section, error)
+	UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, sections []Section, deleteSectionIDs []uuid.UUID, deleteItemIDs map[uuid.UUID][]uuid.UUID) error
 }
 
 type Repository struct {
@@ -343,4 +344,89 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 	}
 
 	return &section, nil
+}
+
+// UpsertSections handles create, update, and delete operations for sections and their items
+func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, sections []Section, deleteSectionIDs []uuid.UUID, deleteItemIDs map[uuid.UUID][]uuid.UUID) error {
+	if len(deleteSectionIDs) > 0 {
+		for _, sectionID := range deleteSectionIDs {
+			if err := r.Delete(ctx, tx, sectionID); err != nil {
+				return fmt.Errorf("failed to delete section %s: %w", sectionID, err)
+			}
+		}
+	}
+
+	for _, section := range sections {
+		if section.ID == uuid.Nil {
+			section.ID = uuid.New()
+			if section.InvoiceID == nil {
+				section.InvoiceID = &invoiceID
+			}
+			if err := r.Create(ctx, tx, []Section{section}); err != nil {
+				return fmt.Errorf("failed to create new section: %w", err)
+			}
+		} else {
+			var exists bool
+			err := tx.QueryRowContext(ctx, `
+				SELECT EXISTS(SELECT 1 FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL)
+			`, section.ID).Scan(&exists)
+			if err != nil {
+				return fmt.Errorf("failed to check section existence: %w", err)
+			}
+
+			if exists {
+				if err := r.updateSectionOnly(ctx, tx, section); err != nil {
+					return fmt.Errorf("failed to update section %s: %w", section.ID, err)
+				}
+
+				if itemsToDelete, ok := deleteItemIDs[section.ID]; ok && len(itemsToDelete) > 0 {
+					if err := r.itemRepo.Delete(ctx, tx, itemsToDelete); err != nil {
+						return fmt.Errorf("failed to delete items for section %s: %w", section.ID, err)
+					}
+				}
+
+				if section.Entries != nil {
+					for _, entry := range section.Entries {
+						entry.InvoiceSectionID = &section.ID
+					}
+					if err := r.itemRepo.UpsertItems(ctx, tx, invoiceID, section.Entries, nil); err != nil {
+						return fmt.Errorf("failed to upsert items for section %s: %w", section.ID, err)
+					}
+				}
+			} else {
+				if section.InvoiceID == nil {
+					section.InvoiceID = &invoiceID
+				}
+				if err := r.Create(ctx, tx, []Section{section}); err != nil {
+					return fmt.Errorf("failed to create section with ID %s: %w", section.ID, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// updateSectionOnly updates only the section metadata without touching items
+func (r *Repository) updateSectionOnly(ctx context.Context, tx *sqlx.Tx, section Section) error {
+	query := `
+		UPDATE tbl_map_invoice_section
+		SET 
+			document_number = $1,
+			tax_method = $2,
+			invoice_section = $3,
+			updated_at = NOW()
+		WHERE id = $4 AND deleted_at IS NULL
+	`
+
+	_, err := tx.ExecContext(
+		ctx,
+		query,
+		section.DocumentNumber,
+		section.TaxMethod,
+		section.InvoiceSection,
+		section.ID,
+	)
+
+	return err
 }

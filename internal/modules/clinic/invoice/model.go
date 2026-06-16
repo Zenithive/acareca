@@ -59,6 +59,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 
 type RqUpdateInvoice struct {
 	ID                *uuid.UUID                `json:"id" validate:"-"`
+	ClinicID          uuid.UUID                 `json:"clinicId"`
 	ContactID         *uuid.UUID                `json:"contactId,omitempty"`
 	TemplateID        *uuid.UUID                `json:"templateId,omitempty"`
 	Name              *string                   `json:"name,omitempty"`
@@ -69,6 +70,7 @@ type RqUpdateInvoice struct {
 	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	Status            *string                   `json:"status,omitempty"`
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
+	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
 	AttachmentBase64  string                    `json:"attachmentBase64,omitempty"`
 }
 

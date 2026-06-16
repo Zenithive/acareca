@@ -42,6 +42,7 @@ type RqUpdateSection struct {
 	DocumentNumber *string               `json:"documentNumber,omitempty"`
 	TaxMethod      *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	Entries        []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
+	DeleteEntries  []uuid.UUID           `json:"deleteEntries,omitempty"`
 }
 
 // ToSection converts request to domain model
@@ -68,6 +69,9 @@ func (rq *RqUpdateSection) ToSection() *Section {
 	// Parse and set ID if provided
 	if rq.ID != nil {
 		section.ID = *rq.ID
+	} else {
+		// If no ID, this is a new section
+		section.ID = uuid.New()
 	}
 
 	// Parse and set InvoiceID if provided
@@ -94,11 +98,19 @@ func (rq *RqUpdateSection) ToSection() *Section {
 	if rq.Entries != nil {
 		entries := make([]*item.Item, 0, len(rq.Entries))
 		for _, entryUpdate := range rq.Entries {
-			entry := &item.Item{
-				ID: entryUpdate.ID,
+			if entryUpdate.ID == nil || *entryUpdate.ID == uuid.Nil {
+				newEntry := &item.Item{
+					ID: uuid.New(),
+				}
+				entryUpdate.ApplyToItem(newEntry)
+				entries = append(entries, newEntry)
+			} else {
+				entry := &item.Item{
+					ID: *entryUpdate.ID,
+				}
+				entryUpdate.ApplyToItem(entry)
+				entries = append(entries, entry)
 			}
-			entryUpdate.ApplyToItem(entry)
-			entries = append(entries, entry)
 		}
 		section.Entries = entries
 	}

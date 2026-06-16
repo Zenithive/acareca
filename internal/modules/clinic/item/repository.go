@@ -11,6 +11,8 @@ type IRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error
 	GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID uuid.UUID) ([]*Item, error)
 	Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item) error
+	Delete(ctx context.Context, tx *sqlx.Tx, itemIDs []uuid.UUID) error
+	UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item, deleteIDs []uuid.UUID) error
 }
 
 type Repository struct {
@@ -139,5 +141,58 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			return err
 		}
 	}
+	return nil
+}
+
+// Delete implements [IRepository].
+func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, itemIDs []uuid.UUID) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+
+	query := `
+		UPDATE tbl_invoice_item
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`
+	_, err := tx.ExecContext(ctx, query, itemIDs)
+	return err
+}
+
+// UpsertItems handles create, update, and delete operations in a single transaction
+func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUID, items []*Item, deleteIDs []uuid.UUID) error {
+	if len(deleteIDs) > 0 {
+		if err := r.Delete(ctx, tx, deleteIDs); err != nil {
+			return err
+		}
+	}
+
+	for _, invoiceItem := range items {
+		if invoiceItem.ID == uuid.Nil {
+			invoiceItem.ID = uuid.New()
+			if err := r.Create(ctx, tx, invoiceID, []*Item{invoiceItem}); err != nil {
+				return err
+			}
+		} else {
+			var exists bool
+			err := tx.QueryRowContext(ctx, `
+				SELECT EXISTS(SELECT 1 FROM tbl_invoice_item WHERE id = $1 AND deleted_at IS NULL)
+			`, invoiceItem.ID).Scan(&exists)
+			if err != nil {
+				return err
+			}
+
+			if exists {
+				if err := r.Update(ctx, tx, invoiceID, []*Item{invoiceItem}); err != nil {
+					return err
+				}
+			} else {
+				if err := r.Create(ctx, tx, invoiceID, []*Item{invoiceItem}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }

@@ -55,7 +55,7 @@ func (r *RqEntry) ToItem() *Item {
 }
 
 type RqUpdateEntry struct {
-	ID               uuid.UUID  `json:"id" validate:"required"`
+	ID               *uuid.UUID `json:"id,omitempty"`
 	Name             *string    `json:"name,omitempty"`
 	Description      *string    `json:"description,omitempty"`
 	EntryType        *EntryType `json:"entryType,omitempty"`
@@ -66,6 +66,10 @@ type RqUpdateEntry struct {
 }
 
 func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
+	if r.ID != nil && item.ID == uuid.Nil {
+		item.ID = *r.ID
+	}
+
 	if r.Name != nil {
 		item.Name = *r.Name
 	}

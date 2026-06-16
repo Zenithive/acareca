@@ -111,7 +111,21 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 	// }
 
 	updatedInvoice := invoice.ApplyToInvoice(existing)
-	err = s.repo.Update(ctx, updatedInvoice)
+
+	sections := make([]section.Section, 0)
+	deleteItemIDs := make(map[uuid.UUID][]uuid.UUID)
+
+	for _, rqSec := range invoice.Sections {
+		sec := rqSec.ToSection()
+		sec.InvoiceID = invoice.ID
+		sections = append(sections, *sec)
+
+		if len(rqSec.DeleteEntries) > 0 {
+			deleteItemIDs[sec.ID] = rqSec.DeleteEntries
+		}
+	}
+
+	err = s.repo.UpdateWithSections(ctx, updatedInvoice, sections, invoice.DeleteSections, deleteItemIDs)
 	if err != nil {
 		return err
 	}
