@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
     tax_method tax_method DEFAULT 'NO_TAX',
     tax_rate NUMERIC(5,2) DEFAULT 0.00,
 
+    -- Explicit Remittance Payment Fields (Null for other sections)
+    payment_method VARCHAR(100),
+    account_name VARCHAR(255),
+    bsb_number VARCHAR(20),
+    account_number VARCHAR(50),
+    payment_date DATE,
+    payment_reference VARCHAR(255),
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ,

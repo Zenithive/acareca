@@ -2449,18 +2449,47 @@ definitions:
     type: object
   invoice.InvoiceSection:
     properties:
+      accountName:
+        type: string
+      accountNumber:
+        type: string
+      bsbNumber:
+        type: string
       documentNumber:
         type: string
       entries:
         items:
           $ref: '#/definitions/item.Item'
         type: array
+      grossAmount:
+        type: number
+      gstAmount:
+        type: number
+      netAmount:
+        type: number
+      paymentDate:
+        type: string
+      paymentMethod:
+        description: REMITTANCE_INVOICE Explicit Payment Metadata Storage Fields
+        type: string
+      paymentReference:
+        type: string
       sectionType:
         enum:
         - CALCULATION_STATEMENT
         - SFA_INVOICE
         - REMITTANCE_INVOICE
         type: string
+      taxMethod:
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - NO_TAX
+        type: string
+      taxRate:
+        maximum: 100
+        minimum: 0
+        type: number
     required:
     - documentNumber
     - entries
@@ -2612,6 +2641,8 @@ definitions:
       entryType:
         type: string
       id:
+        type: string
+      invoiceID:
         type: string
       invoiceSectionID:
         type: string

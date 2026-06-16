@@ -1,6 +1,7 @@
 package invoice
 
 import (
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,13 @@ type InvoiceSection struct {
 	NetAmount      float64      `json:"netAmount"`
 	GSTAmount      float64      `json:"gstAmount"`
 	GrossAmount    float64      `json:"grossAmount"`
+	// REMITTANCE_INVOICE Explicit Payment Metadata Storage Fields
+	PaymentMethod    *string `json:"paymentMethod,omitempty" validate:"required_if=SectionType REMITTANCE_INVOICE"`
+	AccountName      *string `json:"accountName,omitempty" validate:"required_if=SectionType REMITTANCE_INVOICE"`
+	BSBNumber        *string `json:"bsbNumber,omitempty" validate:"required_if=SectionType REMITTANCE_INVOICE"`
+	AccountNumber    *string `json:"accountNumber,omitempty" validate:"required_if=SectionType REMITTANCE_INVOICE"`
+	PaymentDate      *string `json:"paymentDate,omitempty" validate:"required_if=SectionType REMITTANCE_INVOICE,omitempty,datetime=2006-01-02"`
+	PaymentReference *string `json:"paymentReference,omitempty" validate:"required_if=SectionType REMITTANCE_INVOICE"`
 }
 
 // CalculateTotals calculates net amount, GST amount, and gross amount based on tax method
@@ -30,6 +38,7 @@ func (s *InvoiceSection) CalculateTotals() {
 	for _, entry := range s.Entries {
 		s.GrossAmount += entry.TotalAmount
 	}
+	s.GrossAmount = math.Round(s.GrossAmount*100) / 100
 
 	if s.TaxMethod == nil || *s.TaxMethod == "NO_TAX" || s.TaxRate == nil || *s.TaxRate == 0 {
 		// No tax: net = gross, gst = 0
@@ -43,16 +52,17 @@ func (s *InvoiceSection) CalculateTotals() {
 			// Tax inclusive: gross amount already includes tax
 			// Net = Gross / (1 + tax_rate)
 			// GST = Gross - Net
-			s.NetAmount = s.GrossAmount / (1 + taxRateDecimal)
-			s.GSTAmount = s.GrossAmount - s.NetAmount
+			rawNet := s.GrossAmount / (1 + taxRateDecimal)
+			s.NetAmount = math.Round(rawNet*100) / 100
+			s.GSTAmount = math.Round((s.GrossAmount-s.NetAmount)*100) / 100
 		case "EXCLUSIVE":
 			// Tax exclusive: tax is added on top
 			// Net = Gross (sum of entries)
 			// GST = Net * tax_rate
 			// Gross = Net + GST
 			s.NetAmount = s.GrossAmount
-			s.GSTAmount = s.NetAmount * taxRateDecimal
-			s.GrossAmount = s.NetAmount + s.GSTAmount
+			s.GSTAmount = math.Round((s.NetAmount*taxRateDecimal)*100) / 100
+			s.GrossAmount = math.Round((s.NetAmount+s.GSTAmount)*100) / 100
 		}
 	}
 }

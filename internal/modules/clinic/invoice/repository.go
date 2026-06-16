@@ -85,22 +85,31 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		// Insert invoice sections and build a map of section type to section ID
 		sectionIDMap := make(map[string]uuid.UUID)
 		if len(invoice.Sections) > 0 {
-			for _, section := range invoice.Sections {
+			for i := range invoice.Sections {
+				section := &invoice.Sections[i]
 				sectionID := uuid.New()
 
 				// Calculate totals before saving
 				section.CalculateTotals()
 
 				_, err := tx.ExecContext(ctx, `
-					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate)
-					VALUES ($1, $2, $3, $4, $5, $6)
+					INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate,
+						payment_method, account_name, bsb_number, account_number, payment_date, payment_reference)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 					ON CONFLICT (invoice_id, invoice_section) DO UPDATE SET 
 						document_number = EXCLUDED.document_number,
 						tax_method = EXCLUDED.tax_method,
 						tax_rate = EXCLUDED.tax_rate,
+						payment_method = EXCLUDED.payment_method,
+						account_name = EXCLUDED.account_name,
+						bsb_number = EXCLUDED.bsb_number,
+						account_number = EXCLUDED.account_number,
+						payment_date = EXCLUDED.payment_date,
+						payment_reference = EXCLUDED.payment_reference,
 						updated_at = NOW()
-					RETURNING id
-				`, sectionID, invoice.ID, section.SectionType, section.DocumentNumber, section.TaxMethod, section.TaxRate)
+					RETURNING id`,
+					sectionID, invoice.ID, section.SectionType, section.DocumentNumber, section.TaxMethod, section.TaxRate,
+					section.PaymentMethod, section.AccountName, section.BSBNumber, section.AccountNumber, section.PaymentDate, section.PaymentReference)
 				if err != nil {
 					return err
 				}
@@ -108,7 +117,14 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 
 				// Link entries from this section to the section ID
 				for _, entry := range section.Entries {
-					entry.InvoiceSectionID = &sectionID
+					entryID := uuid.New()
+					_, err := tx.ExecContext(ctx, `
+						INSERT INTO tbl_invoice_item (id, invoice_id, invoice_section_id, name, quantity, unit_price, total_amount, bas_code)
+						VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+					`, entryID, invoice.ID, sectionID, entry.Name, entry.Quantity, entry.UnitPrice, entry.TotalAmount, entry.BASCode)
+					if err != nil {
+						return err
+					}
 				}
 			}
 		} else {
@@ -126,18 +142,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			sectionIDMap["CALCULATION_STATEMENT"] = sectionID
 		}
 
-		// Ensure all items in invoice.Items have a section assigned
-		for _, item := range invoice.Items {
-			if item.InvoiceSectionID == nil && len(sectionIDMap) > 0 {
-				// Get first section ID from map
-				for _, secID := range sectionIDMap {
-					item.InvoiceSectionID = &secID
-					break
-				}
-			}
-		}
-
-		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)
+		return nil
 	})
 }
 
@@ -241,7 +246,8 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 
 	// Get invoice sections
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, invoice_section, document_number, tax_method, tax_rate
+		SELECT id, invoice_section, document_number, tax_method, tax_rate,
+		payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1
 		AND deleted_at IS NULL
@@ -256,7 +262,10 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	for rows.Next() {
 		var section InvoiceSection
 		var sectionID uuid.UUID
-		if err := rows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber, &section.TaxMethod, &section.TaxRate); err != nil {
+
+		if err := rows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber, &section.TaxMethod, &section.TaxRate,
+			&section.PaymentMethod, &section.AccountName, &section.BSBNumber, &section.AccountNumber, &section.PaymentDate, &section.PaymentReference,
+		); err != nil {
 			return nil, err
 		}
 		section.Entries = make([]*item.Item, 0)
@@ -271,11 +280,15 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Invoice, error) {
 	}
 	invoice.Items = items
 
-	// Group items by section
-	for _, itm := range items {
-		if itm.InvoiceSectionID != nil {
-			if idx, ok := sectionIDMap[*itm.InvoiceSectionID]; ok {
-				invoice.Sections[idx].Entries = append(invoice.Sections[idx].Entries, itm)
+	// Group items by section securely by accessing via index slice references
+	for i := range items {
+		if items[i].InvoiceSectionID != nil {
+			if idx, ok := sectionIDMap[*items[i].InvoiceSectionID]; ok {
+				// Force assign parent invoice ID if itemRepo returned zero-value UUIDs
+				if items[i].InvoiceID == uuid.Nil {
+					items[i].InvoiceID = invoice.ID
+				}
+				invoice.Sections[idx].Entries = append(invoice.Sections[idx].Entries, items[i])
 			}
 		}
 	}
@@ -362,7 +375,8 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 
 		// Get invoice sections for this invoice
 		sectionRows, err := r.db.QueryContext(ctx, `
-			SELECT id, invoice_section, document_number, tax_method, tax_rate
+			SELECT id, invoice_section, document_number, tax_method, tax_rate,
+			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference
 			FROM tbl_map_invoice_section
 			WHERE invoice_id = $1
 			AND deleted_at IS NULL
@@ -376,7 +390,10 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 		for sectionRows.Next() {
 			var section InvoiceSection
 			var sectionID uuid.UUID
-			if err := sectionRows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber, &section.TaxMethod, &section.TaxRate); err != nil {
+
+			if err := sectionRows.Scan(&sectionID, &section.SectionType, &section.DocumentNumber, &section.TaxMethod, &section.TaxRate,
+				&section.PaymentMethod, &section.AccountName, &section.BSBNumber, &section.AccountNumber, &section.PaymentDate, &section.PaymentReference,
+			); err != nil {
 				sectionRows.Close()
 				return nil, 0, err
 			}
@@ -393,10 +410,14 @@ func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common
 		}
 
 		// Group items by section
-		for _, itm := range invoice.Items {
-			if itm.InvoiceSectionID != nil {
-				if idx, ok := sectionIDMap[*itm.InvoiceSectionID]; ok {
-					invoice.Sections[idx].Entries = append(invoice.Sections[idx].Entries, itm)
+		for i := range invoice.Items {
+			if invoice.Items[i].InvoiceSectionID != nil {
+				if idx, ok := sectionIDMap[*invoice.Items[i].InvoiceSectionID]; ok {
+					// Force assign parent invoice ID if itemRepo returned zero-value UUIDs
+					if invoice.Items[i].InvoiceID == uuid.Nil {
+						invoice.Items[i].InvoiceID = invoice.ID
+					}
+					invoice.Sections[idx].Entries = append(invoice.Sections[idx].Entries, invoice.Items[i])
 				}
 			}
 		}
@@ -484,34 +505,42 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 		requestedSectionTypes := make(map[string]bool)
 
 		if len(invoice.Sections) > 0 {
-			for _, section := range invoice.Sections {
+			for i := range invoice.Sections {
+				section := &invoice.Sections[i]
 				requestedSectionTypes[section.SectionType] = true
 
 				// Calculate totals before saving
 				section.CalculateTotals()
 
+				var currentSectionID uuid.UUID
 				if existingID, exists := existingSections[section.SectionType]; exists {
 					_, err := tx.ExecContext(ctx, `
 						UPDATE tbl_map_invoice_section 
-						SET document_number = $1, tax_method = $2, tax_rate = $3, updated_at = NOW()
-						WHERE id = $4
-					`, section.DocumentNumber, section.TaxMethod, section.TaxRate, existingID)
+						SET document_number = $1, tax_method = $2, tax_rate = $3, 
+							payment_method = $4, account_name = $5, bsb_number = $6, account_number = $7, 
+							payment_date = $8, payment_reference = $9, updated_at = NOW()
+						WHERE id = $10`,
+						section.DocumentNumber, section.TaxMethod, section.TaxRate,
+						section.PaymentMethod, section.AccountName, section.BSBNumber, section.AccountNumber,
+						section.PaymentDate, section.PaymentReference, existingID)
 					if err != nil {
 						return err
 					}
-					sectionIDMap[section.SectionType] = existingID
+					currentSectionID = existingID
 				} else {
 					// Insert new section
-					sectionID := uuid.New()
+					currentSectionID = uuid.New()
 					_, err := tx.ExecContext(ctx, `
-						INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate)
-						VALUES ($1, $2, $3, $4, $5, $6)
-					`, sectionID, invoice.ID, section.SectionType, section.DocumentNumber, section.TaxMethod, section.TaxRate)
+						INSERT INTO tbl_map_invoice_section (id, invoice_id, invoice_section, document_number, tax_method, tax_rate,
+							payment_method, account_name, bsb_number, account_number, payment_date, payment_reference)
+						VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+						currentSectionID, invoice.ID, section.SectionType, section.DocumentNumber, section.TaxMethod, section.TaxRate,
+						section.PaymentMethod, section.AccountName, section.BSBNumber, section.AccountNumber, section.PaymentDate, section.PaymentReference)
 					if err != nil {
 						return err
 					}
-					sectionIDMap[section.SectionType] = sectionID
 				}
+				sectionIDMap[section.SectionType] = currentSectionID
 			}
 		} else {
 			// If no sections provided, ensure default CALCULATION_STATEMENT section exists
@@ -561,18 +590,26 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			}
 		}
 
-		// Link items to their sections or default section
-		for _, item := range invoice.Items {
-			item.ID = uuid.New()
-			if item.InvoiceSectionID == nil && len(sectionIDMap) > 0 {
-				for _, secID := range sectionIDMap {
-					item.InvoiceSectionID = &secID
-					break
+		// Directly write newly sent items to the database within updates
+		if len(invoice.Sections) > 0 {
+			for i := range invoice.Sections {
+				section := &invoice.Sections[i]
+				if currentSectionID, ok := sectionIDMap[section.SectionType]; ok {
+					for _, entry := range section.Entries {
+						entryID := uuid.New()
+						_, err := tx.ExecContext(ctx, `
+							INSERT INTO tbl_invoice_item (id, invoice_id, invoice_section_id, name, quantity, unit_price, total_amount, bas_code)
+							VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+						`, entryID, invoice.ID, currentSectionID, entry.Name, entry.Quantity, entry.UnitPrice, entry.TotalAmount, entry.BASCode)
+						if err != nil {
+							return err
+						}
+					}
 				}
 			}
 		}
 
-		return r.itemRepo.Create(ctx, tx, invoice.ID, invoice.Items)
+		return nil
 	})
 }
 

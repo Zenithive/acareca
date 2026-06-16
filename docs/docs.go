@@ -14434,6 +14434,15 @@ const docTemplate = `{
                 "sectionType"
             ],
             "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsbNumber": {
+                    "type": "string"
+                },
                 "documentNumber": {
                     "type": "string"
                 },
@@ -14443,6 +14452,25 @@ const docTemplate = `{
                         "$ref": "#/definitions/item.Item"
                     }
                 },
+                "grossAmount": {
+                    "type": "number"
+                },
+                "gstAmount": {
+                    "type": "number"
+                },
+                "netAmount": {
+                    "type": "number"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "description": "REMITTANCE_INVOICE Explicit Payment Metadata Storage Fields",
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
                 "sectionType": {
                     "type": "string",
                     "enum": [
@@ -14450,6 +14478,19 @@ const docTemplate = `{
                         "SFA_INVOICE",
                         "REMITTANCE_INVOICE"
                     ]
+                },
+                "taxMethod": {
+                    "type": "string",
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ]
+                },
+                "taxRate": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
                 }
             }
         },
@@ -14668,6 +14709,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "invoiceID": {
                     "type": "string"
                 },
                 "invoiceSectionID": {
