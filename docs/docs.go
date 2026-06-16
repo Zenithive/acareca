@@ -10435,6 +10435,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/template/sync-defaults": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Overwrites and syncs hardcoded layout HTML/CSS into database templates matching by name, preserving existing custom setting records.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "templates"
+                ],
+                "summary": "Bulk update default templates",
+                "responses": {
+                    "200": {
+                        "description": "HTML/CSS layouts have been synced successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid clinic UUID format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error details",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/template/{id}": {
             "get": {
                 "security": [

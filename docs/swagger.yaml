@@ -10128,6 +10128,35 @@ paths:
       summary: Update an template setting by ID
       tags:
       - template
+  /template/sync-defaults:
+    post:
+      consumes:
+      - application/json
+      description: Overwrites and syncs hardcoded layout HTML/CSS into database templates
+        matching by name, preserving existing custom setting records.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: HTML/CSS layouts have been synced successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid clinic UUID format
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error details
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerToken: []
+      summary: Bulk update default templates
+      tags:
+      - templates
 securityDefinitions:
   BearerToken:
     description: Type "Bearer <your_token>" to authenticate

@@ -22,6 +22,8 @@ type IHandler interface {
 
 	GeneratePDF(c *gin.Context)
 	DownloadPDF(c *gin.Context)
+
+	BulkUpdateDefaultsHandler(c *gin.Context)
 }
 
 type Handler struct {
@@ -329,4 +331,34 @@ func (h *Handler) DownloadPDF(c *gin.Context) {
 	c.Header("Content-Type", "application/pdf")
 	c.Header("Content-Length", fmt.Sprintf("%d", len(pdf)))
 	c.Data(http.StatusOK, "application/pdf", pdf)
+}
+
+// BulkUpdateDefaultsHandler godoc
+// @Summary      Bulk update default templates
+// @Description  Overwrites and syncs hardcoded layout HTML/CSS into database templates matching by name, preserving existing custom setting records.
+// @Tags         templates
+// @Accept       json
+// @Produce      json
+// @Success      200        {object}  map[string]interface{} "HTML/CSS layouts have been synced successfully"
+// @Failure      400        {object}  map[string]interface{} "Invalid clinic UUID format"
+// @Failure      500        {object}  map[string]interface{} "Internal server error details"
+// @Security     BearerToken
+// @Router       /template/sync-defaults [post]
+func (h *Handler) BulkUpdateDefaultsHandler(c *gin.Context) {
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found"))
+		return
+	}
+
+	err := h.svc.BulkUpdateDefaults(c.Request.Context(), clinicId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "HTML/CSS layouts have been synced successfully to database models without resetting account configurations",
+	})
 }
