@@ -2,6 +2,7 @@ package invoice
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
@@ -45,11 +46,9 @@ func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService te
 	}
 }
 
-// Create implements [IService].
 func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	inv := invoice.ToInvoice()
 
-	// Ensure at least one default section exists if none provided
 	if len(inv.Sections) == 0 {
 		cs := section.CalculationStatement{
 			DocumentNumber: inv.ID.String()[:8],
@@ -60,6 +59,18 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 			return err
 		}
 		inv.Sections = []section.Section{built}
+	}
+
+	allItems := make([]*item.Item, 0)
+	for i := range inv.Sections {
+		allItems = append(allItems, inv.Sections[i].Entries...)
+	}
+
+	if len(allItems) > 0 {
+		itemRepo := item.NewRepository(s.db)
+		if err := itemRepo.EvaluateFormulas(ctx, allItems); err != nil {
+			return fmt.Errorf("formula evaluation failed: %w", err)
+		}
 	}
 
 	return s.repo.Create(ctx, inv)
