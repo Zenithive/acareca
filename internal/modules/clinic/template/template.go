@@ -43,11 +43,11 @@ func defaultTemplateHeader(title string, labelName string, addressBannerHTML str
           </tr>
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Billing Period</strong></td>
-            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{due_date_display}}</td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{billing_period}}</td>
           </tr>
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Invoice Frequency</strong></td>
-            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{payment_method_label}}</td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_frequency}}</td>
           </tr>
         </tbody>
       </table>
@@ -448,14 +448,15 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
   <table class="data-table" style="margin-top: 4px;">
     <thead>
       <tr>
-        <th style="width: 80%; text-align: left;">SERVICE & FACILITY FEE</th>
-        <th style="width: 20%; text-align: right;">Amount</th>
+        <th style="width: 70%; text-align: left;">SERVICE & FACILITY FEE</th>
+        <th style="width: 15%; text-align: right;">Amount</th>
+        <th style="width: 15%; text-align: right; padding-right: 8px;">GST</th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <td style="padding: 6px; line-height: 1.4;">
-          <p style="margin-bottom: 2px;">Service and facility fee for the period {{due_date_display}}, calculated at the agreed rate on net patient fees, comprising:</p>
+          <p style="margin-bottom: 2px;">Service and facility fee for the period {{billing_period}},<br>calculated at the agreed rate on net patient fees, comprising:</p>
           <ul class="bullet-list" style="list-style-type: decimal;">
             <li>Rent of dental surgery/room</li>
             <li>Patient booking & reception</li>
@@ -465,7 +466,8 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
           </ul>
           <p style="color: var(--text-dark); margin-top: 6px; font-weight: normal;">Service & Facility Fee (per Calculation Statement)</p>
         </td>
-        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold;">{{subtotal}}</td>
+        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%;">{{subtotal}}</td>
+        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%; color: var(--text-dark); padding-right: 8px;">{{tax_total}}</td>
       </tr>
     </tbody>
   </table>

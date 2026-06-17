@@ -238,7 +238,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	const itemQ = `
-        SELECT name, description, quantity, unit_price, total_amount
+        SELECT name, description, amount, bas_code, entry_type
         FROM tbl_invoice_item
         WHERE invoice_id = $1`
 	var items []InvoiceItem
@@ -275,6 +275,14 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		DueDate:           row.DueDate,
 		Status:            row.Status,
 		ClinicName:        row.ClinicName,
+		SentBy: InvoiceContact{
+			FName:   row.FName,
+			LName:   row.LName,
+			Email:   row.Email,
+			Phone:   row.Phone,
+			ABN:     row.ABN,
+			Address: address,
+		},
 		SentTo: InvoiceContact{
 			FName:   row.FName,
 			LName:   row.LName,

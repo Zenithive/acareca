@@ -1,6 +1,7 @@
 package template
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -299,6 +300,7 @@ type InvoiceResponse struct {
 	IssueDate         string         `json:"issue_date"`
 	DueDate           string         `json:"due_date"`
 	Status            string         `json:"status"`
+	SentBy            InvoiceContact `json:"sent_by"`
 	SentTo            InvoiceContact `json:"sent_to"`
 	Items             []InvoiceItem  `json:"items"`
 }
@@ -317,7 +319,9 @@ type InvoiceItem struct {
 	ID          uuid.UUID `db:"id" json:"id"`
 	Name        string    `db:"name" json:"name"`
 	Description string    `db:"description" json:"description"`
-	Amount      float64   `db:"amount" json:"unit_price"`
+	Amount      float64   `db:"amount" json:"amount"`
+	BASCode     string    `db:"bas_code" json:"bas_code"`
+	EntryType   string    `db:"entry_type" json:"entry_type"`
 }
 
 func invoiceToData(inv *InvoiceResponse) InvoiceData {
@@ -344,15 +348,32 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 		billTo.Address = inv.SentTo.Address[0]
 	}
 
+	billFrom := PartyInfo{
+		Name:  inv.ClinicName,
+		Email: inv.SentBy.Email,
+		Phone: inv.SentBy.Phone,
+		ABN:   inv.SentBy.ABN,
+	}
+	if len(inv.SentBy.Address) > 0 {
+		billFrom.Address = inv.SentBy.Address[0]
+	}
+
+	formattedIssueDate := formatDateString(inv.IssueDate)
+
+	var formattedBillingPeriod string
+	if inv.BillingPeriodFrom != "" && inv.BillingPeriodTo != "" {
+		formattedBillingPeriod = fmt.Sprintf("%s to %s", formatDateString(inv.BillingPeriodFrom), formatDateString(inv.BillingPeriodTo))
+	} else {
+		formattedBillingPeriod = inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo
+	}
+
 	return InvoiceData{
-		ClinicName:       inv.ClinicName,
-		IssueDateDisplay: inv.IssueDate,
-		DueDateDisplay:   inv.DueDate,
-		BillingPeriod:    inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo,
-		InvoiceFrequency: inv.InvoiceFrequency,
-		BillFrom: PartyInfo{
-			Name: inv.ClinicName,
-		},
+		ClinicName:           inv.ClinicName,
+		IssueDateDisplay:     formattedIssueDate,
+		DueDateDisplay:       inv.DueDate,
+		BillingPeriod:        formattedBillingPeriod,
+		InvoiceFrequency:     inv.InvoiceFrequency,
+		BillFrom:             billFrom,
 		BillTo:               billTo,
 		Items:                items,
 		GrandTotal:           grandTotal,
@@ -384,4 +405,16 @@ type invoiceRow struct {
 	State             string    `db:"state"`
 	PostalCode        string    `db:"postal_code"`
 	Country           string    `db:"country"`
+}
+
+// formatDateString converts a "YYYY-MM-DD" string into an "02 January 2006" string.
+func formatDateString(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr // Safely fallback if string isn't standard layout
+	}
+	return t.Format("02 January 2006")
 }
