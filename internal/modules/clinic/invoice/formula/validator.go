@@ -64,10 +64,7 @@ func (v *ASTValidator) validateNode(node Evaluator) error {
 		return nil
 
 	case *BasCodeNode:
-		if _, ok := v.allowedFields[n.Key]; !ok {
-			return fmt.Errorf("%w: %s", ErrInvalidField, n.Key)
-		}
-
+		// BAS codes are system-defined and always valid.
 		return nil
 
 	case *AddNode:

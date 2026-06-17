@@ -3,7 +3,7 @@
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'invoice_formula_node_type') THEN
-        CREATE TYPE invoice_formula_node_type AS ENUM ('OPERATOR', 'FIELD_REFERENCE', 'CONSTANT');
+        CREATE TYPE invoice_formula_node_type AS ENUM ('OPERATOR', 'FIELD', 'CONSTANT');
     END IF;
 END$$;
 
@@ -15,11 +15,10 @@ CREATE TABLE tbl_invoice_formula (
     
     -- Target variables matching requirements (e.g., "G1", "1A", "G3", "NET_PATIENT", "SFA_FEE", "1B", "G11")
     field_key VARCHAR(50) NOT NULL,
+    field_type VARCHAR(50) NOT NULL,
     label VARCHAR(255) NULL, 
     
-    -- Sorting and configuration metadata
-    is_percentage BOOLEAN DEFAULT FALSE,
-    is_negative_display BOOLEAN DEFAULT FALSE,
+
     sort_order INT NOT NULL,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -30,7 +29,6 @@ CREATE TABLE tbl_invoice_formula (
 
 CREATE INDEX idx_invoice_formulas_seq ON tbl_invoice_formula (invoice_section_id, sort_order);
 
--- Table 2: Tree-structured AST nodes matching the system schema syntax
 CREATE TABLE tbl_invoice_formula_node (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_formula_id UUID NOT NULL REFERENCES tbl_invoice_formula(id) ON DELETE CASCADE,

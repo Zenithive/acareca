@@ -47,7 +47,7 @@ func (p *JSONParser) buildNode(exp *Expression) (Evaluator, error) {
 
 	case "operator":
 
-		left, err := p.buildNode(exp)
+		left, err := p.buildNode(exp.Left)
 		if err != nil {
 			return nil, fmt.Errorf("left operand: %w", err)
 		}
