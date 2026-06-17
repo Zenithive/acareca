@@ -196,7 +196,6 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 	`
 
 	query, args := common.BuildQuery(selectQuery, filter, allowedColumns, searchCols, false)
-	fmt.Println("invoice query--------------------", query)
 	invoices := make([]*Invoice, 0)
 	err = r.db.SelectContext(ctx, &invoices, sqlx.Rebind(sqlx.DOLLAR, query), args...)
 	if err != nil {
@@ -269,7 +268,6 @@ func (r *Repository) countInvoices(ctx context.Context, filter common.Filter) (i
 	baseQuery := `FROM tbl_invoice WHERE deleted_at IS NULL`
 
 	countQuery, countArgs := common.BuildQuery(baseQuery, filter, allowedColumns, searchCols, true)
-	fmt.Println("count query-------------------", countQuery)
 	var total int64
 	if err := r.db.GetContext(ctx, &total, sqlx.Rebind(sqlx.DOLLAR, countQuery), countArgs...); err != nil {
 		return 0, fmt.Errorf("count invoices failed: %w", err)
