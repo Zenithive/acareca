@@ -27,22 +27,34 @@ const (
 
 // RqSection represents the request payload for creating a section
 type RqSection struct {
-	InvoiceID      *uuid.UUID      `json:"invoiceId,omitempty"`
-	SectionType    SectionType     `json:"sectionType" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
-	DocumentNumber string          `json:"documentNumber" validate:"required"`
-	TaxMethod      *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
-	Entries        []*item.RqEntry `json:"entries,omitempty" validate:"omitempty,dive"`
+	InvoiceID        *uuid.UUID      `json:"invoiceId,omitempty"`
+	SectionType      SectionType     `json:"sectionType" validate:"required,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	DocumentNumber   string          `json:"documentNumber" validate:"required"`
+	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
+	PaymentMethod    *string         `json:"paymentMethod,omitempty"`
+	AccountName      *string         `json:"accountName,omitempty"`
+	Bsb              *string         `json:"bsb,omitempty"`
+	AccountNumber    *string         `json:"accountNumber,omitempty"`
+	PaymentDate      *string         `json:"paymentDate"`
+	PaymentReference *string         `json:"paymentReference,omitempty"`
+	Entries          []*item.RqEntry `json:"entries,omitempty" validate:"omitempty,dive"`
 }
 
 // RqUpdateSection represents the request payload for updating a section
 type RqUpdateSection struct {
-	ID             *uuid.UUID            `json:"id,omitempty"`
-	InvoiceID      *uuid.UUID            `json:"invoiceId,omitempty"`
-	InvoiceSection *SectionType          `json:"invoiceSection,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
-	DocumentNumber *string               `json:"documentNumber,omitempty"`
-	TaxMethod      *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
-	Entries        []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
-	DeleteEntries  []uuid.UUID           `json:"deleteEntries,omitempty"`
+	ID               *uuid.UUID            `json:"id,omitempty"`
+	InvoiceID        *uuid.UUID            `json:"invoiceId,omitempty"`
+	InvoiceSection   *SectionType          `json:"invoiceSection,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	DocumentNumber   *string               `json:"documentNumber,omitempty"`
+	TaxMethod        *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
+	PaymentMethod    *string               `json:"paymentMethod,omitempty"`
+	AccountName      *string               `json:"accountName,omitempty"`
+	Bsb              *string               `json:"bsb,omitempty"`
+	AccountNumber    *string               `json:"accountNumber,omitempty"`
+	PaymentDate      *string               `json:"paymentDate"`
+	PaymentReference *string               `json:"paymentReference,omitempty"`
+	Entries          []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
+	DeleteEntries    []uuid.UUID           `json:"deleteEntries,omitempty"`
 }
 
 // ToSection converts request to domain model
@@ -53,12 +65,18 @@ func (rq *RqSection) ToSection() *Section {
 	}
 
 	return &Section{
-		ID:             uuid.New(),
-		InvoiceID:      rq.InvoiceID,
-		InvoiceSection: rq.SectionType,
-		DocumentNumber: rq.DocumentNumber,
-		TaxMethod:      rq.TaxMethod,
-		Entries:        entries,
+		ID:               uuid.New(),
+		InvoiceID:        rq.InvoiceID,
+		InvoiceSection:   rq.SectionType,
+		DocumentNumber:   rq.DocumentNumber,
+		TaxMethod:        rq.TaxMethod,
+		PaymentMethod:    rq.PaymentMethod,
+		AccountName:      rq.AccountName,
+		Bsb:              rq.Bsb,
+		AccountNumber:    rq.AccountNumber,
+		PaymentDate:      rq.PaymentDate,
+		PaymentReference: rq.PaymentReference,
+		Entries:          entries,
 	}
 }
 
@@ -66,35 +84,52 @@ func (rq *RqSection) ToSection() *Section {
 func (rq *RqUpdateSection) ToSection() *Section {
 	section := &Section{}
 
-	// Parse and set ID if provided
 	if rq.ID != nil {
 		section.ID = *rq.ID
 	} else {
-		// If no ID, this is a new section
 		section.ID = uuid.New()
 	}
 
-	// Parse and set InvoiceID if provided
 	if rq.InvoiceID != nil {
 		section.InvoiceID = rq.InvoiceID
 	}
 
-	// Set section type if provided
 	if rq.InvoiceSection != nil {
 		section.InvoiceSection = *rq.InvoiceSection
 	}
 
-	// Set document number if provided
 	if rq.DocumentNumber != nil {
 		section.DocumentNumber = *rq.DocumentNumber
 	}
 
-	// Set tax method if provided
 	if rq.TaxMethod != nil {
 		section.TaxMethod = rq.TaxMethod
 	}
 
-	// Convert entries if provided
+	if rq.PaymentMethod != nil {
+		section.PaymentMethod = rq.PaymentMethod
+	}
+
+	if rq.AccountName != nil {
+		section.AccountName = rq.AccountName
+	}
+
+	if rq.Bsb != nil {
+		section.Bsb = rq.Bsb
+	}
+
+	if rq.AccountNumber != nil {
+		section.AccountNumber = rq.AccountNumber
+	}
+
+	if rq.PaymentDate != nil {
+		section.PaymentDate = rq.PaymentDate
+	}
+
+	if rq.PaymentReference != nil {
+		section.PaymentReference = rq.PaymentReference
+	}
+
 	if rq.Entries != nil {
 		entries := make([]*item.Item, 0, len(rq.Entries))
 		for _, entryUpdate := range rq.Entries {
@@ -120,15 +155,21 @@ func (rq *RqUpdateSection) ToSection() *Section {
 
 // Section represents the domain model for an invoice section
 type Section struct {
-	ID             uuid.UUID    `db:"id"`
-	InvoiceID      *uuid.UUID   `db:"invoice_id"`
-	InvoiceSection SectionType  `db:"invoice_section"`
-	DocumentNumber string       `db:"document_number"`
-	TaxMethod      *TaxMethod   `db:"tax_method"`
-	Entries        []*item.Item `db:"-"`
-	CreatedAt      time.Time    `db:"created_at"`
-	UpdatedAt      *time.Time   `db:"updated_at"`
-	DeletedAt      *time.Time   `db:"deleted_at"`
+	ID               uuid.UUID    `db:"id"`
+	InvoiceID        *uuid.UUID   `db:"invoice_id"`
+	InvoiceSection   SectionType  `db:"invoice_section"`
+	DocumentNumber   string       `db:"document_number"`
+	TaxMethod        *TaxMethod   `db:"tax_method"`
+	PaymentMethod    *string      `db:"payment_method"`
+	AccountName      *string      `db:"account_name"`
+	Bsb              *string      `db:"bsb"`
+	AccountNumber    *string      `db:"account_number"`
+	PaymentDate      *string      `db:"payment_date"`
+	PaymentReference *string      `db:"payment_reference"`
+	Entries          []*item.Item `db:"-"`
+	CreatedAt        time.Time    `db:"created_at"`
+	UpdatedAt        *time.Time   `db:"updated_at"`
+	DeletedAt        *time.Time   `db:"deleted_at"`
 }
 
 // ToRsSection converts domain model to response
@@ -139,25 +180,37 @@ func (s *Section) ToRsSection() *RsSection {
 	}
 
 	return &RsSection{
-		ID:             s.ID,
-		InvoiceID:      s.InvoiceID,
-		SectionType:    s.InvoiceSection,
-		DocumentNumber: s.DocumentNumber,
-		TaxMethod:      s.TaxMethod,
-		Entries:        rsEntries,
-		CreatedAt:      s.CreatedAt,
-		UpdatedAt:      s.UpdatedAt,
+		ID:               s.ID,
+		InvoiceID:        s.InvoiceID,
+		SectionType:      s.InvoiceSection,
+		DocumentNumber:   s.DocumentNumber,
+		TaxMethod:        s.TaxMethod,
+		PaymentMethod:    s.PaymentMethod,
+		AccountName:      s.AccountName,
+		Bsb:              s.Bsb,
+		AccountNumber:    s.AccountNumber,
+		PaymentDate:      s.PaymentDate,
+		PaymentReference: s.PaymentReference,
+		Entries:          rsEntries,
+		CreatedAt:        s.CreatedAt,
+		UpdatedAt:        s.UpdatedAt,
 	}
 }
 
 // RsSection represents the response payload for a section
 type RsSection struct {
-	ID             uuid.UUID       `json:"id"`
-	InvoiceID      *uuid.UUID      `json:"invoiceId"`
-	SectionType    SectionType     `json:"sectionType"`
-	DocumentNumber string          `json:"documentNumber"`
-	TaxMethod      *TaxMethod      `json:"taxMethod,omitempty"`
-	Entries        []*item.RsEntry `json:"entries"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	UpdatedAt      *time.Time      `json:"updatedAt"`
+	ID               uuid.UUID       `json:"id"`
+	InvoiceID        *uuid.UUID      `json:"invoiceId"`
+	SectionType      SectionType     `json:"sectionType"`
+	DocumentNumber   string          `json:"documentNumber"`
+	TaxMethod        *TaxMethod      `json:"taxMethod,omitempty"`
+	PaymentMethod    *string         `json:"paymentMethod,omitempty"`
+	AccountName      *string         `json:"accountName,omitempty"`
+	Bsb              *string         `json:"bsb,omitempty"`
+	AccountNumber    *string         `json:"accountNumber,omitempty"`
+	PaymentDate      *string         `json:"paymentDate,omitempty"`
+	PaymentReference *string         `json:"paymentReference,omitempty"`
+	Entries          []*item.RsEntry `json:"entries"`
+	CreatedAt        time.Time       `json:"createdAt"`
+	UpdatedAt        *time.Time      `json:"updatedAt"`
 }

@@ -14,11 +14,11 @@ type RqInvoice struct {
 	ContactID         uuid.UUID           `json:"contactId" validate:"required"`
 	TemplateID        uuid.UUID           `json:"templateId" validate:"required"`
 	Name              string              `json:"name" validate:"required"`
-	BillingPeriodFrom string              `json:"billingPeriodFrom" validate:"required,datetime=2006-01-02"`
-	BillingPeriodTo   string              `json:"billingPeriodTo" validate:"required,datetime=2006-01-02"`
+	BillingPeriodFrom string              `json:"billingPeriodFrom" validate:"required"`
+	BillingPeriodTo   string              `json:"billingPeriodTo" validate:"required"`
 	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         string              `json:"issueDate" validate:"required,datetime=2006-01-02"`
-	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	IssueDate         string              `json:"issueDate" validate:"required"`
+	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty"`
 	Status            *string             `json:"status"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 }

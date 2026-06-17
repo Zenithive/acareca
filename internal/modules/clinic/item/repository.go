@@ -41,9 +41,10 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				bas_code,
 				amount,
 				invoice_section_id,
-				sort_order
+				sort_order,
+				invoice_id
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		`,
 			invoiceItem.ID,
 			invoiceItem.Name,
@@ -53,6 +54,7 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.Amount,
 			invoiceItem.InvoiceSectionID,
 			invoiceItem.SortOrder,
+			invoiceID,
 		)
 		if err != nil {
 			return err
@@ -124,6 +126,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				amount = $6,
 				invoice_section_id = $7,
 				sort_order = $8,
+				invoice_id = $9,
 				updated_at = NOW()
 			WHERE id = $1
 			AND deleted_at IS NULL
@@ -136,6 +139,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.Amount,
 			invoiceItem.InvoiceSectionID,
 			invoiceItem.SortOrder,
+			invoiceID,
 		)
 		if err != nil {
 			return err

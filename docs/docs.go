@@ -4729,69 +4729,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/clinic/invoice/email-templates": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "tags": [
-                    "invoice settings"
-                ],
-                "summary": "Fetch current invoice template context settings or system defaults",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.RsBase"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/invoice.RsInvoiceMailTemplate"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "tags": [
-                    "invoice settings"
-                ],
-                "summary": "Save modified template layout overrides for the active clinic identity context",
-                "parameters": [
-                    {
-                        "description": "Custom structural templates body configurations",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/invoice.RqSaveMailTemplate"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    }
-                }
-            }
-        },
         "/clinic/invoice/{id}": {
             "get": {
                 "security": [
@@ -4926,54 +4863,6 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Invoice ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/clinic/invoice/{id}/resend": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "invoice"
-                ],
-                "summary": "Manually re-fire a generated paid invoice statement notification",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Invoice UUID string format token",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -14469,74 +14358,6 @@ const docTemplate = `{
                 }
             }
         },
-        "invoice.InvoiceSection": {
-            "type": "object",
-            "required": [
-                "documentNumber",
-                "entries",
-                "sectionType"
-            ],
-            "properties": {
-                "accountName": {
-                    "type": "string"
-                },
-                "accountNumber": {
-                    "type": "string"
-                },
-                "bsbNumber": {
-                    "type": "string"
-                },
-                "documentNumber": {
-                    "type": "string"
-                },
-                "entries": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.Item"
-                    }
-                },
-                "grossAmount": {
-                    "type": "number"
-                },
-                "gstAmount": {
-                    "type": "number"
-                },
-                "netAmount": {
-                    "type": "number"
-                },
-                "paymentDate": {
-                    "type": "string"
-                },
-                "paymentMethod": {
-                    "description": "REMITTANCE_INVOICE Explicit Payment Metadata Storage Fields",
-                    "type": "string"
-                },
-                "paymentReference": {
-                    "type": "string"
-                },
-                "sectionType": {
-                    "type": "string",
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ]
-                },
-                "taxMethod": {
-                    "type": "string",
-                    "enum": [
-                        "INCLUSIVE",
-                        "EXCLUSIVE",
-                        "NO_TAX"
-                    ]
-                },
-                "taxRate": {
-                    "type": "number",
-                    "maximum": 100,
-                    "minimum": 0
-                }
-            }
-        },
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
@@ -14581,28 +14402,13 @@ const docTemplate = `{
                 "sections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/invoice.InvoiceSection"
+                        "$ref": "#/definitions/section.RqSection"
                     }
                 },
                 "status": {
                     "type": "string"
                 },
                 "templateId": {
-                    "type": "string"
-                }
-            }
-        },
-        "invoice.RqSaveMailTemplate": {
-            "type": "object",
-            "required": [
-                "mail_body",
-                "mail_subject"
-            ],
-            "properties": {
-                "mail_body": {
-                    "type": "string"
-                },
-                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -14619,17 +14425,20 @@ const docTemplate = `{
                 "billingPeriodTo": {
                     "type": "string"
                 },
+                "clinicId": {
+                    "type": "string"
+                },
                 "contactId": {
                     "type": "string"
                 },
-                "dueDate": {
-                    "type": "string"
-                },
-                "entries": {
+                "deleteSections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/item.RqUpdateEntry"
+                        "type": "string"
                     }
+                },
+                "dueDate": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -14652,7 +14461,7 @@ const docTemplate = `{
                 "sections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/invoice.InvoiceSection"
+                        "$ref": "#/definitions/section.RqUpdateSection"
                     }
                 },
                 "status": {
@@ -14687,12 +14496,6 @@ const docTemplate = `{
                 "dueDate": {
                     "type": "string"
                 },
-                "entries": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RsEntry"
-                    }
-                },
                 "id": {
                     "type": "string"
                 },
@@ -14708,11 +14511,8 @@ const docTemplate = `{
                 "sections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/invoice.InvoiceSection"
+                        "$ref": "#/definitions/section.RsSection"
                     }
-                },
-                "sentTo": {
-                    "$ref": "#/definitions/contact.RsContact"
                 },
                 "status": {
                     "type": "string"
@@ -14725,72 +14525,78 @@ const docTemplate = `{
                 }
             }
         },
-        "invoice.RsInvoiceMailTemplate": {
-            "type": "object",
-            "properties": {
-                "is_custom": {
-                    "type": "boolean"
-                },
-                "mail_body": {
-                    "type": "string"
-                },
-                "mail_subject": {
-                    "type": "string"
-                }
-            }
+        "item.BasCode": {
+            "type": "string",
+            "enum": [
+                "G1",
+                "1A",
+                "G3",
+                "G11",
+                "1B"
+            ],
+            "x-enum-varnames": [
+                "CodeG1",
+                "Code1A",
+                "CodeG3",
+                "CodeG11",
+                "Code1B"
+            ]
         },
-        "item.Item": {
+        "item.EntryType": {
+            "type": "string",
+            "enum": [
+                "DEBIT",
+                "CREDIT"
+            ],
+            "x-enum-varnames": [
+                "DEBIT",
+                "CREDIT"
+            ]
+        },
+        "item.RqEntry": {
             "type": "object",
+            "required": [
+                "name",
+                "sortOrder"
+            ],
             "properties": {
-                "bascode": {
-                    "type": "string"
+                "amount": {
+                    "type": "number"
+                },
+                "basCode": {
+                    "$ref": "#/definitions/item.BasCode"
                 },
                 "description": {
                     "type": "string"
                 },
                 "entryType": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.EntryType"
                 },
-                "id": {
-                    "type": "string"
-                },
-                "invoiceID": {
-                    "type": "string"
-                },
-                "invoiceSectionID": {
+                "invoiceSectionId": {
                     "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
-                    "type": "integer"
-                },
                 "sortOrder": {
                     "type": "integer"
-                },
-                "totalAmount": {
-                    "type": "number"
-                },
-                "unitPrice": {
-                    "type": "number"
                 }
             }
         },
         "item.RqUpdateEntry": {
             "type": "object",
-            "required": [
-                "id"
-            ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "basCode": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.BasCode"
                 },
                 "description": {
                     "type": "string"
                 },
                 "entryType": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.EntryType"
                 },
                 "id": {
                     "type": "string"
@@ -14801,33 +14607,27 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
-                    "type": "integer"
-                },
                 "sortOrder": {
                     "type": "integer"
-                },
-                "unitPrice": {
-                    "type": "number"
                 }
             }
         },
         "item.RsEntry": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "basCode": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.BasCode"
                 },
                 "description": {
                     "type": "string"
                 },
                 "entryType": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.EntryType"
                 },
                 "id": {
-                    "type": "string"
-                },
-                "invoiceId": {
                     "type": "string"
                 },
                 "invoiceSectionId": {
@@ -14836,17 +14636,8 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
-                    "type": "integer"
-                },
                 "sortOrder": {
                     "type": "integer"
-                },
-                "totalAmount": {
-                    "type": "number"
-                },
-                "unitPrice": {
-                    "type": "number"
                 }
             }
         },
@@ -15100,6 +14891,213 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "section.RqSection": {
+            "type": "object",
+            "required": [
+                "documentNumber",
+                "sectionType"
+            ],
+            "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqEntry"
+                    }
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
+                "sectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "taxMethod": {
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.TaxMethod"
+                        }
+                    ]
+                }
+            }
+        },
+        "section.RqUpdateSection": {
+            "type": "object",
+            "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
+                "deleteEntries": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqUpdateEntry"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "invoiceSection": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
+                "taxMethod": {
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.TaxMethod"
+                        }
+                    ]
+                }
+            }
+        },
+        "section.RsSection": {
+            "type": "object",
+            "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RsEntry"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
+                "sectionType": {
+                    "$ref": "#/definitions/section.SectionType"
+                },
+                "taxMethod": {
+                    "$ref": "#/definitions/section.TaxMethod"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "section.SectionType": {
+            "type": "string",
+            "enum": [
+                "CALCULATION_STATEMENT",
+                "SFA_INVOICE",
+                "REMITTANCE_INVOICE"
+            ],
+            "x-enum-varnames": [
+                "CALCULATIONSTATEMENT",
+                "SFAINVOICE",
+                "REMITTANCEINVOICE"
+            ]
+        },
+        "section.TaxMethod": {
+            "type": "string",
+            "enum": [
+                "NO_TAX",
+                "INCLUSIVE",
+                "EXCLUSIVE"
+            ],
+            "x-enum-varnames": [
+                "NoTax",
+                "Inclusive",
+                "Exclusive"
+            ]
         },
         "setting.RqCreatePractitioner": {
             "type": "object",
@@ -15423,6 +15421,9 @@ const docTemplate = `{
         "template.LineItem": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -15431,12 +15432,6 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
-                },
-                "qty": {
-                    "type": "integer"
-                },
-                "unit_price": {
-                    "type": "number"
                 }
             }
         },
