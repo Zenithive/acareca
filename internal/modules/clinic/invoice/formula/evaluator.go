@@ -22,6 +22,10 @@ type FieldNode struct {
 	Key string
 }
 
+type BasCodeNode struct {
+	Key string
+}
+
 type AddNode struct {
 	Left  Evaluator
 	Right Evaluator
@@ -50,6 +54,14 @@ func (n *FieldNode) Evaluate(ctx Context) (float64, error) {
 	value, ok := ctx.Values[n.Key]
 	if !ok {
 		return 0, fmt.Errorf("field %s not found", n.Key)
+	}
+	return value, nil
+}
+
+func (n *BasCodeNode) Evaluate(ctx Context) (float64, error) {
+	value, ok := ctx.Values[n.Key]
+	if !ok {
+		return 0, fmt.Errorf("bas code %s not found", n.Key)
 	}
 	return value, nil
 }

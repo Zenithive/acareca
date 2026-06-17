@@ -357,6 +357,103 @@ func TestPipeline_AllOperatorTypes(t *testing.T) {
 	}
 }
 
+func TestPipeline_BasCodeExpression(t *testing.T) {
+	// User's exact payload:
+	//   (G1 - 1A) - D
+	// Where G1=5000, 1A=300, D=200
+	// Result: (5000 - 300) - 200 = 4500
+	jsonInput := []byte(`{
+		"type": "operator",
+		"op": "-",
+		"left": {
+			"type": "operator",
+			"op": "-",
+			"left": {
+				"type": "bas_code",
+				"key": "G1"
+			},
+			"right": {
+				"type": "bas_code",
+				"key": "1A"
+			}
+		},
+		"right": {
+			"type": "field",
+			"key": "D"
+		}
+	}`)
+
+	parser := NewJSONParser()
+	evaluator, err := parser.Parse(jsonInput)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	validator := NewValidator([]string{"D"})
+	if err := validator.Validate(evaluator); err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+
+	ctx := Context{
+		Values: map[string]float64{
+			"G1": 5000,
+			"1A": 300,
+			"D":  200,
+		},
+	}
+
+	// Test via BuildFormula
+	result, err := BuildFormula(ctx, jsonInput)
+	if err != nil {
+		t.Fatalf("BuildFormula failed: %v", err)
+	}
+
+	expected := 4500.0
+	if result != expected {
+		t.Fatalf("Expected %v, got %v", expected, result)
+	}
+
+	// ── Verify AST structure ────────────────────────────────────
+	// Root should be SubtractNode (outer "-")
+	outerSub, ok := evaluator.(*SubtractNode)
+	if !ok {
+		t.Fatal("Root AST node should be *SubtractNode")
+	}
+
+	// Left of root should be SubtractNode (inner "-")
+	innerSub, ok := outerSub.Left.(*SubtractNode)
+	if !ok {
+		t.Fatal("Left child should be *SubtractNode for inner '-'")
+	}
+
+	// innerSub.Left should be BasCodeNode("G1")
+	g1Node, ok := innerSub.Left.(*BasCodeNode)
+	if !ok {
+		t.Fatal("Left of inner '-' should be *BasCodeNode")
+	}
+	if g1Node.Key != "G1" {
+		t.Fatalf("Expected bas code 'G1', got '%s'", g1Node.Key)
+	}
+
+	// innerSub.Right should be BasCodeNode("1A")
+	iaNode, ok := innerSub.Right.(*BasCodeNode)
+	if !ok {
+		t.Fatal("Right of inner '-' should be *BasCodeNode")
+	}
+	if iaNode.Key != "1A" {
+		t.Fatalf("Expected bas code '1A', got '%s'", iaNode.Key)
+	}
+
+	// Right of root should be FieldNode("D")
+	dNode, ok := outerSub.Right.(*FieldNode)
+	if !ok {
+		t.Fatal("Right of root '-' should be *FieldNode")
+	}
+	if dNode.Key != "D" {
+		t.Fatalf("Expected field key 'D', got '%s'", dNode.Key)
+	}
+}
+
 func TestPipeline_ComplexNestedExpression(t *testing.T) {
 	// Formula: (income - expenses) * (1 - tax_rate) + bonus
 	// Where: income=10000, expenses=2000, tax_rate=0.30, bonus=500

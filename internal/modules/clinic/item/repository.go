@@ -39,17 +39,19 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				description,
 				entry_type,
 				bas_code,
+				field_key
 				amount,
 				invoice_section_id,
 				sort_order
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		`,
 			invoiceItem.ID,
 			invoiceItem.Name,
 			invoiceItem.Description,
 			invoiceItem.EntryType,
 			invoiceItem.BASCode,
+			invoiceItem.FieldKey,
 			invoiceItem.Amount,
 			invoiceItem.InvoiceSectionID,
 			invoiceItem.SortOrder,
@@ -71,6 +73,7 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			description,
 			entry_type,
 			bas_code,
+			field_key
 			amount,
 			invoice_section_id,
 			sort_order
@@ -95,6 +98,7 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.Description,
 			&invoiceItem.EntryType,
 			&invoiceItem.BASCode,
+			&invoiceItem.FieldKey,
 			&invoiceItem.Amount,
 			&invoiceItem.InvoiceSectionID,
 			&invoiceItem.SortOrder,
@@ -121,9 +125,10 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				description = $3,
 				entry_type = $4,
 				bas_code = $5,
-				amount = $6,
-				invoice_section_id = $7,
-				sort_order = $8,
+				field_key = $6
+				amount = $7,
+				invoice_section_id = $8,
+				sort_order = $9,
 				updated_at = NOW()
 			WHERE id = $1
 			AND deleted_at IS NULL
@@ -133,6 +138,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			invoiceItem.Description,
 			invoiceItem.EntryType,
 			invoiceItem.BASCode,
+			invoiceItem.FieldKey,
 			invoiceItem.Amount,
 			invoiceItem.InvoiceSectionID,
 			invoiceItem.SortOrder,

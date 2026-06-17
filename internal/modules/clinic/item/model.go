@@ -25,6 +25,7 @@ type RqEntry struct {
 	Description *string    `json:"description,omitempty"`
 	EntryType   *EntryType `json:"entryType,omitempty"`
 	BASCode     *BasCode   `json:"basCode,omitempty"`
+	FieldKey    string     `json:"fieldKey"`
 	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	SortOrder   int        `json:"sortOrder" validate:"required"`
 
@@ -48,6 +49,7 @@ func (r *RqEntry) ToItem() *Item {
 		Description:      r.Description,
 		EntryType:        r.EntryType,
 		BASCode:          r.BASCode,
+		FieldKey:         r.FieldKey,
 		Amount:           amount,
 		SortOrder:        r.SortOrder,
 		InvoiceSectionID: invoiceSectionID,
@@ -60,6 +62,7 @@ type RqUpdateEntry struct {
 	Description      *string    `json:"description,omitempty"`
 	EntryType        *EntryType `json:"entryType,omitempty"`
 	BASCode          *BasCode   `json:"basCode,omitempty"`
+	FieldKey         string     `json:"fieldKey"`
 	Amount           *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	SortOrder        *int       `json:"sortOrder,omitempty"`
 	InvoiceSectionID *uuid.UUID `json:"invoiceSectionId,omitempty"`
@@ -92,6 +95,7 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 	if r.InvoiceSectionID != nil {
 		item.InvoiceSectionID = r.InvoiceSectionID
 	}
+	item.FieldKey = r.FieldKey
 	return item
 }
 
@@ -101,6 +105,7 @@ type Item struct {
 	Description      *string    `db:"description,omitempty"`
 	EntryType        *EntryType `db:"entry_type,omitempty"`
 	BASCode          *BasCode   `db:"bas_code,omitempty"`
+	FieldKey         string     `db:"field_key"`
 	Amount           float64    `db:"amount"`
 	SortOrder        int        `db:"sort_order"`
 	InvoiceSectionID *uuid.UUID `db:"invoice_section_id,omitempty"`
@@ -118,6 +123,7 @@ func (i *Item) ToRsEntry() *RsEntry {
 		Description:      i.Description,
 		EntryType:        i.EntryType,
 		BASCode:          i.BASCode,
+		FieldKey:         i.FieldKey,
 		Amount:           i.Amount,
 		SortOrder:        i.SortOrder,
 		InvoiceSectionID: invoiceSectionID,
@@ -130,6 +136,7 @@ type RsEntry struct {
 	Description      *string    `json:"description,omitempty"`
 	EntryType        *EntryType `json:"entryType,omitempty"`
 	BASCode          *BasCode   `json:"basCode,omitempty"`
+	FieldKey         string     `json:"fieldKey"`
 	Amount           float64    `json:"amount"`
 	SortOrder        int        `json:"sortOrder"`
 	InvoiceSectionID *uuid.UUID `json:"invoiceSectionId,omitempty"`

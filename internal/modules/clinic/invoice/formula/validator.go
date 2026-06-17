@@ -63,6 +63,13 @@ func (v *ASTValidator) validateNode(node Evaluator) error {
 
 		return nil
 
+	case *BasCodeNode:
+		if _, ok := v.allowedFields[n.Key]; !ok {
+			return fmt.Errorf("%w: %s", ErrInvalidField, n.Key)
+		}
+
+		return nil
+
 	case *AddNode:
 		return v.validateBinary(n.Left, n.Right)
 

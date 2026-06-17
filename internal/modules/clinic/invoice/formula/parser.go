@@ -15,40 +15,49 @@ func NewJSONParser() Parser {
 	return &JSONParser{}
 }
 
-func (p *JSONParser) buildNode(dto *Expression) (Evaluator, error) {
-	if dto == nil {
+func (p *JSONParser) buildNode(exp *Expression) (Evaluator, error) {
+	if exp == nil {
 		return nil, ErrMissingOperand
 	}
 
-	switch dto.Type {
+	switch exp.Type {
 
 	case "constant":
-		if dto.Value == nil {
+		if exp.Value == nil {
 			return nil, fmt.Errorf("constant value required")
 		}
 
 		return &ConstantNode{
-			Value: *dto.Value,
+			Value: *exp.Value,
 		}, nil
 
 	case "field":
 		return &FieldNode{
-			Key: dto.Key,
+			Key: exp.Key,
+		}, nil
+
+	case "bas_code":
+		if exp.Key == "" {
+			return nil, fmt.Errorf("bas code key required")
+		}
+
+		return &BasCodeNode{
+			Key: exp.Key,
 		}, nil
 
 	case "operator":
 
-		left, err := p.buildNode(dto.Left)
+		left, err := p.buildNode(exp)
 		if err != nil {
 			return nil, fmt.Errorf("left operand: %w", err)
 		}
 
-		right, err := p.buildNode(dto.Right)
+		right, err := p.buildNode(exp.Right)
 		if err != nil {
 			return nil, fmt.Errorf("right operand: %w", err)
 		}
 
-		switch dto.Op {
+		switch exp.Op {
 
 		case "+":
 			return &AddNode{
@@ -75,11 +84,11 @@ func (p *JSONParser) buildNode(dto *Expression) (Evaluator, error) {
 			}, nil
 
 		default:
-			return nil, fmt.Errorf("unsupported operator: %s", dto.Op)
+			return nil, fmt.Errorf("unsupported operator: %s", exp.Op)
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported type: %s", dto.Type)
+		return nil, fmt.Errorf("unsupported type: %s", exp.Type)
 	}
 }
 

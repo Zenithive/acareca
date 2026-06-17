@@ -6,6 +6,7 @@ const (
 	BASCODE  ExpressionType = "bas_code"
 	OPERATOR ExpressionType = "operator"
 	FIELD    ExpressionType = "field"
+	CONSTANT ExpressionType = "constant"
 )
 
 type Expression struct {
