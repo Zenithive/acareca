@@ -25,7 +25,7 @@ type RqEntry struct {
 	Description      *string     `json:"description,omitempty"`
 	EntryType        *EntryType  `json:"entryType,omitempty"`
 	BASCode          *BasCode    `json:"basCode,omitempty"`
-	FieldKey         string      `json:"fieldKey"`
+	FieldKey         *string     `json:"fieldKey,omitempty"`
 	Amount           *float64    `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	SortOrder        int         `json:"sortOrder" validate:"required"`
 	Expression       interface{} `json:"expression"`
@@ -63,7 +63,7 @@ type RqUpdateEntry struct {
 	Description      *string     `json:"description,omitempty"`
 	EntryType        *EntryType  `json:"entryType,omitempty"`
 	BASCode          *BasCode    `json:"basCode,omitempty"`
-	FieldKey         string      `json:"fieldKey"`
+	FieldKey         *string     `json:"fieldKey,omitempty"`
 	Amount           *float64    `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	SortOrder        *int        `json:"sortOrder,omitempty"`
 	Expression       interface{} `json:"expression,omitempty"`
@@ -110,7 +110,7 @@ type Item struct {
 	Description      *string     `db:"description,omitempty"`
 	EntryType        *EntryType  `db:"entry_type,omitempty"`
 	BASCode          *BasCode    `db:"bas_code,omitempty"`
-	FieldKey         string      `db:"field_key"`
+	FieldKey         *string     `db:"field_key"`
 	Amount           float64     `db:"amount"`
 	SortOrder        int         `db:"sort_order"`
 	Expression       interface{} `db:"-"`
@@ -143,7 +143,7 @@ type RsEntry struct {
 	Description      *string     `json:"description,omitempty"`
 	EntryType        *EntryType  `json:"entryType,omitempty"`
 	BASCode          *BasCode    `json:"basCode,omitempty"`
-	FieldKey         string      `json:"fieldKey"`
+	FieldKey         *string     `json:"fieldKey,omitempty"`
 	Amount           float64     `json:"amount"`
 	SortOrder        int         `json:"sortOrder"`
 	Expression       interface{} `json:"expression"`

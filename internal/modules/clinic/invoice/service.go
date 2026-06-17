@@ -20,7 +20,7 @@ type IService interface {
 	Update(ctx context.Context, invoice *RqUpdateInvoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error)
-	List(ctx context.Context, clinicID uuid.UUID, ft *Filter) (*util.RsList, error)
+	List(ctx context.Context, ft *Filter) (*util.RsList, error)
 	// GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*RsInvoiceMailTemplate, error)
 	// SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq *RqSaveMailTemplate) error
 	// ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error
@@ -92,21 +92,26 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error) {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) (*util.RsList, error) {
-	ft := filter.MapToFilter()
+func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error) {
 
-	invoices, total, err := s.repo.List(ctx, clinicID, ft)
+	ft := filter.MapToFilter()
+	invoices, total, err := s.repo.List(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
 
-	rsInvoices := make([]*RsInvoice, 0, len(invoices))
+	rsInvoices := make([]*RsInvoiceSummary, 0, len(invoices))
 	for _, invoice := range invoices {
-		rsInvoices = append(rsInvoices, invoice.ToRsInvoice())
+		rsInvoices = append(rsInvoices, invoice.ToRsInvoiceSummary())
+	}
+
+	page := 1
+	if ft.Offset != nil && ft.Limit != nil && *ft.Limit > 0 {
+		page = (*ft.Offset / *ft.Limit) + 1
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, int(total), *ft.Offset, *ft.Limit)
+	rsList.MapToList(rsInvoices, int(total), page, *ft.Limit)
 	return &rsList, nil
 }
 

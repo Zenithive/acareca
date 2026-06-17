@@ -26,7 +26,7 @@ type IRepository interface {
 	Update(ctx context.Context, invoice *Invoice) error
 	UpdateWithSections(ctx context.Context, invoice *Invoice, sections []section.Section, deleteSectionIDs []uuid.UUID, deleteItemIDs map[uuid.UUID][]uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, int64, error)
+	List(ctx context.Context, filter common.Filter) ([]*Invoice, int64, error)
 	GetByID(ctx context.Context, db sqlx.QueryerContext, id uuid.UUID) (*Invoice, error)
 }
 
@@ -96,7 +96,6 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return err
 		}
 
-		// Update invoice base fields
 		query := `
 		UPDATE tbl_invoice
 		SET contact_id = $1, template_id = $2, name = $3,
@@ -126,19 +125,16 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			return ErrNotFound
 		}
 
-		// Get existing sections
 		existingSections, err := r.sectionRepo.ListByInvoiceID(ctx, invoice.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get existing sections: %w", err)
 		}
 
 		if len(existingSections) > 0 {
-			// Update existing section
 			if err := r.sectionRepo.Update(ctx, tx, invoice.Sections); err != nil {
 				return fmt.Errorf("failed to update section: %w", err)
 			}
 		} else {
-			// Create new section
 			if err := r.sectionRepo.Create(ctx, tx, invoice.Sections); err != nil {
 				return fmt.Errorf("failed to create section: %w", err)
 			}
@@ -151,7 +147,6 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 // Delete implements [IRepository].
 func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
-		// Soft delete invoice
 		result, err := tx.ExecContext(ctx, `
 			UPDATE tbl_invoice
 			SET deleted_at = NOW(), updated_at = NOW()
@@ -165,13 +160,11 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 			return ErrNotFound
 		}
 
-		// Get all sections for this invoice
 		sections, err := r.sectionRepo.ListByInvoiceID(ctx, id)
 		if err != nil {
 			return fmt.Errorf("failed to get sections for deletion: %w", err)
 		}
 
-		// Delete each section (cascades to items)
 		for _, sec := range sections {
 			if err := r.sectionRepo.Delete(ctx, tx, sec.ID); err != nil {
 				return fmt.Errorf("failed to delete section: %w", err)
@@ -183,66 +176,33 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // List implements [IRepository].
-func (r *Repository) List(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, int64, error) {
-	// Count total records
-	total, err := r.countInvoices(ctx, clinicID, filter)
+func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice, int64, error) {
+	total, err := r.countInvoices(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Fetch invoices
 	allowedColumns := r.getAllowedFilterColumns()
-	searchCols := []string{"name"}
+	searchCols := []string{}
 
 	selectQuery := `
 		SELECT 
-			id, clinic_id, contact_id::text, template_id, name,
-			billing_period_from::text, billing_period_to::text,
-			invoice_frequency, status, issue_date::text, due_date::text,
-			created_at::text, updated_at::text
-		FROM tbl_invoice 
-		WHERE deleted_at IS NULL AND clinic_id = ?
+			id, clinic_id, contact_id, template_id, name,
+			billing_period_from, billing_period_to,
+			invoice_frequency, status, issue_date, due_date,
+			created_at, updated_at
+		FROM tbl_invoice
 	`
 
 	query, args := common.BuildQuery(selectQuery, filter, allowedColumns, searchCols, false)
-	args = append([]interface{}{clinicID}, args...)
-
-	rows, err := r.db.QueryContext(ctx, sqlx.Rebind(sqlx.DOLLAR, query), args...)
+	fmt.Println("invoice query--------------------", query)
+	invoices := make([]*Invoice, 0)
+	err = r.db.SelectContext(ctx, &invoices, sqlx.Rebind(sqlx.DOLLAR, query), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("select invoices failed: %w", err)
 	}
-	defer rows.Close()
-
-	invoices := make([]*Invoice, 0)
-	for rows.Next() {
-		invoice := &Invoice{}
-		if err := rows.Scan(
-			&invoice.ID,
-			&invoice.ClinicID,
-			&invoice.ContactID,
-			&invoice.TemplateID,
-			&invoice.Name,
-			&invoice.BillingPeriodFrom,
-			&invoice.BillingPeriodTo,
-			&invoice.InvoiceFrequency,
-			&invoice.Status,
-			&invoice.IssueDate,
-			&invoice.DueDate,
-			&invoice.CreatedAt,
-			&invoice.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan invoice failed: %w", err)
-		}
-		invoices = append(invoices, invoice)
-	}
 
 	for _, invoice := range invoices {
-		sections, err := r.sectionRepo.ListByInvoiceID(ctx, invoice.ID)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to load sections for invoice %s: %w", invoice.ID, err)
-		}
-		invoice.Sections = sections
-
 		if err := r.getInvoiceContact(ctx, invoice); err != nil {
 			return nil, 0, fmt.Errorf("failed to load contact for invoice %s: %w", invoice.ID, err)
 		}
@@ -301,71 +261,20 @@ func (r *Repository) GetByID(ctx context.Context, db sqlx.QueryerContext, id uui
 }
 
 // countInvoices counts total invoices matching filter
-func (r *Repository) countInvoices(ctx context.Context, clinicID uuid.UUID, filter common.Filter) (int64, error) {
+func (r *Repository) countInvoices(ctx context.Context, filter common.Filter) (int64, error) {
 	allowedColumns := r.getAllowedFilterColumns()
-	searchCols := []string{"name"}
+	searchCols := []string{}
 
-	baseQuery := `FROM tbl_invoice WHERE deleted_at IS NULL AND clinic_id = ?`
-	baseArgs := []interface{}{clinicID}
+	baseQuery := `FROM tbl_invoice`
 
 	countQuery, countArgs := common.BuildQuery(baseQuery, filter, allowedColumns, searchCols, true)
-	countArgs = append(baseArgs, countArgs...)
-
+	fmt.Println("count query-------------------", countQuery)
 	var total int64
 	if err := r.db.GetContext(ctx, &total, sqlx.Rebind(sqlx.DOLLAR, countQuery), countArgs...); err != nil {
 		return 0, fmt.Errorf("count invoices failed: %w", err)
 	}
 
 	return total, nil
-}
-
-// fetchInvoices retrieves invoice records matching filter
-func (r *Repository) ListInvoices(ctx context.Context, clinicID uuid.UUID, filter common.Filter) ([]*Invoice, error) {
-	allowedColumns := r.getAllowedFilterColumns()
-	searchCols := []string{"name"}
-
-	selectQuery := `
-		SELECT 
-			id, clinic_id, contact_id::text, template_id, name,
-			billing_period_from::text, billing_period_to::text,
-			invoice_frequency, status, issue_date::text, due_date::text,
-			created_at::text, updated_at::text
-		FROM tbl_invoice WHERE deleted_at IS NULL AND clinic_id = ?
-	`
-
-	query, args := common.BuildQuery(selectQuery, filter, allowedColumns, searchCols, false)
-	args = append([]interface{}{clinicID}, args...)
-
-	rows, err := r.db.QueryContext(ctx, sqlx.Rebind(sqlx.DOLLAR, query), args...)
-	if err != nil {
-		return nil, fmt.Errorf("select invoices failed: %w", err)
-	}
-	defer rows.Close()
-
-	invoices := make([]*Invoice, 0)
-	for rows.Next() {
-		invoice := &Invoice{}
-		if err := rows.Scan(
-			&invoice.ID,
-			&invoice.ClinicID,
-			&invoice.ContactID,
-			&invoice.TemplateID,
-			&invoice.Name,
-			&invoice.BillingPeriodFrom,
-			&invoice.BillingPeriodTo,
-			&invoice.InvoiceFrequency,
-			&invoice.Status,
-			&invoice.IssueDate,
-			&invoice.DueDate,
-			&invoice.CreatedAt,
-			&invoice.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan invoice failed: %w", err)
-		}
-		invoices = append(invoices, invoice)
-	}
-
-	return invoices, rows.Err()
 }
 
 // getAllowedFilterColumns returns the allowed columns for filtering
@@ -375,7 +284,8 @@ func (r *Repository) getAllowedFilterColumns() map[string]string {
 		"name":             "name",
 		"status":           "status",
 		"contact_id":       "contact_id",
-		"amount":           "amount",
+		"clinic_id":        "clinic_id",
+		"deleted_at":       "deleted_at",
 		"date_range_start": "issue_date",
 		"date_range_end":   "issue_date",
 		"created_at":       "created_at",

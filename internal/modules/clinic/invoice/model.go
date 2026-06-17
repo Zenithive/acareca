@@ -7,6 +7,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/samber/lo"
 )
 
 type RqInvoice struct {
@@ -17,8 +18,8 @@ type RqInvoice struct {
 	BillingPeriodFrom string              `json:"billingPeriodFrom" validate:"required,datetime=2006-01-02"`
 	BillingPeriodTo   string              `json:"billingPeriodTo" validate:"required,datetime=2006-01-02"`
 	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         string              `json:"issueDate" validate:"required,datetime=2006-01-02"`
-	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	IssueDate         time.Time           `json:"issueDate" validate:"required,datetime=2006-01-02"`
+	DueDate           *time.Time          `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	Status            *string             `json:"status"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 }
@@ -66,8 +67,8 @@ type RqUpdateInvoice struct {
 	BillingPeriodFrom *string                   `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	BillingPeriodTo   *string                   `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	InvoiceFrequency  *string                   `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         *string                   `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	IssueDate         *time.Time                `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	DueDate           *time.Time                `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	Status            *string                   `json:"status,omitempty"`
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
@@ -128,13 +129,38 @@ type Invoice struct {
 	BillingPeriodFrom *string           `db:"billing_period_from"`
 	BillingPeriodTo   *string           `db:"billing_period_to"`
 	InvoiceFrequency  *string           `db:"invoice_frequency,omitempty"`
-	IssueDate         string            `db:"issue_date"`
-	DueDate           *string           `db:"due_date,omitempty"`
+	IssueDate         time.Time         `db:"issue_date"`
+	DueDate           *time.Time        `db:"due_date,omitempty"`
 	Status            *string           `db:"status"`
 	ContactTo         *contact.Contact  `db:"-"`
 	Sections          []section.Section `db:"-"`
-	CreatedAt         string            `db:"created_at"`
-	UpdatedAt         string            `db:"updated_at"`
+	CreatedAt         time.Time         `db:"created_at"`
+	UpdatedAt         *time.Time        `db:"updated_at"`
+}
+
+func (i *Invoice) ToRsInvoiceSummary() *RsInvoiceSummary {
+	var contactTo *contact.RsContact
+	if i.ContactTo != nil {
+		rsContact := i.ContactTo.ToRsContact()
+		contactTo = &rsContact
+	}
+
+	return &RsInvoiceSummary{
+		ID:                i.ID,
+		ClinicID:          i.ClinicID,
+		ContactID:         i.ContactID,
+		ContactTo:         contactTo,
+		TemplateID:        i.TemplateID,
+		Name:              i.Name,
+		BillingPeriodFrom: lo.FromPtrOr(i.BillingPeriodFrom, ""),
+		BillingPeriodTo:   lo.FromPtrOr(i.BillingPeriodTo, ""),
+		InvoiceFrequency:  i.InvoiceFrequency,
+		IssueDate:         i.IssueDate,
+		DueDate:           i.DueDate,
+		Status:            i.Status,
+		CreatedAt:         i.CreatedAt,
+		UpdatedAt:         i.UpdatedAt,
+	}
 }
 
 func (i *Invoice) ToRsInvoice() *RsInvoice {
@@ -177,6 +203,23 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 	}
 }
 
+type RsInvoiceSummary struct {
+	ID                uuid.UUID          `json:"id"`
+	ClinicID          uuid.UUID          `json:"clinicId"`
+	ContactID         *uuid.UUID         `json:"contactId,omitempty"`
+	ContactTo         *contact.RsContact `json:"contactTo,omitempty"`
+	TemplateID        uuid.UUID          `json:"templateId"`
+	Name              string             `json:"name"`
+	BillingPeriodFrom string             `json:"billingPeriodFrom"`
+	BillingPeriodTo   string             `json:"billingPeriodTo"`
+	InvoiceFrequency  *string            `json:"invoiceFrequency,omitempty"`
+	IssueDate         time.Time          `json:"issueDate"`
+	DueDate           *time.Time         `json:"dueDate,omitempty"`
+	Status            *string            `json:"status"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	UpdatedAt         *time.Time         `json:"updatedAt"`
+}
+
 type RsInvoice struct {
 	ID                uuid.UUID           `json:"id"`
 	ClinicID          uuid.UUID           `json:"clinicId"`
@@ -187,19 +230,20 @@ type RsInvoice struct {
 	BillingPeriodFrom string              `json:"billingPeriodFrom"`
 	BillingPeriodTo   string              `json:"billingPeriodTo"`
 	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty"`
-	IssueDate         string              `json:"issueDate"`
-	DueDate           *string             `json:"dueDate,omitempty"`
+	IssueDate         time.Time           `json:"issueDate"`
+	DueDate           *time.Time          `json:"dueDate,omitempty"`
 	Status            *string             `json:"status"`
 	Sections          []section.RsSection `json:"sections,omitempty"`
-	CreatedAt         string              `json:"createdAt"`
-	UpdatedAt         string              `json:"updatedAt"`
+	CreatedAt         time.Time           `json:"createdAt"`
+	UpdatedAt         *time.Time          `json:"updatedAt"`
 }
 
 type Filter struct {
-	Name      *string `form:"name,omitempty"`
-	Status    *string `form:"status,omitempty"`
-	ContactID *string `form:"contact_id,omitempty"`
-	IssueDate *string `form:"date_range,omitempty"`
+	Name      *string    `form:"name,omitempty"`
+	Status    *string    `form:"status,omitempty"`
+	ContactID *string    `form:"contact_id,omitempty"`
+	IssueDate *string    `form:"date_range,omitempty"`
+	ClinicId  *uuid.UUID `form:"-"`
 	common.Filter
 }
 
@@ -207,22 +251,27 @@ func (filter *Filter) MapToFilter() common.Filter {
 	filters := map[string]interface{}{}
 	operators := map[string]common.Operator{}
 
-	if filter.Name != nil && *filter.Name != "" {
+	if filter.Name != nil {
 		filters["name"] = "%" + *filter.Name + "%"
 		operators["name"] = common.OpLike
 	}
-	if filter.Status != nil && *filter.Status != "" {
+	if filter.Status != nil {
 		filters["status"] = *filter.Status
 		operators["status"] = common.OpEq
 	}
-	if filter.ContactID != nil && *filter.ContactID != "" {
+	if filter.ContactID != nil {
 		if parsedUUID, err := uuid.Parse(*filter.ContactID); err == nil && parsedUUID != uuid.Nil {
 			filters["contact_id"] = parsedUUID
 			operators["contact_id"] = common.OpEq
 		}
 	}
 
-	if filter.IssueDate != nil && *filter.IssueDate != "" {
+	if filter.ClinicId != nil {
+		filters["clinic_id"] = *filter.ClinicId
+		operators["clinic_id"] = common.OpEq
+	}
+
+	if filter.IssueDate != nil {
 		now := time.Now().UTC()
 
 		switch *filter.IssueDate {

@@ -210,8 +210,8 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 			if item.BASCode != nil {
 				contextValues[string(*item.BASCode)] = item.Amount
 			}
-			if item.FieldKey != "" {
-				contextValues[item.FieldKey] = item.Amount
+			if item.FieldKey != nil && *item.FieldKey != "" {
+				contextValues[*item.FieldKey] = item.Amount
 			}
 		}
 	}
@@ -222,9 +222,13 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 		if item.Expression != nil {
 			exprJSON, err := json.Marshal(item.Expression)
 			if err != nil {
+				fieldKey := ""
+				if item.FieldKey != nil {
+					fieldKey = *item.FieldKey
+				}
 				return &FormulaError{
 					ItemName:   item.Name,
-					FieldKey:   item.FieldKey,
+					FieldKey:   fieldKey,
 					Expression: string(exprJSON),
 					Err:        err,
 					Context:    contextValues,
@@ -233,9 +237,13 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 
 			result, err := formula.BuildFormula(formulaCtx, exprJSON)
 			if err != nil {
+				fieldKey := ""
+				if item.FieldKey != nil {
+					fieldKey = *item.FieldKey
+				}
 				return &FormulaError{
 					ItemName:   item.Name,
-					FieldKey:   item.FieldKey,
+					FieldKey:   fieldKey,
 					Expression: string(exprJSON),
 					Err:        err,
 					Context:    contextValues,
@@ -243,8 +251,8 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 			}
 
 			item.Amount = result
-			if item.FieldKey != "" {
-				contextValues[item.FieldKey] = result
+			if item.FieldKey != nil && *item.FieldKey != "" {
+				contextValues[*item.FieldKey] = result
 			}
 			if item.BASCode != nil {
 				contextValues[string(*item.BASCode)] = result
@@ -280,13 +288,13 @@ func topologicalSort(items []*Item) ([]*Item, error) {
 	itemsWithoutKeys := make([]*Item, 0)
 
 	for _, item := range items {
-		if item.FieldKey != "" {
-			itemByFieldKey[item.FieldKey] = item
+		if item.FieldKey != nil && *item.FieldKey != "" {
+			itemByFieldKey[*item.FieldKey] = item
 		}
 		if item.BASCode != nil {
 			itemByBASCode[string(*item.BASCode)] = item
 		}
-		if item.FieldKey == "" && item.BASCode == nil {
+		if (item.FieldKey == nil || *item.FieldKey == "") && item.BASCode == nil {
 			itemsWithoutKeys = append(itemsWithoutKeys, item)
 		}
 	}
