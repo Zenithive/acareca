@@ -4,11 +4,12 @@ import (
 	"github.com/google/uuid"
 )
 
-func defaultTemplateHeader(title string, labelName string) string {
+// defaultTemplateHeader takes custom settings into account dynamically via Handlebars tags
+func defaultTemplateHeader(title string, labelName string, addressBannerHTML string) string {
 	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
   <tr>
     <td style="width: 55%; vertical-align: top; padding: 0;">
-      {{#if show_logo}}
+      {{#if template_settings.is_logo}}
         {{#if logo_url}}
         <div style="line-height: 0; margin: 0 0 4px 0;">
           <img class="brand-logo" src="{{logo_url}}" alt="{{bill_from.name}}" />
@@ -25,6 +26,8 @@ func defaultTemplateHeader(title string, labelName string) string {
           {{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}{{#if bill_from.phone}} &nbsp;|&nbsp; Ph {{bill_from.phone}}{{/if}}{{#if bill_from.email}} &nbsp;|&nbsp; {{bill_from.email}}{{/if}}
         </p>
       </div>
+
+      ` + addressBannerHTML + `
     </td>
     <td style="width: 45%; vertical-align: top; text-align: right; padding: 0;">
       <h1 class="hdr-doc-title">` + title + `</h1>
@@ -53,12 +56,21 @@ func defaultTemplateHeader(title string, labelName string) string {
 </table>`
 }
 
+// sharedCSS maps template variables directly from the dynamic configuration pipeline to control visual attributes
 func sharedCSS() string {
 	return `
+/* Dynamically imports Google Fonts selected inside the dropdown panel */
+{{#if template_settings.header_font_family}}
+@import url('https://fonts.googleapis.com/css2?family={{template_settings.header_font_family}}:wght@400;700&display=swap');
+{{/if}}
+{{#if template_settings.body_font_family}}
+@import url('https://fonts.googleapis.com/css2?family={{template_settings.body_font_family}}:wght@400;700&display=swap');
+{{/if}}
 @import url('https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap');
 
 :root { 
-  --primary-color: #1f4e5f; 
+  --primary-color: {{#if template_settings.primary_color}}{{template_settings.primary_color}}{{else}}#1f4e5f{{/if}}; 
+  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#1f4e5f{{/if}};
   --bg-input-blue: #e8f1f5; 
   --bg-darker-blue: #d4e5ee;
   --text-dark: #000000;
@@ -69,7 +81,7 @@ func sharedCSS() string {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body { 
-  font-family: 'Arial', sans-serif; 
+  font-family: {{#if template_settings.body_font_family}}'{{template_settings.body_font_family}}'{{else}}'Arial'{{/if}}, sans-serif; 
   font-size: 11px; 
   color: var(--text-dark); 
   background: #ffffff; 
@@ -93,6 +105,23 @@ body {
   page-break-after: avoid;
 }
 
+/* Background watermark styling driven cleanly by frontend toggle context */
+{{#if template_settings.is_watermark}}
+.invoice-page::before {
+  content: "{{#if template_settings.watermark_text}}{{template_settings.watermark_text}}{{else}}PAID{{/if}}";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 130px;
+  font-weight: bold;
+  color: rgba(0, 0, 0, 0.06);
+  z-index: 9999;
+  pointer-events: none;
+  white-space: nowrap;
+}
+{{/if}}
+
 .layout-table {
   width: 100%;
   border-collapse: collapse;
@@ -107,6 +136,7 @@ body {
 }
 
 .hdr-clinic-name { 
+  font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
   font-size: 16px; 
   font-weight: bold; 
   color: var(--primary-color); 
@@ -126,6 +156,7 @@ body {
 }
 
 .hdr-doc-title { 
+  font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
   font-size: 20px; 
   font-weight: bold; 
   color: var(--primary-color); 
@@ -140,7 +171,7 @@ body {
 
 .address-banner-box { 
   width: 100%; 
-  margin-top: 6px;
+  margin-top: 10px;
   margin-bottom: 14px;
 }
 
@@ -151,7 +182,7 @@ body {
   background: var(--primary-color);
   padding: 3px 6px;
   display: inline-block;
-  width: 240px; 
+  width: 330px; 
   box-sizing: border-box;
   margin-bottom: 4px; 
 }
@@ -264,13 +295,17 @@ body {
 }
 
 func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
+	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+
 	return []RqTemplate{
 		{
 			ClinicId:  clinicId,
 			Name:      "Calculation Statement",
 			IsDefault: true,
 			IsActive:  true,
-			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("CALCULATION STATEMENT", "Statement No.") + `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div></div>
+			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("CALCULATION STATEMENT", "Statement No.", calculationPreparedFor) + `</div>
 
   <table class="data-table">
     <thead>
@@ -309,7 +344,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
     </tbody>
   </table>
 
-  <table class="data-table" style="margin-bottom: 0;">
+  <table class="data-table">
     <thead>
       <tr>
         <th style="width: 65%; text-align: left;">2. SERVICE & FACILITY FEE (see Tax Invoice &mdash; page 2)</th>
@@ -319,21 +354,20 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
     </thead>
     <tbody>
       <tr>
-        <td colspan="3" style="padding:4px 6px;">
-          <div style="display:flex; justify-content:flex-end; align-items:center; gap:35px;">
-            <span style="font-weight:bold;">Fee rate</span>
-            <span style="color:var(--bright-blue); font-weight:bold; min-width:70px; text-align:right;">{{custom_fee_rate}}%</span>
-          </div>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="3" style="border-bottom: none; padding-top: 0; padding-bottom: 4px;">
-          <table class="layout-table">
+        <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
+          <table class="layout-table" style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 0; color: var(--text-dark);">Services rendered to you for the period, including:</td>
+              <td style="padding: 0; color: var(--text-dark); width: 65%; vertical-align: middle;">
+                Services rendered to you for the period, including:
+              </td>
+              <td style="padding: 0; font-weight: bold; width: 20%; text-align: right; vertical-align: middle; white-space: nowrap;">
+                Fee rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%</span>
+              </td>
+              <td style="width: 15%; padding: 0;"></td>
             </tr>
           </table>
-          <ul class="bullet-list" style="list-style-type: decimal;">
+          <ul class="bullet-list" style="list-style-type: decimal; margin-top: 6px;">
             <li>Rent of dental surgery/room</li>
             <li>Patient booking & reception</li>
             <li>Fee collection & banking</li>
@@ -409,7 +443,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
 			Name:      "Tax Invoice",
 			IsDefault: false,
 			IsActive:  true,
-			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("TAX INVOICE", "Invoice No.") + `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div></div>
+			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo) + `</div>
 
   <table class="data-table" style="margin-top: 4px;">
     <thead>
@@ -462,6 +496,12 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
   <div class="footer-notes-box" style="margin-top: 24px;">
     <p><strong>Payment terms:</strong> {{terms_text}}</p>
   </div>
+  {{else}}
+    {{#if template_settings.terms_text}}
+    <div class="footer-notes-box" style="margin-top: 24px;">
+      <p><strong>Payment terms:</strong> {{template_settings.terms_text}}</p>
+    </div>
+    {{/if}}
   {{/if}}
 </div>`,
 			Css: sharedCSS(),
@@ -471,7 +511,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
 			Name:      "Remittance Advice",
 			IsDefault: false,
 			IsActive:  true,
-			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("REMITTANCE ADVICE", "Reference") + `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div></div>
+			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee) + `</div>
 
   <table class="data-table">
     <thead>
@@ -520,7 +560,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
         </tr>
         <tr>
           <td style="font-weight: bold;">BSB / Account No.</td>
-          <td>063-000 / 12345678</td>
+          <td>{{#if custom_payment_bsb}}{{custom_payment_bsb}}{{else}}063-000{{/if}} / {{#if custom_payment_account}}{{custom_payment_account}}{{else}}12345678{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment date</td>

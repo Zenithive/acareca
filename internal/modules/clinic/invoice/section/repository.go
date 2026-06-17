@@ -290,7 +290,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 	query := `
 		SELECT 
 			id, invoice_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference,
+			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL

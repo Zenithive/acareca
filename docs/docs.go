@@ -10689,6 +10689,15 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Template Settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.RqUpdateSetting"
+                        }
                     }
                 ],
                 "responses": {
@@ -15477,6 +15486,56 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.RqUpdateSetting": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "footer": {
+                    "type": "string"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_logo": {
+                    "type": "boolean"
+                },
+                "is_tax": {
+                    "type": "boolean"
+                },
+                "is_water_mark": {
+                    "type": "boolean"
+                },
+                "letter_head": {
+                    "type": "string"
+                },
+                "logo": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "type": "string"
+                },
+                "table_style": {
+                    "type": "string"
+                },
+                "template_id": {
+                    "type": "string"
+                },
+                "term_text": {
+                    "type": "string"
+                },
+                "water_mark_text": {
                     "type": "string"
                 }
             }

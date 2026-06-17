@@ -215,6 +215,7 @@ func (h *Handler) GetSetting(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Template ID"
+// @Param request body RqUpdateSetting true "Template Settings"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 500 {object} response.RsError
