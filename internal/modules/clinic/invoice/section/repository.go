@@ -362,19 +362,37 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 			if section.InvoiceID == nil {
 				section.InvoiceID = &invoiceID
 			}
+			if section.InvoiceSection == "" {
+				return fmt.Errorf("invoice_section is required for new section")
+			}
 			if err := r.Create(ctx, tx, []Section{section}); err != nil {
 				return fmt.Errorf("failed to create new section: %w", err)
 			}
 		} else {
-			var exists bool
+			var existing Section
 			err := tx.QueryRowContext(ctx, `
-				SELECT EXISTS(SELECT 1 FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL)
-			`, section.ID).Scan(&exists)
-			if err != nil {
-				return fmt.Errorf("failed to check section existence: %w", err)
-			}
+				SELECT id, invoice_id, invoice_section, document_number, tax_method
+				FROM tbl_map_invoice_section
+				WHERE id = $1 AND deleted_at IS NULL
+			`, section.ID).Scan(
+				&existing.ID,
+				&existing.InvoiceID,
+				&existing.InvoiceSection,
+				&existing.DocumentNumber,
+				&existing.TaxMethod,
+			)
 
-			if exists {
+			if err == nil {
+				if section.InvoiceSection == "" {
+					section.InvoiceSection = existing.InvoiceSection
+				}
+				if section.DocumentNumber == "" {
+					section.DocumentNumber = existing.DocumentNumber
+				}
+				if section.TaxMethod == nil {
+					section.TaxMethod = existing.TaxMethod
+				}
+
 				if err := r.updateSectionOnly(ctx, tx, section); err != nil {
 					return fmt.Errorf("failed to update section %s: %w", section.ID, err)
 				}
@@ -393,13 +411,18 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 						return fmt.Errorf("failed to upsert items for section %s: %w", section.ID, err)
 					}
 				}
-			} else {
+			} else if errors.Is(err, sql.ErrNoRows) {
 				if section.InvoiceID == nil {
 					section.InvoiceID = &invoiceID
+				}
+				if section.InvoiceSection == "" {
+					return fmt.Errorf("invoice_section is required for new section %s", section.ID)
 				}
 				if err := r.Create(ctx, tx, []Section{section}); err != nil {
 					return fmt.Errorf("failed to create section with ID %s: %w", section.ID, err)
 				}
+			} else {
+				return fmt.Errorf("failed to load section %s: %w", section.ID, err)
 			}
 		}
 	}

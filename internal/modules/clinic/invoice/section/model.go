@@ -39,6 +39,7 @@ type RqUpdateSection struct {
 	ID             *uuid.UUID            `json:"id,omitempty"`
 	InvoiceID      *uuid.UUID            `json:"invoiceId,omitempty"`
 	InvoiceSection *SectionType          `json:"invoiceSection,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	SectionType    *SectionType          `json:"sectionType,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
 	DocumentNumber *string               `json:"documentNumber,omitempty"`
 	TaxMethod      *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	Entries        []*item.RqUpdateEntry `json:"entries,omitempty" validate:"omitempty,dive"`
@@ -66,35 +67,30 @@ func (rq *RqSection) ToSection() *Section {
 func (rq *RqUpdateSection) ToSection() *Section {
 	section := &Section{}
 
-	// Parse and set ID if provided
 	if rq.ID != nil {
 		section.ID = *rq.ID
 	} else {
-		// If no ID, this is a new section
 		section.ID = uuid.New()
 	}
 
-	// Parse and set InvoiceID if provided
 	if rq.InvoiceID != nil {
 		section.InvoiceID = rq.InvoiceID
 	}
 
-	// Set section type if provided
 	if rq.InvoiceSection != nil {
 		section.InvoiceSection = *rq.InvoiceSection
+	} else if rq.SectionType != nil {
+		section.InvoiceSection = *rq.SectionType
 	}
 
-	// Set document number if provided
 	if rq.DocumentNumber != nil {
 		section.DocumentNumber = *rq.DocumentNumber
 	}
 
-	// Set tax method if provided
 	if rq.TaxMethod != nil {
 		section.TaxMethod = rq.TaxMethod
 	}
 
-	// Convert entries if provided
 	if rq.Entries != nil {
 		entries := make([]*item.Item, 0, len(rq.Entries))
 		for _, entryUpdate := range rq.Entries {
