@@ -27,6 +27,8 @@ type IRepository interface {
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
 
 	GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error)
+	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
+	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
 }
 
 type Repository struct {
@@ -210,8 +212,9 @@ func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.D
 func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error) {
 	const q = `
         SELECT
-            i.id, i.clinic_id, i.template_id, i.invoice_number, i.reference,
-            i.payment_method, i.tax_method, i.issue_date::text, i.due_date::text,
+            i.id, i.clinic_id, i.template_id, 
+            i.billing_period_from::text, i.billing_period_to::text,
+            i.invoice_frequency, i.issue_date::text, i.due_date::text,
             i.status,
             cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
             cl.clinic_name as clinic_name,
@@ -235,7 +238,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	const itemQ = `
-        SELECT name, description, quantity, unit_price, discount, tax_rate, tax_amount, total_amount
+        SELECT name, description, quantity, unit_price, total_amount
         FROM tbl_invoice_item
         WHERE invoice_id = $1`
 	var items []InvoiceItem
@@ -262,17 +265,16 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	return &InvoiceResponse{
-		ID:            row.Id,
-		ClinicID:      row.ClinicId,
-		TemplateID:    row.TemplateId,
-		InvoiceNumber: row.InvoiceNumber,
-		Reference:     row.Reference,
-		PaymentMethod: row.PaymentMethod,
-		TaxMethod:     row.TaxMethod,
-		IssueDate:     row.IssueDate,
-		DueDate:       row.DueDate,
-		Status:        row.Status,
-		ClinicName:    row.ClinicName,
+		ID:                row.Id,
+		ClinicID:          row.ClinicId,
+		TemplateID:        row.TemplateId,
+		BillingPeriodFrom: row.BillingPeriodFrom,
+		BillingPeriodTo:   row.BillingPeriodTo,
+		InvoiceFrequency:  row.InvoiceFrequency,
+		IssueDate:         row.IssueDate,
+		DueDate:           row.DueDate,
+		Status:            row.Status,
+		ClinicName:        row.ClinicName,
 		SentTo: InvoiceContact{
 			FName:   row.FName,
 			LName:   row.LName,
@@ -283,4 +285,34 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		},
 		Items: items,
 	}, nil
+}
+
+func (r *Repository) GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error) {
+	var subject, body string
+
+	err := r.db.QueryRowContext(ctx, `
+		SELECT mail_subject, mail_body 
+		FROM tbl_clinic_invoice_mail_templates 
+		WHERE clinic_id = $1
+	`, clinicID).Scan(&subject, &body)
+
+	if err != nil {
+		return "", "", err // Service defaults automatically capture sql.ErrNoRows fallbacks gracefully
+	}
+
+	return subject, body, nil
+}
+
+func (r *Repository) SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO tbl_clinic_invoice_mail_templates (clinic_id, mail_subject, mail_body)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (clinic_id) 
+		DO UPDATE SET 
+			mail_subject = EXCLUDED.mail_subject,
+			mail_body = EXCLUDED.mail_body,
+			updated_at = NOW()
+	`, clinicID, subject, body)
+
+	return err
 }

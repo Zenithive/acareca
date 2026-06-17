@@ -14426,63 +14426,84 @@ const docTemplate = `{
                 }
             }
         },
+        "invoice.InvoiceSection": {
+            "type": "object",
+            "required": [
+                "documentNumber",
+                "entries",
+                "sectionType"
+            ],
+            "properties": {
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.Item"
+                    }
+                },
+                "sectionType": {
+                    "type": "string",
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ]
+                }
+            }
+        },
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
-                "contact_id",
-                "invoice_number",
-                "issue_date",
-                "items",
+                "billingPeriodFrom",
+                "billingPeriodTo",
+                "contactId",
+                "issueDate",
                 "name",
-                "template_id"
+                "templateId"
             ],
             "properties": {
-                "clinic_id": {
+                "billingPeriodFrom": {
                     "type": "string"
                 },
-                "contact_id": {
+                "billingPeriodTo": {
                     "type": "string"
                 },
-                "due_date": {
+                "clinicId": {
                     "type": "string"
                 },
-                "invoice_number": {
+                "contactId": {
                     "type": "string"
                 },
-                "issue_date": {
+                "dueDate": {
                     "type": "string"
                 },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RqItem"
-                    }
+                "invoiceFrequency": {
+                    "type": "string",
+                    "enum": [
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY",
+                        "YEARLY"
+                    ]
+                },
+                "issueDate": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
-                "payment_method": {
-                    "type": "string",
-                    "enum": [
-                        "CASH",
-                        "CARD",
-                        "ONLINE"
-                    ]
-                },
-                "reference": {
-                    "type": "string"
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/invoice.InvoiceSection"
+                    }
                 },
                 "status": {
                     "type": "string"
                 },
-                "tax_method": {
-                    "type": "string",
-                    "enum": [
-                        "EXCLUSIVE",
-                        "INCLUSIVE"
-                    ]
-                },
-                "template_id": {
+                "templateId": {
                     "type": "string"
                 }
             }
@@ -14505,55 +14526,55 @@ const docTemplate = `{
         "invoice.RqUpdateInvoice": {
             "type": "object",
             "properties": {
-                "attachment_base64": {
+                "attachmentBase64": {
                     "type": "string"
                 },
-                "contact_id": {
+                "billingPeriodFrom": {
                     "type": "string"
                 },
-                "due_date": {
+                "billingPeriodTo": {
                     "type": "string"
+                },
+                "contactId": {
+                    "type": "string"
+                },
+                "dueDate": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqUpdateEntry"
+                    }
                 },
                 "id": {
                     "type": "string"
                 },
-                "invoice_number": {
-                    "type": "string"
+                "invoiceFrequency": {
+                    "type": "string",
+                    "enum": [
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY",
+                        "YEARLY"
+                    ]
                 },
-                "issue_date": {
+                "issueDate": {
                     "type": "string"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RqUpdateItem"
-                    }
                 },
                 "name": {
                     "type": "string"
                 },
-                "payment_method": {
-                    "type": "string",
-                    "enum": [
-                        "CASH",
-                        "CARD",
-                        "ONLINE"
-                    ]
-                },
-                "reference": {
-                    "type": "string"
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/invoice.InvoiceSection"
+                    }
                 },
                 "status": {
                     "type": "string"
                 },
-                "tax_method": {
-                    "type": "string",
-                    "enum": [
-                        "EXCLUSIVE",
-                        "INCLUSIVE"
-                    ]
-                },
-                "template_id": {
+                "templateId": {
                     "type": "string"
                 }
             }
@@ -14561,58 +14582,61 @@ const docTemplate = `{
         "invoice.RsInvoice": {
             "type": "object",
             "properties": {
-                "clinic_id": {
+                "billingPeriodFrom": {
                     "type": "string"
                 },
-                "contact_id": {
+                "billingPeriodTo": {
                     "type": "string"
                 },
-                "contact_to": {
+                "clinicId": {
+                    "type": "string"
+                },
+                "contactId": {
+                    "type": "string"
+                },
+                "contactTo": {
                     "$ref": "#/definitions/contact.RsContact"
                 },
-                "created_at": {
+                "createdAt": {
                     "type": "string"
                 },
-                "due_date": {
+                "dueDate": {
                     "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RsEntry"
+                    }
                 },
                 "id": {
                     "type": "string"
                 },
-                "invoice_number": {
+                "invoiceFrequency": {
                     "type": "string"
                 },
-                "issue_date": {
+                "issueDate": {
                     "type": "string"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RsItem"
-                    }
                 },
                 "name": {
                     "type": "string"
                 },
-                "payment_method": {
-                    "type": "string"
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/invoice.InvoiceSection"
+                    }
                 },
-                "reference": {
-                    "type": "string"
-                },
-                "sent_to": {
+                "sentTo": {
                     "$ref": "#/definitions/contact.RsContact"
                 },
                 "status": {
                     "type": "string"
                 },
-                "tax_method": {
+                "templateId": {
                     "type": "string"
                 },
-                "template_id": {
-                    "type": "string"
-                },
-                "updated_at": {
+                "updatedAt": {
                     "type": "string"
                 }
             }
@@ -14631,21 +14655,23 @@ const docTemplate = `{
                 }
             }
         },
-        "item.RqItem": {
+        "item.Item": {
             "type": "object",
-            "required": [
-                "name",
-                "quantity",
-                "total_amount",
-                "unit_price"
-            ],
             "properties": {
+                "bascode": {
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },
-                "discount": {
-                    "type": "number",
-                    "minimum": 0
+                "entryType": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceSectionID": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -14653,36 +14679,36 @@ const docTemplate = `{
                 "quantity": {
                     "type": "integer"
                 },
-                "tax_amount": {
-                    "type": "number",
-                    "minimum": 0
+                "sortOrder": {
+                    "type": "integer"
                 },
-                "tax_rate": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "total_amount": {
+                "totalAmount": {
                     "type": "number"
                 },
-                "unit_price": {
+                "unitPrice": {
                     "type": "number"
                 }
             }
         },
-        "item.RqUpdateItem": {
+        "item.RqUpdateEntry": {
             "type": "object",
             "required": [
                 "id"
             ],
             "properties": {
+                "basCode": {
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },
-                "discount": {
-                    "type": "number",
-                    "minimum": 0
+                "entryType": {
+                    "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "invoiceSectionId": {
                     "type": "string"
                 },
                 "name": {
@@ -14691,35 +14717,33 @@ const docTemplate = `{
                 "quantity": {
                     "type": "integer"
                 },
-                "tax_amount": {
-                    "type": "number",
-                    "minimum": 0
+                "sortOrder": {
+                    "type": "integer"
                 },
-                "tax_rate": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "total_amount": {
-                    "type": "number"
-                },
-                "unit_price": {
+                "unitPrice": {
                     "type": "number"
                 }
             }
         },
-        "item.RsItem": {
+        "item.RsEntry": {
             "type": "object",
             "properties": {
+                "basCode": {
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },
-                "discount": {
-                    "type": "number"
+                "entryType": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "invoice_id": {
+                "invoiceId": {
+                    "type": "string"
+                },
+                "invoiceSectionId": {
                     "type": "string"
                 },
                 "name": {
@@ -14728,16 +14752,13 @@ const docTemplate = `{
                 "quantity": {
                     "type": "integer"
                 },
-                "tax_amount": {
+                "sortOrder": {
+                    "type": "integer"
+                },
+                "totalAmount": {
                     "type": "number"
                 },
-                "tax_rate": {
-                    "type": "number"
-                },
-                "total_amount": {
-                    "type": "number"
-                },
-                "unit_price": {
+                "unitPrice": {
                     "type": "number"
                 }
             }
@@ -15244,11 +15265,11 @@ const docTemplate = `{
                 "bill_to": {
                     "$ref": "#/definitions/template.PartyInfo"
                 },
-                "clinic_name": {
+                "billing_period": {
                     "type": "string"
                 },
-                "discount_total": {
-                    "type": "number"
+                "clinic_name": {
+                    "type": "string"
                 },
                 "due_date_display": {
                     "type": "string"
@@ -15262,7 +15283,7 @@ const docTemplate = `{
                 "has_attachments": {
                     "type": "boolean"
                 },
-                "invoice_number": {
+                "invoice_frequency": {
                     "type": "string"
                 },
                 "issue_date_display": {
@@ -15286,15 +15307,6 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
-                "payment_method_label": {
-                    "type": "string"
-                },
-                "reference": {
-                    "type": "string"
-                },
-                "reference2": {
-                    "type": "string"
-                },
                 "show_logo": {
                     "type": "boolean"
                 },
@@ -15304,31 +15316,13 @@ const docTemplate = `{
                 "show_tax": {
                     "type": "boolean"
                 },
-                "subtotal": {
-                    "type": "number"
-                },
                 "table_style_class": {
                     "type": "string"
-                },
-                "tax_method_label": {
-                    "type": "string"
-                },
-                "tax_total": {
-                    "type": "number"
                 },
                 "totals_amounts_caption": {
                     "type": "string"
                 },
-                "totals_discount_label": {
-                    "type": "string"
-                },
                 "totals_grand_label": {
-                    "type": "string"
-                },
-                "totals_subtotal_label": {
-                    "type": "string"
-                },
-                "totals_tax_label": {
                     "type": "string"
                 },
                 "watermark_enabled": {
@@ -15345,9 +15339,6 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
-                "discount_amount": {
-                    "type": "number"
-                },
                 "line_total": {
                     "type": "number"
                 },
@@ -15356,12 +15347,6 @@ const docTemplate = `{
                 },
                 "qty": {
                     "type": "integer"
-                },
-                "tax_amount": {
-                    "type": "number"
-                },
-                "tax_percent": {
-                    "type": "number"
                 },
                 "unit_price": {
                     "type": "number"
