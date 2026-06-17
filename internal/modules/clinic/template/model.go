@@ -9,9 +9,17 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
 )
 
+// RqGlobalTemplate represents incoming global template structural creation/updates
+type RqGlobalTemplate struct {
+	Name      string `json:"name"`
+	Html      string `json:"html"`
+	Css       string `json:"css"`
+	IsDefault bool   `json:"is_default"`
+	IsActive  bool   `json:"is_active"`
+}
+
 type RqTemplate struct {
 	Id          uuid.UUID `json:"-"`
-	ClinicId    uuid.UUID `json:"clinic_id"`
 	Description *string   `json:"description"`
 	Name        string    `json:"name"`
 	Html        string    `json:"html"`
@@ -34,7 +42,6 @@ func (rq *RqTemplate) ToDB(encryptionKey []byte) (Template, error) {
 	return Template{
 		Id:          rq.Id,
 		Name:        rq.Name,
-		ClinicId:    rq.ClinicId,
 		Description: rq.Description,
 		Html:        htmlBlob,
 		Css:         cssBlob,
@@ -44,24 +51,21 @@ func (rq *RqTemplate) ToDB(encryptionKey []byte) (Template, error) {
 }
 
 type Template struct {
-	Id          uuid.UUID `db:"id"`
-	ClinicId    uuid.UUID `db:"clinic_id"`
-	Description *string   `db:"description"`
-	Name        string    `db:"name"`
-	Html        []byte    `db:"html"`
-	Css         []byte    `db:"css"`
-	IsDefault   bool      `db:"is_default"`
-	IsActive    bool      `db:"is_active"`
-
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt *time.Time `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
+	Id          uuid.UUID  `db:"id"`
+	Description *string    `db:"description"`
+	Name        string     `db:"name"`
+	Html        []byte     `db:"html"`
+	Css         []byte     `db:"css"`
+	IsDefault   bool       `db:"is_default"`
+	IsActive    bool       `db:"is_active"`
+	CreatedAt   time.Time  `db:"created_at"`
+	UpdatedAt   *time.Time `db:"updated_at"`
+	DeletedAt   *time.Time `db:"deleted_at"`
 }
 
 func (tp *Template) ToRs() RsTemplate {
 	return RsTemplate{
 		Id:          tp.Id,
-		ClinicId:    tp.ClinicId,
 		Description: tp.Description,
 		Name:        tp.Name,
 		Html:        "",
@@ -74,22 +78,21 @@ func (tp *Template) ToRs() RsTemplate {
 }
 
 type RsTemplate struct {
-	Id          uuid.UUID `json:"id"`
-	ClinicId    uuid.UUID `json:"clinic_id"`
-	Description *string   `json:"description"`
-	Name        string    `json:"name"`
-	Html        string    `json:"html"`
-	Css         string    `json:"css"`
-	IsDefault   bool      `json:"is_default"`
-	IsActive    bool      `json:"is_active"`
-
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt *time.Time `json:"updated_at"`
+	Id          uuid.UUID  `json:"id"`
+	Description *string    `json:"description"`
+	Name        string     `json:"name"`
+	Html        string     `json:"html"`
+	Css         string     `json:"css"`
+	IsDefault   bool       `json:"is_default"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
 }
 
 type RqUpdateSetting struct {
 	Id               uuid.UUID  `json:"id"`
 	TemplateId       uuid.UUID  `json:"template_id"`
+	MappingId        *uuid.UUID `json:"mapping_id"` // Nullable: links overrides back to custom contexts
 	PrimaryColor     string     `json:"primary_color"`
 	AccentColor      string     `json:"accent_color"`
 	BodyFontFamily   string     `json:"body_font_family"`
@@ -114,6 +117,7 @@ func (rq *RqUpdateSetting) ToDB() Setting {
 	return Setting{
 		Id:               rq.Id,
 		TemplateId:       rq.TemplateId,
+		MappingId:        rq.MappingId,
 		PrimaryColor:     rq.PrimaryColor,
 		AccentColor:      rq.AccentColor,
 		BodyFontFamily:   rq.BodyFontFamily,
@@ -133,6 +137,7 @@ func (rq *RqUpdateSetting) ToDB() Setting {
 type Setting struct {
 	Id               uuid.UUID  `db:"id"`
 	TemplateId       uuid.UUID  `db:"template_id"`
+	MappingId        *uuid.UUID `db:"mapping_id"` // NULL indicates global application layout settings baseline
 	PrimaryColor     string     `db:"primary_color"`
 	AccentColor      string     `db:"accent_color"`
 	BodyFontFamily   string     `db:"body_font_family"`
@@ -147,7 +152,7 @@ type Setting struct {
 	IsTax            bool       `db:"is_tax"`
 	TableStyle       *string    `db:"table_style"`
 
-	// These are populated separately via joins or additional queries
+	// Populated via downstream dependency resolution queries or joins
 	Logo       *file.Document `db:"-"`
 	LetterHead *file.Document `db:"-"`
 	Footer     *file.Document `db:"-"`
@@ -160,20 +165,17 @@ type Setting struct {
 func (st *Setting) ToRs() RsSetting {
 	var logo *file.RsDocument
 	if st.Logo != nil {
-		rs := st.Logo.ToRsDocument()
-		logo = rs
+		logo = st.Logo.ToRsDocument()
 	}
 
 	var letterhead *file.RsDocument
 	if st.LetterHead != nil {
-		rs := st.LetterHead.ToRsDocument()
-		letterhead = rs
+		letterhead = st.LetterHead.ToRsDocument()
 	}
 
 	var footer *file.RsDocument
 	if st.Footer != nil {
-		rs := st.Footer.ToRsDocument()
-		footer = rs
+		footer = st.Footer.ToRsDocument()
 	}
 
 	tableStyle := ""
@@ -184,6 +186,7 @@ func (st *Setting) ToRs() RsSetting {
 	return RsSetting{
 		Id:               st.Id,
 		TemplateId:       st.TemplateId,
+		MappingId:        st.MappingId,
 		PrimaryColor:     st.PrimaryColor,
 		AccentColor:      st.AccentColor,
 		BodyFontFamily:   st.BodyFontFamily,
@@ -197,15 +200,15 @@ func (st *Setting) ToRs() RsSetting {
 		WaterMarkText:    st.WaterMarkText,
 		IsTax:            st.IsTax,
 		TableStyle:       tableStyle,
-
-		CreatedAt: st.CreatedAt,
-		UpdatedAt: st.UpdatedAt,
+		CreatedAt:        st.CreatedAt,
+		UpdatedAt:        st.UpdatedAt,
 	}
 }
 
 type RsSetting struct {
 	Id               uuid.UUID        `json:"id"`
 	TemplateId       uuid.UUID        `json:"template_id"`
+	MappingId        *uuid.UUID       `json:"mapping_id,omitempty"`
 	PrimaryColor     string           `json:"primary_color"`
 	AccentColor      string           `json:"accent_color"`
 	BodyFontFamily   string           `json:"body_font_family"`
@@ -219,9 +222,8 @@ type RsSetting struct {
 	WaterMarkText    *string          `json:"water_mark_text"`
 	IsTax            bool             `json:"is_tax"`
 	TableStyle       string           `json:"table_style"`
-
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt *time.Time `json:"updated_at"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        *time.Time       `json:"updated_at"`
 }
 
 type RqGeneratePDF struct {
@@ -230,44 +232,36 @@ type RqGeneratePDF struct {
 	Data       InvoiceData
 }
 
-// InvoiceData holds all Handlebars variables the templates expect
 type InvoiceData struct {
-	ClinicName       string `json:"clinic_name"`
-	IssueDateDisplay string `json:"issue_date_display"`
-	DueDateDisplay   string `json:"due_date_display"`
-	BillingPeriod    string `json:"billing_period"`
-	InvoiceFrequency string `json:"invoice_frequency"`
-	ShowLogo         bool   `json:"show_logo"`
-	ShowLogoImage    bool   `json:"show_logo_image"`
-	LogoURL          string `json:"logo_url"`
-	LogoInitial      string `json:"logo_initial"`
-	WatermarkEnabled bool   `json:"watermark_enabled"`
-	WatermarkText    string `json:"watermark_text"`
-	ShowTax          bool   `json:"show_tax"`
-	LetterheadHTML   string `json:"letterhead_html"`
-	FooterHTML       string `json:"footer_html"`
-	Notes            string `json:"notes"`
-	AmountInWords    string `json:"amount_in_words"`
-	HasAttachments   bool   `json:"has_attachments"`
-
-	BillFrom PartyInfo  `json:"bill_from"`
-	BillTo   PartyInfo  `json:"bill_to"`
-	Items    []LineItem `json:"items"`
-
-	GrandTotal float64 `json:"grand_total"`
-
-	TotalsAmountsCaption string `json:"totals_amounts_caption"`
-	TotalsGrandLabel     string `json:"totals_grand_label"`
-
-	TableStyleClass string `json:"table_style_class"`
-
-	Attachments []Attachment `json:"attachments"`
-
-	// Settings-derived — injected by service before render
-	PrimaryColor     string `json:"-"`
-	AccentColor      string `json:"-"`
-	BodyFontFamily   string `json:"-"`
-	HeaderFontFamily string `json:"-"`
+	ClinicName           string       `json:"clinic_name"`
+	IssueDateDisplay     string       `json:"issue_date_display"`
+	DueDateDisplay       string       `json:"due_date_display"`
+	BillingPeriod        string       `json:"billing_period"`
+	InvoiceFrequency     string       `json:"invoice_frequency"`
+	ShowLogo             bool         `json:"show_logo"`
+	ShowLogoImage        bool         `json:"show_logo_image"`
+	LogoURL              string       `json:"logo_url"`
+	LogoInitial          string       `json:"logo_initial"`
+	WatermarkEnabled     bool         `json:"watermark_enabled"`
+	WatermarkText        string       `json:"watermark_text"`
+	ShowTax              bool         `json:"show_tax"`
+	LetterheadHTML       string       `json:"letterhead_html"`
+	FooterHTML           string       `json:"footer_html"`
+	Notes                string       `json:"notes"`
+	AmountInWords        string       `json:"amount_in_words"`
+	HasAttachments       bool         `json:"has_attachments"`
+	BillFrom             PartyInfo    `json:"bill_from"`
+	BillTo               PartyInfo    `json:"bill_to"`
+	Items                []LineItem   `json:"items"`
+	GrandTotal           float64      `json:"grand_total"`
+	TotalsAmountsCaption string       `json:"totals_amounts_caption"`
+	TotalsGrandLabel     string       `json:"totals_grand_label"`
+	TableStyleClass      string       `json:"table_style_class"`
+	Attachments          []Attachment `json:"attachments"`
+	PrimaryColor         string       `json:"-"`
+	AccentColor          string       `json:"-"`
+	BodyFontFamily       string       `json:"-"`
+	HeaderFontFamily     string       `json:"-"`
 }
 
 type PartyInfo struct {
@@ -407,14 +401,13 @@ type invoiceRow struct {
 	Country           string    `db:"country"`
 }
 
-// formatDateString converts a "YYYY-MM-DD" string into an "02 January 2006" string.
 func formatDateString(dateStr string) string {
 	if dateStr == "" {
 		return ""
 	}
 	t, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		return dateStr // Safely fallback if string isn't standard layout
+		return dateStr
 	}
 	return t.Format("02 January 2006")
 }

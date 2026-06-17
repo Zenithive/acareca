@@ -1,6 +1,8 @@
 package template
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 )
 
@@ -294,25 +296,24 @@ body {
 `
 }
 
-func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
+func DefaultTemplates() []RqGlobalTemplate {
 	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
 	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
 	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
 
-	return []RqTemplate{
+	return []RqGlobalTemplate{
 		{
-			ClinicId:  clinicId,
 			Name:      "Calculation Statement",
 			IsDefault: true,
 			IsActive:  true,
-			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("CALCULATION STATEMENT", "Statement No.", calculationPreparedFor) + `</div>
-
+			// Removed []byte wrapper conversion to perfectly fit string literal expectations
+			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%; text-align: left;">1. PATIENT FEES COLLECTED ON YOUR BEHALF</th>
-        <th style="width: 20%; text-align: right;">Amount</th>
-        <th style="width: 15%; text-align: center;">BAS Code</th>
+        <th style="width: 65%%; text-align: left;">1. PATIENT FEES COLLECTED ON YOUR BEHALF</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
@@ -347,24 +348,24 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%; text-align: left;">2. SERVICE & FACILITY FEE (see Tax Invoice &mdash; page 2)</th>
-        <th style="width: 20%; text-align: right;">Amount</th>
-        <th style="width: 15%; text-align: center;">BAS Code</th>
+        <th style="width: 65%%; text-align: left;">2. SERVICE & FACILITY FEE (see Tax Invoice &mdash; page 2)</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <td colspan="3" style="border-bottom: none; padding-top: 5px; padding-bottom: 4px;">
-          <table class="layout-table" style="width: 100%; border-collapse: collapse;">
+          <table class="layout-table" style="width: 100%%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 0; color: var(--text-dark); width: 65%; vertical-align: middle;">
+              <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
                 Services rendered to you for the period, including:
               </td>
-              <td style="padding: 0; font-weight: bold; width: 20%; text-align: right; vertical-align: middle; white-space: nowrap;">
+              <td style="padding: 0; font-weight: bold; width: 20%%; text-align: right; vertical-align: middle; white-space: nowrap;">
                 Fee rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%</span>
+                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%%</span>
               </td>
-              <td style="width: 15%; padding: 0;"></td>
+              <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
           <ul class="bullet-list" style="list-style-type: decimal; margin-top: 6px;">
@@ -377,14 +378,14 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
         </td>
       </tr>
       <tr class="bg-sky-row">
-        <td style="width: 65%;">Service & Facility Fee [net patient fees &times; fee rate]</td>
-        <td class="num" style="width: 20%; font-weight: bold;">{{subtotal}}</td>
-        <td class="center" style="width: 15%;"></td>
+        <td style="width: 65%%;">Service & Facility Fee [net patient fees &times; fee rate]</td>
+        <td class="num" style="width: 20%%; font-weight: bold;">{{subtotal}}</td>
+        <td class="center" style="width: 15%%;"></td>
       </tr>
       <tr>
-        <td style="width: 65%;">GST on Service & Facility Fee (10%)</td>
-        <td class="num" style="width: 20%;">{{tax_total}}</td>
-        <td class="center" style="width: 15%;">1B</td>
+        <td style="width: 65%%;">GST on Service & Facility Fee (10%%)</td>
+        <td class="num" style="width: 20%%;">{{tax_total}}</td>
+        <td class="center" style="width: 15%%;">1B</td>
       </tr>
       <tr class="row-total bg-sky-row">
         <td>Total Service & Facility Fee (incl. GST)</td>
@@ -397,13 +398,13 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 85%; text-align: left;">3. NET SETTLEMENT (see Remittance Advice &mdash; page 3)</th>
-        <th style="width: 15%; text-align: right;">Amount</th>
+        <th style="width: 85%%; text-align: left;">3. NET SETTLEMENT (see Remittance Advice &mdash; page 3)</th>
+        <th style="width: 15%%; text-align: right;">Amount</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td>Total patient fees collected (incl. GST) [G1]</td>
+        <td>Total patient fees collected on your behalf (incl. GST) [G1]</td>
         <td class="num">{{custom_patient_fees_collected}}</td>
       </tr>
       <tr>
@@ -435,22 +436,21 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
     <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{notes}}</p>
     {{/if}}
   </div>
-</div>`,
+</div>`, defaultTemplateHeader("CALCULATION STATEMENT", "Statement No.", calculationPreparedFor)),
 			Css: sharedCSS(),
 		},
 		{
-			ClinicId:  clinicId,
 			Name:      "Tax Invoice",
 			IsDefault: false,
 			IsActive:  true,
-			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo) + `</div>
+			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
   <table class="data-table" style="margin-top: 4px;">
     <thead>
       <tr>
-        <th style="width: 70%; text-align: left;">SERVICE & FACILITY FEE</th>
-        <th style="width: 15%; text-align: right;">Amount</th>
-        <th style="width: 15%; text-align: right; padding-right: 8px;">GST</th>
+        <th style="width: 70%%; text-align: left;">SERVICE & FACILITY FEE</th>
+        <th style="width: 15%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: right; padding-right: 8px;">GST</th>
       </tr>
     </thead>
     <tbody>
@@ -466,23 +466,23 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
           </ul>
           <p style="color: var(--text-dark); margin-top: 6px; font-weight: normal;">Service & Facility Fee (per Calculation Statement)</p>
         </td>
-        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%;">{{subtotal}}</td>
-        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%; color: var(--text-dark); padding-right: 8px;">{{tax_total}}</td>
+        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%%;">{{subtotal}}</td>
+        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%%; color: var(--text-dark); padding-right: 8px;">{{tax_total}}</td>
       </tr>
     </tbody>
   </table>
 
   <table class="layout-table" style="margin-top: 4px;">
     <tr>
-      <td style="width: 50%;"></td>
-      <td style="width: 50%; padding: 0;">
+      <td style="width: 50%%;"></td>
+      <td style="width: 50%%; padding: 0;">
         <table class="layout-table" style="font-size: 11px; line-height: 1.6;">
           <tr>
             <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
             <td class="num" style="padding: 3px 6px;">{{subtotal}}</td>
           </tr>
           <tr>
-            <td style="padding: 3px 6px; text-align: left;">GST (10%)</td>
+            <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
             <td class="num" style="padding: 3px 6px;">{{tax_total}}</td>
           </tr>
           <tr style="font-weight: bold; background-color: var(--bg-input-blue);">
@@ -505,21 +505,20 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
     </div>
     {{/if}}
   {{/if}}
-</div>`,
+</div>`, defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo)),
 			Css: sharedCSS(),
 		},
 		{
-			ClinicId:  clinicId,
 			Name:      "Remittance Advice",
 			IsDefault: false,
 			IsActive:  true,
-			Html: `<div class="invoice-page"><div style="display: block; width: 100%;">` + defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee) + `</div>
+			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 80%; text-align: left;">NET AMOUNT PAYABLE TO YOU</th>
-        <th style="width: 20%; text-align: right;">Amount</th>
+        <th style="width: 80%%; text-align: left;">NET AMOUNT PAYABLE TO YOU</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
       </tr>
     </thead>
     <tbody>
@@ -553,8 +552,8 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
     <table class="payment-details-table">
       <tbody>
         <tr>
-          <td style="font-weight: bold; width: 45%;">Payment method</td>
-          <td style="width: 55%;">Electronic funds transfer (EFT)</td>
+          <td style="font-weight: bold; width: 45%%;">Payment method</td>
+          <td style="width: 55%%;">Electronic funds transfer (EFT)</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Account name</td>
@@ -579,7 +578,7 @@ func DefaultTemplates(clinicId uuid.UUID) []RqTemplate {
   <p style="margin-top: 30px; font-size: 11px; color: #4b5563; text-align: center; line-height: 1.5;">
     This remittance advice is issued monthly together with the Calculation Statement (page 1) and Tax Invoice (page 2).<br>Please retain for your records and provide to your accountant at year end.
   </p>
-</div>`,
+</div>`, defaultTemplateHeader("REMITTANCE ADVICE", "Reference", remittancePayee)),
 			Css: sharedCSS(),
 		},
 	}
