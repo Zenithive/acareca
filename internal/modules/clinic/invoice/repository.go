@@ -418,11 +418,21 @@ func (r *Repository) getInvoiceContact(ctx context.Context, invoice *Invoice) er
 	return nil
 }
 
-// UpdateWithSections updates invoice with support for section and item update/delete arrays
 func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, sections []section.Section, deleteSectionIDs []uuid.UUID, deleteItemIDs map[uuid.UUID][]uuid.UUID) error {
 	return util.RunInTransaction(ctx, r.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if err := r.validateContact(ctx, invoice.ClinicID, invoice.ContactID); err != nil {
 			return err
+		}
+
+		allItems := make([]*item.Item, 0)
+		for i := range sections {
+			allItems = append(allItems, sections[i].Entries...)
+		}
+
+		if len(allItems) > 0 {
+			if err := r.itemRepo.EvaluateFormulas(ctx, allItems); err != nil {
+				return fmt.Errorf("formula evaluation failed: %w", err)
+			}
 		}
 
 		query := `
