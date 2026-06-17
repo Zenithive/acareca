@@ -12,21 +12,39 @@ type ISection interface {
 }
 
 type CalculationStatement struct {
-	DocumentNumber string
-	TaxMethod      *TaxMethod
-	Entries        []*item.Item
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
 }
 
 type SfaInvoice struct {
-	DocumentNumber string
-	TaxMethod      *TaxMethod
-	Entries        []*item.Item
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
 }
 
 type RemittanceInvoice struct {
-	DocumentNumber string
-	TaxMethod      *TaxMethod
-	Entries        []*item.Item
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
 }
 
 func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
@@ -48,12 +66,18 @@ func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) 
 	}
 
 	return Section{
-		ID:             sectionID,
-		InvoiceID:      invoiceId,
-		InvoiceSection: CALCULATIONSTATEMENT,
-		DocumentNumber: docNumber,
-		TaxMethod:      ct.TaxMethod,
-		Entries:        entries,
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   CALCULATIONSTATEMENT,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
+		PaymentMethod:    ct.PaymentMethod,
+		AccountName:      ct.AccountName,
+		Bsb:              ct.Bsb,
+		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
 	}, nil
 }
 
@@ -76,12 +100,18 @@ func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, 
 	}
 
 	return Section{
-		ID:             sectionID,
-		InvoiceID:      invoiceId,
-		InvoiceSection: SFAINVOICE,
-		DocumentNumber: docNumber,
-		TaxMethod:      ct.TaxMethod,
-		Entries:        entries,
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   SFAINVOICE,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
+		PaymentMethod:    ct.PaymentMethod,
+		AccountName:      ct.AccountName,
+		Bsb:              ct.Bsb,
+		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
 	}, nil
 }
 
@@ -104,11 +134,17 @@ func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Se
 	}
 
 	return Section{
-		ID:             sectionID,
-		InvoiceID:      invoiceId,
-		InvoiceSection: REMITTANCEINVOICE,
-		DocumentNumber: docNumber,
-		TaxMethod:      ct.TaxMethod,
-		Entries:        entries,
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   REMITTANCEINVOICE,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
+		PaymentMethod:    ct.PaymentMethod,
+		AccountName:      ct.AccountName,
+		Bsb:              ct.Bsb,
+		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
 	}, nil
 }

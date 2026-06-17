@@ -16,4 +16,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 
 	template.POST("/:id/pdf", h.GeneratePDF)
 	template.GET("/:id/pdf/:invoice_id", h.DownloadPDF)
+
+	template.POST("/sync-defaults", h.BulkUpdateDefaultsHandler)
 }

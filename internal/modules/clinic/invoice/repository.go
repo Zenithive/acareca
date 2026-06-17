@@ -81,7 +81,7 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 		)
 
 		// Create sections using section repository
-		if err = r.sectionRepo.Create(ctx, tx, invoice.Sections); err != nil {
+		if err = r.sectionRepo.Create(ctx, tx, invoice.ID, invoice.Sections); err != nil {
 			return fmt.Errorf("failed to create sections: %w", err)
 		}
 
@@ -139,7 +139,7 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 			}
 		} else {
 			// Create new section
-			if err := r.sectionRepo.Create(ctx, tx, invoice.Sections); err != nil {
+			if err := r.sectionRepo.Create(ctx, tx, invoice.ID, invoice.Sections); err != nil {
 				return fmt.Errorf("failed to create section: %w", err)
 			}
 		}

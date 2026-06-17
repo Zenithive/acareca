@@ -24,6 +24,8 @@ type IService interface {
 
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
+
+	BulkUpdateDefaults(ctx context.Context, clinicId uuid.UUID) error
 }
 
 type Service struct {
@@ -408,4 +410,74 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	filename := fmt.Sprintf("invoice-%s-%s", inv.ID.String()[:8], inv.ClinicName)
 	return pdf, filename, nil
+}
+
+func (s *Service) BulkUpdateDefaults(ctx context.Context, clinicId uuid.UUID) error {
+	freshTemplates := DefaultTemplates(clinicId)
+
+	existingList, err := s.repo.List(ctx, clinicId)
+	if err != nil {
+		return fmt.Errorf("failed to list existing templates for sync: %w", err)
+	}
+
+	existingMap := make(map[string]RsTemplate)
+	if existingList != nil && existingList.Items != nil {
+		if itemsSlice, ok := existingList.Items.([]RsTemplate); ok {
+			for _, item := range itemsSlice {
+				existingMap[item.Name] = item
+			}
+		}
+	}
+
+	// Loop through fresh templates and decide if we need to update or create template
+	for _, freshRq := range freshTemplates {
+		htmlBlob, err := crypto.EncryptAndCompress(freshRq.Html, s.encryptionKey)
+		if err != nil {
+			return err
+		}
+		cssBlob, err := crypto.EncryptAndCompress(freshRq.Css, s.encryptionKey)
+		if err != nil {
+			return err
+		}
+
+		// Check if this exact layout page already exists for the clinic
+		if existingMatched, exists := existingMap[freshRq.Name]; exists {
+			// UPDATE: Overwrite just HTML/CSS on the old ID
+			t := Template{
+				Id:          existingMatched.Id,
+				ClinicId:    clinicId,
+				Name:        freshRq.Name,
+				Description: freshRq.Description,
+				Html:        htmlBlob,
+				Css:         cssBlob,
+			}
+
+			if err := s.repo.Update(ctx, &t); err != nil {
+				return fmt.Errorf("failed updating default template content for '%s': %w", freshRq.Name, err)
+			}
+		} else {
+			// CREATE: Runs only if the clinic doesn't have this template yet
+			t := Template{
+				ClinicId:    clinicId,
+				Name:        freshRq.Name,
+				Description: freshRq.Description,
+				Html:        htmlBlob,
+				Css:         cssBlob,
+				IsDefault:   freshRq.IsDefault,
+				IsActive:    freshRq.IsActive,
+			}
+
+			if err := s.repo.Create(ctx, &t); err != nil {
+				return fmt.Errorf("failed creating missing default template '%s': %w", freshRq.Name, err)
+			}
+
+			// Initialize default settings container only for brand new additions
+			st := DefaultSettings(t.Id)
+			if err := s.repo.CreateSetting(ctx, &st); err != nil {
+				return fmt.Errorf("failed saving template configurations: %w", err)
+			}
+		}
+	}
+
+	return nil
 }

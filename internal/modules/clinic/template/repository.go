@@ -83,7 +83,7 @@ func (r *Repository) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) 
 }
 
 func (r *Repository) List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error) {
-	const q = `SELECT * FROM tbl_template WHERE deleted_at IS NULL AND clinic_id = $1 ORDER BY created_at DESC`
+	const q = `SELECT * FROM tbl_template WHERE deleted_at IS NULL AND clinic_id = $1`
 	var items []Template
 	if err := r.db.SelectContext(ctx, &items, q, clinicId); err != nil {
 		return nil, err
