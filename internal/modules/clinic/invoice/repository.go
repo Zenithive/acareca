@@ -192,6 +192,7 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 			invoice_frequency, status, issue_date, due_date,
 			created_at, updated_at
 		FROM tbl_invoice
+		WHERE deleted_at IS NULL
 	`
 
 	query, args := common.BuildQuery(selectQuery, filter, allowedColumns, searchCols, false)
@@ -217,8 +218,8 @@ func (r *Repository) GetByID(ctx context.Context, db sqlx.QueryerContext, id uui
 		SELECT
 			id, clinic_id, contact_id::text, template_id, name,
 			billing_period_from::text, billing_period_to::text,
-			invoice_frequency, status, issue_date::text, due_date::text,
-			created_at::text, updated_at::text
+			invoice_frequency, status, issue_date, due_date,
+			created_at, updated_at
 		FROM tbl_invoice
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -265,7 +266,7 @@ func (r *Repository) countInvoices(ctx context.Context, filter common.Filter) (i
 	allowedColumns := r.getAllowedFilterColumns()
 	searchCols := []string{}
 
-	baseQuery := `FROM tbl_invoice`
+	baseQuery := `FROM tbl_invoice WHERE deleted_at IS NULL`
 
 	countQuery, countArgs := common.BuildQuery(baseQuery, filter, allowedColumns, searchCols, true)
 	fmt.Println("count query-------------------", countQuery)
