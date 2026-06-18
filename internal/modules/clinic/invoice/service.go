@@ -26,7 +26,7 @@ type IService interface {
 	Update(ctx context.Context, invoice *RqUpdateInvoice) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error)
-	List(ctx context.Context, clinicID uuid.UUID, ft *Filter) (*util.RsList, error)
+	List(ctx context.Context, ft *Filter) (*util.RsList, error)
 	GetClinicTemplate(ctx context.Context, clinicID uuid.UUID) (*RsInvoiceMailTemplate, error)
 	SaveClinicTemplate(ctx context.Context, clinicID uuid.UUID, rq *RqSaveMailTemplate) error
 	ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error
@@ -52,7 +52,6 @@ func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService te
 	}
 }
 
-// Create implements [IService].
 func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	inv := invoice.ToInvoice()
 
@@ -76,6 +75,18 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 		inv.Sections = []section.Section{built}
 	}
 
+	allItems := make([]*item.Item, 0)
+	for i := range inv.Sections {
+		allItems = append(allItems, inv.Sections[i].Entries...)
+	}
+
+	if len(allItems) > 0 {
+		itemRepo := item.NewRepository(s.db)
+		if err := itemRepo.EvaluateFormulas(ctx, allItems); err != nil {
+			return fmt.Errorf("formula evaluation failed: %w", err)
+		}
+	}
+
 	return s.repo.Create(ctx, inv)
 }
 
@@ -95,21 +106,26 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsInvoice, error) {
 }
 
 // List implements [IService].
-func (s *Service) List(ctx context.Context, clinicID uuid.UUID, filter *Filter) (*util.RsList, error) {
-	ft := filter.MapToFilter()
+func (s *Service) List(ctx context.Context, filter *Filter) (*util.RsList, error) {
 
-	invoices, total, err := s.repo.List(ctx, clinicID, ft)
+	ft := filter.MapToFilter()
+	invoices, total, err := s.repo.List(ctx, ft)
 	if err != nil {
 		return nil, err
 	}
 
-	rsInvoices := make([]*RsInvoice, 0, len(invoices))
+	rsInvoices := make([]*RsInvoiceSummary, 0, len(invoices))
 	for _, invoice := range invoices {
-		rsInvoices = append(rsInvoices, invoice.ToRsInvoice())
+		rsInvoices = append(rsInvoices, invoice.ToRsInvoiceSummary())
+	}
+
+	page := 1
+	if ft.Offset != nil && ft.Limit != nil && *ft.Limit > 0 {
+		page = (*ft.Offset / *ft.Limit) + 1
 	}
 
 	var rsList util.RsList
-	rsList.MapToList(rsInvoices, int(total), *ft.Offset, *ft.Limit)
+	rsList.MapToList(rsInvoices, int(total), page, *ft.Limit)
 	return &rsList, nil
 }
 
@@ -375,14 +391,26 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		}
 	}
 
+	issueDateFormatted := inv.IssueDate.Format("02 January 2006")
+	dueDateFormatted := ""
+	if inv.DueDate != nil {
+		dueDateFormatted = inv.DueDate.Format("02 January 2006")
+	}
+	billingPeriodFormatted := inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo
+
+	tableStyleClass := ""
+	if tplSetting != nil {
+		tableStyleClass = tplSetting.TableStyle
+	}
+
 	pdfRq := template.RqGeneratePDF{
 		ClinicId:   inv.ClinicID,
 		TemplateId: inv.TemplateID,
 		Data: template.InvoiceData{
 			ClinicName:       clinicName,
-			IssueDateDisplay: inv.IssueDate,
-			DueDateDisplay:   lo.FromPtrOr(inv.DueDate, ""),
-			BillingPeriod:    inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo,
+			IssueDateDisplay: issueDateFormatted,
+			DueDateDisplay:   dueDateFormatted,
+			BillingPeriod:    billingPeriodFormatted,
 			InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, ""),
 			ShowLogo:         showLogo,
 			ShowLogoImage:    showLogoImage,
@@ -410,6 +438,16 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 
 			TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
 			TotalsGrandLabel:     "Total (AUD)",
+			WatermarkEnabled:     tplSetting.IsWaterMark,
+			WatermarkText:        lo.FromPtr(tplSetting.WaterMarkText),
+			ShowTax:              tplSetting.IsTax,
+			TableStyleClass:      tableStyleClass,
+
+			// Core CSS Layout variable bindings
+			PrimaryColor:     tplSetting.PrimaryColor,
+			AccentColor:      tplSetting.AccentColor,
+			BodyFontFamily:   tplSetting.BodyFontFamily,
+			HeaderFontFamily: tplSetting.HeaderFontFamily,
 		},
 	}
 

@@ -143,7 +143,8 @@ func (h *Handler) List(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	invoices, err := h.svc.List(c.Request.Context(), clinicId, &ft)
+	ft.ClinicId = &clinicId
+	invoices, err := h.svc.List(c.Request.Context(), &ft)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
