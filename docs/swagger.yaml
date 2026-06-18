@@ -2474,6 +2474,8 @@ definitions:
         items:
           $ref: '#/definitions/section.RqSection'
         type: array
+      settings:
+        $ref: '#/definitions/invoice.RqInvoiceSetting'
       status:
         type: string
       templateId:
@@ -2485,6 +2487,45 @@ definitions:
     - issueDate
     - name
     - templateId
+    type: object
+  invoice.RqInvoiceSetting:
+    properties:
+      accentColor:
+        type: string
+      bodyFontFamily:
+        type: string
+      footerId:
+        type: string
+      headerFontFamily:
+        type: string
+      isLogo:
+        type: boolean
+      isTax:
+        type: boolean
+      isWatermark:
+        type: boolean
+      letterheadId:
+        type: string
+      logoId:
+        type: string
+      primaryColor:
+        type: string
+      tableStyle:
+        type: string
+      termsText:
+        type: string
+      watermarkText:
+        type: string
+    type: object
+  invoice.RqSaveMailTemplate:
+    properties:
+      mail_body:
+        type: string
+      mail_subject:
+        type: string
+    required:
+    - mail_body
+    - mail_subject
     type: object
   invoice.RqUpdateInvoice:
     properties:
@@ -2521,6 +2562,8 @@ definitions:
         items:
           $ref: '#/definitions/section.RqUpdateSection'
         type: array
+      settings:
+        $ref: '#/definitions/invoice.RqInvoiceSetting'
       status:
         type: string
       templateId:
@@ -2559,6 +2602,15 @@ definitions:
       templateId:
         type: string
       updatedAt:
+        type: string
+    type: object
+  invoice.RsInvoiceMailTemplate:
+    properties:
+      is_custom:
+        type: boolean
+      mail_body:
+        type: string
+      mail_subject:
         type: string
     type: object
   item.BasCode:
@@ -2848,6 +2900,13 @@ definitions:
     type: object
   section.RqUpdateSection:
     properties:
+      SectionType:
+        allOf:
+        - $ref: '#/definitions/section.SectionType'
+        enum:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
       accountName:
         type: string
       accountNumber:
@@ -2868,13 +2927,6 @@ definitions:
         type: string
       invoiceId:
         type: string
-      invoiceSection:
-        allOf:
-        - $ref: '#/definitions/section.SectionType'
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
       paymentDate:
         type: string
       paymentMethod:
@@ -5923,7 +5975,7 @@ paths:
       - BearerToken: []
       summary: Delete clinic account
       tags:
-      - invoice
+      - invoice-clinic
     get:
       parameters:
       - description: Filter by clinic name
@@ -6271,7 +6323,7 @@ paths:
       - BearerToken: []
       summary: Change clinic password
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/contact:
     get:
       consumes:
@@ -6295,7 +6347,7 @@ paths:
       - BearerToken: []
       summary: List all contacts for a clinic
       tags:
-      - clinic
+      - clinic-contact
     post:
       consumes:
       - application/json
@@ -6330,7 +6382,7 @@ paths:
       - BearerToken: []
       summary: Create a new contact for a clinic
       tags:
-      - clinic
+      - clinic-contact
   /clinic/contact/{id}:
     delete:
       consumes:
@@ -6360,7 +6412,7 @@ paths:
       - BearerToken: []
       summary: Delete a contact by ID
       tags:
-      - clinic
+      - clinic-contact
     get:
       consumes:
       - application/json
@@ -6394,7 +6446,7 @@ paths:
       - BearerToken: []
       summary: Get a contact by ID
       tags:
-      - clinic
+      - clinic-contact
     put:
       consumes:
       - application/json
@@ -6429,7 +6481,7 @@ paths:
       - BearerToken: []
       summary: Update a contact by ID
       tags:
-      - clinic
+      - clinic-contact
   /clinic/contact/address/{id}:
     delete:
       consumes:
@@ -6459,7 +6511,7 @@ paths:
       - BearerToken: []
       summary: Delete a contact address by ID
       tags:
-      - clinic
+      - clinic-contact
   /clinic/forgot-password:
     post:
       consumes:
@@ -6485,7 +6537,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Initiate clinic password reset
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/invoice:
     get:
       consumes:
@@ -6639,6 +6691,72 @@ paths:
       summary: Update an invoice by ID
       tags:
       - invoice
+  /clinic/invoice/{id}/resend:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice UUID string format token
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Manually re-fire a generated paid invoice statement notification
+      tags:
+      - invoice
+  /clinic/invoice/email-templates:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/invoice.RsInvoiceMailTemplate'
+              type: object
+      security:
+      - BearerToken: []
+      summary: Fetch current invoice template context settings or system defaults
+      tags:
+      - invoice
+    post:
+      parameters:
+      - description: Custom structural templates body configurations
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invoice.RqSaveMailTemplate'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      security:
+      - BearerToken: []
+      summary: Save modified template layout overrides for the active clinic identity
+        context
+      tags:
+      - invoice
   /clinic/login:
     post:
       consumes:
@@ -6672,7 +6790,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Login an invoice clinic
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/logout:
     post:
       consumes:
@@ -6709,7 +6827,7 @@ paths:
       - BearerToken: []
       summary: Logout current invoice clinic session
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/profile:
     get:
       description: Returns the profile details of the authenticated clinic
@@ -6732,7 +6850,7 @@ paths:
       - BearerToken: []
       summary: Get current invoice clinic profile
       tags:
-      - invoice
+      - invoice-clinic
     put:
       consumes:
       - application/json
@@ -6767,7 +6885,7 @@ paths:
       - BearerToken: []
       summary: Update clinic profile
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/register:
     post:
       consumes:
@@ -6802,7 +6920,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Register a new invoice clinic
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/reset-password:
     post:
       consumes:
@@ -6832,7 +6950,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Reset clinic password using token
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/verify-email:
     get:
       description: Validates the UUID token sent via email. If valid, marks the clinic
@@ -6860,7 +6978,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Verify clinic email address
       tags:
-      - invoice
+      - invoice-clinic
   /coa/account-taxes:
     get:
       parameters:
@@ -10118,6 +10236,45 @@ paths:
       summary: Update Global Template
       tags:
       - Templates
+  /templates/{id}/invoice-settings:
+    get:
+      description: Queries UI visual presets prioritizing custom invoice overrides,
+        falling back to global defaults automatically
+      parameters:
+      - description: Template UUID ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Invoice UUID ID Context
+        in: query
+        name: invoiceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Resolved style settings specifications map
+          schema:
+            $ref: '#/definitions/template.RsSetting'
+        "400":
+          description: Invalid parameters profile lookup request values
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Get Invoice-Specific Template Settings
+      tags:
+      - Templates
   /templates/{id}/invoices/{invoice_id}/download:
     get:
       description: Queries static database invoice documents, evaluates values natively
@@ -10242,7 +10399,7 @@ paths:
             type: object
       security:
       - BearerToken: []
-      summary: Get Template Settings Profile
+      summary: Get Default Template Settings
       tags:
       - Templates
     put:

@@ -21,6 +21,23 @@ type RqInvoice struct {
 	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty"`
 	Status            *string             `json:"status"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
+	Settings          *RqInvoiceSetting   `json:"settings,omitempty"`
+}
+
+type RqInvoiceSetting struct {
+	PrimaryColor     *string `json:"primaryColor,omitempty"`
+	AccentColor      *string `json:"accentColor,omitempty"`
+	BodyFontFamily   *string `json:"bodyFontFamily,omitempty"`
+	HeaderFontFamily *string `json:"headerFontFamily,omitempty"`
+	IsLogo           *bool   `json:"isLogo,omitempty"`
+	LogoID           *string `json:"logoId,omitempty"`
+	LetterheadID     *string `json:"letterheadId,omitempty"`
+	FooterID         *string `json:"footerId,omitempty"`
+	TermsText        *string `json:"termsText,omitempty"`
+	IsWatermark      *bool   `json:"isWatermark,omitempty"`
+	WatermarkText    *string `json:"watermarkText,omitempty"`
+	IsTax            *bool   `json:"isTax,omitempty"`
+	TableStyle       *string `json:"tableStyle,omitempty"`
 }
 
 func (r *RqInvoice) ToInvoice() *Invoice {
@@ -54,6 +71,7 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		Status:            status,
 		DueDate:           r.DueDate,
 		Sections:          sections,
+		Settings:          r.Settings,
 	}
 }
 
@@ -72,6 +90,7 @@ type RqUpdateInvoice struct {
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
 	AttachmentBase64  string                    `json:"attachmentBase64,omitempty"`
+	Settings          *RqInvoiceSetting         `json:"settings,omitempty"`
 }
 
 func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
@@ -102,7 +121,6 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	if r.DueDate != nil {
 		inv.DueDate = r.DueDate
 	}
-
 	if r.Status != nil {
 		inv.Status = r.Status
 	}
@@ -112,8 +130,11 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		for _, rqSec := range r.Sections {
 			sections = append(sections, *rqSec.ToSection())
 		}
-
 		inv.Sections = sections
+	}
+
+	if r.Settings != nil {
+		inv.Settings = r.Settings
 	}
 
 	return inv
@@ -133,6 +154,7 @@ type Invoice struct {
 	Status            *string           `db:"status"`
 	ContactTo         *contact.Contact  `db:"-"`
 	Sections          []section.Section `db:"-"`
+	Settings          *RqInvoiceSetting `db:"-"`
 	CreatedAt         string            `db:"created_at"`
 	UpdatedAt         string            `db:"updated_at"`
 }

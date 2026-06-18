@@ -427,19 +427,31 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 			if section.InvoiceID == nil {
 				section.InvoiceID = &invoiceID
 			}
+
+			// Protect against zero-value string mapping issues
+			if section.InvoiceSection == "" {
+				return fmt.Errorf("failed to create new section: field 'section_type' cannot be empty for new records")
+			}
+
 			if err := r.Create(ctx, tx, invoiceID, []Section{section}); err != nil {
 				return fmt.Errorf("failed to create new section: %w", err)
 			}
 		} else {
-			var exists bool
-			err := tx.QueryRowContext(ctx, `
-				SELECT EXISTS(SELECT 1 FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL)
-			`, section.ID).Scan(&exists)
-			if err != nil {
-				return fmt.Errorf("failed to check section existence: %w", err)
-			}
+			// Check if the record already physically exists inside your tracking matrix
+			var dbSection Section
+			err := tx.QueryRowxContext(ctx, `
+				SELECT id, invoice_section, invoice_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
+			`, section.ID).StructScan(&dbSection)
 
-			if exists {
+			if err == nil {
+				// Critical fix: If the incoming payload left out the ENUM field, preserve what's already saved in DB
+				if section.InvoiceSection == "" {
+					section.InvoiceSection = dbSection.InvoiceSection
+				}
+				if section.InvoiceID == nil {
+					section.InvoiceID = dbSection.InvoiceID
+				}
+
 				if err := r.updateSectionOnly(ctx, tx, section); err != nil {
 					return fmt.Errorf("failed to update section %s: %w", section.ID, err)
 				}
@@ -458,13 +470,21 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 						return fmt.Errorf("failed to upsert items for section %s: %w", section.ID, err)
 					}
 				}
-			} else {
+			} else if errors.Is(err, sql.ErrNoRows) {
 				if section.InvoiceID == nil {
 					section.InvoiceID = &invoiceID
 				}
+
+				// Strict verification fallback catch block
+				if section.InvoiceSection == "" {
+					return fmt.Errorf("failed to create section with ID %s: 'section_type' is a required enum value and cannot be blank", section.ID)
+				}
+
 				if err := r.Create(ctx, tx, invoiceID, []Section{section}); err != nil {
 					return fmt.Errorf("failed to create section with ID %s: %w", section.ID, err)
 				}
+			} else {
+				return fmt.Errorf("failed to check section existence structural mappings: %w", err)
 			}
 		}
 	}

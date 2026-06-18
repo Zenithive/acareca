@@ -40,20 +40,14 @@ CREATE TABLE IF NOT EXISTS tbl_template_setting (
 
 CREATE TABLE IF NOT EXISTS tbl_invoice_template_mapping (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    clinic_id UUID NOT NULL,
-    invoice_id UUID NOT NULL,
-    template_id UUID NOT NULL REFERENCES tbl_template(id) ON DELETE CASCADE,
-    setting_id UUID NOT NULL REFERENCES tbl_template_setting(id) ON DELETE CASCADE,
+    clinic_id UUID NULL,
+    invoice_id UUID NULL,
+    template_id UUID NOT NULL REFERENCES tbl_template(id),
+    setting_id UUID NOT NULL REFERENCES tbl_template_setting(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NULL,
     deleted_at TIMESTAMPTZ NULL
 );
-
-ALTER TABLE tbl_template_setting
-    ADD CONSTRAINT fk_template_setting_mapping
-    FOREIGN KEY (mapping_id) 
-    REFERENCES tbl_invoice_template_mapping(id) 
-    ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_inv_tpl_map_lookup 
     ON tbl_invoice_template_mapping(clinic_id, invoice_id)
@@ -71,9 +65,6 @@ CREATE INDEX IF NOT EXISTS idx_tpl_setting_mapping
 
 DROP INDEX IF EXISTS idx_tpl_setting_mapping;
 DROP INDEX IF EXISTS idx_inv_tpl_map_lookup;
-
-ALTER TABLE tbl_template_setting 
-    DROP CONSTRAINT IF EXISTS fk_template_setting_mapping;
 
 DROP TABLE IF EXISTS tbl_invoice_template_mapping;
 DROP TABLE IF EXISTS tbl_template_setting;

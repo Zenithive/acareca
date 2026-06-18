@@ -4,19 +4,6 @@ import (
 	"strings"
 )
 
-// const (
-// 	DefaultInvoicePaidSubject = "Payment Confirmed & Receipt: Invoice {invoice_number}"
-// 	DefaultInvoicePaidBody    = `
-// <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
-// 	<h2 style="color: #1492A5;">Payment Confirmed</h2>
-// 	<p>Hi {contact_name},</p>
-// 	<p>Thank you! Your payment for invoice <strong>{invoice_number}</strong> has been successfully received and processed.</p>
-// 	<p>The invoice has been marked as <strong>PAID</strong> in full. We have attached an official receipt copy to this email as a PDF document for your records.</p>
-// 	<hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-// 	<p style="font-size: 12px; color: #888;">Best regards,<br>The Acareca Team</p>
-// </div>`
-// )
-
 const (
 	DefaultInvoicePaidSubject = "Receipt for Invoice {invoice_number} — Payment Confirmed"
 	DefaultInvoicePaidBody    = `<!DOCTYPE html>

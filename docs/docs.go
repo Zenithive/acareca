@@ -4076,7 +4076,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Delete clinic account",
                 "responses": {
@@ -4252,7 +4252,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Change clinic password",
                 "parameters": [
@@ -4308,7 +4308,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "List all contacts for a clinic",
                 "responses": {
@@ -4345,7 +4345,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Create a new contact for a clinic",
                 "parameters": [
@@ -4407,7 +4407,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Delete a contact address by ID",
                 "parameters": [
@@ -4455,7 +4455,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Get a contact by ID",
                 "parameters": [
@@ -4513,7 +4513,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Update a contact by ID",
                 "parameters": [
@@ -4568,7 +4568,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Delete a contact by ID",
                 "parameters": [
@@ -4612,7 +4612,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Initiate clinic password reset",
                 "parameters": [
@@ -4724,6 +4724,69 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/invoice/email-templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Fetch current invoice template context settings or system defaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/invoice.RsInvoiceMailTemplate"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Save modified template layout overrides for the active clinic identity context",
+                "parameters": [
+                    {
+                        "description": "Custom structural templates body configurations",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invoice.RqSaveMailTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     }
                 }
@@ -4890,6 +4953,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/clinic/invoice/{id}/resend": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Manually re-fire a generated paid invoice statement notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID string format token",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/clinic/login": {
             "post": {
                 "description": "authenticates an invoice clinic profile and issues access tokens",
@@ -4900,7 +5011,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Login an invoice clinic",
                 "parameters": [
@@ -4957,7 +5068,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Logout current invoice clinic session",
                 "parameters": [
@@ -5011,7 +5122,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Get current invoice clinic profile",
                 "responses": {
@@ -5049,7 +5160,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Update clinic profile",
                 "parameters": [
@@ -5101,7 +5212,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Register a new invoice clinic",
                 "parameters": [
@@ -5153,7 +5264,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Reset clinic password using token",
                 "parameters": [
@@ -5196,7 +5307,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Verify clinic email address",
                 "parameters": [
@@ -10530,6 +10641,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/templates/{id}/invoice-settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Get Invoice-Specific Template Settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID ID Context",
+                        "name": "invoiceId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resolved style settings specifications map",
+                        "schema": {
+                            "$ref": "#/definitions/template.RsSetting"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters profile lookup request values",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/templates/{id}/invoices/{invoice_id}/download": {
             "get": {
                 "security": [
@@ -10685,7 +10855,7 @@ const docTemplate = `{
                 "tags": [
                     "Templates"
                 ],
-                "summary": "Get Template Settings Profile",
+                "summary": "Get Default Template Settings",
                 "parameters": [
                     {
                         "type": "string",
@@ -14477,10 +14647,72 @@ const docTemplate = `{
                         "$ref": "#/definitions/section.RqSection"
                     }
                 },
+                "settings": {
+                    "$ref": "#/definitions/invoice.RqInvoiceSetting"
+                },
                 "status": {
                     "type": "string"
                 },
                 "templateId": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RqInvoiceSetting": {
+            "type": "object",
+            "properties": {
+                "accentColor": {
+                    "type": "string"
+                },
+                "bodyFontFamily": {
+                    "type": "string"
+                },
+                "footerId": {
+                    "type": "string"
+                },
+                "headerFontFamily": {
+                    "type": "string"
+                },
+                "isLogo": {
+                    "type": "boolean"
+                },
+                "isTax": {
+                    "type": "boolean"
+                },
+                "isWatermark": {
+                    "type": "boolean"
+                },
+                "letterheadId": {
+                    "type": "string"
+                },
+                "logoId": {
+                    "type": "string"
+                },
+                "primaryColor": {
+                    "type": "string"
+                },
+                "tableStyle": {
+                    "type": "string"
+                },
+                "termsText": {
+                    "type": "string"
+                },
+                "watermarkText": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RqSaveMailTemplate": {
+            "type": "object",
+            "required": [
+                "mail_body",
+                "mail_subject"
+            ],
+            "properties": {
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -14535,6 +14767,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/section.RqUpdateSection"
                     }
+                },
+                "settings": {
+                    "$ref": "#/definitions/invoice.RqInvoiceSetting"
                 },
                 "status": {
                     "type": "string"
@@ -14593,6 +14828,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RsInvoiceMailTemplate": {
+            "type": "object",
+            "properties": {
+                "is_custom": {
+                    "type": "boolean"
+                },
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -15030,6 +15279,18 @@ const docTemplate = `{
         "section.RqUpdateSection": {
             "type": "object",
             "properties": {
+                "SectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
                 "accountName": {
                     "type": "string"
                 },
@@ -15059,18 +15320,6 @@ const docTemplate = `{
                 },
                 "invoiceId": {
                     "type": "string"
-                },
-                "invoiceSection": {
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/section.SectionType"
-                        }
-                    ]
                 },
                 "paymentDate": {
                     "type": "string"

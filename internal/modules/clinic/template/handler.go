@@ -18,6 +18,7 @@ type IHandler interface {
 	Get(c *gin.Context)
 	List(c *gin.Context)
 	GetSetting(c *gin.Context)
+	GetInvoiceSetting(c *gin.Context)
 	UpdateSetting(c *gin.Context)
 	GeneratePDF(c *gin.Context)
 	DownloadPDF(c *gin.Context)
@@ -165,7 +166,7 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // GetSetting yields fallback visual style configuration profile specifications
-// @Summary      Get Template Settings Profile
+// @Summary      Get Default Template Settings
 // @Description  Queries UI visual presets (e.g., brand colors, fonts, margins) tracked down to structural design blocks
 // @Tags         Templates
 // @Produce      json
@@ -187,6 +188,46 @@ func (h *Handler) GetSetting(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	response.JSON(c, http.StatusOK, rs, "")
+}
+
+// GetInvoiceSetting yields fallback visual style configuration profile specifications matching an active invoice context
+// @Summary      Get Invoice-Specific Template Settings
+// @Description  Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically
+// @Tags         Templates
+// @Produce      json
+// @Param        id          path      string     true  "Template UUID ID"
+// @Param        invoiceId   query     string     true  "Invoice UUID ID Context"
+// @Success      200  {object}  RsSetting  "Resolved style settings specifications map"
+// @Failure      400  {object}  map[string]string "Invalid parameters profile lookup request values"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Security BearerToken
+// @Router       /templates/{id}/invoice-settings [get]
+func (h *Handler) GetInvoiceSetting(c *gin.Context) {
+	templateId, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid template id"})
+		return
+	}
+
+	clinicId, ok := util.GetEntityID(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clinic id"})
+		return
+	}
+
+	invoiceId, err := uuid.Parse(c.Query("invoiceId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or missing invoiceId query parameter"})
+		return
+	}
+
+	rs, err := h.svc.GetInvoiceSetting(c.Request.Context(), clinicId, invoiceId, templateId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	response.JSON(c, http.StatusOK, rs, "")
 }
 

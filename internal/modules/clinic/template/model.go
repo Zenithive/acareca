@@ -411,3 +411,14 @@ func formatDateString(dateStr string) string {
 	}
 	return t.Format("02 January 2006")
 }
+
+type Mapping struct {
+	ID         uuid.UUID  `db:"id"`
+	ClinicID   *uuid.UUID `db:"clinic_id"`
+	InvoiceID  *uuid.UUID `db:"invoice_id"`
+	TemplateID uuid.UUID  `db:"template_id"`
+	SettingID  uuid.UUID  `db:"setting_id"`
+	CreatedAt  string     `db:"created_at"`
+	UpdatedAt  string     `db:"updated_at"`
+	DeletedAt  string     `db:"deleted_at"`
+}

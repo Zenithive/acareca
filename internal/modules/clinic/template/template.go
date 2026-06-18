@@ -590,6 +590,7 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 
 	return Setting{
 		TemplateId:       templateId,
+		MappingId:        nil,
 		PrimaryColor:     "#1f4e5f",
 		AccentColor:      "#1f4e5f",
 		BodyFontFamily:   "Arial",

@@ -22,6 +22,7 @@ type IService interface {
 	Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error)
 	List(ctx context.Context) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
+	GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
@@ -121,35 +122,59 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error) {
 	return &rs, nil
 }
 
+// Internal helper function to enrich media file structures from cloud IDs
+func (s *Service) enrichSettingDocuments(ctx context.Context, st *Setting) error {
+	if st.LogoId != nil {
+		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
+		if err == nil && logo != nil {
+			st.Logo = logo
+		}
+	}
+	if st.LetterHeadId != nil {
+		lh, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
+		if err == nil && lh != nil {
+			st.LetterHead = lh
+		}
+	}
+	if st.FooterId != nil {
+		f, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
+		if err == nil && f != nil {
+			st.Footer = f
+		}
+	}
+	return nil
+}
+
+// GetSetting retrieves the default template settings
 func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error) {
 	st, err := s.repo.GetSetting(ctx, templateId)
 	if err != nil {
 		return nil, err
 	}
 	if st == nil {
-		return nil, fmt.Errorf("template configuration profile entry completely empty for template: %s", templateId)
+		return nil, fmt.Errorf("global default setting configuration not provisioned for template: %s", templateId)
 	}
 
-	if st.LogoId != nil {
-		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
-		if err != nil {
-			return nil, err
-		}
-		st.Logo = logo
+	if err := s.enrichSettingDocuments(ctx, st); err != nil {
+		return nil, err
 	}
-	if st.LetterHeadId != nil {
-		lh, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
-		if err != nil {
-			return nil, err
-		}
-		st.LetterHead = lh
+
+	rs := st.ToRs()
+	return &rs, nil
+}
+
+// GetInvoiceSetting retrieves custom settings for an invoice template
+func (s *Service) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error) {
+	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
+	if err != nil {
+		return nil, fmt.Errorf("failed looking up configuration hierarchy matching target: %w", err)
 	}
-	if st.FooterId != nil {
-		f, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
-		if err != nil {
-			return nil, err
-		}
-		st.Footer = f
+	if st == nil {
+		return nil, fmt.Errorf("no operational setting baseline or default profiles discovered for parameters")
+	}
+
+	if err := s.enrichSettingDocuments(ctx, st); err != nil {
+		return nil, err
 	}
 
 	rs := st.ToRs()
@@ -289,7 +314,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed to decrypt css: %w", err)
 	}
 
-	st, err := s.repo.ResolveInvoiceVisualSettings(ctx, clinicId, invoiceId, templateId)
+	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
 	if err != nil {
 		return nil, "", err
 	}
@@ -372,6 +397,7 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 		}
 
 		if existingMatched, exists := existingMap[freshRq.Name]; exists {
+			// CASE 1: OVERWRITE EXISTING TEMPLATE BLUEPRINT
 			t := Template{
 				Id:        existingMatched.Id,
 				Name:      freshRq.Name,
@@ -383,7 +409,9 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 			if err := s.repo.Update(ctx, &t); err != nil {
 				return fmt.Errorf("failed overwriting central design template text context '%s': %w", freshRq.Name, err)
 			}
+
 		} else {
+			// CASE 2: PROVISION NEW TEMPLATE BLUEPRINT
 			t := Template{
 				Name:      freshRq.Name,
 				Html:      htmlBlob,
@@ -394,10 +422,28 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 			if err := s.repo.Create(ctx, &t); err != nil {
 				return fmt.Errorf("failed tracking fresh template layout baseline: %w", err)
 			}
+
+			mappingID := uuid.New()
+			settingID := uuid.New()
+
 			st := DefaultSettings(t.Id)
-			st.MappingId = nil
+			st.Id = settingID
+			st.MappingId = &mappingID
+
 			if err := s.repo.CreateSetting(ctx, &st); err != nil {
 				return fmt.Errorf("failed tracking default options values profiles: %w", err)
+			}
+
+			m := Mapping{
+				ID:         mappingID,
+				InvoiceID:  nil, // Explicitly NULL because it represents a default blueprint configuration
+				TemplateID: t.Id,
+				SettingID:  settingID,
+				ClinicID:   nil, // System-wide global default
+			}
+
+			if err := s.repo.CreateMapping(ctx, &m); err != nil {
+				return fmt.Errorf("failed creating global default mapping linkage: %w", err)
 			}
 		}
 	}

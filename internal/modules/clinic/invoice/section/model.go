@@ -44,7 +44,7 @@ type RqSection struct {
 type RqUpdateSection struct {
 	ID               *uuid.UUID            `json:"id,omitempty"`
 	InvoiceID        *uuid.UUID            `json:"invoiceId,omitempty"`
-	InvoiceSection   *SectionType          `json:"invoiceSection,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
+	SectionType      *SectionType          `json:"SectionType,omitempty" validate:"omitempty,oneof=CALCULATION_STATEMENT SFA_INVOICE REMITTANCE_INVOICE"`
 	DocumentNumber   *string               `json:"documentNumber,omitempty"`
 	TaxMethod        *TaxMethod            `json:"taxMethod,omitempty" validate:"omitempty,oneof=INCLUSIVE EXCLUSIVE NO_TAX"`
 	PaymentMethod    *string               `json:"paymentMethod,omitempty"`
@@ -94,8 +94,8 @@ func (rq *RqUpdateSection) ToSection() *Section {
 		section.InvoiceID = rq.InvoiceID
 	}
 
-	if rq.InvoiceSection != nil {
-		section.InvoiceSection = *rq.InvoiceSection
+	if rq.SectionType != nil {
+		section.InvoiceSection = *rq.SectionType
 	}
 
 	if rq.DocumentNumber != nil {
