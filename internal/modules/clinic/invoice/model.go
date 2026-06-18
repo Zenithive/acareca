@@ -18,8 +18,8 @@ type RqInvoice struct {
 	BillingPeriodFrom string              `json:"billingPeriodFrom" validate:"required,datetime=2006-01-02"`
 	BillingPeriodTo   string              `json:"billingPeriodTo" validate:"required,datetime=2006-01-02"`
 	InvoiceFrequency  *string             `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         time.Time           `json:"issueDate" validate:"required,datetime=2006-01-02"`
-	DueDate           *time.Time          `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	IssueDate         string              `json:"issueDate" validate:"required,datetime=2006-01-02"`
+	DueDate           *string             `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	Status            *string             `json:"status"`
 	Sections          []section.RqSection `json:"sections,omitempty" validate:"omitempty,dive"`
 }
@@ -32,6 +32,16 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 	}
 
 	invoiceID := uuid.New()
+
+	issueDate, _ := time.Parse("2006-01-02", r.IssueDate)
+
+	var dueDate *time.Time
+	if r.DueDate != nil {
+		parsed, err := time.Parse("2006-01-02", *r.DueDate)
+		if err == nil {
+			dueDate = &parsed
+		}
+	}
 
 	sections := make([]section.Section, 0, len(r.Sections))
 	for _, v := range r.Sections {
@@ -51,9 +61,9 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		BillingPeriodFrom: &r.BillingPeriodFrom,
 		BillingPeriodTo:   &r.BillingPeriodTo,
 		InvoiceFrequency:  r.InvoiceFrequency,
-		IssueDate:         r.IssueDate,
+		IssueDate:         issueDate,
 		Status:            status,
-		DueDate:           r.DueDate,
+		DueDate:           dueDate,
 		Sections:          sections,
 	}
 }
@@ -67,8 +77,8 @@ type RqUpdateInvoice struct {
 	BillingPeriodFrom *string                   `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	BillingPeriodTo   *string                   `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	InvoiceFrequency  *string                   `json:"invoiceFrequency,omitempty" validate:"omitempty,oneof=DAILY WEEKLY MONTHLY YEARLY"`
-	IssueDate         *time.Time                `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
-	DueDate           *time.Time                `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	IssueDate         *string                   `json:"issueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
+	DueDate           *string                   `json:"dueDate,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	Status            *string                   `json:"status,omitempty"`
 	Sections          []section.RqUpdateSection `json:"sections,omitempty" validate:"omitempty,dive"`
 	DeleteSections    []uuid.UUID               `json:"deleteSections,omitempty"`
@@ -98,10 +108,14 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 		inv.InvoiceFrequency = r.InvoiceFrequency
 	}
 	if r.IssueDate != nil {
-		inv.IssueDate = *r.IssueDate
+		if t, err := time.Parse("2006-01-02", *r.IssueDate); err == nil {
+			inv.IssueDate = t
+		}
 	}
 	if r.DueDate != nil {
-		inv.DueDate = r.DueDate
+		if t, err := time.Parse("2006-01-02", *r.DueDate); err == nil {
+			inv.DueDate = &t
+		}
 	}
 
 	if r.Status != nil {
