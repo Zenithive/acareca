@@ -2645,6 +2645,9 @@ definitions:
         type: string
       entryType:
         $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
+        type: string
       invoiceSectionId:
         type: string
       name:
@@ -2665,6 +2668,9 @@ definitions:
         type: string
       entryType:
         $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
+        type: string
       id:
         type: string
       invoiceSectionId:
@@ -2684,6 +2690,9 @@ definitions:
         type: string
       entryType:
         $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
+        type: string
       id:
         type: string
       invoiceSectionId:
@@ -10073,6 +10082,12 @@ paths:
   /templates:
     get:
       description: Gathers paginated index parameters tracking active engine documents
+      parameters:
+      - description: 'Filter by document types (comma-separated: Calculation Statement,
+          Tax Invoice, Remittance Advice)'
+        in: query
+        name: type
+        type: string
       produces:
       - application/json
       responses:

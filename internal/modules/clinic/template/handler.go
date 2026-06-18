@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -152,12 +153,23 @@ func (h *Handler) Get(c *gin.Context) {
 // @Description  Gathers paginated index parameters tracking active engine documents
 // @Tags         Templates
 // @Produce      json
+// @Param        type    query     string  false  "Filter by document types (comma-separated: Calculation Statement, Tax Invoice, Remittance Advice)"
 // @Success      200  {object}  util.RsList "Collection index values mapped to the configuration array"
 // @Failure      500  {object}  map[string]string "Internal Server Error"
 // @Security BearerToken
 // @Router       /templates [get]
 func (h *Handler) List(c *gin.Context) {
-	rs, err := h.svc.List(c.Request.Context())
+	typeParam := c.Query("type")
+	var types []string
+	if typeParam != "" {
+		for _, t := range strings.Split(typeParam, ",") {
+			trimmed := strings.TrimSpace(t)
+			if trimmed != "" {
+				types = append(types, trimmed)
+			}
+		}
+	}
+	rs, err := h.svc.List(c.Request.Context(), types)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

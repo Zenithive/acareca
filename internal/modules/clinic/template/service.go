@@ -20,7 +20,7 @@ type IService interface {
 	Update(ctx context.Context, id uuid.UUID, rq RqGlobalTemplate) (*RsTemplate, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error)
-	List(ctx context.Context) (*util.RsList, error)
+	List(ctx context.Context, types []string) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
 	GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
@@ -239,8 +239,8 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context) (*util.RsList, error) {
-	return s.repo.List(ctx)
+func (s *Service) List(ctx context.Context, types []string) (*util.RsList, error) {
+	return s.repo.List(ctx, types)
 }
 
 func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error) {
@@ -372,7 +372,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 	freshTemplates := DefaultTemplates()
-	existingList, err := s.repo.List(ctx)
+	existingList, err := s.repo.List(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed listing global blueprints: %w", err)
 	}

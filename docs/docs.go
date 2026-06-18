@@ -10363,6 +10363,14 @@ const docTemplate = `{
                     "Templates"
                 ],
                 "summary": "List Global Templates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by document types (comma-separated: Calculation Statement, Tax Invoice, Remittance Advice)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Collection index values mapped to the configuration array",
@@ -14893,6 +14901,10 @@ const docTemplate = `{
                 "entryType": {
                     "$ref": "#/definitions/item.EntryType"
                 },
+                "expression": {},
+                "fieldKey": {
+                    "type": "string"
+                },
                 "invoiceSectionId": {
                     "type": "string"
                 },
@@ -14918,6 +14930,10 @@ const docTemplate = `{
                 },
                 "entryType": {
                     "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -14947,6 +14963,10 @@ const docTemplate = `{
                 },
                 "entryType": {
                     "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"

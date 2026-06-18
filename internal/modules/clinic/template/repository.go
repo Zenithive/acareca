@@ -22,7 +22,7 @@ type IRepository interface {
 	Update(ctx context.Context, t *Template) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Get(ctx context.Context, id uuid.UUID) (*Template, error)
-	List(ctx context.Context) (*util.RsList, error)
+	List(ctx context.Context, types []string) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error)
 	UpdateSetting(ctx context.Context, st *Setting, templateId uuid.UUID) error
 	CreateSetting(ctx context.Context, st *Setting) error
@@ -86,10 +86,30 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Template, error) {
 	return &t, nil
 }
 
-func (r *Repository) List(ctx context.Context) (*util.RsList, error) {
-	const q = `SELECT * FROM tbl_template WHERE deleted_at IS NULL ORDER BY created_at DESC`
+func (r *Repository) List(ctx context.Context, types []string) (*util.RsList, error) {
+	var query string
+	var args []interface{}
+	var err error
+
+	if len(types) > 0 {
+		// General purpose structure handling dynamic IN matches safely
+		query, args, err = sqlx.In(`
+			SELECT * FROM tbl_template 
+			WHERE deleted_at IS NULL 
+			  AND name IN (?) 
+			ORDER BY created_at DESC`, types)
+		if err != nil {
+			return nil, err
+		}
+		// Rebind query positional variables safely for your chosen SQL dialect driver (PostgreSQL/MySQL)
+		query = r.db.Rebind(query)
+	} else {
+		// General purpose fallback: retrieve full table records if parameter array is empty
+		query = `SELECT * FROM tbl_template WHERE deleted_at IS NULL ORDER BY created_at DESC`
+	}
+
 	var items []Template
-	if err := r.db.SelectContext(ctx, &items, q); err != nil {
+	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
 		return nil, err
 	}
 
