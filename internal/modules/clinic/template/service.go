@@ -366,7 +366,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", err
 	}
 
-	filename := fmt.Sprintf("invoice-%s-%s", inv.ID.String()[:8], inv.ClinicName)
+	filename := fmt.Sprintf("INVOICE %s", inv.InvoiceNumber)
 	return pdf, filename, nil
 }
 

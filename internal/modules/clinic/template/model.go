@@ -297,6 +297,7 @@ type InvoiceResponse struct {
 	SentBy            InvoiceContact `json:"sent_by"`
 	SentTo            InvoiceContact `json:"sent_to"`
 	Items             []InvoiceItem  `json:"items"`
+	InvoiceNumber     string         `json:"invoice_number"`
 }
 
 type InvoiceContact struct {

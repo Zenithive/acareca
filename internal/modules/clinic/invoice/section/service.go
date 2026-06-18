@@ -47,13 +47,18 @@ type RemittanceInvoice struct {
 	Entries          []*item.Item
 }
 
-func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		docNumber = "CS-" + uuid.New().String()[:8]
+		if calculatedDocNum != "" {
+			docNumber = calculatedDocNum
+		} else {
+			// Fallback if database indexer isn't ready
+			docNumber = "CS-" + uuid.New().String()[:8]
+		}
 	}
 
 	// Link entries to this section
@@ -81,13 +86,17 @@ func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) 
 	}, nil
 }
 
-func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		docNumber = "SFA-" + uuid.New().String()[:8]
+		if calculatedDocNum != "" {
+			docNumber = calculatedDocNum
+		} else {
+			docNumber = "SFA-" + uuid.New().String()[:8]
+		}
 	}
 
 	// Link entries to this section
@@ -115,13 +124,17 @@ func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, 
 	}, nil
 }
 
-func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		docNumber = "REM-" + uuid.New().String()[:8]
+		if calculatedDocNum != "" {
+			docNumber = calculatedDocNum
+		} else {
+			docNumber = "REM-" + uuid.New().String()[:8]
+		}
 	}
 
 	// Link entries to this section

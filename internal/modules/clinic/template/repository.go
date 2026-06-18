@@ -312,14 +312,24 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
             COALESCE(a.city, '') as city,
             COALESCE(a.state, '') as state,
             COALESCE(a.postal_code, '') as postal_code,
-            COALESCE(a.country, '') as country
+            COALESCE(a.country, '') as country,
+            COALESCE((
+                SELECT document_number 
+                FROM tbl_map_invoice_section 
+                WHERE invoice_id = i.id AND deleted_at IS NULL 
+                ORDER BY created_at ASC LIMIT 1
+            ), '') as section_document_number
 		FROM tbl_invoice i
 		LEFT JOIN tbl_invoice_clinic cl ON cl.id = i.clinic_id AND cl.deleted_at IS NULL
         LEFT JOIN tbl_clinic_contact_person cp ON cp.clinic_id = i.clinic_id AND cp.deleted_at IS NULL
         LEFT JOIN tbl_clinic_contact_person_address a ON a.contact_id = cp.id AND a.is_primary = TRUE AND a.deleted_at IS NULL
 		WHERE i.id = $2 AND i.clinic_id = $1 AND i.deleted_at IS NULL`
 
-	var row invoiceRow
+	var row struct {
+		invoiceRow
+		SectionDocumentNumber string `db:"section_document_number"`
+	}
+
 	// FIXED: Bound parameters matching schema expectations ($1 = clinicId, $2 = invoiceId)
 	if err := r.db.GetContext(ctx, &row, q, clinicId, invoiceId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -355,6 +365,12 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		address = append(address, addr)
 	}
 
+	// Use section document number as fallback system invoice track name
+	invoiceNumberName := row.SectionDocumentNumber
+	if invoiceNumberName == "" {
+		invoiceNumberName = row.Id.String()[:8]
+	}
+
 	return &InvoiceResponse{
 		ID:                row.Id,
 		ClinicID:          row.ClinicId,
@@ -366,6 +382,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		DueDate:           row.DueDate,
 		Status:            row.Status,
 		ClinicName:        row.ClinicName,
+		InvoiceNumber:     invoiceNumberName,
 		SentBy: InvoiceContact{
 			FName:   row.FName,
 			LName:   row.LName,

@@ -30,6 +30,7 @@ type IRepository interface {
 	GetByID(ctx context.Context, db sqlx.QueryerContext, id uuid.UUID) (*Invoice, error)
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
+	GetNextSequenceForYear(ctx context.Context, prefix string, year int) (string, error)
 }
 
 type Repository struct {
@@ -533,4 +534,23 @@ func (r *Repository) upsertInvoiceSettingsOverride(ctx context.Context, tx *sqlx
 	}
 
 	return err
+}
+
+// GetNextSequenceForYear counts matching entries to generate sequential identifiers safely
+func (r *Repository) GetNextSequenceForYear(ctx context.Context, prefix string, year int) (string, error) {
+	var count int
+	// Match prefixes like 'CS-2026-%' to establish next array increment index
+	query := `
+		SELECT COUNT(id) 
+		FROM tbl_map_invoice_section 
+		WHERE document_number LIKE $1 || '-' || $2 || '-%'
+	`
+	err := r.db.GetContext(ctx, &count, query, prefix, year)
+	if err != nil {
+		return "", err
+	}
+
+	nextVal := count + 1
+	// Generates dynamic layout formatting matching pattern "CS-2026-0042"
+	return fmt.Sprintf("%s-%d-%04d", prefix, year, nextVal), nil
 }

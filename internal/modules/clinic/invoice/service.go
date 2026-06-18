@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
@@ -56,11 +57,19 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	inv := invoice.ToInvoice()
 
 	if len(inv.Sections) == 0 {
+		currentYear := time.Now().Year()
+
+		docString, err := s.repo.GetNextSequenceForYear(ctx, "CS", currentYear)
+		if err != nil {
+			return fmt.Errorf("failed calculating consecutive invoice numbers: %w", err)
+		}
+
 		cs := section.CalculationStatement{
-			DocumentNumber: inv.ID.String()[:8],
+			DocumentNumber: docString,
 			Entries:        []*item.Item{},
 		}
-		built, err := cs.Build(ctx, &inv.ID)
+
+		built, err := cs.Build(ctx, &inv.ID, docString)
 		if err != nil {
 			return err
 		}
@@ -155,13 +164,19 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 			name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
 			dbSubject, dbBody, _ := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
 			chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
-			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.ID.String()[:8])
+			var documentNumber string
+			if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
+				documentNumber = rsInvoice.Sections[0].DocumentNumber
+			} else {
+				documentNumber = rsInvoice.ID.String()[:8] // Fallback
+			}
+			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)
 
 			go func(to, invNum, sub, html, pdf string) {
 				if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
 					log.Printf("[MAIL-ERR] Firing automated payment confirmation receipt failed: %v", err)
 				}
-			}(rsInvoice.ContactTo.Email, rsInvoice.ID.String()[:8], subject, htmlBody, pdfBase64)
+			}(rsInvoice.ContactTo.Email, documentNumber, subject, htmlBody, pdfBase64)
 		}
 	}
 
@@ -212,13 +227,20 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 	chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
 	name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
 
-	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, rsInvoice.ID.String()[:8])
+	var documentNumber string
+	if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
+		documentNumber = rsInvoice.Sections[0].DocumentNumber
+	} else {
+		documentNumber = rsInvoice.ID.String()[:8] // Fallback
+	}
+
+	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)
 
 	go func(to, invNum, sub, html, pdf string) {
 		if err := s.mailer.SendInvoicePaidEmail(to, invNum, pdf, sub, html); err != nil {
 			log.Printf("[MAIL-ERR] Running async template mail worker failed processing invoice task context: %v", err)
 		}
-	}(rsInvoice.ContactTo.Email, rsInvoice.ID.String()[:8], subject, htmlBody, pdfBase64)
+	}(rsInvoice.ContactTo.Email, documentNumber, subject, htmlBody, pdfBase64)
 
 	return nil
 }
