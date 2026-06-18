@@ -147,12 +147,6 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
-
-		_, err = s.template.BulkCreate(ctx, createdClinic.ID)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	})
 

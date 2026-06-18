@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS tbl_map_invoice_section (
     document_number VARCHAR(100) NOT NULL,
     tax_method tax_method DEFAULT 'INCLUSIVE',
 
+    -- Explicit Remittance Payment Fields (Null for other sections)
+    payment_method VARCHAR(100),
+    account_name VARCHAR(255),
+    bsb_number VARCHAR(20),
+    account_number VARCHAR(50),
+    payment_date DATE,
+    payment_reference VARCHAR(255),
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ
