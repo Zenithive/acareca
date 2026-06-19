@@ -50,12 +50,12 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			id,
 			name,
 			description,
-			entry_type,
-			bas_code,
-			field_key,
 			amount,
-			invoice_section_id,
 			sort_order,
+			bas_code,
+			invoice_section_id,
+			entry_type,
+			field_key,
 			expression
 		FROM tbl_invoice_item
 		WHERE invoice_section_id IN (
@@ -77,16 +77,17 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.ID,
 			&invoiceItem.Name,
 			&invoiceItem.Description,
-			&invoiceItem.EntryType,
-			&invoiceItem.BASCode,
-			&invoiceItem.FieldKey,
 			&invoiceItem.Amount,
-			&invoiceItem.InvoiceSectionID,
 			&invoiceItem.SortOrder,
+			&invoiceItem.BASCode,
+			&invoiceItem.InvoiceSectionID,
+			&invoiceItem.EntryType,
+			&invoiceItem.FieldKey,
 			&exprJSON,
 		); err != nil {
 			return nil, err
 		}
+		invoiceItem.InvoiceID = invoiceID
 
 		if len(exprJSON) > 0 {
 			if err := json.Unmarshal(exprJSON, &invoiceItem.Expression); err != nil {
