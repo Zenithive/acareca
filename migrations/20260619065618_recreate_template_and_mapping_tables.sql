@@ -1,8 +1,10 @@
 -- +goose Up
 -- +goose StatementBegin
 
+DROP TABLE IF EXISTS tbl_invoice_template_mapping;
 DROP TABLE IF EXISTS tbl_template_setting;
 DROP TABLE IF EXISTS tbl_template;
+
 
 CREATE TABLE IF NOT EXISTS tbl_template (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
