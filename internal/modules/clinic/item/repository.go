@@ -48,15 +48,14 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			id,
+			invoice_id,
 			name,
 			description,
-			entry_type,
-			bas_code,
-			field_key,
 			amount,
-			invoice_section_id,
 			sort_order,
-			expression
+			bas_code,
+			invoice_section_id,
+			entry_type
 		FROM tbl_invoice_item
 		WHERE invoice_section_id IN (
 			SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -75,15 +74,14 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 		var exprJSON []byte
 		if err := rows.Scan(
 			&invoiceItem.ID,
+			&invoiceItem.InvoiceID,
 			&invoiceItem.Name,
 			&invoiceItem.Description,
-			&invoiceItem.EntryType,
-			&invoiceItem.BASCode,
-			&invoiceItem.FieldKey,
 			&invoiceItem.Amount,
-			&invoiceItem.InvoiceSectionID,
 			&invoiceItem.SortOrder,
-			&exprJSON,
+			&invoiceItem.BASCode,
+			&invoiceItem.InvoiceSectionID,
+			&invoiceItem.EntryType,
 		); err != nil {
 			return nil, err
 		}
