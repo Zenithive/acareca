@@ -48,7 +48,6 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			id,
-			invoice_id,
 			name,
 			description,
 			amount,
@@ -76,7 +75,6 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 		var exprJSON []byte
 		if err := rows.Scan(
 			&invoiceItem.ID,
-			&invoiceItem.InvoiceID,
 			&invoiceItem.Name,
 			&invoiceItem.Description,
 			&invoiceItem.Amount,
@@ -89,6 +87,7 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 		); err != nil {
 			return nil, err
 		}
+		invoiceItem.InvoiceID = invoiceID
 
 		if len(exprJSON) > 0 {
 			if err := json.Unmarshal(exprJSON, &invoiceItem.Expression); err != nil {
