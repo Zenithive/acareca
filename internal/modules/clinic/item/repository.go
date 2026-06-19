@@ -55,7 +55,9 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			sort_order,
 			bas_code,
 			invoice_section_id,
-			entry_type
+			entry_type,
+			field_key,
+			expression
 		FROM tbl_invoice_item
 		WHERE invoice_section_id IN (
 			SELECT id FROM tbl_map_invoice_section WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -82,6 +84,8 @@ func (r *Repository) GetByInvoiceID(ctx context.Context, db *sqlx.DB, invoiceID 
 			&invoiceItem.BASCode,
 			&invoiceItem.InvoiceSectionID,
 			&invoiceItem.EntryType,
+			&invoiceItem.FieldKey,
+			&exprJSON,
 		); err != nil {
 			return nil, err
 		}
