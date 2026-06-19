@@ -47,7 +47,6 @@ type IRepository interface {
 	InsertEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error
 	MarkEntryValueUpdated(ctx context.Context, tx *sqlx.Tx, fieldID uuid.UUID, entryID uuid.UUID) error
 	DeleteSystemBalancingValues(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error
-	GetBankAccountID(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) (uuid.UUID, error)
 	GetActiveEntryValuesWithAccountType(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) ([]*EntryValueWithAccountType, error)
 	UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, date string) error
 }
@@ -557,16 +556,16 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	}
 
 	base := `
-        SELECT
-            MAX(v.coa_id::text)::uuid                      AS coa_id,
-            v.account_name                                 AS coa_name,
-            COALESCE(MAX(coa.is_system::int)::bool, false) AS is_system,
-            ROUND(SUM(v.net_amount)::numeric, 2)::float8   AS total_net_amount,
-            ROUND(SUM(v.gst_amount)::numeric, 2)::float8   AS total_gst_amount,
-            ROUND(SUM(v.gross_amount)::numeric, 2)::float8 AS total_gross_amount,
-            COUNT(DISTINCT v.entry_id)                     AS entry_count
-        FROM vw_double_entry_line_items v
-        LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id` + permissionClause
+    SELECT
+        MAX(v.coa_id::text)::uuid                                                     AS coa_id,
+        v.account_name                                                                AS coa_name,
+        COALESCE(MAX(coa.is_system::int)::bool, false)                                AS is_system,
+        ROUND(SUM(v.net_amount)::numeric, 2)::float8                                  AS total_net_amount,
+        ROUND(SUM(v.gst_amount)::numeric, 2)::float8                                  AS total_gst_amount,
+        ROUND(SUM(v.gross_amount)::numeric, 2)::float8                                AS total_gross_amount,
+        COUNT(DISTINCT v.entry_id)                                                    AS entry_count
+    FROM vw_double_entry_line_items v
+    LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -619,23 +618,23 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` WHERE (
-			practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			)
-			OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			))
-		)`
+            practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            )
+            OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            ))
+        )`
 	} else {
 		permissionClause = ` WHERE (
-			clinic_id IN (
-				SELECT id FROM tbl_clinic
-				WHERE practitioner_id = ? AND deleted_at IS NULL
-			)
-			OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id = ?)
-		)`
+            clinic_id IN (
+                SELECT id FROM tbl_clinic
+                WHERE practitioner_id = ? AND deleted_at IS NULL
+            )
+            OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id = ?)
+        )`
 	}
 
 	allowedColumns := map[string]string{
@@ -674,23 +673,23 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND (
-			v.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation 
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			)
-			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation 
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			))
-		)`
+            v.practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation 
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            )
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation 
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            ))
+        )`
 	} else {
 		permissionClause = ` AND (
-			v.clinic_id IN (
-				SELECT id FROM tbl_clinic 
-				WHERE practitioner_id = ? AND deleted_at IS NULL
-			)
-			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
-		)`
+            v.clinic_id IN (
+                SELECT id FROM tbl_clinic 
+                WHERE practitioner_id = ? AND deleted_at IS NULL
+            )
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
+        )`
 	}
 
 	allowedColumns := map[string]string{
@@ -702,57 +701,56 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		"end_date":        "v.entry_date",
 		"created_at":      "v.entry_date",
 	}
-	
-		base := `
-		SELECT
-			MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
-			fev.id                                                         AS form_entry_value_id,
-			v.entry_id                                                     AS entry_id,
-			v.form_field_id                                                AS form_field_id,
-			v.coa_id                                                       AS coa_id,
-			v.tax_id                                                       AS tax_type_id,
-			v.form_id                                                      AS form_id,
-			v.clinic_id                                                    AS clinic_id,
-			NULL::uuid                                                     AS line_item_value_id,
-			v.form_id                                                      AS version_id,
-			COALESCE(ff.label, 'System Accounts')                          AS form_field_name,
-			v.account_name                                                 AS coa_name,
-			COALESCE(t.name, '')                                           AS tax_type_name,
-			COALESCE(f.name, '')                                           AS form_name,
-			COALESCE(f.method::text, '')                                   AS form_method,
-			COALESCE(c.name, '')                                           AS clinic_name,
-			CASE
-				WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) >= 0 THEN 'DEBIT'
-				WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) <  0 THEN 'CREDIT'
-				WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) >= 0 THEN 'CREDIT'
-				WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) <  0 THEN 'DEBIT'
-				ELSE 'UNKNOWN'
-			END                                                            AS transaction_type,
-			COALESCE(v.account_type, '')                                   AS account_type,
-			ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8          AS net_amount,
-			ROUND(ABS(COALESCE(v.gst_amount, 0))::numeric, 2)::float8     AS gst_amount,
-			ROUND(
-				CASE
-					WHEN COALESCE(v.net_amount, 0) < 0 THEN -ABS(COALESCE(v.gross_amount, 0))
-					ELSE ABS(COALESCE(v.gross_amount, 0))
-				END::numeric, 2)::float8                                   AS gross_amount,
-			COALESCE(v.business_percentage::float8, 100.00::float8)        AS business_percentage,
-			COALESCE(v.description, '-')                                   AS description,
-			TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                AS created_at
-		FROM vw_double_entry_line_items v
-		LEFT JOIN tbl_form f        ON f.id = v.form_id
-		LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
-		LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
-		LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
-		INNER JOIN tbl_form_entry_value fev
-   		ON fev.entry_id = v.entry_id
-			AND fev.deleted_at IS NULL
-			AND (
-			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-			OR
-			(v.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-		)
-		WHERE v.account_name = ?` + permissionClause
+
+	base := `
+        SELECT
+            MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
+            fev.id                                                                                         AS form_entry_value_id,
+            v.entry_id                                                                                     AS entry_id,
+            v.form_field_id                                                                                AS form_field_id,
+            v.coa_id                                                                                       AS coa_id,
+            v.tax_id                                                                                       AS tax_type_id,
+            v.form_id                                                                                      AS form_id,
+            v.clinic_id                                                                                    AS clinic_id,
+            NULL::uuid                                                                                     AS line_item_value_id,
+            v.form_id                                                                                      AS version_id,
+            COALESCE(ff.label, 'System Accounts')                                                          AS form_field_name,
+            v.account_name                                                                                 AS coa_name,
+            COALESCE(t.name, '')                                                                           AS tax_type_name,
+            COALESCE(f.name, '')                                                                           AS form_name,
+            COALESCE(f.method::text, '')                                                                   AS form_method,
+            COALESCE(c.name, '')                                                                           AS clinic_name,
+            CASE
+                WHEN COALESCE(v.debit_amount, 0) > 0 THEN 'DEBIT'
+                WHEN COALESCE(v.credit_amount, 0) > 0 THEN 'CREDIT'
+                -- Fallback evaluation if debit/credit metrics are empty
+                WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) >= 0 THEN 'DEBIT'
+                WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) <  0 THEN 'CREDIT'
+                WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) >= 0 THEN 'CREDIT'
+                WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) <  0 THEN 'DEBIT'
+                ELSE 'UNKNOWN'
+            END                                                                                            AS transaction_type,
+            COALESCE(v.account_type, '')                                                                   AS account_type,
+	        ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8                                           AS net_amount,
+       		ROUND(COALESCE(v.gst_amount, 0)::numeric, 2)::float8                                           AS gst_amount,
+        	ROUND(COALESCE(v.gross_amount, 0)::numeric, 2)::float8                                         AS gross_amount,
+            COALESCE(v.business_percentage::float8, 100.00::float8)                                        AS business_percentage,
+            COALESCE(v.description, '-')                                                                   AS description,
+            TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                                                 AS created_at
+        FROM vw_double_entry_line_items v
+        LEFT JOIN tbl_form f        ON f.id = v.form_id
+        LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
+        LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
+        LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
+        INNER JOIN tbl_form_entry_value fev
+        ON fev.entry_id = v.entry_id
+            AND fev.deleted_at IS NULL
+            AND (
+            (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+            OR
+            (v.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+        )
+        WHERE v.account_name = ?` + permissionClause
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -858,23 +856,23 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 	if strings.EqualFold(role, util.RoleAccountant) {
 		permissionClause = ` AND (
-			v.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation 
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			)
-			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
-				SELECT practitioner_id FROM tbl_invitation 
-				WHERE accountant_id = ? AND status = 'COMPLETED'
-			))
-		)`
+            v.practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation 
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            )
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
+                SELECT practitioner_id FROM tbl_invitation 
+                WHERE accountant_id = ? AND status = 'COMPLETED'
+            ))
+        )`
 	} else {
 		permissionClause = ` AND (
-			v.clinic_id IN (
-				SELECT id FROM tbl_clinic 
-				WHERE practitioner_id = ? AND deleted_at IS NULL
-			)
-			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
-		)`
+            v.clinic_id IN (
+                SELECT id FROM tbl_clinic 
+                WHERE practitioner_id = ? AND deleted_at IS NULL
+            )
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
+        )`
 	}
 
 	allowedColumns := map[string]string{
@@ -888,8 +886,8 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 	}
 
 	base := `
-		FROM vw_double_entry_line_items v
-		WHERE v.account_name = ?` + permissionClause
+        FROM vw_double_entry_line_items v
+        WHERE v.account_name = ?` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.description"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
@@ -906,9 +904,17 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 func (r *Repository) GetCoaNameByID(ctx context.Context, id uuid.UUID) (string, error) {
 	var name string
-	query := `SELECT name FROM tbl_chart_of_accounts WHERE id = $1`
+	query := `
+		SELECT COALESCE(coa.name, tpl.name, '') AS name
+		FROM tbl_chart_of_accounts coa
+		LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = coa.template_id
+		WHERE coa.id = $1
+	`
 	err := r.db.GetContext(ctx, &name, query, id)
-	return name, err
+	if err != nil {
+		return "", fmt.Errorf("find coa name: %w", err)
+	}
+	return name, nil
 }
 
 func (r *Repository) LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error {
@@ -981,23 +987,12 @@ func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUI
 
 func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
 	query := `
-		SELECT
-			fev.entry_id,
-			COALESCE(SUM(
-				CASE
-					WHEN LOWER(at.name) LIKE '%asset%' OR LOWER(at.name) LIKE '%expense%' 
-						THEN COALESCE(fev.net_amount, 0)
-					WHEN LOWER(at.name) LIKE '%liability%' OR LOWER(at.name) LIKE '%equity%' OR LOWER(at.name) LIKE '%revenue%' OR LOWER(at.name) LIKE '%income%' 
-						THEN -COALESCE(fev.net_amount, 0)
-					ELSE 0
-				END
-			), 0) as ledger_balance
-		FROM tbl_form_entry_value fev
-		-- Use a single unified join path to fetch the account type name
-		INNER JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(fev.coa_id, (SELECT coa_id FROM tbl_form_field WHERE id = fev.form_field_id)) AND coa.deleted_at IS NULL
-		INNER JOIN tbl_account_type at ON coa.account_type_id = at.id
-		WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
-		GROUP BY fev.entry_id`
+        SELECT
+            v.entry_id,
+            COALESCE(SUM(v.entry_balance_variance), 0) AS ledger_balance
+        FROM vw_double_entry_line_items v
+        WHERE v.entry_id = $1
+        GROUP BY v.entry_id`
 
 	type balanceRow struct {
 		EntryID       uuid.UUID `db:"entry_id"`
@@ -1005,6 +1000,7 @@ func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx,
 	}
 
 	var balance balanceRow
+	// Note: If using a regular transaction context, make sure to execute against tx
 	if err := tx.QueryRowxContext(ctx, query, entryID).StructScan(&balance); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -1064,20 +1060,6 @@ func (r *Repository) DeleteSystemBalancingValues(ctx context.Context, tx *sqlx.T
 	return nil
 }
 
-// GetBankAccountID returns the ID of COA code 600 (Business Bank Account) for the given practitioner.
-func (r *Repository) GetBankAccountID(ctx context.Context, tx *sqlx.Tx, practitionerID uuid.UUID) (uuid.UUID, error) {
-	var id uuid.UUID
-	query := `SELECT id FROM tbl_chart_of_accounts
-		WHERE practitioner_id = $1 AND code = 600 AND deleted_at IS NULL LIMIT 1`
-	if err := tx.QueryRowContext(ctx, query, practitionerID).Scan(&id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return uuid.Nil, fmt.Errorf("Bank Account (COA 600) not found for practitioner %s", practitionerID)
-		}
-		return uuid.Nil, fmt.Errorf("get bank account id: %w", err)
-	}
-	return id, nil
-}
-
 // GetActiveEntryValuesWithAccountType fetches all active entry value rows with their COA account type name.
 // Used for rebalancing to determine income vs expense classification via COA, not section_type.
 func (r *Repository) GetActiveEntryValuesWithAccountType(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) ([]*EntryValueWithAccountType, error) {
@@ -1106,68 +1088,3 @@ func (r *Repository) UpdateEntryDate(ctx context.Context, tx *sqlx.Tx, entryID u
 	}
 	return nil
 }
-
-// // AssertLedgerGroupBalances implements institutional-grade ledger verification
-// // This method runs a SUM query grouped by entry_id right before tx.Commit()
-// // If the algebraic sum of entries does not equal 0.00 (within 0.01 threshold),
-// // it returns a ledger integrity violation error that triggers a transaction rollback
-// // ============================================================================
-// func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
-// 	query := `
-// 		SELECT
-// 			entry_id,
-// 			COALESCE(SUM(
-// 				CASE
-// 					WHEN coa.account_type_id IN (SELECT id FROM tbl_account_type WHERE name IN ('Asset', 'Expense'))
-// 						THEN COALESCE(fev.net_amount, 0)
-// 					WHEN coa.account_type_id IN (SELECT id FROM tbl_account_type WHERE name IN ('Liability', 'Equity', 'Revenue', 'Income'))
-// 						THEN -COALESCE(fev.net_amount, 0)
-// 					ELSE 0
-// 				END
-// 			), 0) as ledger_balance
-// 		FROM tbl_form_entry_value fev
-// 		LEFT JOIN tbl_chart_of_accounts coa ON fev.coa_id = coa.id AND coa.deleted_at IS NULL
-// 		LEFT JOIN tbl_form_field ff ON fev.form_field_id = ff.id AND ff.deleted_at IS NULL
-// 		LEFT JOIN tbl_chart_of_accounts coa_field ON ff.coa_id = coa_field.id AND coa_field.deleted_at IS NULL
-// 		WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
-// 		GROUP BY fev.entry_id`
-// 	// query := `
-// 	// SELECT
-// 	//     fev.entry_id,
-// 	//     COALESCE(SUM(
-// 	//         CASE
-// 	//             WHEN LOWER(at.name) IN ('asset', 'expense') THEN COALESCE(fev.net_amount, 0)
-// 	//             WHEN LOWER(at.name) IN ('liability', 'equity', 'revenue', 'income') THEN -COALESCE(fev.net_amount, 0)
-// 	//             ELSE 0
-// 	//         END
-// 	//     ), 0) as ledger_balance
-// 	// FROM tbl_form_entry_value fev
-// 	// INNER JOIN tbl_chart_of_accounts coa ON fev.coa_id = coa.id AND coa.deleted_at IS NULL
-// 	// INNER JOIN tbl_account_type at ON coa.account_type_id = at.id
-// 	// WHERE fev.entry_id = $1 AND fev.updated_at IS NULL
-// 	// GROUP BY fev.entry_id`
-
-// 	type balanceRow struct {
-// 		EntryID       uuid.UUID `db:"entry_id"`
-// 		LedgerBalance float64   `db:"ledger_balance"`
-// 	}
-
-// 	var balance balanceRow
-// 	if err := tx.QueryRowxContext(ctx, query, entryID).StructScan(&balance); err != nil {
-// 		if errors.Is(err, sql.ErrNoRows) {
-// 			// No entries to verify
-// 			return nil
-// 		}
-// 		return fmt.Errorf("assert ledger balance query: %w", err)
-// 	}
-
-// 	// Round to prevent floating-point precision issues
-// 	ledgerBalance := math.Round(balance.LedgerBalance*100) / 100
-
-// 	// Check if balance is within acceptable threshold (0.01)
-// 	if ledgerBalance > 0.01 || ledgerBalance < -0.01 {
-// 		return fmt.Errorf("ledger integrity violation: entry %s has variance of %.2f which exceeds 0.01 threshold", entryID.String(), ledgerBalance)
-// 	}
-
-// 	return nil
-// }

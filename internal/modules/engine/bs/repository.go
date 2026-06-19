@@ -48,14 +48,13 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 		SELECT
 			practitioner_id,
 			account_type,
-			account_classification,
 			account_code,
 			account_name,
 			coa_id,
 			SUM(signed_amount) AS balance
 		FROM (%s) AS filtered
-		GROUP BY practitioner_id, account_type, account_classification, account_code, account_name, coa_id
-		ORDER BY account_type, account_classification, account_code
+		GROUP BY practitioner_id, account_type, account_code, account_name, coa_id
+		ORDER BY account_type, account_code
 	`, innerQuery)
 
 	var rows []*BSRow

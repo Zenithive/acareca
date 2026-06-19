@@ -152,8 +152,10 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			totalLiabilities += row.Balance
 
 		case "Equity":
-			if row.AccountCode != 880 && row.AccountCode != 881 &&
-				row.AccountCode != 960 && row.AccountCode != 970 {
+			// 🚀 COA FIX: Filter using your new COA template system codes
+			if row.AccountCode != 900 && row.AccountCode != 910 &&
+				row.AccountCode != 920 && row.AccountCode != 960 &&
+				row.AccountCode != 970 && row.AccountCode != 980 {
 				acc := otherEquityMap[key]
 				acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
 				acc.Balance += row.Balance
@@ -201,9 +203,9 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			})
 		}
 	}
-	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
-	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
-	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
+	addEquityItem(970, "Owner A Share Capital", totalOwnerEquity.ShareCapital)
+	addEquityItem(920, "Owner A Funds Introduced", totalOwnerEquity.FundsIntroduced)
+	addEquityItem(900, "Owner A Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
 	netAssets := totalAssets - totalLiabilities
@@ -463,7 +465,7 @@ func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, ac
 	case util.ActorAccountant:
 		// Notify only specific practitioners if targetPractitionerIDs is provided
 		var practitionerIDs []uuid.UUID
-		
+
 		if len(targetPractitionerIDs) > 0 {
 			// Use the specific practitioners for whom the report was generated
 			practitionerIDs = targetPractitionerIDs

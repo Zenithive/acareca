@@ -5,17 +5,16 @@ import (
 )
 
 type BSRow struct {
-	PractitionerID        uuid.UUID `db:"practitioner_id"`
-	UserID                uuid.UUID `db:"user_id"`
-	ClinicID              uuid.UUID `db:"clinic_id"`
-	AccountType           string    `db:"account_type"`
-	AccountClassification string    `db:"account_classification"`
-	AccountCode           int16     `db:"account_code"`
-	AccountName           string    `db:"account_name"`
-	CoaID                 uuid.UUID `db:"coa_id"`
-	Balance               float64   `db:"balance"`
-	EntryCount            int       `db:"entry_count"`
-	LastTransactionDate   string    `db:"last_transaction_date"`
+	PractitionerID      uuid.UUID `db:"practitioner_id"`
+	UserID              uuid.UUID `db:"user_id"`
+	ClinicID            uuid.UUID `db:"clinic_id"`
+	AccountType         string    `db:"account_type"`
+	AccountCode         int16     `db:"account_code"`
+	AccountName         string    `db:"account_name"`
+	CoaID               uuid.UUID `db:"coa_id"`
+	Balance             float64   `db:"balance"`
+	EntryCount          int       `db:"entry_count"`
+	LastTransactionDate string    `db:"last_transaction_date"`
 }
 
 type BSFilter struct {
