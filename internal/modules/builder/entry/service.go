@@ -840,7 +840,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				continue
 			}
 
-			// 🚀 FIX: Fetch field metadata to determine if it's a presentation formula row
 			if ev.FormFieldID != nil {
 				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID) // adjust to your actual repo method
 				if err == nil && fieldMeta != nil {
@@ -883,9 +882,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				return nil, fmt.Errorf("missing required balancing account: COA code 980 Current Year Earnings")
 			}
 
-			// 🚀 THE FIX: Invert the sign of the variance before saving it to the database
-			// This aligns perfectly with how your SQL views determine Debit/Credit distribution.
-			balancingAmount := s.roundValue(-initialVariance)
+			balancingAmount := s.roundValue(initialVariance)
 
 			earningsCoaID := earningsAccount.ID
 
@@ -894,7 +891,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				EntryID:            entryID,
 				FormFieldID:        nil,
 				CoaID:              &earningsCoaID,
-				NetAmount:          &balancingAmount, // Now safely saved as a negative to represent the debit/credit shift
+				NetAmount:          &balancingAmount,
 				GstAmount:          nil,
 				GrossAmount:        &balancingAmount,
 				BusinessPercentage: nil,
