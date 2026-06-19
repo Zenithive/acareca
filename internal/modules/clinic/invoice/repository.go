@@ -30,7 +30,7 @@ type IRepository interface {
 	GetByID(ctx context.Context, db sqlx.QueryerContext, id uuid.UUID) (*Invoice, error)
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
-	GetNextSequenceForYear(ctx context.Context, prefix string, year int) (string, error)
+	GetNextSequenceForYear(ctx context.Context, prefix string, year string) (string, error)
 }
 
 type Repository struct {
@@ -509,21 +509,22 @@ func (r *Repository) upsertInvoiceSettingsOverride(ctx context.Context, tx *sqlx
 	return err
 }
 
-// GetNextSequenceForYear counts matching entries to generate sequential identifiers safely
-func (r *Repository) GetNextSequenceForYear(ctx context.Context, prefix string, year int) (string, error) {
-	var count int
-	// Match prefixes like 'CS-2026-%' to establish next array increment index
+func (r *Repository) GetNextSequenceForYear(ctx context.Context, prefix string, year string) (string, error) {
+	var maxSeq int
+
 	query := `
-		SELECT COUNT(id) 
-		FROM tbl_map_invoice_section 
+		SELECT COALESCE(
+			MAX(CAST(SPLIT_PART(document_number, '-', 3) AS INTEGER)),
+			0
+		)
+		FROM tbl_map_invoice_section
 		WHERE document_number LIKE $1 || '-' || $2 || '-%'
 	`
-	err := r.db.GetContext(ctx, &count, query, prefix, year)
-	if err != nil {
+	if err := r.db.GetContext(ctx, &maxSeq, query, prefix, year); err != nil {
 		return "", err
 	}
 
-	nextVal := count + 1
-	// Generates dynamic layout formatting matching pattern "CS-2026-0042"
-	return fmt.Sprintf("%s-%d-%04d", prefix, year, nextVal), nil
+	nextSeq := maxSeq + 1
+
+	return fmt.Sprintf("%s-%s-%04d", prefix, year, nextSeq), nil
 }

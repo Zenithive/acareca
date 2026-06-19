@@ -2,6 +2,8 @@ package section
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
@@ -57,7 +59,7 @@ func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID, 
 			docNumber = calculatedDocNum
 		} else {
 			// Fallback if database indexer isn't ready
-			docNumber = "CS-" + uuid.New().String()[:8]
+			docNumber = "CS-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
 		}
 	}
 
@@ -95,7 +97,7 @@ func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculated
 		if calculatedDocNum != "" {
 			docNumber = calculatedDocNum
 		} else {
-			docNumber = "SFA-" + uuid.New().String()[:8]
+			docNumber = "SFA-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
 		}
 	}
 
@@ -133,7 +135,7 @@ func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, cal
 		if calculatedDocNum != "" {
 			docNumber = calculatedDocNum
 		} else {
-			docNumber = "REM-" + uuid.New().String()[:8]
+			docNumber = "REM-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
 		}
 	}
 

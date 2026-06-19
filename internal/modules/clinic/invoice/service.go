@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,7 +57,7 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	inv := invoice.ToInvoice()
 
 	if len(inv.Sections) == 0 {
-		currentYear := time.Now().Year()
+		currentYear := strconv.Itoa(time.Now().Year())
 
 		docString, err := s.repo.GetNextSequenceForYear(ctx, "CS", currentYear)
 		if err != nil {
