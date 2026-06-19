@@ -35,7 +35,6 @@ func RegisterAdminRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx.D
 	adminPractitionerSvc := adminPractitioner.NewService(adminPractitionerRepo)
 	adminPractitionerHandler := adminPractitioner.NewHandler(adminPractitionerSvc)
 	adminPractitioner.RegisterRoutes(practitionerGroup, adminPractitionerHandler)
-	adminPractitioner.RegisterRoutes(practitionerGroup, adminPractitionerHandler)
 
 	adminCoaRepo := adminCoa.NewRepo(dbConn)
 	adminCoaSvc := adminCoa.NewService(adminCoaRepo)

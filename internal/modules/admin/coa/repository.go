@@ -11,10 +11,10 @@ type IRepo interface {
 	Create(ctx context.Context, account AccountTemplate) error
 	Update(ctx context.Context, account AccountTemplate) error
 	Delete(ctx context.Context, id uuid.UUID, adminID uuid.UUID) error
-
 	GetByID(ctx context.Context, id uuid.UUID) (AccountTemplate, error)
 	GetByCode(ctx context.Context, code int16) (AccountTemplate, error)
 	List(ctx context.Context) ([]AccountTemplate, error)
+	SeedNewTemplateToAllPractitioners(ctx context.Context, templateID uuid.UUID) error
 }
 
 type repo struct {
@@ -182,4 +182,20 @@ func (r *repo) List(ctx context.Context) ([]AccountTemplate, error) {
 	}
 
 	return accounts, nil
+}
+
+func (r *repo) SeedNewTemplateToAllPractitioners(ctx context.Context, templateID uuid.UUID) error {
+	const query = `
+		INSERT INTO tbl_chart_of_accounts (id, practitioner_id, template_id, is_custom, created_at)
+		SELECT 
+			gen_random_uuid(), 
+			p.id, 
+			$1, 
+			false, 
+			NOW()
+		FROM tbl_practitioners p
+		ON CONFLICT (practitioner_id, template_id) DO NOTHING
+	`
+	_, err := r.db.ExecContext(ctx, query, templateID)
+	return err
 }

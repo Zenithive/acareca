@@ -9,6 +9,7 @@ import (
 type IService interface {
 	Create(ctx context.Context, rq RqAccountTemplate) error
 	Update(ctx context.Context, rq RqUpdateAccountTemplate) error
+	Delete(ctx context.Context, id uuid.UUID, adminID uuid.UUID) error
 	GetById(ctx context.Context, id uuid.UUID) (RsAccountTemplate, error)
 	List(ctx context.Context) ([]RsAccountTemplate, error)
 }
@@ -24,7 +25,12 @@ func NewService(repo IRepo) IService {
 }
 
 func (s *service) Create(ctx context.Context, rq RqAccountTemplate) error {
-	return s.repo.Create(ctx, rq.ToDB())
+	dbAccount := rq.ToDB()
+	if err := s.repo.Create(ctx, dbAccount); err != nil {
+		return err
+	}
+
+	return s.repo.SeedNewTemplateToAllPractitioners(ctx, dbAccount.ID)
 }
 
 func (s *service) Update(ctx context.Context, rq RqUpdateAccountTemplate) error {
@@ -36,6 +42,10 @@ func (s *service) Update(ctx context.Context, rq RqUpdateAccountTemplate) error 
 	rq.ApplyTo(&account)
 
 	return s.repo.Update(ctx, account)
+}
+
+func (s *service) Delete(ctx context.Context, id uuid.UUID, adminID uuid.UUID) error {
+	return s.repo.Delete(ctx, id, adminID)
 }
 
 func (s *service) GetById(ctx context.Context, id uuid.UUID) (RsAccountTemplate, error) {

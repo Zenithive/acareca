@@ -4729,69 +4729,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/clinic/invoice/email-templates": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "tags": [
-                    "invoice settings"
-                ],
-                "summary": "Fetch current invoice template context settings or system defaults",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.RsBase"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/invoice.RsInvoiceMailTemplate"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "tags": [
-                    "invoice settings"
-                ],
-                "summary": "Save modified template layout overrides for the active clinic identity context",
-                "parameters": [
-                    {
-                        "description": "Custom structural templates body configurations",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/invoice.RqSaveMailTemplate"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    }
-                }
-            }
-        },
         "/clinic/invoice/{id}": {
             "get": {
                 "security": [
@@ -4926,54 +4863,6 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Invoice ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/clinic/invoice/{id}/resend": {
-            "post": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "invoice"
-                ],
-                "summary": "Manually re-fire a generated paid invoice statement notification",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Invoice UUID string format token",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -5894,7 +5783,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/coa.RqCreateChartOfAccountOfAccount"
+                            "$ref": "#/definitions/coa.RqCreateChartOfAccount"
                         }
                     }
                 ],
@@ -5919,69 +5808,6 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/coa/chart-of-account/by-key/{key}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "coa"
-                ],
-                "summary": "Get chart of account by key",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Practitioner UUID (for Accountants)",
-                        "name": "practitioner_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Chart of Account Key",
-                        "name": "key",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -6144,7 +5970,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/coa.RqUpdateCharOfAccountOfAccount"
+                            "$ref": "#/definitions/coa.RqUpdateChartOfAccount"
                         }
                     }
                 ],
@@ -6259,6 +6085,258 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Gathers a generalized collection indexing active charts mapped to system rules.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "List Account Templates",
+                "responses": {
+                    "200": {
+                        "description": "An array matching structural index configuration items",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/coa.RsAccountTemplate"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal scanning array processing sequence broken",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Overwrites and updates a target chart structure mapped inside the active repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Update Account Template",
+                "parameters": [
+                    {
+                        "description": "Mutation values specifications struct bundle wrapper",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqUpdateAccountTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Structural transformation or payload validation parameter failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Underlying relational mapping updating failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Creates a new chart of account blueprint record within the DB storage pool.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Create Account Template",
+                "parameters": [
+                    {
+                        "description": "Account baseline specifications structure payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqAccountTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input request body error context parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal system storage engine baseline failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/templates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries and returns a single account template baseline context view record.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Get Account Template By ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Valid string parsed UUID pattern match filter",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Matching records successfully unpacked and transformed from storage",
+                        "schema": {
+                            "$ref": "#/definitions/coa.RsAccountTemplate"
+                        }
+                    },
+                    "400": {
+                        "description": "Path variables missing precise conversion requirements",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The requested configuration item does not exist inside the target index",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Removes a global chart blueprint record and removes/decouples matching active records across downstream practitioners.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Delete Account Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target account template string parsed UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The template configuration was successfully removed and cascade transformations executed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Path parameters missing matching conversion standards or authorization missing",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Cascading database deletions or records severance operation processing failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -13038,34 +13116,31 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.AccountClassification": {
-            "type": "string",
-            "enum": [
-                "Current Asset",
-                "Non-Current Asset",
-                "Contra-Asset",
-                "Current Liability",
-                "Non-Current Liability",
-                "Equity",
-                "Contra-Equity",
-                "Operating Revenue",
-                "Other Revenue",
-                "Direct Costs",
-                "Operating Expense"
-            ],
-            "x-enum-varnames": [
-                "ClassificationCurrentAsset",
-                "ClassificationNonCurrentAsset",
-                "ClassificationContraAsset",
-                "ClassificationCurrentLiability",
-                "ClassificationNonCurrentLiability",
-                "ClassificationEquity",
-                "ClassificationContraEquity",
-                "ClassificationOperatingRevenue",
-                "ClassificationOtherRevenue",
-                "ClassificationDirectCosts",
-                "ClassificationOperatingExpense"
-            ]
+        "coa.RqAccountTemplate": {
+            "type": "object",
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
         },
         "coa.RqCheckCodeUnique": {
             "type": "object",
@@ -13086,7 +13161,7 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.RqCreateChartOfAccountOfAccount": {
+        "coa.RqCreateChartOfAccount": {
             "type": "object",
             "required": [
                 "account_tax_id",
@@ -13103,13 +13178,16 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1
                 },
-                "classification": {
-                    "$ref": "#/definitions/coa.AccountClassification"
-                },
                 "code": {
                     "type": "integer",
                     "maximum": 9999,
                     "minimum": 100
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
                 },
                 "is_system": {
                     "type": "boolean"
@@ -13123,7 +13201,33 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.RqUpdateCharOfAccountOfAccount": {
+        "coa.RqUpdateAccountTemplate": {
+            "type": "object",
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "coa.RqUpdateChartOfAccount": {
             "type": "object",
             "properties": {
                 "account_tax_id": {
@@ -13133,9 +13237,6 @@ const docTemplate = `{
                 "account_type_id": {
                     "type": "integer",
                     "minimum": 1
-                },
-                "classification": {
-                    "$ref": "#/definitions/coa.AccountClassification"
                 },
                 "code": {
                     "type": "integer",
@@ -13147,6 +13248,47 @@ const docTemplate = `{
                     "maxLength": 255
                 },
                 "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "coa.RsAccountTemplate": {
+            "type": "object",
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -14426,33 +14568,6 @@ const docTemplate = `{
                 }
             }
         },
-        "invoice.InvoiceSection": {
-            "type": "object",
-            "required": [
-                "documentNumber",
-                "entries",
-                "sectionType"
-            ],
-            "properties": {
-                "documentNumber": {
-                    "type": "string"
-                },
-                "entries": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.Item"
-                    }
-                },
-                "sectionType": {
-                    "type": "string",
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ]
-                }
-            }
-        },
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
@@ -14497,28 +14612,13 @@ const docTemplate = `{
                 "sections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/invoice.InvoiceSection"
+                        "$ref": "#/definitions/section.RqSection"
                     }
                 },
                 "status": {
                     "type": "string"
                 },
                 "templateId": {
-                    "type": "string"
-                }
-            }
-        },
-        "invoice.RqSaveMailTemplate": {
-            "type": "object",
-            "required": [
-                "mail_body",
-                "mail_subject"
-            ],
-            "properties": {
-                "mail_body": {
-                    "type": "string"
-                },
-                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -14535,17 +14635,20 @@ const docTemplate = `{
                 "billingPeriodTo": {
                     "type": "string"
                 },
+                "clinicId": {
+                    "type": "string"
+                },
                 "contactId": {
                     "type": "string"
                 },
-                "dueDate": {
-                    "type": "string"
-                },
-                "entries": {
+                "deleteSections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/item.RqUpdateEntry"
+                        "type": "string"
                     }
+                },
+                "dueDate": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -14568,7 +14671,7 @@ const docTemplate = `{
                 "sections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/invoice.InvoiceSection"
+                        "$ref": "#/definitions/section.RqUpdateSection"
                     }
                 },
                 "status": {
@@ -14603,12 +14706,6 @@ const docTemplate = `{
                 "dueDate": {
                     "type": "string"
                 },
-                "entries": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RsEntry"
-                    }
-                },
                 "id": {
                     "type": "string"
                 },
@@ -14624,11 +14721,8 @@ const docTemplate = `{
                 "sections": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/invoice.InvoiceSection"
+                        "$ref": "#/definitions/section.RsSection"
                     }
-                },
-                "sentTo": {
-                    "$ref": "#/definitions/contact.RsContact"
                 },
                 "status": {
                     "type": "string"
@@ -14641,68 +14735,85 @@ const docTemplate = `{
                 }
             }
         },
-        "invoice.RsInvoiceMailTemplate": {
-            "type": "object",
-            "properties": {
-                "is_custom": {
-                    "type": "boolean"
-                },
-                "mail_body": {
-                    "type": "string"
-                },
-                "mail_subject": {
-                    "type": "string"
-                }
-            }
+        "item.BasCode": {
+            "type": "string",
+            "enum": [
+                "G1",
+                "1A",
+                "G3",
+                "G11",
+                "1B"
+            ],
+            "x-enum-varnames": [
+                "CodeG1",
+                "Code1A",
+                "CodeG3",
+                "CodeG11",
+                "Code1B"
+            ]
         },
-        "item.Item": {
+        "item.EntryType": {
+            "type": "string",
+            "enum": [
+                "DEBIT",
+                "CREDIT"
+            ],
+            "x-enum-varnames": [
+                "DEBIT",
+                "CREDIT"
+            ]
+        },
+        "item.RqEntry": {
             "type": "object",
+            "required": [
+                "name",
+                "sortOrder"
+            ],
             "properties": {
-                "bascode": {
-                    "type": "string"
+                "amount": {
+                    "type": "number"
+                },
+                "basCode": {
+                    "$ref": "#/definitions/item.BasCode"
                 },
                 "description": {
                     "type": "string"
                 },
                 "entryType": {
+                    "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
                     "type": "string"
                 },
-                "id": {
-                    "type": "string"
-                },
-                "invoiceSectionID": {
+                "invoiceSectionId": {
                     "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
-                    "type": "integer"
-                },
                 "sortOrder": {
                     "type": "integer"
-                },
-                "totalAmount": {
-                    "type": "number"
-                },
-                "unitPrice": {
-                    "type": "number"
                 }
             }
         },
         "item.RqUpdateEntry": {
             "type": "object",
-            "required": [
-                "id"
-            ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "basCode": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.BasCode"
                 },
                 "description": {
                     "type": "string"
                 },
                 "entryType": {
+                    "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
                     "type": "string"
                 },
                 "id": {
@@ -14714,33 +14825,31 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
-                    "type": "integer"
-                },
                 "sortOrder": {
                     "type": "integer"
-                },
-                "unitPrice": {
-                    "type": "number"
                 }
             }
         },
         "item.RsEntry": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "basCode": {
-                    "type": "string"
+                    "$ref": "#/definitions/item.BasCode"
                 },
                 "description": {
                     "type": "string"
                 },
                 "entryType": {
+                    "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
                     "type": "string"
                 },
                 "id": {
-                    "type": "string"
-                },
-                "invoiceId": {
                     "type": "string"
                 },
                 "invoiceSectionId": {
@@ -14749,17 +14858,8 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
-                    "type": "integer"
-                },
                 "sortOrder": {
                     "type": "integer"
-                },
-                "totalAmount": {
-                    "type": "number"
-                },
-                "unitPrice": {
-                    "type": "number"
                 }
             }
         },
@@ -15013,6 +15113,171 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "section.RqSection": {
+            "type": "object",
+            "required": [
+                "documentNumber",
+                "sectionType"
+            ],
+            "properties": {
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqEntry"
+                    }
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "sectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "taxMethod": {
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.TaxMethod"
+                        }
+                    ]
+                }
+            }
+        },
+        "section.RqUpdateSection": {
+            "type": "object",
+            "properties": {
+                "deleteEntries": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqUpdateEntry"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "invoiceSection": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "sectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "taxMethod": {
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.TaxMethod"
+                        }
+                    ]
+                }
+            }
+        },
+        "section.RsSection": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RsEntry"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "sectionType": {
+                    "$ref": "#/definitions/section.SectionType"
+                },
+                "taxMethod": {
+                    "$ref": "#/definitions/section.TaxMethod"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "section.SectionType": {
+            "type": "string",
+            "enum": [
+                "CALCULATION_STATEMENT",
+                "SFA_INVOICE",
+                "REMITTANCE_INVOICE"
+            ],
+            "x-enum-varnames": [
+                "CALCULATIONSTATEMENT",
+                "SFAINVOICE",
+                "REMITTANCEINVOICE"
+            ]
+        },
+        "section.TaxMethod": {
+            "type": "string",
+            "enum": [
+                "NO_TAX",
+                "INCLUSIVE",
+                "EXCLUSIVE"
+            ],
+            "x-enum-varnames": [
+                "NoTax",
+                "Inclusive",
+                "Exclusive"
+            ]
         },
         "setting.RqCreatePractitioner": {
             "type": "object",
@@ -15336,6 +15601,9 @@ const docTemplate = `{
         "template.LineItem": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -15344,12 +15612,6 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
-                },
-                "qty": {
-                    "type": "integer"
-                },
-                "unit_price": {
-                    "type": "number"
                 }
             }
         },

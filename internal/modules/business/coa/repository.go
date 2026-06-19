@@ -28,13 +28,13 @@ type Repository interface {
 	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error)
 	CountChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
-	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
 	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error)
 	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
 	UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 	GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error)
+	ListTemplates(ctx context.Context) ([]COATemplate, error)
 }
 
 type repository struct {
@@ -46,19 +46,36 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 var chartOfAccountColumns = map[string]string{
-	"practitioner_id": "practitioner_id",
+	"practitioner_id": "coa.practitioner_id",
 	"id":              "coa.id",
-	"account_type_id": "coa.account_type_id",
-	"account_tax_id":  "coa.account_tax_id",
-	"code":            "coa.code",
-	"name":            "coa.name",
-	"key":             "coa.key",
-	"is_system":       "coa.is_system",
-	"classification":  "coa.classification",
+	"account_type_id": "COALESCE(coa.account_type_id, tpl.account_type_id)",
+	"account_tax_id":  "COALESCE(coa.account_tax_id, tpl.account_tax_id)",
+	"code":            "COALESCE(coa.code, tpl.code)",
+	"name":            "COALESCE(coa.name, tpl.name)",
+	"is_system":       "COALESCE(coa.is_system, tpl.is_system)",
 	"created_at":      "coa.created_at",
 }
 
-var coaSearchColumns = []string{"coa.name", "CAST(coa.code AS TEXT)"}
+var coaSearchColumns = []string{"COALESCE(coa.name, tpl.name)", "CAST(COALESCE(coa.code, tpl.code) AS TEXT)"}
+
+const coaBaseSelectQuery = `
+	SELECT 
+		coa.id, coa.practitioner_id, coa.template_id, coa.is_custom, coa.created_at, coa.updated_at, coa.deleted_at,
+		coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.is_system, coa.is_cos, coa.is_capital,
+		atyp.name AS account_type_name,
+		tpl.id AS "template.id",
+		tpl.account_type_id AS "template.account_type_id",
+		tpl.account_tax_id AS "template.account_tax_id",
+		tpl.code AS "template.code",
+		tpl.name AS "template.name",
+		tpl.is_system AS "template.is_system",
+		tpl.is_cos AS "template.is_cos",
+		tpl.is_capital AS "template.is_capital"
+	FROM tbl_chart_of_accounts coa
+	LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = coa.template_id
+	LEFT JOIN tbl_account_type atyp ON atyp.id = COALESCE(coa.account_type_id, tpl.account_type_id)
+	LEFT JOIN tbl_account_tax tax ON tax.id = COALESCE(coa.account_tax_id, tpl.account_tax_id)
+`
 
 func (r *repository) ListAccountTypes(ctx context.Context, f common.Filter) ([]*AccountType, error) {
 	base := `SELECT id, name, created_at, updated_at FROM tbl_account_type WHERE 1=1`
@@ -107,15 +124,8 @@ func (r *repository) GetAccountTax(ctx context.Context, id int16) (*AccountTax, 
 }
 
 func (r *repository) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error) {
-	base := `
-		SELECT 
-			coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id,
-			coa.code, coa.name, coa.key, coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-		WHERE coa.deleted_at IS NULL
-	`
+	// Filter logic: standard template accounts hide if the template is deleted. Custom accounts always show.
+	base := coaBaseSelectQuery + ` WHERE coa.deleted_at IS NULL AND (coa.is_custom = true OR tpl.deleted_at IS NULL)`
 	var baseArgs []interface{}
 
 	if role == util.RoleAccountant {
@@ -141,10 +151,13 @@ func (r *repository) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID,
 }
 
 func (r *repository) CountChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) (int, error) {
-	base := ` FROM tbl_chart_of_accounts coa 
-			  JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-			  JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-			  WHERE coa.deleted_at IS NULL `
+	base := ` 
+		FROM tbl_chart_of_accounts coa
+		LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = coa.template_id
+		LEFT JOIN tbl_account_type atyp ON atyp.id = COALESCE(coa.account_type_id, tpl.account_type_id)
+		LEFT JOIN tbl_account_tax tax ON tax.id = COALESCE(coa.account_tax_id, tpl.account_tax_id)
+		WHERE coa.deleted_at IS NULL AND (coa.is_custom = true OR tpl.deleted_at IS NULL)
+	`
 	var baseArgs []interface{}
 
 	if role == util.RoleAccountant {
@@ -173,40 +186,12 @@ func (r *repository) CountChartOfAccount(ctx context.Context, actorID *uuid.UUID
 }
 
 func (r *repository) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error) {
-	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at, coa.deleted_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-		WHERE coa.id = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
-	`
+	query := coaBaseSelectQuery + ` WHERE coa.id = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL`
 	return r.scanChart(r.db.QueryRowxContext(ctx, query, id, practitionerID))
 }
 
-func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
-	query := `
-        SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-               coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at, coa.deleted_at
-        FROM tbl_chart_of_accounts coa
-        JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-        JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-        WHERE coa.key = $1 
-          AND ($2 = '00000000-0000-0000-0000-000000000000'::uuid OR coa.practitioner_id = $2)
-          AND coa.deleted_at IS NULL
-    `
-	return r.scanChart(r.db.QueryRowxContext(ctx, query, key, practitionerID))
-}
-
 func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error) {
-	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at, coa.deleted_at
-		FROM tbl_chart_of_accounts coa
-	    JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-	    JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-		WHERE coa.code = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL
-	`
+	query := coaBaseSelectQuery + ` WHERE COALESCE(coa.code, tpl.code) = $1 AND coa.practitioner_id = $2 AND coa.deleted_at IS NULL`
 	args := []interface{}{code, practitionerID}
 	if excludeID != nil {
 		query += ` AND coa.id != $3`
@@ -218,13 +203,13 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 
 func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error) {
 	query := `
-		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system, classification)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system, is_cos, is_capital, is_custom)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
 	var id uuid.UUID
 	err := tx.QueryRowxContext(ctx, query,
-		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.IsSystem, c.Classification,
+		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem, c.IsCos, c.IsCapital, c.IsCustom,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
@@ -238,20 +223,22 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 	}
 
 	var sb strings.Builder
-	sb.WriteString("INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, classification, is_system) VALUES ")
-	args := make([]interface{}, 0, len(rows)*8)
+	sb.WriteString("INSERT INTO tbl_chart_of_accounts (practitioner_id, template_id) VALUES ")
+	args := make([]interface{}, 0, len(rows)*2)
 
 	for i, row := range rows {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		base := i * 8
-		fmt.Fprintf(&sb, "($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8)
-		args = append(args, row.PractitionerID, row.AccountTypeID, row.AccountTaxID, row.Code, row.Name, row.Key, row.Classification, row.IsSystem)
+		base := i * 2
+		fmt.Fprintf(&sb, "($%d, $%d)", base+1, base+2)
+		args = append(args, row.PractitionerID, row.TemplateID)
 	}
 
+	sb.WriteString(" ON CONFLICT (practitioner_id, template_id) DO NOTHING")
+
 	if _, err := tx.ExecContext(ctx, sb.String(), args...); err != nil {
-		return fmt.Errorf("bulk create chart of accounts: %w", err)
+		return fmt.Errorf("bulk create template-linked chart of accounts: %w", err)
 	}
 	return nil
 }
@@ -259,12 +246,12 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
 	query := `
 		UPDATE tbl_chart_of_accounts
-		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, key = $6, classification = $7, updated_at = now()
+		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, is_system = $6, is_cos = $7, is_capital = $8, is_custom = $9, template_id = $10, updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id
 	`
 	var id uuid.UUID
-	err := r.db.QueryRowxContext(ctx, query, c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.Classification).Scan(&id)
+	err := r.db.QueryRowxContext(ctx, query, c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem, c.IsCos, c.IsCapital, c.IsCustom, c.TemplateID).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -297,32 +284,14 @@ func (r *repository) GetAccountTypeByName(ctx context.Context, name string) (int
 }
 
 func (r *repository) GetByIDInternal(ctx context.Context, id uuid.UUID) (*ChartOfAccount, error) {
-	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at, coa.deleted_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-		WHERE coa.id = $1 AND coa.deleted_at IS NULL
-	`
-	var c ChartOfAccount
-	if err := r.db.GetContext(ctx, &c, query, id); err != nil {
-		return nil, err
-	}
-	return &c, nil
+	query := coaBaseSelectQuery + ` WHERE coa.id = $1 AND coa.deleted_at IS NULL`
+	return r.scanChart(r.db.QueryRowxContext(ctx, query, id))
 }
 
 func (r *repository) getChartByID(ctx context.Context, querier interface {
 	QueryRowxContext(ctx context.Context, query string, args ...interface{}) *sqlx.Row
 }, id uuid.UUID) (*ChartOfAccount, error) {
-	query := `
-		SELECT coa.id, coa.practitioner_id, coa.account_type_id, coa.account_tax_id, coa.code, coa.name, coa.key,
-		       coa.is_system, at.is_taxable, coa.classification, atyp.name AS account_type_name, coa.created_at, coa.updated_at, coa.deleted_at
-		FROM tbl_chart_of_accounts coa
-		JOIN tbl_account_tax at ON at.id = coa.account_tax_id
-		JOIN tbl_account_type atyp ON atyp.id = coa.account_type_id
-		WHERE coa.id = $1
-	`
+	query := coaBaseSelectQuery + ` WHERE coa.id = $1`
 	return r.scanChart(querier.QueryRowxContext(ctx, query, id))
 }
 
@@ -335,4 +304,13 @@ func (r *repository) scanChart(row *sqlx.Row) (*ChartOfAccount, error) {
 		return nil, err
 	}
 	return &c, nil
+}
+
+func (r *repository) ListTemplates(ctx context.Context) ([]COATemplate, error) {
+	const q = `SELECT id, account_type_id, account_tax_id, code, name, is_system, is_cos, is_capital FROM tbl_chart_of_accounts_template WHERE deleted_at IS NULL`
+	var items []COATemplate
+	if err := r.db.SelectContext(ctx, &items, q); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

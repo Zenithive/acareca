@@ -1498,32 +1498,23 @@ definitions:
       lock_date:
         type: string
     type: object
-  coa.AccountClassification:
-    enum:
-    - Current Asset
-    - Non-Current Asset
-    - Contra-Asset
-    - Current Liability
-    - Non-Current Liability
-    - Equity
-    - Contra-Equity
-    - Operating Revenue
-    - Other Revenue
-    - Direct Costs
-    - Operating Expense
-    type: string
-    x-enum-varnames:
-    - ClassificationCurrentAsset
-    - ClassificationNonCurrentAsset
-    - ClassificationContraAsset
-    - ClassificationCurrentLiability
-    - ClassificationNonCurrentLiability
-    - ClassificationEquity
-    - ClassificationContraEquity
-    - ClassificationOperatingRevenue
-    - ClassificationOtherRevenue
-    - ClassificationDirectCosts
-    - ClassificationOperatingExpense
+  coa.RqAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      name:
+        type: string
+    type: object
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -1537,7 +1528,7 @@ definitions:
     required:
     - code
     type: object
-  coa.RqCreateChartOfAccountOfAccount:
+  coa.RqCreateChartOfAccount:
     properties:
       account_tax_id:
         minimum: 1
@@ -1545,12 +1536,14 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
-      classification:
-        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
         type: integer
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
       is_system:
         type: boolean
       name:
@@ -1564,7 +1557,24 @@ definitions:
     - code
     - name
     type: object
-  coa.RqUpdateCharOfAccountOfAccount:
+  coa.RqUpdateAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      id:
+        type: string
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      name:
+        type: string
+    type: object
+  coa.RqUpdateChartOfAccount:
     properties:
       account_tax_id:
         minimum: 1
@@ -1572,8 +1582,6 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
-      classification:
-        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
@@ -1582,6 +1590,33 @@ definitions:
         maxLength: 255
         type: string
       practitioner_id:
+        type: string
+    type: object
+  coa.RsAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      name:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
         type: string
     type: object
   coa.RsCodeUnique:
@@ -2447,25 +2482,6 @@ definitions:
     - email
     - permissions
     type: object
-  invoice.InvoiceSection:
-    properties:
-      documentNumber:
-        type: string
-      entries:
-        items:
-          $ref: '#/definitions/item.Item'
-        type: array
-      sectionType:
-        enum:
-        - CALCULATION_STATEMENT
-        - SFA_INVOICE
-        - REMITTANCE_INVOICE
-        type: string
-    required:
-    - documentNumber
-    - entries
-    - sectionType
-    type: object
   invoice.RqInvoice:
     properties:
       billingPeriodFrom:
@@ -2491,7 +2507,7 @@ definitions:
         type: string
       sections:
         items:
-          $ref: '#/definitions/invoice.InvoiceSection'
+          $ref: '#/definitions/section.RqSection'
         type: array
       status:
         type: string
@@ -2505,16 +2521,6 @@ definitions:
     - name
     - templateId
     type: object
-  invoice.RqSaveMailTemplate:
-    properties:
-      mail_body:
-        type: string
-      mail_subject:
-        type: string
-    required:
-    - mail_body
-    - mail_subject
-    type: object
   invoice.RqUpdateInvoice:
     properties:
       attachmentBase64:
@@ -2523,14 +2529,16 @@ definitions:
         type: string
       billingPeriodTo:
         type: string
+      clinicId:
+        type: string
       contactId:
         type: string
+      deleteSections:
+        items:
+          type: string
+        type: array
       dueDate:
         type: string
-      entries:
-        items:
-          $ref: '#/definitions/item.RqUpdateEntry'
-        type: array
       id:
         type: string
       invoiceFrequency:
@@ -2546,7 +2554,7 @@ definitions:
         type: string
       sections:
         items:
-          $ref: '#/definitions/invoice.InvoiceSection'
+          $ref: '#/definitions/section.RqUpdateSection'
         type: array
       status:
         type: string
@@ -2569,10 +2577,6 @@ definitions:
         type: string
       dueDate:
         type: string
-      entries:
-        items:
-          $ref: '#/definitions/item.RsEntry'
-        type: array
       id:
         type: string
       invoiceFrequency:
@@ -2583,10 +2587,8 @@ definitions:
         type: string
       sections:
         items:
-          $ref: '#/definitions/invoice.InvoiceSection'
+          $ref: '#/definitions/section.RsSection'
         type: array
-      sentTo:
-        $ref: '#/definitions/contact.RsContact'
       status:
         type: string
       templateId:
@@ -2594,45 +2596,63 @@ definitions:
       updatedAt:
         type: string
     type: object
-  invoice.RsInvoiceMailTemplate:
+  item.BasCode:
+    enum:
+    - G1
+    - 1A
+    - G3
+    - G11
+    - 1B
+    type: string
+    x-enum-varnames:
+    - CodeG1
+    - Code1A
+    - CodeG3
+    - CodeG11
+    - Code1B
+  item.EntryType:
+    enum:
+    - DEBIT
+    - CREDIT
+    type: string
+    x-enum-varnames:
+    - DEBIT
+    - CREDIT
+  item.RqEntry:
     properties:
-      is_custom:
-        type: boolean
-      mail_body:
-        type: string
-      mail_subject:
-        type: string
-    type: object
-  item.Item:
-    properties:
-      bascode:
-        type: string
+      amount:
+        type: number
+      basCode:
+        $ref: '#/definitions/item.BasCode'
       description:
         type: string
       entryType:
+        $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
         type: string
-      id:
-        type: string
-      invoiceSectionID:
+      invoiceSectionId:
         type: string
       name:
         type: string
-      quantity:
-        type: integer
       sortOrder:
         type: integer
-      totalAmount:
-        type: number
-      unitPrice:
-        type: number
+    required:
+    - name
+    - sortOrder
     type: object
   item.RqUpdateEntry:
     properties:
+      amount:
+        type: number
       basCode:
-        type: string
+        $ref: '#/definitions/item.BasCode'
       description:
         type: string
       entryType:
+        $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
         type: string
       id:
         type: string
@@ -2640,39 +2660,30 @@ definitions:
         type: string
       name:
         type: string
-      quantity:
-        type: integer
       sortOrder:
         type: integer
-      unitPrice:
-        type: number
-    required:
-    - id
     type: object
   item.RsEntry:
     properties:
+      amount:
+        type: number
       basCode:
-        type: string
+        $ref: '#/definitions/item.BasCode'
       description:
         type: string
       entryType:
+        $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
         type: string
       id:
-        type: string
-      invoiceId:
         type: string
       invoiceSectionId:
         type: string
       name:
         type: string
-      quantity:
-        type: integer
       sortOrder:
         type: integer
-      totalAmount:
-        type: number
-      unitPrice:
-        type: number
     type: object
   notification.RqBulkDismiss:
     properties:
@@ -2839,6 +2850,113 @@ definitions:
       message:
         type: string
     type: object
+  section.RqSection:
+    properties:
+      documentNumber:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RqEntry'
+        type: array
+      invoiceId:
+        type: string
+      sectionType:
+        allOf:
+        - $ref: '#/definitions/section.SectionType'
+        enum:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
+      taxMethod:
+        allOf:
+        - $ref: '#/definitions/section.TaxMethod'
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - NO_TAX
+    required:
+    - documentNumber
+    - sectionType
+    type: object
+  section.RqUpdateSection:
+    properties:
+      deleteEntries:
+        items:
+          type: string
+        type: array
+      documentNumber:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RqUpdateEntry'
+        type: array
+      id:
+        type: string
+      invoiceId:
+        type: string
+      invoiceSection:
+        allOf:
+        - $ref: '#/definitions/section.SectionType'
+        enum:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
+      sectionType:
+        allOf:
+        - $ref: '#/definitions/section.SectionType'
+        enum:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
+      taxMethod:
+        allOf:
+        - $ref: '#/definitions/section.TaxMethod'
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - NO_TAX
+    type: object
+  section.RsSection:
+    properties:
+      createdAt:
+        type: string
+      documentNumber:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RsEntry'
+        type: array
+      id:
+        type: string
+      invoiceId:
+        type: string
+      sectionType:
+        $ref: '#/definitions/section.SectionType'
+      taxMethod:
+        $ref: '#/definitions/section.TaxMethod'
+      updatedAt:
+        type: string
+    type: object
+  section.SectionType:
+    enum:
+    - CALCULATION_STATEMENT
+    - SFA_INVOICE
+    - REMITTANCE_INVOICE
+    type: string
+    x-enum-varnames:
+    - CALCULATIONSTATEMENT
+    - SFAINVOICE
+    - REMITTANCEINVOICE
+  section.TaxMethod:
+    enum:
+    - NO_TAX
+    - INCLUSIVE
+    - EXCLUSIVE
+    type: string
+    x-enum-varnames:
+    - NoTax
+    - Inclusive
+    - Exclusive
   setting.RqCreatePractitioner:
     properties:
       abn:
@@ -3057,16 +3175,14 @@ definitions:
     type: object
   template.LineItem:
     properties:
+      amount:
+        type: number
       description:
         type: string
       line_total:
         type: number
       name:
         type: string
-      qty:
-        type: integer
-      unit_price:
-        type: number
     type: object
   template.PartyInfo:
     properties:
@@ -6446,72 +6562,6 @@ paths:
       summary: Update an invoice by ID
       tags:
       - invoice
-  /clinic/invoice/{id}/resend:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Invoice UUID string format token
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Manually re-fire a generated paid invoice statement notification
-      tags:
-      - invoice
-  /clinic/invoice/email-templates:
-    get:
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.RsBase'
-            - properties:
-                data:
-                  $ref: '#/definitions/invoice.RsInvoiceMailTemplate'
-              type: object
-      security:
-      - BearerToken: []
-      summary: Fetch current invoice template context settings or system defaults
-      tags:
-      - invoice settings
-    post:
-      parameters:
-      - description: Custom structural templates body configurations
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/invoice.RqSaveMailTemplate'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-      security:
-      - BearerToken: []
-      summary: Save modified template layout overrides for the active clinic identity
-        context
-      tags:
-      - invoice settings
   /clinic/login:
     post:
       consumes:
@@ -6955,7 +7005,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/coa.RqCreateChartOfAccountOfAccount'
+          $ref: '#/definitions/coa.RqCreateChartOfAccount'
       produces:
       - application/json
       responses:
@@ -7084,7 +7134,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/coa.RqUpdateCharOfAccountOfAccount'
+          $ref: '#/definitions/coa.RqUpdateChartOfAccount'
       produces:
       - application/json
       responses:
@@ -7119,46 +7169,6 @@ paths:
       security:
       - BearerToken: []
       summary: Update an existing chart of account
-      tags:
-      - coa
-  /coa/chart-of-account/by-key/{key}:
-    get:
-      parameters:
-      - description: Practitioner UUID (for Accountants)
-        in: query
-        name: practitioner_id
-        type: string
-      - description: Chart of Account Key
-        in: path
-        name: key
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.RsError'
-      security:
-      - BearerToken: []
-      summary: Get chart of account by key
       tags:
       - coa
   /coa/chart-of-account/check-code:
@@ -7196,6 +7206,176 @@ paths:
       summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
+  /coa/templates:
+    get:
+      description: Gathers a generalized collection indexing active charts mapped
+        to system rules.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: An array matching structural index configuration items
+          schema:
+            items:
+              $ref: '#/definitions/coa.RsAccountTemplate'
+            type: array
+        "500":
+          description: Internal scanning array processing sequence broken
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: List Account Templates
+      tags:
+      - Chart of Accounts
+    post:
+      consumes:
+      - application/json
+      description: Creates a new chart of account blueprint record within the DB storage
+        pool.
+      parameters:
+      - description: Account baseline specifications structure payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqAccountTemplate'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+        "400":
+          description: Invalid input request body error context parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal system storage engine baseline failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Create Account Template
+      tags:
+      - Chart of Accounts
+    put:
+      consumes:
+      - application/json
+      description: Overwrites and updates a target chart structure mapped inside the
+        active repository.
+      parameters:
+      - description: Mutation values specifications struct bundle wrapper
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqUpdateAccountTemplate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Structural transformation or payload validation parameter failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Underlying relational mapping updating failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Update Account Template
+      tags:
+      - Chart of Accounts
+  /coa/templates/{id}:
+    delete:
+      description: Removes a global chart blueprint record and removes/decouples matching
+        active records across downstream practitioners.
+      parameters:
+      - description: Target account template string parsed UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The template configuration was successfully removed and cascade
+            transformations executed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Path parameters missing matching conversion standards or authorization
+            missing
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Cascading database deletions or records severance operation
+            processing failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Delete Account Template
+      tags:
+      - Chart of Accounts
+    get:
+      description: Queries and returns a single account template baseline context
+        view record.
+      parameters:
+      - description: Valid string parsed UUID pattern match filter
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Matching records successfully unpacked and transformed from
+            storage
+          schema:
+            $ref: '#/definitions/coa.RsAccountTemplate'
+        "400":
+          description: Path variables missing precise conversion requirements
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: The requested configuration item does not exist inside the
+            target index
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Get Account Template By ID
+      tags:
+      - Chart of Accounts
   /entry/{id}:
     delete:
       consumes:
