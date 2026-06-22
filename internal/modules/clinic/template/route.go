@@ -15,6 +15,10 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, authMiddleware gin.HandlerF
 	template.GET("/:id/invoice-settings", h.GetInvoiceSetting)
 	template.PUT("/:id/settings", h.UpdateSetting)
 
+	// Schema management
+	template.GET("/:id/schema", h.GetTemplateSchema)
+	template.PUT("/:id/schema", h.UpdateTemplateSchema)
+
 	template.POST("/:id/preview-pdf", h.GeneratePDF)
 	template.GET("/:id/invoices/:invoice_id/download", h.DownloadPDF)
 	template.POST("/sync-defaults", h.BulkUpdateDefaultsHandler)

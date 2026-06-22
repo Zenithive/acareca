@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -33,6 +34,7 @@ type IRepository interface {
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
 	GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*Setting, error)
+	UpdateMetadata(ctx context.Context, templateId uuid.UUID, metadata *TemplateMetadata) error
 }
 
 type Repository struct {
@@ -325,7 +327,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
             i.id, i.clinic_id, i.template_id, 
             i.billing_period_from::text, i.billing_period_to::text,
             i.invoice_frequency, i.issue_date::text, i.due_date::text,
-            i.status,
+            i.status, i.custom_fields,
             cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
             cl.clinic_name as clinic_name,
             COALESCE(a.address_line1, '') as address_line1,
@@ -347,6 +349,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 
 	var row struct {
 		invoiceRow
+		CustomFieldsRaw       []byte `db:"custom_fields"`
 		SectionDocumentNumber string `db:"section_document_number"`
 	}
 
@@ -391,6 +394,14 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		invoiceNumberName = row.Id.String()[:8]
 	}
 
+	// Unmarshal custom_fields
+	var customFields map[string]interface{}
+	if len(row.CustomFieldsRaw) > 0 && string(row.CustomFieldsRaw) != "{}" {
+		if err := json.Unmarshal(row.CustomFieldsRaw, &customFields); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal custom fields: %w", err)
+		}
+	}
+
 	return &InvoiceResponse{
 		ID:                row.Id,
 		ClinicID:          row.ClinicId,
@@ -403,6 +414,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		Status:            row.Status,
 		ClinicName:        row.ClinicName,
 		InvoiceNumber:     invoiceNumberName,
+		CustomFields:      customFields,
 		SentBy: InvoiceContact{
 			FName:   row.FName,
 			LName:   row.LName,
@@ -451,4 +463,31 @@ func (r *Repository) SaveClinicMailTemplate(ctx context.Context, clinicID uuid.U
 	`, clinicID, subject, body)
 
 	return err
+}
+
+func (r *Repository) UpdateMetadata(ctx context.Context, templateId uuid.UUID, metadata *TemplateMetadata) error {
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	const q = `
+		UPDATE tbl_template
+		SET metadata = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`
+	
+	result, err := r.db.ExecContext(ctx, q, templateId, metadataJSON)
+	if err != nil {
+		return fmt.Errorf("failed to update template metadata: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }

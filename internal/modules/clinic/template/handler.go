@@ -24,6 +24,8 @@ type IHandler interface {
 	GeneratePDF(c *gin.Context)
 	DownloadPDF(c *gin.Context)
 	BulkUpdateDefaultsHandler(c *gin.Context)
+	GetTemplateSchema(c *gin.Context)
+	UpdateTemplateSchema(c *gin.Context)
 }
 
 type Handler struct {
@@ -394,4 +396,75 @@ func (h *Handler) BulkUpdateDefaultsHandler(c *gin.Context) {
 		"status":  "success",
 		"message": "HTML/CSS global layouts synchronized cleanly to central template stores",
 	})
+}
+
+// GetTemplateSchema returns field schema metadata for a template
+// @Summary      Get Template Field Schema
+// @Description  Returns field definitions and computed fields for dynamic form rendering
+// @Tags         Templates
+// @Produce      json
+// @Param        id   path      string            true  "Template UUID ID"
+// @Success      200  {object}  TemplateMetadata  "Template field schema"
+// @Failure      400  {object}  map[string]string "Invalid template id"
+// @Failure      404  {object}  map[string]string "Template not found"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Security BearerToken
+// @Router       /templates/{id}/schema [get]
+func (h *Handler) GetTemplateSchema(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	schema, err := h.svc.GetTemplateSchema(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	
+	response.JSON(c, http.StatusOK, schema, "")
+}
+
+// UpdateTemplateSchema updates field schema metadata for a template
+// @Summary      Update Template Schema
+// @Description  Updates field definitions and computed fields for a template
+// @Tags         Templates
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string            true  "Template UUID ID"
+// @Param        request  body      TemplateMetadata  true  "Template metadata schema"
+// @Success      200      {object}  TemplateMetadata  "Schema updated successfully"
+// @Failure      400      {object}  map[string]string "Invalid request"
+// @Failure      404      {object}  map[string]string "Template not found"
+// @Failure      500      {object}  map[string]string "Internal Server Error"
+// @Security BearerToken
+// @Router       /templates/{id}/schema [put]
+func (h *Handler) UpdateTemplateSchema(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	var metadata TemplateMetadata
+	if err := c.ShouldBindJSON(&metadata); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.UpdateTemplateSchema(c.Request.Context(), id, &metadata); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response.JSON(c, http.StatusOK, metadata, "Schema updated successfully")
 }

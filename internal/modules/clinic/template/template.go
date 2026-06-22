@@ -6,26 +6,23 @@ import (
 	"github.com/google/uuid"
 )
 
-// defaultTemplateHeader takes custom settings into account dynamically via Handlebars tags
 func defaultTemplateHeader(title string, labelName string, addressBannerHTML string) string {
 	return `<table class="layout-table" style="margin-bottom: 2px; width: 100%; border-collapse: collapse;">
   <tr>
     <td style="width: 55%; vertical-align: top; padding: 0;">
-      {{#if template_settings.is_logo}}
-        {{#if logo_url}}
-        <div style="line-height: 0; margin: 0 0 4px 0;">
-          <img class="brand-logo" src="{{logo_url}}" alt="{{bill_from.name}}" />
-        </div>
-        {{/if}}
-      {{/if}}
+      {{if .logo_url}}
+      <div style="line-height: 0; margin: 0 0 4px 0;">
+        <img class="brand-logo" src="{{.logo_url}}" alt="{{.bill_from.name}}" />
+      </div>
+      {{end}}
 
       <div style="margin: 0; padding: 0;">
-        <h2 class="hdr-clinic-name">{{bill_from.name}}</h2>
-        {{#if bill_from.address}}
-        <p class="hdr-clinic-line">{{bill_from.address}}</p>
-        {{/if}}
+        <h2 class="hdr-clinic-name">{{.bill_from.name}}</h2>
+        {{if .bill_from.address}}
+        <p class="hdr-clinic-line">{{.bill_from.address}}</p>
+        {{end}}
         <p class="hdr-clinic-contact">
-          {{#if bill_from.abn}}ABN {{bill_from.abn}}{{/if}}{{#if bill_from.phone}} &nbsp;|&nbsp; Ph {{bill_from.phone}}{{/if}}{{#if bill_from.email}} &nbsp;|&nbsp; {{bill_from.email}}{{/if}}
+          {{if .bill_from.abn}}ABN {{.bill_from.abn}}{{end}}{{if .bill_from.phone}} &nbsp;|&nbsp; Ph {{.bill_from.phone}}{{end}}{{if .bill_from.email}} &nbsp;|&nbsp; {{.bill_from.email}}{{end}}
         </p>
       </div>
 
@@ -37,19 +34,19 @@ func defaultTemplateHeader(title string, labelName string, addressBannerHTML str
         <tbody>
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>` + labelName + `</strong></td>
-            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_number}}</td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{.invoice_number}}</td>
           </tr>
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Issue Date</strong></td>
-            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{issue_date_display}}</td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{.issue_date_display}}</td>
           </tr>
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Billing Period</strong></td>
-            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{billing_period}}</td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{.billing_period}}</td>
           </tr>
           <tr>
             <td class="hm-lbl" style="text-align: left; padding: 2px 0;"><strong>Invoice Frequency</strong></td>
-            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{invoice_frequency}}</td>
+            <td class="hm-val" style="text-align: right; padding: 2px 0;">{{.invoice_frequency}}</td>
           </tr>
         </tbody>
       </table>
@@ -58,21 +55,15 @@ func defaultTemplateHeader(title string, labelName string, addressBannerHTML str
 </table>`
 }
 
-// sharedCSS maps template variables directly from the dynamic configuration pipeline to control visual attributes
 func sharedCSS() string {
 	return `
-/* Dynamically imports Google Fonts selected inside the dropdown panel */
-{{#if template_settings.header_font_family}}
-@import url('https://fonts.googleapis.com/css2?family={{template_settings.header_font_family}}:wght@400;700&display=swap');
-{{/if}}
-{{#if template_settings.body_font_family}}
-@import url('https://fonts.googleapis.com/css2?family={{template_settings.body_font_family}}:wght@400;700&display=swap');
-{{/if}}
+@import url('https://fonts.googleapis.com/css2?family={{.template_settings.header_font_family}}:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family={{.template_settings.body_font_family}}:wght@400;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap');
 
 :root { 
-  --primary-color: {{#if template_settings.primary_color}}{{template_settings.primary_color}}{{else}}#1f4e5f{{/if}}; 
-  --accent-color: {{#if template_settings.accent_color}}{{template_settings.accent_color}}{{else}}#1f4e5f{{/if}};
+  --primary-color: {{.template_settings.primary_color}};
+  --accent-color: {{.template_settings.accent_color}};
   --bg-input-blue: #e8f1f5; 
   --bg-darker-blue: #d4e5ee;
   --text-dark: #000000;
@@ -83,7 +74,7 @@ func sharedCSS() string {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body { 
-  font-family: {{#if template_settings.body_font_family}}'{{template_settings.body_font_family}}'{{else}}'Arial'{{/if}}, sans-serif; 
+  font-family: '{{.template_settings.body_font_family}}', sans-serif; 
   font-size: 11px; 
   color: var(--text-dark); 
   background: #ffffff; 
@@ -107,10 +98,8 @@ body {
   page-break-after: avoid;
 }
 
-/* Background watermark styling driven cleanly by frontend toggle context */
-{{#if template_settings.is_watermark}}
 .invoice-page::before {
-  content: "{{#if template_settings.watermark_text}}{{template_settings.watermark_text}}{{else}}PAID{{/if}}";
+  content: "{{.template_settings.watermark_text}}";
   position: absolute;
   top: 50%;
   left: 50%;
@@ -122,7 +111,6 @@ body {
   pointer-events: none;
   white-space: nowrap;
 }
-{{/if}}
 
 .layout-table {
   width: 100%;
@@ -138,7 +126,7 @@ body {
 }
 
 .hdr-clinic-name { 
-  font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
+  font-family: '{{.template_settings.header_font_family}}', sans-serif;
   font-size: 16px; 
   font-weight: bold; 
   color: var(--primary-color); 
@@ -158,7 +146,7 @@ body {
 }
 
 .hdr-doc-title { 
-  font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
+  font-family: '{{.template_settings.header_font_family}}', sans-serif;
   font-size: 20px; 
   font-weight: bold; 
   color: var(--primary-color); 
@@ -297,16 +285,15 @@ body {
 }
 
 func DefaultTemplates() []RqGlobalTemplate {
-	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
-	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
-	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{bill_to.name}}</div>{{#if bill_to.address}}<p class="recipient-line">{{bill_to.address}}</p>{{/if}}{{#if bill_to.abn}}<p class="recipient-line">ABN {{bill_to.abn}}</p>{{/if}}</div>`
+	calculationPreparedFor := `<div class="address-banner-box"><div class="banner-label">PREPARED FOR</div><div class="recipient-name">{{.bill_to.name}}</div><p class="recipient-line">{{.bill_to.address}}</p><p class="recipient-line">ABN {{.bill_to.abn}}</p></div>`
+	taxInvoiceBillTo := `<div class="address-banner-box"><div class="banner-label">BILL TO</div><div class="recipient-name">{{.bill_to.name}}</div><p class="recipient-line">{{.bill_to.address}}</p><p class="recipient-line">ABN {{.bill_to.abn}}</p></div>`
+	remittancePayee := `<div class="address-banner-box"><div class="banner-label">PAYEE</div><div class="recipient-name">{{.bill_to.name}}</div><p class="recipient-line">{{.bill_to.address}}</p><p class="recipient-line">ABN {{.bill_to.abn}}</p></div>`
 
 	return []RqGlobalTemplate{
 		{
 			Name:      "Calculation Statement",
 			IsDefault: true,
 			IsActive:  true,
-			// Removed []byte wrapper conversion to perfectly fit string literal expectations
 			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
   <table class="data-table">
     <thead>
@@ -317,31 +304,13 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
     </thead>
     <tbody>
-      <tr class="bg-sky-row">
-        <td>Total patient fees collected (incl. GST)</td>
-        <td class="num txt-blue-val">{{custom_patient_fees_collected}}</td>
-        <td class="center">G1</td>
+      {{range .patient_fee_items}}
+      <tr{{if .row_class}} class="{{.row_class}}"{{end}}>
+        <td>{{.label}}</td>
+        <td class="num{{if .value_class}} {{.value_class}}{{end}}"{{if .is_bold}} style="font-weight: bold;"{{end}}>{{.value}}</td>
+        <td class="center">{{.bas_code}}</td>
       </tr>
-      <tr>
-        <td>GST collected on patient fees (taxable services)</td>
-        <td class="num txt-blue-val">{{custom_patient_fees_gst}}</td>
-        <td class="center">1A</td>
-      </tr>
-      <tr>
-        <td>GST-free sales [G1 &ndash; (1A &times; 11)]</td>
-        <td class="num" style="font-weight: bold;">{{custom_patient_fees_gst_free}}</td>
-        <td class="center">G3</td>
-      </tr>
-      <tr>
-        <td>Less: laboratory fees (net of GST)</td>
-        <td class="num txt-blue-val">{{custom_lab_fees}}</td>
-        <td class="center"></td>
-      </tr>
-      <tr class="row-bold bg-sky-row">
-        <td>Net patient fees [G1 &ndash; 1A &ndash; lab fees]</td>
-        <td class="num">{{custom_net_patient_fees}}</td>
-        <td class="center"></td>
-      </tr>
+      {{end}}
     </tbody>
   </table>
 
@@ -363,7 +332,7 @@ func DefaultTemplates() []RqGlobalTemplate {
               </td>
               <td style="padding: 0; font-weight: bold; width: 20%%; text-align: right; vertical-align: middle; white-space: nowrap;">
                 Fee rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%%</span>
+                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{.custom_fee_rate}}%%</span>
               </td>
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
@@ -377,21 +346,13 @@ func DefaultTemplates() []RqGlobalTemplate {
           </ul>
         </td>
       </tr>
-      <tr class="bg-sky-row">
-        <td style="width: 65%%;">Service & Facility Fee [net patient fees &times; fee rate]</td>
-        <td class="num" style="width: 20%%; font-weight: bold;">{{subtotal}}</td>
-        <td class="center" style="width: 15%%;"></td>
+      {{range .service_fee_items}}
+      <tr{{if .row_class}} class="{{.row_class}}"{{end}}>
+        <td style="width: 65%%;">{{.label}}</td>
+        <td class="num{{if .value_class}} {{.value_class}}{{end}}" style="width: 20%%;{{if .is_bold}} font-weight: bold;{{end}}">{{.value}}</td>
+        <td class="center" style="width: 15%%;">{{.bas_code}}</td>
       </tr>
-      <tr>
-        <td style="width: 65%%;">GST on Service & Facility Fee (10%%)</td>
-        <td class="num" style="width: 20%%;">{{tax_total}}</td>
-        <td class="center" style="width: 15%%;">1B</td>
-      </tr>
-      <tr class="row-total bg-sky-row">
-        <td>Total Service & Facility Fee (incl. GST)</td>
-        <td class="num">{{grand_total}}</td>
-        <td class="center">G11</td>
-      </tr>
+      {{end}}
     </tbody>
   </table>
 
@@ -403,38 +364,20 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>Total patient fees collected on your behalf (incl. GST) [G1]</td>
-        <td class="num">{{custom_patient_fees_collected}}</td>
+      {{range .settlement_items}}
+      <tr{{if .row_class}} class="{{.row_class}}"{{end}}>
+        <td>{{.label}}</td>
+        <td class="num{{if .value_class}} {{.value_class}}{{end}}"{{if .is_bold}} style="font-weight: bold;"{{end}}>{{if .is_negative}}({{.value}}){{else}}{{.value}}{{end}}</td>
       </tr>
-      <tr>
-        <td>Less: laboratory fees (net of GST)</td>
-        <td class="num">({{custom_lab_fees}})</td>
-      </tr>
-      <tr>
-        <td>Less: Total Service & Facility Fee (incl. GST)</td>
-        <td class="num">({{grand_total}})</td>
-      </tr>
-      <tr class="row-bold bg-sky-row">
-        <td>Amount due to dentist</td>
-        <td class="num">{{custom_amount_due_to_dentist}}</td>
-      </tr>
-      <tr>
-        <td>Less: retainers / drawings previously paid this period</td>
-        <td class="num txt-blue-val">{{discount_total}}</td>
-      </tr>
-      <tr class="row-final-balance">
-        <td>BALANCE REMITTED TO DENTIST</td>
-        <td class="num amt-pos" style="font-size: 11.5px;">{{custom_balance_remitted}}</td>
-      </tr>
+      {{end}}
     </tbody>
   </table>
 
   <div class="footer-notes-box">
     <p style="font-style: italic; margin-bottom: 4px;">Notes: Total patient fees, GST collected (1A) and laboratory fees are sourced from the practice management system for the billing period. Highlighted rows indicate data input variables; all other figures are calculated. BAS codes are shown for the clinic's activity statement.</p>
-    {{#if notes}}
-    <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{notes}}</p>
-    {{/if}}
+    {{if .notes}}
+    <p style="margin-top: 4px; font-weight: normal; color: var(--text-dark);"><strong>Notes:</strong> {{.notes}}</p>
+    {{end}}
   </div>
 </div>`, defaultTemplateHeader("CALCULATION STATEMENT", "Statement No.", calculationPreparedFor)),
 			Css: sharedCSS(),
@@ -456,7 +399,7 @@ func DefaultTemplates() []RqGlobalTemplate {
     <tbody>
       <tr>
         <td style="padding: 6px; line-height: 1.4;">
-          <p style="margin-bottom: 2px;">Service and facility fee for the period {{billing_period}},<br>calculated at the agreed rate on net patient fees, comprising:</p>
+          <p style="margin-bottom: 2px;">Service and facility fee for the period {{.billing_period}},<br>calculated at the agreed rate on net patient fees, comprising:</p>
           <ul class="bullet-list" style="list-style-type: decimal;">
             <li>Rent of dental surgery/room</li>
             <li>Patient booking & reception</li>
@@ -466,8 +409,8 @@ func DefaultTemplates() []RqGlobalTemplate {
           </ul>
           <p style="color: var(--text-dark); margin-top: 6px; font-weight: normal;">Service & Facility Fee (per Calculation Statement)</p>
         </td>
-        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%%;">{{subtotal}}</td>
-        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%%; color: var(--text-dark); padding-right: 8px;">{{tax_total}}</td>
+        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%%;">{{.subtotal}}</td>
+        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%%; color: var(--text-dark); padding-right: 8px;">{{.tax_total}}</td>
       </tr>
     </tbody>
   </table>
@@ -479,32 +422,32 @@ func DefaultTemplates() []RqGlobalTemplate {
         <table class="layout-table" style="font-size: 11px; line-height: 1.6;">
           <tr>
             <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
-            <td class="num" style="padding: 3px 6px;">{{subtotal}}</td>
+            <td class="num" style="padding: 3px 6px;">{{.subtotal}}</td>
           </tr>
           <tr>
             <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
-            <td class="num" style="padding: 3px 6px;">{{tax_total}}</td>
+            <td class="num" style="padding: 3px 6px;">{{.tax_total}}</td>
           </tr>
           <tr style="font-weight: bold; background-color: var(--bg-input-blue);">
             <td style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000; text-align: left;">TOTAL (incl. GST)</td>
-            <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{grand_total}}</td>
+            <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{.grand_total}}</td>
           </tr>
         </table>
       </td>
     </tr>
   </table>
 
-  {{#if terms_text}}
+  {{if .terms_text}}
   <div class="footer-notes-box" style="margin-top: 24px;">
-    <p><strong>Payment terms:</strong> {{terms_text}}</p>
+    <p><strong>Payment terms:</strong> {{.terms_text}}</p>
   </div>
   {{else}}
-    {{#if template_settings.terms_text}}
+    {{if .template_settings.terms_text}}
     <div class="footer-notes-box" style="margin-top: 24px;">
-      <p><strong>Payment terms:</strong> {{template_settings.terms_text}}</p>
+      <p><strong>Payment terms:</strong> {{.template_settings.terms_text}}</p>
     </div>
-    {{/if}}
-  {{/if}}
+    {{end}}
+  {{end}}
 </div>`, defaultTemplateHeader("TAX INVOICE", "Invoice No.", taxInvoiceBillTo)),
 			Css: sharedCSS(),
 		},
@@ -524,25 +467,25 @@ func DefaultTemplates() []RqGlobalTemplate {
     <tbody>
       <tr>
         <td>Total patient fees collected on your behalf (incl. GST)</td>
-        <td class="num amt-pos">{{custom_patient_fees_collected}}</td>
+        <td class="num amt-pos">{{.custom_patient_fees_collected}}</td>
       </tr>
       <tr>
         <td>Less: laboratory fees (net of GST)</td>
-        <td class="num">({{custom_lab_fees}})</td>
+        <td class="num">({{.custom_lab_fees}})</td>
       </tr>
       <tr>
         <td>Less: Service & Facility Fee incl. GST (Tax Invoice)</td>
-        <td class="num">({{grand_total}})</td>
+        <td class="num">({{.grand_total}})</td>
       </tr>
-      {{#if discount_total}}
+      {{if .discount_total}}
       <tr>
         <td>Less: retainers / drawings previously paid this period</td>
-        <td class="num">({{discount_total}})</td>
+        <td class="num">({{.discount_total}})</td>
       </tr>
-      {{/if}}
+      {{end}}
       <tr class="row-final-balance">
         <td>NET PAYABLE TO DENTIST</td>
-        <td class="num amt-pos" style="font-size: 11.5px;">{{custom_balance_remitted}}</td>
+        <td class="num amt-pos" style="font-size: 11.5px;">{{.custom_balance_remitted}}</td>
       </tr>
     </tbody>
   </table>
@@ -557,19 +500,19 @@ func DefaultTemplates() []RqGlobalTemplate {
         </tr>
         <tr>
           <td style="font-weight: bold;">Account name</td>
-          <td>{{bill_to.name}}</td>
+          <td>{{.bill_to.name}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">BSB / Account No.</td>
-          <td>{{#if custom_payment_bsb}}{{custom_payment_bsb}}{{else}}063-000{{/if}} / {{#if custom_payment_account}}{{custom_payment_account}}{{else}}12345678{{/if}}</td>
+        <td>{{if .custom_payment_bsb}}{{.custom_payment_bsb}}{{else}}063-000{{end}} / {{if .custom_payment_account}}{{.custom_payment_account}}{{else}}12345678{{end}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment date</td>
-          <td>{{issue_date_display}}</td>
+          <td>{{.issue_date_display}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment reference</td>
-          <td>{{invoice_number}}</td>
+          <td>{{.invoice_number}}</td>
         </tr>
       </tbody>
     </table>
@@ -605,4 +548,186 @@ func DefaultSettings(templateId uuid.UUID) Setting {
 		IsTax:            true,
 		TableStyle:       nil,
 	}
+}
+
+// DefaultMetadataForCalculationStatement returns field schema for Calculation Statement template
+func DefaultMetadataForCalculationStatement() TemplateMetadata {
+	return TemplateMetadata{
+		FieldSchema: []FieldDefinition{
+			{
+				Key:      "custom_patient_fees_collected",
+				Label:    "Patient Fees Collected (incl. GST)",
+				Type:     "currency",
+				Category: "calculation",
+				Required: true,
+				HelpText: stringPtr("Total patient fees from BAS code G1"),
+			},
+			{
+				Key:      "custom_patient_fees_gst",
+				Label:    "GST Collected on Patient Fees",
+				Type:     "currency",
+				Category: "calculation",
+				Required: true,
+				HelpText: stringPtr("GST from taxable services (BAS code 1A)"),
+			},
+			{
+				Key:      "custom_lab_fees",
+				Label:    "Laboratory Fees (net of GST)",
+				Type:     "currency",
+				Category: "calculation",
+				Required: false,
+				DefaultValue: stringPtr("0"),
+			},
+			{
+				Key:          "custom_fee_rate",
+				Label:        "Service & Facility Fee Rate (%)",
+				Type:         "number",
+				Category:     "calculation",
+				Required:     true,
+				DefaultValue: stringPtr("30"),
+				HelpText:     stringPtr("Percentage rate for service and facility fees"),
+			},
+			{
+				Key:      "discount_total",
+				Label:    "Retainers/Drawings Previously Paid",
+				Type:     "currency",
+				Category: "calculation",
+				Required: false,
+				DefaultValue: stringPtr("0"),
+			},
+		},
+		ComputedFields: []ComputedField{
+			{
+				Key:     "custom_patient_fees_gst_free",
+				Label:   "GST-Free Sales",
+				Formula: "custom_patient_fees_collected - (custom_patient_fees_gst * 11)",
+			},
+			{
+				Key:     "custom_net_patient_fees",
+				Label:   "Net Patient Fees",
+				Formula: "custom_patient_fees_collected - custom_patient_fees_gst - custom_lab_fees",
+			},
+			{
+				Key:     "subtotal",
+				Label:   "Service & Facility Fee (excl. GST)",
+				Formula: "custom_net_patient_fees * (custom_fee_rate / 100)",
+			},
+			{
+				Key:     "tax_total",
+				Label:   "GST on Service Fee (10%)",
+				Formula: "subtotal * 0.10",
+			},
+			{
+				Key:     "grand_total",
+				Label:   "Total Service & Facility Fee (incl. GST)",
+				Formula: "subtotal + tax_total",
+			},
+			{
+				Key:     "custom_amount_due_to_dentist",
+				Label:   "Amount Due to Dentist",
+				Formula: "custom_net_patient_fees - subtotal - tax_total",
+			},
+			{
+				Key:     "custom_balance_remitted",
+				Label:   "Balance Remitted to Dentist",
+				Formula: "custom_amount_due_to_dentist - discount_total",
+			},
+		},
+	}
+}
+
+// DefaultMetadataForTaxInvoice returns field schema for Tax Invoice template
+func DefaultMetadataForTaxInvoice() TemplateMetadata {
+	return TemplateMetadata{
+		FieldSchema: []FieldDefinition{
+			{
+				Key:      "subtotal",
+				Label:    "Service & Facility Fee (excl. GST)",
+				Type:     "currency",
+				Category: "totals",
+				Required: true,
+				HelpText: stringPtr("From Calculation Statement"),
+			},
+			{
+				Key:      "tax_total",
+				Label:    "GST (10%)",
+				Type:     "currency",
+				Category: "totals",
+				Required: true,
+			},
+		},
+		ComputedFields: []ComputedField{
+			{
+				Key:     "grand_total",
+				Label:   "Total (incl. GST)",
+				Formula: "subtotal + tax_total",
+			},
+		},
+	}
+}
+
+// DefaultMetadataForRemittanceAdvice returns field schema for Remittance Advice template
+func DefaultMetadataForRemittanceAdvice() TemplateMetadata {
+	return TemplateMetadata{
+		FieldSchema: []FieldDefinition{
+			{
+				Key:      "custom_patient_fees_collected",
+				Label:    "Total Patient Fees Collected (incl. GST)",
+				Type:     "currency",
+				Category: "calculation",
+				Required: true,
+			},
+			{
+				Key:      "custom_lab_fees",
+				Label:    "Laboratory Fees (net of GST)",
+				Type:     "currency",
+				Category: "calculation",
+				Required: false,
+				DefaultValue: stringPtr("0"),
+			},
+			{
+				Key:      "grand_total",
+				Label:    "Service & Facility Fee (incl. GST)",
+				Type:     "currency",
+				Category: "calculation",
+				Required: true,
+				HelpText: stringPtr("From Tax Invoice"),
+			},
+			{
+				Key:      "discount_total",
+				Label:    "Retainers/Drawings Previously Paid",
+				Type:     "currency",
+				Category: "calculation",
+				Required: false,
+				DefaultValue: stringPtr("0"),
+			},
+			{
+				Key:      "custom_payment_bsb",
+				Label:    "BSB Number",
+				Type:     "text",
+				Category: "payment",
+				Required: false,
+				DefaultValue: stringPtr("063-000"),
+			},
+			{
+				Key:      "custom_payment_account",
+				Label:    "Account Number",
+				Type:     "text",
+				Category: "payment",
+				Required: false,
+				DefaultValue: stringPtr("12345678"),
+			},
+		},
+		ComputedFields: []ComputedField{
+			{
+				Key:     "custom_balance_remitted",
+				Label:   "Net Payable to Dentist",
+				Formula: "custom_patient_fees_collected - custom_lab_fees - grand_total - discount_total",
+			},
+		},
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
 }

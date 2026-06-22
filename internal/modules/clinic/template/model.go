@@ -1,6 +1,7 @@
 package template
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -58,9 +59,48 @@ type Template struct {
 	Css         []byte     `db:"css"`
 	IsDefault   bool       `db:"is_default"`
 	IsActive    bool       `db:"is_active"`
+	Metadata    []byte     `db:"metadata"` // JSONB stored as []byte, unmarshaled to TemplateMetadata
 	CreatedAt   time.Time  `db:"created_at"`
 	UpdatedAt   *time.Time `db:"updated_at"`
 	DeletedAt   *time.Time `db:"deleted_at"`
+}
+
+// TemplateMetadata defines field schema and computed fields for dynamic templates
+type TemplateMetadata struct {
+	FieldSchema    []FieldDefinition `json:"field_schema,omitempty"`
+	ComputedFields []ComputedField   `json:"computed_fields,omitempty"`
+}
+
+// FieldDefinition describes a single field in the template
+type FieldDefinition struct {
+	Key          string                 `json:"key"`
+	Label        string                 `json:"label"`
+	Type         string                 `json:"type"` // text, number, currency, date, boolean
+	Category     string                 `json:"category,omitempty"`
+	Required     bool                   `json:"required"`
+	DefaultValue *string                `json:"default_value,omitempty"`
+	HelpText     *string                `json:"help_text,omitempty"`
+	Validation   map[string]interface{} `json:"validation,omitempty"`
+}
+
+// ComputedField represents a calculated field using a formula
+type ComputedField struct {
+	Key     string `json:"key"`
+	Label   string `json:"label"`
+	Formula string `json:"formula"` // e.g., "field1 + field2 - field3"
+}
+
+// GetMetadata unmarshals the metadata JSONB to TemplateMetadata struct
+func (t *Template) GetMetadata() (*TemplateMetadata, error) {
+	if len(t.Metadata) == 0 || string(t.Metadata) == "{}" {
+		return &TemplateMetadata{}, nil
+	}
+	
+	var metadata TemplateMetadata
+	if err := json.Unmarshal(t.Metadata, &metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+	return &metadata, nil
 }
 
 func (tp *Template) ToRs() RsTemplate {
@@ -232,36 +272,45 @@ type RqGeneratePDF struct {
 	Data       InvoiceData
 }
 
+// RsTemplateWithSchema extends RsTemplate with metadata
+type RsTemplateWithMetadata struct {
+	RsTemplate
+	Metadata *TemplateMetadata `json:"metadata,omitempty"`
+}
+
 type InvoiceData struct {
-	ClinicName           string       `json:"clinic_name"`
-	IssueDateDisplay     string       `json:"issue_date_display"`
-	DueDateDisplay       string       `json:"due_date_display"`
-	BillingPeriod        string       `json:"billing_period"`
-	InvoiceFrequency     string       `json:"invoice_frequency"`
-	ShowLogo             bool         `json:"show_logo"`
-	ShowLogoImage        bool         `json:"show_logo_image"`
-	LogoURL              string       `json:"logo_url"`
-	LogoInitial          string       `json:"logo_initial"`
-	WatermarkEnabled     bool         `json:"watermark_enabled"`
-	WatermarkText        string       `json:"watermark_text"`
-	ShowTax              bool         `json:"show_tax"`
-	LetterheadHTML       string       `json:"letterhead_html"`
-	FooterHTML           string       `json:"footer_html"`
-	Notes                string       `json:"notes"`
-	AmountInWords        string       `json:"amount_in_words"`
-	HasAttachments       bool         `json:"has_attachments"`
-	BillFrom             PartyInfo    `json:"bill_from"`
-	BillTo               PartyInfo    `json:"bill_to"`
-	Items                []LineItem   `json:"items"`
-	GrandTotal           float64      `json:"grand_total"`
-	TotalsAmountsCaption string       `json:"totals_amounts_caption"`
-	TotalsGrandLabel     string       `json:"totals_grand_label"`
-	TableStyleClass      string       `json:"table_style_class"`
-	Attachments          []Attachment `json:"attachments"`
-	PrimaryColor         string       `json:"-"`
-	AccentColor          string       `json:"-"`
-	BodyFontFamily       string       `json:"-"`
-	HeaderFontFamily     string       `json:"-"`
+	ClinicName           string              `json:"clinic_name"`
+	IssueDateDisplay     string              `json:"issue_date_display"`
+	DueDateDisplay       string              `json:"due_date_display"`
+	BillingPeriod        string              `json:"billing_period"`
+	InvoiceFrequency     string              `json:"invoice_frequency"`
+	ShowLogo             bool                `json:"show_logo"`
+	ShowLogoImage        bool                `json:"show_logo_image"`
+	LogoURL              string              `json:"logo_url"`
+	LogoInitial          string              `json:"logo_initial"`
+	WatermarkEnabled     bool                `json:"watermark_enabled"`
+	WatermarkText        string              `json:"watermark_text"`
+	ShowTax              bool                `json:"show_tax"`
+	LetterheadHTML       string              `json:"letterhead_html"`
+	FooterHTML           string              `json:"footer_html"`
+	Notes                string              `json:"notes"`
+	AmountInWords        string              `json:"amount_in_words"`
+	HasAttachments       bool                `json:"has_attachments"`
+	BillFrom             PartyInfo           `json:"bill_from"`
+	BillTo               PartyInfo           `json:"bill_to"`
+	Items                []LineItem          `json:"items"`
+	PatientFeeItems      []PatientFeeItem    `json:"patient_fee_items"`  // Dynamic patient fee rows (Section 1)
+	ServiceFeeItems      []ServiceFeeItem    `json:"service_fee_items"`  // Dynamic service fee rows (Section 2)
+	SettlementItems      []SettlementItem    `json:"settlement_items"`   // Dynamic settlement rows (Section 3)
+	GrandTotal           float64             `json:"grand_total"`
+	TotalsAmountsCaption string              `json:"totals_amounts_caption"`
+	TotalsGrandLabel     string              `json:"totals_grand_label"`
+	TableStyleClass      string              `json:"table_style_class"`
+	Attachments          []Attachment        `json:"attachments"`
+	PrimaryColor         string              `json:"-"`
+	AccentColor          string              `json:"-"`
+	BodyFontFamily       string              `json:"-"`
+	HeaderFontFamily     string              `json:"-"`
 }
 
 type PartyInfo struct {
@@ -279,25 +328,56 @@ type LineItem struct {
 	LineTotal   float64 `json:"line_total"`
 }
 
+// PatientFeeItem represents a row in the patient fees table with label, value, and BAS code
+type PatientFeeItem struct {
+	Label      string  `json:"label"`       // e.g., "Total patient fees collected (incl. GST)"
+	Value      float64 `json:"value"`       // The amount
+	BASCode    string  `json:"bas_code"`    // e.g., "G1", "1A", "G3", or empty string
+	RowClass   string  `json:"row_class"`   // e.g., "bg-sky-row", "row-bold bg-sky-row"
+	ValueClass string  `json:"value_class"` // e.g., "txt-blue-val" for blue values
+	IsBold     bool    `json:"is_bold"`     // Whether value should be bold
+}
+
+// ServiceFeeItem represents a row in the service & facility fee table
+type ServiceFeeItem struct {
+	Label      string  `json:"label"`       // e.g., "Service & Facility Fee [net patient fees × fee rate]"
+	Value      float64 `json:"value"`       // The amount
+	BASCode    string  `json:"bas_code"`    // e.g., "1B", "G11", or empty string
+	RowClass   string  `json:"row_class"`   // e.g., "bg-sky-row", "row-total bg-sky-row"
+	ValueClass string  `json:"value_class"` // Additional CSS classes for value cell
+	IsBold     bool    `json:"is_bold"`     // Whether value should be bold
+}
+
+// SettlementItem represents a row in the net settlement table
+type SettlementItem struct {
+	Label      string  `json:"label"`       // e.g., "Total patient fees collected on your behalf (incl. GST) [G1]"
+	Value      float64 `json:"value"`       // The amount
+	RowClass   string  `json:"row_class"`   // e.g., "row-bold bg-sky-row", "row-final-balance"
+	ValueClass string  `json:"value_class"` // e.g., "txt-blue-val", "amt-pos"
+	IsNegative bool    `json:"is_negative"` // Whether to wrap value in parentheses
+	IsBold     bool    `json:"is_bold"`     // Whether value should be bold
+}
+
 type Attachment struct {
 	FileName string `json:"file_name"`
 }
 
 type InvoiceResponse struct {
-	ID                uuid.UUID      `json:"id"`
-	ClinicID          uuid.UUID      `json:"clinic_id"`
-	ClinicName        string         `json:"clinic_name"`
-	TemplateID        uuid.UUID      `json:"template_id"`
-	BillingPeriodFrom string         `json:"billing_period_from"`
-	BillingPeriodTo   string         `json:"billing_period_to"`
-	InvoiceFrequency  string         `json:"invoice_frequency"`
-	IssueDate         string         `json:"issue_date"`
-	DueDate           string         `json:"due_date"`
-	Status            string         `json:"status"`
-	SentBy            InvoiceContact `json:"sent_by"`
-	SentTo            InvoiceContact `json:"sent_to"`
-	Items             []InvoiceItem  `json:"items"`
-	InvoiceNumber     string         `json:"invoice_number"`
+	ID                uuid.UUID              `json:"id"`
+	ClinicID          uuid.UUID              `json:"clinic_id"`
+	ClinicName        string                 `json:"clinic_name"`
+	TemplateID        uuid.UUID              `json:"template_id"`
+	BillingPeriodFrom string                 `json:"billing_period_from"`
+	BillingPeriodTo   string                 `json:"billing_period_to"`
+	InvoiceFrequency  string                 `json:"invoice_frequency"`
+	IssueDate         string                 `json:"issue_date"`
+	DueDate           string                 `json:"due_date"`
+	Status            string                 `json:"status"`
+	SentBy            InvoiceContact         `json:"sent_by"`
+	SentTo            InvoiceContact         `json:"sent_to"`
+	Items             []InvoiceItem          `json:"items"`
+	InvoiceNumber     string                 `json:"invoice_number"`
+	CustomFields      map[string]interface{} `json:"custom_fields,omitempty"`
 }
 
 type InvoiceContact struct {

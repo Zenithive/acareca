@@ -232,12 +232,13 @@ func (r *Repository) GetByID(ctx context.Context, q sqlx.QueryerContext, id uuid
 			id, clinic_id, contact_id::text, template_id, name,
 			billing_period_from::text, billing_period_to::text,
 			invoice_frequency, status, issue_date, due_date,
-			created_at, updated_at
+			custom_fields, created_at, updated_at
 		FROM tbl_invoice
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	var invoice Invoice
+	var customFieldsRaw []byte
 	err := q.QueryRowxContext(ctx, query, id).Scan(
 		&invoice.ID,
 		&invoice.ClinicID,
@@ -250,6 +251,7 @@ func (r *Repository) GetByID(ctx context.Context, q sqlx.QueryerContext, id uuid
 		&invoice.Status,
 		&invoice.IssueDate,
 		&invoice.DueDate,
+		&customFieldsRaw,
 		&invoice.CreatedAt,
 		&invoice.UpdatedAt,
 	)

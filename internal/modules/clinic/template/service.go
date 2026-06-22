@@ -27,6 +27,8 @@ type IService interface {
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
 	BulkUpdateDefaults(ctx context.Context) error
+	GetTemplateSchema(ctx context.Context, templateId uuid.UUID) (*TemplateMetadata, error)
+	UpdateTemplateSchema(ctx context.Context, templateId uuid.UUID, metadata *TemplateMetadata) error
 }
 
 type Service struct {
@@ -356,6 +358,27 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed mapping static properties schema payload: %w", err)
 	}
 
+	// NEW: Merge custom fields from invoice
+	if inv.CustomFields != nil {
+		for key, value := range inv.CustomFields {
+			dataMap[key] = value
+		}
+	}
+
+	// NEW: Compute calculated fields from template metadata
+	metadata, err := t.GetMetadata()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get template metadata: %w", err)
+	}
+	
+	if metadata != nil && len(metadata.ComputedFields) > 0 {
+		for _, cf := range metadata.ComputedFields {
+			// TODO: Implement formula evaluation
+			// For now, skip computed fields - will be implemented in next phase
+			_ = cf
+		}
+	}
+
 	fullHTML, err := chromepdf.Render(html, css, dataMap)
 	if err != nil {
 		return nil, "", err
@@ -448,6 +471,44 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Service) GetTemplateSchema(ctx context.Context, templateId uuid.UUID) (*TemplateMetadata, error) {
+	t, err := s.repo.Get(ctx, templateId)
+	if err != nil {
+		return nil, err
+	}
+	
+	metadata, err := t.GetMetadata()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template metadata: %w", err)
+	}
+	
+	return metadata, nil
+}
+
+func (s *Service) UpdateTemplateSchema(ctx context.Context, templateId uuid.UUID, metadata *TemplateMetadata) error {
+	// Verify template exists
+	_, err := s.repo.Get(ctx, templateId)
+	if err != nil {
+		return err
+	}
+	
+	// Validate metadata structure (basic validation)
+	if metadata != nil {
+		for _, field := range metadata.FieldSchema {
+			if field.Key == "" || field.Label == "" || field.Type == "" {
+				return fmt.Errorf("invalid field definition: key, label, and type are required")
+			}
+		}
+		for _, cf := range metadata.ComputedFields {
+			if cf.Key == "" || cf.Formula == "" {
+				return fmt.Errorf("invalid computed field: key and formula are required")
+			}
+		}
+	}
+	
+	return s.repo.UpdateMetadata(ctx, templateId, metadata)
 }
 
 func freshRqHTMLFix(v interface{}) string {
