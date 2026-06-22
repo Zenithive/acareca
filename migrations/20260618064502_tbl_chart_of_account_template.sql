@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS tbl_chart_of_accounts_template (
     is_system BOOLEAN NOT NULL DEFAULT FALSE,
     is_cos BOOLEAN,
     is_capital BOOLEAN,
+    key VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ,

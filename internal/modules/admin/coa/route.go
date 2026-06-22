@@ -11,4 +11,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler) {
 	group.PUT("", h.Update)
 	group.GET("", h.List)
 	group.GET("/:id", h.GetById)
+	group.DELETE("/:id", h.Delete)
 }

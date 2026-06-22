@@ -25,6 +25,10 @@ func NewService(repo IRepo) IService {
 }
 
 func (s *service) Create(ctx context.Context, rq RqAccountTemplate) error {
+	if rq.Key == "" {
+		rq.Key = GenerateKeyFromName(rq.Name)
+	}
+
 	dbAccount := rq.ToDB()
 	if err := s.repo.Create(ctx, dbAccount); err != nil {
 		return err
@@ -40,6 +44,14 @@ func (s *service) Update(ctx context.Context, rq RqUpdateAccountTemplate) error 
 	}
 
 	rq.ApplyTo(&account)
+
+	if rq.Name != nil {
+		account.Key = GenerateKeyFromName(*rq.Name)
+	}
+
+	if rq.Key != "" {
+		account.Key = rq.Key
+	}
 
 	return s.repo.Update(ctx, account)
 }

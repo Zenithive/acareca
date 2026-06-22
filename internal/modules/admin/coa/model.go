@@ -1,10 +1,19 @@
 package coa
 
 import (
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+func GenerateKeyFromName(name string) string {
+	cleaned := regexp.MustCompile(`[^a-zA-Z0-9\s]`).ReplaceAllString(name, "")
+	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
+	cleaned = strings.TrimSpace(strings.ToLower(cleaned))
+	return strings.ReplaceAll(cleaned, " ", "_")
+}
 
 type AccountTax string
 
@@ -30,10 +39,11 @@ const (
 )
 
 type RqAccountTemplate struct {
-	Code          int16  `json:"code"`
-	Name          string `json:"name"`
-	AccountTypeId int16  `json:"account_type_id"`
-	AccountTaxId  int16  `json:"account_tax_id"`
+	Code          int16  `json:"code" binding:"required"`
+	Key           string `json:"key"`
+	Name          string `json:"name" binding:"required"`
+	AccountTypeId int16  `json:"account_type_id" binding:"required"`
+	AccountTaxId  int16  `json:"account_tax_id" binding:"required"`
 	IsSystem      bool   `json:"is_system"`
 	IsCos         bool   `json:"is_cos"`
 	IsCapital     bool   `json:"is_capital"`
@@ -44,6 +54,7 @@ type RqAccountTemplate struct {
 func (r *RqAccountTemplate) ToDB() AccountTemplate {
 	return AccountTemplate{
 		Code:          r.Code,
+		Key:           r.Key,
 		Name:          r.Name,
 		AccountTypeId: r.AccountTypeId,
 		AccountTaxId:  r.AccountTaxId,
@@ -55,26 +66,26 @@ func (r *RqAccountTemplate) ToDB() AccountTemplate {
 }
 
 type AccountTemplate struct {
-	ID            uuid.UUID `db:"id"`
-	Code          int16     `db:"code"`
-	Name          string    `db:"name"`
-	AccountTypeId int16     `db:"account_type_id"`
-	AccountTaxId  int16     `db:"account_tax_id"`
-	IsSystem      bool      `db:"is_system"`
-	IsCos         bool      `db:"is_cos"`
-	IsCapital     bool      `db:"is_capital"`
-
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt *time.Time `db:"updated_at"`
-
-	CreatedBy uuid.UUID  `db:"created_by"`
-	UpdatedBy *uuid.UUID `db:"updated_by"`
+	ID            uuid.UUID  `db:"id"`
+	Code          int16      `db:"code"`
+	Key           string     `db:"key"`
+	Name          string     `db:"name"`
+	AccountTypeId int16      `db:"account_type_id"`
+	AccountTaxId  int16      `db:"account_tax_id"`
+	IsSystem      bool       `db:"is_system"`
+	IsCos         bool       `db:"is_cos"`
+	IsCapital     bool       `db:"is_capital"`
+	CreatedAt     time.Time  `db:"created_at"`
+	UpdatedAt     *time.Time `db:"updated_at"`
+	CreatedBy     uuid.UUID  `db:"created_by"`
+	UpdatedBy     *uuid.UUID `db:"updated_by"`
 }
 
 func (a *AccountTemplate) ToResponse() RsAccountTemplate {
 	return RsAccountTemplate{
 		ID:            a.ID,
 		Code:          a.Code,
+		Key:           a.Key,
 		Name:          a.Name,
 		AccountTypeId: a.AccountTypeId,
 		AccountTaxId:  a.AccountTaxId,
@@ -89,24 +100,24 @@ func (a *AccountTemplate) ToResponse() RsAccountTemplate {
 }
 
 type RsAccountTemplate struct {
-	ID            uuid.UUID `json:"id"`
-	Code          int16     `json:"code"`
-	Name          string    `json:"name"`
-	AccountTypeId int16     `json:"account_type_id"`
-	AccountTaxId  int16     `json:"account_tax_id"`
-	IsSystem      bool      `json:"is_system"`
-	IsCos         bool      `json:"is_cos"`
-	IsCapital     bool      `json:"is_capital"`
-
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt *time.Time `json:"updated_at"`
-
-	CreatedBy uuid.UUID  `json:"created_by"`
-	UpdatedBy *uuid.UUID `json:"updated_by"`
+	ID            uuid.UUID  `json:"id"`
+	Code          int16      `json:"code"`
+	Key           string     `json:"key"`
+	Name          string     `json:"name"`
+	AccountTypeId int16      `json:"account_type_id"`
+	AccountTaxId  int16      `json:"account_tax_id"`
+	IsSystem      bool       `json:"is_system"`
+	IsCos         bool       `json:"is_cos"`
+	IsCapital     bool       `json:"is_capital"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     *time.Time `json:"updated_at"`
+	CreatedBy     uuid.UUID  `json:"created_by"`
+	UpdatedBy     *uuid.UUID `json:"updated_by"`
 }
 
 type RqUpdateAccountTemplate struct {
-	ID            uuid.UUID `json:"id"`
+	ID            uuid.UUID `json:"id" binding:"required"`
+	Key           string    `json:"key,omitempty"`
 	Name          *string   `json:"name,omitempty"`
 	AccountTypeId *int16    `json:"account_type_id,omitempty"`
 	AccountTaxId  *int16    `json:"account_tax_id,omitempty"`
@@ -147,10 +158,8 @@ func (r *RqUpdateAccountTemplate) ApplyTo(account *AccountTemplate) {
 
 func ToResponses(accounts []AccountTemplate) []RsAccountTemplate {
 	rs := make([]RsAccountTemplate, len(accounts))
-
 	for i := range accounts {
 		rs[i] = accounts[i].ToResponse()
 	}
-
 	return rs
 }

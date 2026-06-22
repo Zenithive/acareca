@@ -42,22 +42,32 @@ func (a *AccountTax) ToRs() AccountTax {
 
 // ChartOfAccount mirrors the precise schema of tbl_chart_of_accounts
 type ChartOfAccount struct {
-	ID              uuid.UUID    `db:"id"`
-	PractitionerID  uuid.UUID    `db:"practitioner_id"`
-	TemplateID      *uuid.UUID   `db:"template_id"`
-	IsCustom        bool         `db:"is_custom"`
-	AccountTypeID   *int16       `db:"account_type_id"`
-	AccountTypeName string       `db:"account_type_name"`
-	AccountTaxID    *int16       `db:"account_tax_id"`
-	Code            *int16       `db:"code"`
-	Name            *string      `db:"name"`
-	IsSystem        *bool        `db:"is_system"`
-	IsCos           *bool        `db:"is_cos"`
-	IsCapital       *bool        `db:"is_capital"`
-	CreatedAt       time.Time    `db:"created_at"`
-	UpdatedAt       *time.Time   `db:"updated_at"`
-	DeletedAt       *time.Time   `db:"deleted_at"`
-	Template        *COATemplate `db:"template"`
+	ID              uuid.UUID  `db:"id"`
+	PractitionerID  uuid.UUID  `db:"practitioner_id"`
+	TemplateID      *uuid.UUID `db:"template_id"`
+	IsCustom        bool       `db:"is_custom"`
+	Key             string     `db:"key"`
+	AccountTypeID   *int16     `db:"account_type_id"`
+	AccountTypeName string     `db:"account_type_name"`
+	IsTaxable       bool       `db:"is_taxable"`
+	AccountTaxID    *int16     `db:"account_tax_id"`
+	Code            *int16     `db:"code"`
+	Name            *string    `db:"name"`
+	IsSystem        *bool      `db:"is_system"`
+	IsCos           *bool      `db:"is_cos"`
+	IsCapital       *bool      `db:"is_capital"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       *time.Time `db:"updated_at"`
+	DeletedAt       *time.Time `db:"deleted_at"`
+
+	TemplateUUID          *uuid.UUID `db:"template_uuid"`
+	TemplateAccountTypeID *int16     `db:"template_account_type_id"`
+	TemplateAccountTaxID  *int16     `db:"template_account_tax_id"`
+	TemplateCode          *int16     `db:"template_code"`
+	TemplateName          *string    `db:"template_name"`
+	TemplateIsSystem      *bool      `db:"template_is_system"`
+	TemplateIsCos         *bool      `db:"template_is_cos"`
+	TemplateIsCapital     *bool      `db:"template_is_capital"`
 }
 
 // ToRs safely extracts values by using local overrides if custom, or falling back to the template if not.
@@ -66,6 +76,8 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 		ID:             c.ID,
 		PractitionerID: c.PractitionerID,
 		IsCustom:       c.IsCustom,
+		Key:            c.Key,
+		IsTaxable:      c.IsTaxable,
 		CreatedAt:      c.CreatedAt,
 	}
 
@@ -74,7 +86,7 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 	}
 
 	// Dynamic Resolution Engine Strategy
-	if c.IsCustom || c.TemplateID == nil || c.Template == nil {
+	if c.IsCustom || c.TemplateUUID == nil {
 		if c.AccountTypeID != nil {
 			res.AccountTypeID = *c.AccountTypeID
 		}
@@ -98,15 +110,29 @@ func (c *ChartOfAccount) ToRs() RsChartOfAccount {
 			res.IsCapital = *c.IsCapital
 		}
 	} else {
-		// Fallback: Pull directly from the linked global structural template
-		res.AccountTypeID = *c.Template.AccountTypeID
+		// Fallback: Pull directly from the flattened template fields mapped during SQL collection
+		if c.TemplateAccountTypeID != nil {
+			res.AccountTypeID = *c.TemplateAccountTypeID
+		}
 		res.AccountTypeName = c.AccountTypeName
-		res.AccountTaxID = *c.Template.AccountTaxID
-		res.Code = *c.Template.Code
-		res.Name = *c.Template.Name
-		res.IsSystem = *c.Template.IsSystem
-		res.IsCos = *c.Template.IsCos
-		res.IsCapital = *c.Template.IsCapital
+		if c.TemplateAccountTaxID != nil {
+			res.AccountTaxID = *c.TemplateAccountTaxID
+		}
+		if c.TemplateCode != nil {
+			res.Code = *c.TemplateCode
+		}
+		if c.TemplateName != nil {
+			res.Name = *c.TemplateName
+		}
+		if c.TemplateIsSystem != nil {
+			res.IsSystem = *c.TemplateIsSystem
+		}
+		if c.TemplateIsCos != nil {
+			res.IsCos = *c.TemplateIsCos
+		}
+		if c.TemplateIsCapital != nil {
+			res.IsCapital = *c.TemplateIsCapital
+		}
 	}
 
 	return res
@@ -118,6 +144,7 @@ type RqCreateChartOfAccount struct {
 	AccountTaxID   int16     `json:"account_tax_id" validate:"required,min=1"`
 	Code           int16     `json:"code" validate:"required,gte=100,lte=9999"`
 	Name           string    `json:"name" validate:"required,max=255"`
+	Key            string    `json:"key"`
 	IsSystem       *bool     `json:"is_system"`
 	IsCos          *bool     `json:"is_cos"`
 	IsCapital      *bool     `json:"is_capital"`
@@ -129,6 +156,7 @@ type RqUpdateChartOfAccount struct {
 	AccountTaxID   *int16     `json:"account_tax_id" validate:"omitempty,min=1"`
 	Code           *int16     `json:"code" validate:"omitempty,gte=100,lte=9999"`
 	Name           *string    `json:"name" validate:"omitempty,max=255"`
+	Key            *string    `json:"key"`
 }
 
 type RqCheckCodeUnique struct {
@@ -141,6 +169,8 @@ type RsChartOfAccount struct {
 	ID              uuid.UUID `json:"id"`
 	PractitionerID  uuid.UUID `json:"practitioner_id"`
 	IsCustom        bool      `json:"is_custom"`
+	Key             string    `json:"key"`
+	IsTaxable       bool      `json:"is_taxable"`
 	AccountTypeID   int16     `json:"account_type_id"`
 	AccountTypeName string    `json:"account_type_name"`
 	AccountTaxID    int16     `json:"account_tax_id"`
@@ -169,6 +199,7 @@ type Filter struct {
 	Name           *string     `form:"name"`
 	Id             *string     `form:"id"`
 	Code           *int        `form:"code"`
+	Key            *string     `form:"key"`
 	AccountType    *string     `form:"account_type"`
 	ExcludeType    []string    `form:"exclude_type"`
 	AccountTypeID  *int16      `form:"-"`
@@ -186,6 +217,9 @@ func (filter *Filter) MapToFilter() common.Filter {
 	}
 	if filter.Name != nil {
 		filters["name"] = filter.Name
+	}
+	if filter.Key != nil {
+		filters["key"] = filter.Key
 	}
 	if filter.Code != nil {
 		filters["code"] = filter.Code
@@ -207,6 +241,7 @@ type COATemplate struct {
 	AccountTaxID  *int16     `db:"account_tax_id"`
 	Code          *int16     `db:"code"`
 	Name          *string    `db:"name"`
+	Key           *string    `db:"key"`
 	IsSystem      *bool      `db:"is_system"`
 	IsCos         *bool      `db:"is_cos"`
 	IsCapital     *bool      `db:"is_capital"`

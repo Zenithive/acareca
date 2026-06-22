@@ -20,6 +20,7 @@ type Service interface {
 	GetAccountTax(ctx context.Context, id int16) (*AccountTax, error)
 	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f *Filter) (*util.RsList, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
+	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
 	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error)
 	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateChartOfAccount) (*RsChartOfAccount, error)
@@ -178,6 +179,20 @@ func (s *service) GetChartOfAccount(ctx context.Context, id uuid.UUID, practitio
 	return &rs, nil
 }
 
+func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error) {
+	targetID := actorID
+	if role == util.RoleAccountant {
+		targetID = uuid.Nil
+	}
+
+	c, err := s.repo.GetChartOfAccountByKey(ctx, key, targetID)
+	if err != nil {
+		return nil, err
+	}
+	rs := c.ToRs()
+	return &rs, nil
+}
+
 func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error) {
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, req.Code, practitionerID, nil)
 	if existing != nil {
@@ -202,10 +217,16 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 		isCapital = *req.IsCapital
 	}
 
+	accountKey := req.Key
+	if accountKey == "" {
+		accountKey = GenerateKeyFromName(req.Name)
+	}
+
 	chart := &ChartOfAccount{
 		PractitionerID: practitionerID,
-		TemplateID:     nil, // Explicit custom operational entry
+		TemplateID:     nil,
 		IsCustom:       true,
+		Key:            accountKey,
 		AccountTypeID:  &req.AccountTypeID,
 		AccountTaxID:   &req.AccountTaxID,
 		Code:           &req.Code,
@@ -281,6 +302,11 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 
 	if req.Name != nil {
 		existing.Name = req.Name
+		existing.Key = GenerateKeyFromName(*req.Name)
+	}
+
+	if req.Key != nil && *req.Key != "" {
+		existing.Key = *req.Key
 	}
 
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
@@ -288,7 +314,7 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 		return nil, err
 	}
 
-	rs := updated.ToRs()
+	bytes := updated.ToRs()
 	idStr := id.String()
 
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -296,10 +322,10 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 		Module:     auditctx.ModuleBusiness,
 		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
-		AfterState: rs,
+		AfterState: bytes,
 	})
 
-	return &rs, nil
+	return &bytes, nil
 }
 
 func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error {

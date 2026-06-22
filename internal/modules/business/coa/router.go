@@ -17,6 +17,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h IHandler, cfg *config.Config, permAda
 	{
 		accounts.GET("", h.ListChartOfAccount)
 		accounts.GET("/:id", h.GetChartOfAccount)
+		accounts.GET("/by-key/:key", h.GetChartOfAccountByKey)
 		accounts.POST("/check-code", h.CheckCodeUnique)
 		accounts.POST("", h.CreateChartOfAccount)
 		accounts.PUT("/:id", h.UpdateCharOfAccount)

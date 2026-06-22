@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
@@ -46,6 +48,13 @@ type AccountTemplate struct {
 	IsCapital       bool
 }
 
+func GenerateKeyFromName(name string) string {
+	cleaned := regexp.MustCompile(`[^a-zA-Z0-9\s]`).ReplaceAllString(name, "")
+	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
+	cleaned = strings.TrimSpace(strings.ToLower(cleaned))
+	return strings.ReplaceAll(cleaned, " ", "_")
+}
+
 func InsertTemplate(ctx context.Context, tx *sql.Tx, account []AccountTemplate) error {
 	for _, acc := range account {
 
@@ -70,24 +79,29 @@ func InsertTemplate(ctx context.Context, tx *sql.Tx, account []AccountTemplate) 
 			return fmt.Errorf("account_tax lookup failed for code=%d name=%q account_tax=%q: %w",
 				acc.Code, acc.Name, acc.AccountTaxName, err)
 		}
+
+		generatedKey := GenerateKeyFromName(acc.Name)
+
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO tbl_chart_of_accounts_template (
 				id,
 				account_type_id,
 				account_tax_id,
 				code,
+				key,
 				name,
 				is_system,
 				is_cos,
 				is_capital
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 			ON CONFLICT (code) DO NOTHING
 		`,
 			uuid.New(),
 			accountTypeID,
 			accountTaxID,
 			acc.Code,
+			generatedKey,
 			acc.Name,
 			acc.IsSystem,
 			acc.IsCos,

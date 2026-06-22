@@ -28,6 +28,7 @@ type Repository interface {
 	ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error)
 	CountChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) (int, error)
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*ChartOfAccount, error)
+	GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error)
 	GetChartByCodeAndPractitionerID(ctx context.Context, code int16, practitionerID uuid.UUID, excludeID *uuid.UUID) (*ChartOfAccount, error)
 	CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error)
 	BulkCreateChartOfAccounts(ctx context.Context, rows []*ChartOfAccount, tx *sqlx.Tx) error
@@ -52,6 +53,7 @@ var chartOfAccountColumns = map[string]string{
 	"account_tax_id":  "COALESCE(coa.account_tax_id, tpl.account_tax_id)",
 	"code":            "COALESCE(coa.code, tpl.code)",
 	"name":            "COALESCE(coa.name, tpl.name)",
+	"key":             "COALESCE(coa.key, tpl.key)",
 	"is_system":       "COALESCE(coa.is_system, tpl.is_system)",
 	"created_at":      "coa.created_at",
 }
@@ -64,6 +66,7 @@ const coaBaseSelectQuery = `
 		coa.practitioner_id, 
 		coa.template_id, 
 		coa.is_custom, 
+		COALESCE(coa.key, tpl.key, '') AS "key", 
 		coa.created_at, 
 		coa.updated_at, 
 		coa.deleted_at,
@@ -75,21 +78,21 @@ const coaBaseSelectQuery = `
 		COALESCE(coa.is_cos, tpl.is_cos, false) AS is_cos, 
 		COALESCE(coa.is_capital, tpl.is_capital, false) AS is_capital,
 		COALESCE(atyp.name, '') AS account_type_name,
-		tpl.id AS "template.id",
-		COALESCE(tpl.account_type_id, 0) AS "template.account_type_id",
-		COALESCE(tpl.account_tax_id, 0) AS "template.account_tax_id",
-		COALESCE(tpl.code, 0) AS "template.code",
-		COALESCE(tpl.name, '') AS "template.name",
-		COALESCE(tpl.is_system, false) AS "template.is_system",
-		COALESCE(tpl.is_cos, false) AS "template.is_cos",
-		COALESCE(tpl.is_capital, false) AS "template.is_capital"
+		COALESCE(tax.is_taxable, false) AS is_taxable, 
+		tpl.id AS template_uuid,
+		COALESCE(tpl.account_type_id, 0) AS template_account_type_id,
+		COALESCE(tpl.account_tax_id, 0) AS template_account_tax_id,
+		COALESCE(tpl.code, 0) AS template_code,
+		COALESCE(tpl.name, '') AS template_name,
+		COALESCE(tpl.is_system, false) AS template_is_system,
+		COALESCE(tpl.is_cos, false) AS template_is_cos,
+		COALESCE(tpl.is_capital, false) AS template_is_capital
 	FROM tbl_chart_of_accounts coa
 	LEFT JOIN tbl_chart_of_accounts_template tpl ON tpl.id = coa.template_id
 	LEFT JOIN tbl_account_type atyp ON atyp.id = COALESCE(coa.account_type_id, tpl.account_type_id)
 	LEFT JOIN tbl_account_tax tax ON tax.id = COALESCE(coa.account_tax_id, tpl.account_tax_id)
 `
 
-// Helper visibility snippet injected across retrieval methods to ensure uniformity
 const coaTemplateSoftDeleteFilter = ` AND coa.deleted_at IS NULL AND (coa.is_custom = true OR tpl.deleted_at IS NULL)`
 
 func (r *repository) ListAccountTypes(ctx context.Context, f common.Filter) ([]*AccountType, error) {
@@ -139,7 +142,6 @@ func (r *repository) GetAccountTax(ctx context.Context, id int16) (*AccountTax, 
 }
 
 func (r *repository) ListChartOfAccount(ctx context.Context, actorID *uuid.UUID, role string, f common.Filter) ([]*ChartOfAccount, error) {
-	// Filter logic: standard template accounts hide if the template is deleted. Custom accounts always show.
 	base := coaBaseSelectQuery + ` WHERE 1=1` + coaTemplateSoftDeleteFilter
 	var baseArgs []interface{}
 
@@ -215,15 +217,24 @@ func (r *repository) GetChartByCodeAndPractitionerID(ctx context.Context, code i
 	return r.scanChart(r.db.QueryRowxContext(ctx, query, args...))
 }
 
+func (r *repository) GetChartOfAccountByKey(ctx context.Context, key string, practitionerID uuid.UUID) (*ChartOfAccount, error) {
+	query := coaBaseSelectQuery + `
+        WHERE COALESCE(coa.key, tpl.key) = $1 
+          AND ($2 = '00000000-0000-0000-0000-000000000000'::uuid OR coa.practitioner_id = $2)
+          AND coa.deleted_at IS NULL
+    `
+	return r.scanChart(r.db.QueryRowxContext(ctx, query, key, practitionerID))
+}
+
 func (r *repository) CreateChartOfAccount(ctx context.Context, c *ChartOfAccount, tx *sqlx.Tx) (*ChartOfAccount, error) {
 	query := `
-		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, is_system, is_cos, is_capital, is_custom)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO tbl_chart_of_accounts (practitioner_id, account_type_id, account_tax_id, code, name, key, is_system, is_cos, is_capital, is_custom)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id
 	`
 	var id uuid.UUID
 	err := tx.QueryRowxContext(ctx, query,
-		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem, c.IsCos, c.IsCapital, c.IsCustom,
+		c.PractitionerID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.IsSystem, c.IsCos, c.IsCapital, c.IsCustom,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("create chart of account: %w", err)
@@ -258,16 +269,15 @@ func (r *repository) BulkCreateChartOfAccounts(ctx context.Context, rows []*Char
 }
 
 func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount) (*ChartOfAccount, error) {
-	// Added validation directly to the update filter to prevent silently writing changes to an orphaned account.
 	query := `
 		UPDATE tbl_chart_of_accounts coa
-		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, is_system = $6, is_cos = $7, is_capital = $8, is_custom = $9, template_id = $10, updated_at = now()
+		SET account_type_id = $2, account_tax_id = $3, code = $4, name = $5, key = $6, is_system = $7, is_cos = $8, is_capital = $9, is_custom = $10, template_id = $11, updated_at = now()
 		FROM tbl_chart_of_accounts_template tpl
 		WHERE coa.id = $1 AND coa.template_id = tpl.id` + coaTemplateSoftDeleteFilter + `
 		RETURNING coa.id
 	`
 	var id uuid.UUID
-	err := r.db.QueryRowxContext(ctx, query, c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.IsSystem, c.IsCos, c.IsCapital, c.IsCustom, c.TemplateID).Scan(&id)
+	err := r.db.QueryRowxContext(ctx, query, c.ID, c.AccountTypeID, c.AccountTaxID, c.Code, c.Name, c.Key, c.IsSystem, c.IsCos, c.IsCapital, c.IsCustom, c.TemplateID).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -278,7 +288,6 @@ func (r *repository) UpdateCharOfAccount(ctx context.Context, c *ChartOfAccount)
 }
 
 func (r *repository) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error {
-	// Prevents running delete updates against records linked to orphaned templates
 	query := `
 		UPDATE tbl_chart_of_accounts coa 
 		SET deleted_at = now(), updated_at = now() 
@@ -328,7 +337,7 @@ func (r *repository) scanChart(row *sqlx.Row) (*ChartOfAccount, error) {
 }
 
 func (r *repository) ListTemplates(ctx context.Context) ([]COATemplate, error) {
-	const q = `SELECT id, account_type_id, account_tax_id, code, name, is_system, is_cos, is_capital FROM tbl_chart_of_accounts_template WHERE deleted_at IS NULL`
+	const q = `SELECT id, account_type_id, account_tax_id, code, name, key, is_system, is_cos, is_capital FROM tbl_chart_of_accounts_template WHERE deleted_at IS NULL`
 	var items []COATemplate
 	if err := r.db.SelectContext(ctx, &items, q); err != nil {
 		return nil, err

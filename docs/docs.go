@@ -5932,6 +5932,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/coa/chart-of-account/by-key/{key}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "coa"
+                ],
+                "summary": "Get chart of account by key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Practitioner UUID (for Accountants)",
+                        "name": "practitioner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Chart of Account Key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/coa/chart-of-account/check-code": {
             "post": {
                 "security": [
@@ -13411,6 +13474,12 @@ const docTemplate = `{
         },
         "coa.RqAccountTemplate": {
             "type": "object",
+            "required": [
+                "account_tax_id",
+                "account_type_id",
+                "code",
+                "name"
+            ],
             "properties": {
                 "account_tax_id": {
                     "type": "integer"
@@ -13429,6 +13498,9 @@ const docTemplate = `{
                 },
                 "is_system": {
                     "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -13485,6 +13557,9 @@ const docTemplate = `{
                 "is_system": {
                     "type": "boolean"
                 },
+                "key": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255
@@ -13496,6 +13571,9 @@ const docTemplate = `{
         },
         "coa.RqUpdateAccountTemplate": {
             "type": "object",
+            "required": [
+                "id"
+            ],
             "properties": {
                 "account_tax_id": {
                     "type": "integer"
@@ -13514,6 +13592,9 @@ const docTemplate = `{
                 },
                 "is_system": {
                     "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -13535,6 +13616,9 @@ const docTemplate = `{
                     "type": "integer",
                     "maximum": 9999,
                     "minimum": 100
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string",
@@ -13574,6 +13658,9 @@ const docTemplate = `{
                 },
                 "is_system": {
                     "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"

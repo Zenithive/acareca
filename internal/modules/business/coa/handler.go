@@ -20,6 +20,7 @@ type IHandler interface {
 	GetAccountTax(c *gin.Context)
 	ListChartOfAccount(c *gin.Context)
 	GetChartOfAccount(c *gin.Context)
+	GetChartOfAccountByKey(c *gin.Context)
 	CreateChartOfAccount(c *gin.Context)
 	UpdateCharOfAccount(c *gin.Context)
 	DeleteChartOfAccount(c *gin.Context)
@@ -232,6 +233,53 @@ func (h *handler) GetChartOfAccount(c *gin.Context) {
 	}
 
 	chart, err := h.svc.GetChartOfAccount(c.Request.Context(), id, practitionerID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, chart, "Chart of account fetched successfully")
+}
+
+// @Summary Get chart of account by key
+// @Tags coa
+// @Produce json
+// @Param practitioner_id query string false "Practitioner UUID (for Accountants)"
+// @Param key path string true "Chart of Account Key"
+// @Success 200 {object} response.RsBase
+// @Failure 400 {object} response.RsError
+// @Failure 401 {object} response.RsError
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /coa/chart-of-account/by-key/{key} [get]
+func (h *handler) GetChartOfAccountByKey(c *gin.Context) {
+	role := c.GetString("role")
+	var actorID uuid.UUID
+	var ok bool
+
+	switch role {
+	case util.RoleAccountant:
+		actorID, ok = util.GetAccountantID(c)
+	case util.RolePractitioner:
+		actorID, ok = util.GetPractitionerID(c)
+	}
+
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, errors.New("unauthorized"))
+		return
+	}
+
+	key := c.Param("key")
+	if key == "" {
+		response.Error(c, http.StatusBadRequest, errors.New("key is required"))
+		return
+	}
+
+	chart, err := h.svc.GetChartOfAccountByKey(c.Request.Context(), key, actorID, role)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)

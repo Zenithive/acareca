@@ -20,6 +20,7 @@ CREATE TABLE tbl_chart_of_accounts (
     is_cos          BOOLEAN NULL, 
     is_capital      BOOLEAN NULL, 
     is_custom       BOOLEAN NOT NULL DEFAULT false,
+    key             VARCHAR(255),
     created_at      TIMESTAMPTZ(6) NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ(6) NULL,
     deleted_at      TIMESTAMPTZ(6) NULL

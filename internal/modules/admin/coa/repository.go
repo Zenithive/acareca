@@ -33,6 +33,7 @@ func (r *repo) Create(ctx context.Context, account AccountTemplate) error {
 			account_type_id,
 			account_tax_id,
 			code,
+			key,
 			name,
 			is_system,
 			is_cos,
@@ -43,6 +44,7 @@ func (r *repo) Create(ctx context.Context, account AccountTemplate) error {
 			:account_type_id,
 			:account_tax_id,
 			:code,
+			:key,
 			:name,
 			:is_system,
 			:is_cos,
@@ -62,6 +64,7 @@ func (r *repo) Update(ctx context.Context, account AccountTemplate) error {
 			account_type_id = :account_type_id,
 			account_tax_id = :account_tax_id,
 			code = :code,
+			key = :key,
 			name = :name,
 			is_system = :is_system,
 			is_cos = :is_cos,
@@ -98,6 +101,7 @@ func (r *repo) GetByID(ctx context.Context, id uuid.UUID) (AccountTemplate, erro
 			account_type_id,
 			account_tax_id,
 			code,
+			key,
 			name,
 			is_system,
 			is_cos,
@@ -113,7 +117,6 @@ func (r *repo) GetByID(ctx context.Context, id uuid.UUID) (AccountTemplate, erro
 	`
 
 	var account AccountTemplate
-
 	err := r.db.GetContext(ctx, &account, query, id)
 	if err != nil {
 		return AccountTemplate{}, err
@@ -129,6 +132,7 @@ func (r *repo) GetByCode(ctx context.Context, code int16) (AccountTemplate, erro
 			account_type_id,
 			account_tax_id,
 			code,
+			key,
 			name,
 			is_system,
 			is_cos,
@@ -144,7 +148,6 @@ func (r *repo) GetByCode(ctx context.Context, code int16) (AccountTemplate, erro
 	`
 
 	var account AccountTemplate
-
 	err := r.db.GetContext(ctx, &account, query, code)
 	if err != nil {
 		return AccountTemplate{}, err
@@ -160,6 +163,7 @@ func (r *repo) List(ctx context.Context) ([]AccountTemplate, error) {
 			account_type_id,
 			account_tax_id,
 			code,
+			key,
 			name,
 			is_system,
 			is_cos,
@@ -175,7 +179,6 @@ func (r *repo) List(ctx context.Context) ([]AccountTemplate, error) {
 	`
 
 	var accounts []AccountTemplate
-
 	err := r.db.SelectContext(ctx, &accounts, query)
 	if err != nil {
 		return nil, err
