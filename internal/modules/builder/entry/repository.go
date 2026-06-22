@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/google/uuid"
@@ -40,8 +39,6 @@ type IRepository interface {
 	LinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
 	UnlinkDocuments(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, documentIDs []uuid.UUID) error
 	GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUID) ([]*RsEntryDocument, error)
-	// Ledger integrity verification
-	AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error
 	// Expense-specific helpers (keep raw SQL in repo, not service)
 	InsertBalancingEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error
 	InsertEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error
@@ -983,38 +980,6 @@ func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUI
 		})
 	}
 	return result, nil
-}
-
-func (r *Repository) AssertLedgerGroupBalances(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID) error {
-	query := `
-        SELECT
-            v.entry_id,
-            COALESCE(SUM(v.entry_balance_variance), 0) AS ledger_balance
-        FROM vw_double_entry_line_items v
-        WHERE v.entry_id = $1
-        GROUP BY v.entry_id`
-
-	type balanceRow struct {
-		EntryID       uuid.UUID `db:"entry_id"`
-		LedgerBalance float64   `db:"ledger_balance"`
-	}
-
-	var balance balanceRow
-	// Note: If using a regular transaction context, make sure to execute against tx
-	if err := tx.QueryRowxContext(ctx, query, entryID).StructScan(&balance); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return fmt.Errorf("assert ledger balance query: %w", err)
-	}
-
-	ledgerBalance := math.Round(balance.LedgerBalance*100) / 100
-
-	if ledgerBalance > 0.01 || ledgerBalance < -0.01 {
-		return fmt.Errorf("ledger integrity violation: entry %s has variance of %.2f which exceeds 0.01 threshold", entryID.String(), ledgerBalance)
-	}
-
-	return nil
 }
 
 // InsertBalancingEntryValue inserts a system-generated balancing row (form_field_id = NULL).

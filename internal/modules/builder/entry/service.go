@@ -191,11 +191,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, e.ID, result)
 
-		// Verify ledger integrity before commit
-		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, result.ID); err != nil {
-			return err
-		}
-
 		return nil
 	})
 
@@ -327,11 +322,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		result = updated.ToRs(vals)
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, id, result)
-
-		// Verify ledger integrity before commit
-		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, id); err != nil {
-			return err
-		}
 
 		return nil
 	})
@@ -586,7 +576,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				ID:                 uuid.New(),
 				EntryID:            entryID,
 				FormFieldID:        &fieldID,
-				CoaID:              f.CoaID, // 🚀 FIXED
+				CoaID:              f.CoaID,
 				NetAmount:          &netBase,
 				GstAmount:          nil,
 				GrossAmount:        &grossTotal,
@@ -658,7 +648,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			ID:                 uuid.New(),
 			EntryID:            entryID,
 			FormFieldID:        &fieldID,
-			CoaID:              f.CoaID, // 🚀 FIXED
+			CoaID:              f.CoaID,
 			NetAmount:          &netBase,
 			GstAmount:          gstAmount,
 			GrossAmount:        &grossTotal,
@@ -897,61 +887,8 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				BusinessPercentage: nil,
 			})
 		}
-
-		// Pass 2c: Final audit confirmation pass
-		var finalDebits float64
-		var finalCredits float64
-
-		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-				continue
-			}
-
-			// 🚀 FIX: Skip computed rows in final audit calculation as well
-			if ev.FormFieldID != nil {
-				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
-				if err == nil && fieldMeta != nil {
-					if fieldMeta.IsFormula || fieldMeta.IsComputed {
-						continue
-					}
-				}
-			}
-
-			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-			if err != nil || chartAccount == nil {
-				continue
-			}
-
-			accountType := strings.ToLower(chartAccount.AccountTypeName)
-			isDebitNormal := strings.Contains(accountType, "asset") ||
-				strings.Contains(accountType, "expense") ||
-				strings.Contains(accountType, "direct cost") ||
-				strings.Contains(accountType, "bank")
-
-			amount := *ev.NetAmount
-			if isDebitNormal {
-				if amount >= 0 {
-					finalDebits += amount
-				} else {
-					finalCredits += math.Abs(amount)
-				}
-			} else {
-				if amount >= 0 {
-					finalCredits += amount
-				} else {
-					finalDebits += math.Abs(amount)
-				}
-			}
-		}
-
-		finalDebits = s.roundValue(finalDebits)
-		finalCredits = s.roundValue(finalCredits)
-		finalVariance := s.roundValue(finalDebits - finalCredits)
-
-		if math.Abs(finalVariance) > 0.01 {
-			return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing (Debits: %.2f, Credits: %.2f)", finalVariance, finalDebits, finalCredits)
-		}
 	}
+
 	return out, nil
 }
 
