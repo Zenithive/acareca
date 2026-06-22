@@ -106,6 +106,7 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 
 type Item struct {
 	ID               uuid.UUID   `db:"id"`
+	InvoiceID        uuid.UUID   `db:"invoice_id"`
 	Name             string      `db:"name"`
 	Description      *string     `db:"description,omitempty"`
 	EntryType        *EntryType  `db:"entry_type,omitempty"`

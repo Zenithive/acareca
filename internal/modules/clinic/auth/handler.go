@@ -36,7 +36,7 @@ func NewHandler(svc Service) IHandler {
 // Register godoc
 // @Summary Register a new invoice clinic
 // @Description registers an isolated invoice clinic with its primary address and contacts
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Param request body RqRegisterClinic true "Clinic Registration Data"
@@ -68,7 +68,7 @@ func (h *handler) Register(c *gin.Context) {
 // Login godoc
 // @Summary Login an invoice clinic
 // @Description authenticates an invoice clinic profile and issues access tokens
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Param request body RqLoginClinic true "Clinic Login Credentials"
@@ -100,7 +100,7 @@ func (h *handler) Login(c *gin.Context) {
 // Logout godoc
 // @Summary Logout current invoice clinic session
 // @Description Invalidates a provided refresh token and tears down the tracking database session state
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Security BearerToken
@@ -138,7 +138,7 @@ func (h *handler) Logout(c *gin.Context) {
 // GetProfile godoc
 // @Summary Get current invoice clinic profile
 // @Description Returns the profile details of the authenticated clinic
-// @Tags invoice
+// @Tags invoice-clinic
 // @Produce json
 // @Security BearerToken
 // @Success 200 {object} response.RsBase
@@ -163,7 +163,7 @@ func (h *handler) GetProfile(c *gin.Context) {
 // VerifyEmail godoc
 // @Summary Verify clinic email address
 // @Description Validates the UUID token sent via email. If valid, marks the clinic as verified and the token as used.
-// @Tags invoice
+// @Tags invoice-clinic
 // @Produce json
 // @Param token query string true "Verification Token (UUID)"
 // @Success 200 {object} response.RsBase "Email verified successfully"
@@ -188,7 +188,7 @@ func (h *handler) VerifyEmail(c *gin.Context) {
 // ChangePassword godoc
 // @Summary Change clinic password
 // @Description Updates the password for the authenticated clinic
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Security BearerToken
@@ -221,7 +221,7 @@ func (h *handler) ChangePassword(c *gin.Context) {
 // UpdateProfile godoc
 // @Summary Update clinic profile
 // @Description Update the profile details of the authenticated clinic
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Security BearerToken
@@ -255,7 +255,7 @@ func (h *handler) UpdateProfile(c *gin.Context) {
 // DeleteClinic godoc
 // @Summary Delete clinic account
 // @Description Soft delete the currently authenticated clinic's account
-// @Tags invoice
+// @Tags invoice-clinic
 // @Produce json
 // @Security BearerToken
 // @Success 200 {object} response.RsBase
@@ -279,7 +279,7 @@ func (h *handler) DeleteClinic(c *gin.Context) {
 // ForgotPassword godoc
 // @Summary Initiate clinic password reset
 // @Description Sends a reset link to the clinic's email if it exists
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Param request body RqForgotPassword true "Email"
@@ -304,7 +304,7 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 // ResetPassword godoc
 // @Summary Reset clinic password using token
 // @Description Updates the clinic's password using the token received via email
-// @Tags invoice
+// @Tags invoice-clinic
 // @Accept json
 // @Produce json
 // @Param request body RqResetPassword true "Token and New Password"

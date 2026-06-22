@@ -4076,7 +4076,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Delete clinic account",
                 "responses": {
@@ -4252,7 +4252,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Change clinic password",
                 "parameters": [
@@ -4308,7 +4308,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "List all contacts for a clinic",
                 "responses": {
@@ -4345,7 +4345,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Create a new contact for a clinic",
                 "parameters": [
@@ -4407,7 +4407,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Delete a contact address by ID",
                 "parameters": [
@@ -4455,7 +4455,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Get a contact by ID",
                 "parameters": [
@@ -4513,7 +4513,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Update a contact by ID",
                 "parameters": [
@@ -4568,7 +4568,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Delete a contact by ID",
                 "parameters": [
@@ -4612,7 +4612,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Initiate clinic password reset",
                 "parameters": [
@@ -4724,6 +4724,69 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/invoice/email-templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Fetch current invoice template context settings or system defaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/invoice.RsInvoiceMailTemplate"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Save modified template layout overrides for the active clinic identity context",
+                "parameters": [
+                    {
+                        "description": "Custom structural templates body configurations",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invoice.RqSaveMailTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     }
                 }
@@ -4890,6 +4953,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/clinic/invoice/{id}/resend": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Manually re-fire a generated paid invoice statement notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID string format token",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/clinic/login": {
             "post": {
                 "description": "authenticates an invoice clinic profile and issues access tokens",
@@ -4900,7 +5011,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Login an invoice clinic",
                 "parameters": [
@@ -4957,7 +5068,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Logout current invoice clinic session",
                 "parameters": [
@@ -5011,7 +5122,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Get current invoice clinic profile",
                 "responses": {
@@ -5049,7 +5160,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Update clinic profile",
                 "parameters": [
@@ -5101,7 +5212,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Register a new invoice clinic",
                 "parameters": [
@@ -5153,7 +5264,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Reset clinic password using token",
                 "parameters": [
@@ -5196,7 +5307,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Verify clinic email address",
                 "parameters": [
@@ -10426,40 +10537,43 @@ const docTemplate = `{
                 }
             }
         },
-        "/template": {
+        "/templates": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Gathers paginated index parameters tracking active engine documents",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Get an template by ID",
+                "summary": "List Global Templates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by document types (comma-separated: Calculation Statement, Tax Invoice, Remittance Advice)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Collection index values mapped to the configuration array",
                         "schema": {
                             "$ref": "#/definitions/util.RsList"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10470,6 +10584,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+                "description": "Generates a new global HTML/CSS template standard layout block",
                 "consumes": [
                     "application/json"
                 ],
@@ -10477,63 +10592,104 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Create a new template for a clinic",
+                "summary": "Create Global Template",
                 "parameters": [
                     {
-                        "description": "Template Data",
+                        "description": "Global Template Schema Payload",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/template.RqTemplate"
+                            "$ref": "#/definitions/template.RqGlobalTemplate"
                         }
                     }
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Global template created successfully",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request JSON payload",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/template/{id}": {
+        "/templates/sync-defaults": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Forces state evaluations to verify, sync, or seed layout definitions directly to internal storage",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Synchronize Global Default Layouts",
+                "responses": {
+                    "200": {
+                        "description": "Initialization completion message mappings",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/{id}": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Returns the decoupled layout configuration values for a designated template ID",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Get an template by ID",
+                "summary": "Get Global Template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -10541,27 +10697,36 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Success payload containing raw blueprint configurations",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid configuration criteria identifier",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Target document or template context completely absent",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10572,6 +10737,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+                "description": "Modifies the foundational attributes, HTML blueprints, or styling tags of an existing configuration profile",
                 "consumes": [
                     "application/json"
                 ],
@@ -10579,35 +10745,50 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Update an template by ID",
+                "summary": "Update Global Template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Updated Configuration Payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.RqGlobalTemplate"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Template updated successfully!",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid Request parameters",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10618,71 +10799,200 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "description": "Removes or flags a template definition from active usage routing context pools",
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Delete an template by ID",
+                "summary": "Delete Global Template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
+                    "24": {
+                        "description": "Template deleted successfully"
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid dynamic parameters",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/template/{id}/pdf": {
+        "/templates/{id}/invoice-settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Get Invoice-Specific Template Settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID ID Context",
+                        "name": "invoiceId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resolved style settings specifications map",
+                        "schema": {
+                            "$ref": "#/definitions/template.RsSetting"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters profile lookup request values",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/{id}/invoices/{invoice_id}/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Download Compiled Invoice PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Target Invoice Entity Context Index UUID",
+                        "name": "invoice_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Target invoice document byte stream file object matches",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Target routing value errors or profile validation flaws",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Target entities unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/{id}/preview-pdf": {
             "post": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
+                "description": "Takes raw arbitrary runtime invoice context and passes it to headless rendering layers instantly",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/pdf"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Generate PDF for a template",
+                "summary": "Preview PDF Generation",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Invoice Data",
+                        "description": "Dynamic structural template values variables",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -10693,99 +11003,60 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "application/pdf Binary context stream",
                         "schema": {
                             "type": "file"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Context assignment mapping values parsing discrepancies",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Target document base unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/template/{id}/pdf/{invoice_id}": {
+        "/templates/{id}/settings": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "produces": [
-                    "application/pdf"
-                ],
-                "tags": [
-                    "template"
-                ],
-                "summary": "Download PDF for a template using invoice data",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Template ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Invoice ID",
-                        "name": "invoice_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
-            }
-        },
-        "/template/{id}/setting": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Queries UI visual presets (e.g., brand colors, fonts, margins) tracked down to structural design blocks",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Get an template settings by ID",
+                "summary": "Get Default Template Settings",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -10793,21 +11064,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Style settings specifications map",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsSetting"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid profile lookup request values",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10818,6 +11095,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+                "description": "Overrides layout details, font schemas, branding assets, or invoice structural rules dynamically",
                 "consumes": [
                     "application/json"
                 ],
@@ -10825,35 +11103,50 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Update an template setting by ID",
+                "summary": "Update Template Settings",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Updated Layout Target Settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.RqUpdateSetting"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Settings modified context mapping properties updated cleanly",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsSetting"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Validation failure errors",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -14615,10 +14908,72 @@ const docTemplate = `{
                         "$ref": "#/definitions/section.RqSection"
                     }
                 },
+                "settings": {
+                    "$ref": "#/definitions/invoice.RqInvoiceSetting"
+                },
                 "status": {
                     "type": "string"
                 },
                 "templateId": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RqInvoiceSetting": {
+            "type": "object",
+            "properties": {
+                "accentColor": {
+                    "type": "string"
+                },
+                "bodyFontFamily": {
+                    "type": "string"
+                },
+                "footerId": {
+                    "type": "string"
+                },
+                "headerFontFamily": {
+                    "type": "string"
+                },
+                "isLogo": {
+                    "type": "boolean"
+                },
+                "isTax": {
+                    "type": "boolean"
+                },
+                "isWatermark": {
+                    "type": "boolean"
+                },
+                "letterheadId": {
+                    "type": "string"
+                },
+                "logoId": {
+                    "type": "string"
+                },
+                "primaryColor": {
+                    "type": "string"
+                },
+                "tableStyle": {
+                    "type": "string"
+                },
+                "termsText": {
+                    "type": "string"
+                },
+                "watermarkText": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RqSaveMailTemplate": {
+            "type": "object",
+            "required": [
+                "mail_body",
+                "mail_subject"
+            ],
+            "properties": {
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -14673,6 +15028,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/section.RqUpdateSection"
                     }
+                },
+                "settings": {
+                    "$ref": "#/definitions/invoice.RqInvoiceSetting"
                 },
                 "status": {
                     "type": "string"
@@ -14731,6 +15089,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RsInvoiceMailTemplate": {
+            "type": "object",
+            "properties": {
+                "is_custom": {
+                    "type": "boolean"
+                },
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -15121,6 +15493,15 @@ const docTemplate = `{
                 "sectionType"
             ],
             "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
                 "documentNumber": {
                     "type": "string"
                 },
@@ -15131,6 +15512,15 @@ const docTemplate = `{
                     }
                 },
                 "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
                     "type": "string"
                 },
                 "sectionType": {
@@ -15162,6 +15552,27 @@ const docTemplate = `{
         "section.RqUpdateSection": {
             "type": "object",
             "properties": {
+                "SectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
                 "deleteEntries": {
                     "type": "array",
                     "items": {
@@ -15183,29 +15594,14 @@ const docTemplate = `{
                 "invoiceId": {
                     "type": "string"
                 },
-                "invoiceSection": {
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/section.SectionType"
-                        }
-                    ]
+                "paymentDate": {
+                    "type": "string"
                 },
-                "sectionType": {
-                    "enum": [
-                        "CALCULATION_STATEMENT",
-                        "SFA_INVOICE",
-                        "REMITTANCE_INVOICE"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/section.SectionType"
-                        }
-                    ]
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
                 },
                 "taxMethod": {
                     "enum": [
@@ -15224,6 +15620,15 @@ const docTemplate = `{
         "section.RsSection": {
             "type": "object",
             "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -15240,6 +15645,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
                     "type": "string"
                 },
                 "sectionType": {
@@ -15635,16 +16049,10 @@ const docTemplate = `{
                 }
             }
         },
-        "template.RqTemplate": {
+        "template.RqGlobalTemplate": {
             "type": "object",
             "properties": {
-                "clinic_id": {
-                    "type": "string"
-                },
                 "css": {
-                    "type": "string"
-                },
-                "description": {
                     "type": "string"
                 },
                 "html": {
@@ -15657,6 +16065,151 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.RqUpdateSetting": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "footer": {
+                    "type": "string"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_logo": {
+                    "type": "boolean"
+                },
+                "is_tax": {
+                    "type": "boolean"
+                },
+                "is_water_mark": {
+                    "type": "boolean"
+                },
+                "letter_head": {
+                    "type": "string"
+                },
+                "logo": {
+                    "type": "string"
+                },
+                "mapping_id": {
+                    "description": "Nullable: links overrides back to custom contexts",
+                    "type": "string"
+                },
+                "primary_color": {
+                    "type": "string"
+                },
+                "table_style": {
+                    "type": "string"
+                },
+                "template_id": {
+                    "type": "string"
+                },
+                "term_text": {
+                    "type": "string"
+                },
+                "water_mark_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.RsSetting": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "footer": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_logo": {
+                    "type": "boolean"
+                },
+                "is_tax": {
+                    "type": "boolean"
+                },
+                "is_water_mark": {
+                    "type": "boolean"
+                },
+                "letter_head": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
+                "logo": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
+                "mapping_id": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "type": "string"
+                },
+                "table_style": {
+                    "type": "string"
+                },
+                "template_id": {
+                    "type": "string"
+                },
+                "term_text": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "water_mark_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.RsTemplate": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "css": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "html": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }

@@ -2,6 +2,8 @@ package section
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
@@ -12,30 +14,53 @@ type ISection interface {
 }
 
 type CalculationStatement struct {
-	DocumentNumber string
-	TaxMethod      *TaxMethod
-	Entries        []*item.Item
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
 }
 
 type SfaInvoice struct {
-	DocumentNumber string
-	TaxMethod      *TaxMethod
-	Entries        []*item.Item
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
 }
 
 type RemittanceInvoice struct {
-	DocumentNumber string
-	TaxMethod      *TaxMethod
-	Entries        []*item.Item
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
 }
 
-func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		docNumber = "CS-" + uuid.New().String()[:8]
+		if calculatedDocNum != "" {
+			docNumber = calculatedDocNum
+		} else {
+			// Fallback if database indexer isn't ready
+			docNumber = "CS-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
+		}
 	}
 
 	// Link entries to this section
@@ -48,22 +73,32 @@ func (ct CalculationStatement) Build(ctx context.Context, invoiceId *uuid.UUID) 
 	}
 
 	return Section{
-		ID:             sectionID,
-		InvoiceID:      invoiceId,
-		InvoiceSection: CALCULATIONSTATEMENT,
-		DocumentNumber: docNumber,
-		TaxMethod:      ct.TaxMethod,
-		Entries:        entries,
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   CALCULATIONSTATEMENT,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
+		PaymentMethod:    ct.PaymentMethod,
+		AccountName:      ct.AccountName,
+		Bsb:              ct.Bsb,
+		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
 	}, nil
 }
 
-func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		docNumber = "SFA-" + uuid.New().String()[:8]
+		if calculatedDocNum != "" {
+			docNumber = calculatedDocNum
+		} else {
+			docNumber = "SFA-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
+		}
 	}
 
 	// Link entries to this section
@@ -76,22 +111,32 @@ func (ct SfaInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, 
 	}
 
 	return Section{
-		ID:             sectionID,
-		InvoiceID:      invoiceId,
-		InvoiceSection: SFAINVOICE,
-		DocumentNumber: docNumber,
-		TaxMethod:      ct.TaxMethod,
-		Entries:        entries,
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   SFAINVOICE,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
+		PaymentMethod:    ct.PaymentMethod,
+		AccountName:      ct.AccountName,
+		Bsb:              ct.Bsb,
+		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
 	}, nil
 }
 
-func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Section, error) {
+func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID, calculatedDocNum string) (Section, error) {
 	sectionID := uuid.New()
 
 	// Set default document number if not provided
 	docNumber := ct.DocumentNumber
 	if docNumber == "" {
-		docNumber = "REM-" + uuid.New().String()[:8]
+		if calculatedDocNum != "" {
+			docNumber = calculatedDocNum
+		} else {
+			docNumber = "REM-" + strconv.Itoa(time.Now().Year()) + "-" + uuid.New().String()[:8]
+		}
 	}
 
 	// Link entries to this section
@@ -104,11 +149,17 @@ func (ct RemittanceInvoice) Build(ctx context.Context, invoiceId *uuid.UUID) (Se
 	}
 
 	return Section{
-		ID:             sectionID,
-		InvoiceID:      invoiceId,
-		InvoiceSection: REMITTANCEINVOICE,
-		DocumentNumber: docNumber,
-		TaxMethod:      ct.TaxMethod,
-		Entries:        entries,
+		ID:               sectionID,
+		InvoiceID:        invoiceId,
+		InvoiceSection:   REMITTANCEINVOICE,
+		DocumentNumber:   docNumber,
+		TaxMethod:        ct.TaxMethod,
+		PaymentMethod:    ct.PaymentMethod,
+		AccountName:      ct.AccountName,
+		Bsb:              ct.Bsb,
+		AccountNumber:    ct.AccountNumber,
+		PaymentDate:      ct.PaymentDate,
+		PaymentReference: ct.PaymentReference,
+		Entries:          entries,
 	}, nil
 }

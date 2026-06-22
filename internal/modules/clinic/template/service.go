@@ -3,6 +3,8 @@ package template
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -13,17 +15,18 @@ import (
 )
 
 type IService interface {
-	BulkCreate(ctx context.Context, clinicId uuid.UUID) (*[]RsTemplate, error)
-	Create(ctx context.Context, rq RqTemplate) (*RsTemplate, error)
-	Update(ctx context.Context, rq RqTemplate) (*RsTemplate, error)
-	Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) error
-	Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*RsTemplate, error)
-	List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error)
+	BulkCreate(ctx context.Context) (*[]RsTemplate, error)
+	Create(ctx context.Context, rq RqGlobalTemplate) (*RsTemplate, error)
+	Update(ctx context.Context, id uuid.UUID, rq RqGlobalTemplate) (*RsTemplate, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error)
+	List(ctx context.Context, types []string) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
+	GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
-
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
+	BulkUpdateDefaults(ctx context.Context) error
 }
 
 type Service struct {
@@ -43,8 +46,7 @@ func NewService(repo IRepository, cfg *config.Config) IService {
 	}
 }
 
-func (s *Service) Create(ctx context.Context, rq RqTemplate) (*RsTemplate, error) {
-	// Process and encrypt string text templates into database byte structures
+func (s *Service) Create(ctx context.Context, rq RqGlobalTemplate) (*RsTemplate, error) {
 	html, err := crypto.EncryptAndCompress(rq.Html, s.encryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt layout stream: %w", err)
@@ -56,8 +58,7 @@ func (s *Service) Create(ctx context.Context, rq RqTemplate) (*RsTemplate, error
 
 	t := Template{
 		Name:        rq.Name,
-		ClinicId:    rq.ClinicId,
-		Description: rq.Description,
+		Description: nil,
 		Html:        html,
 		Css:         css,
 		IsDefault:   rq.IsDefault,
@@ -69,6 +70,7 @@ func (s *Service) Create(ctx context.Context, rq RqTemplate) (*RsTemplate, error
 	}
 
 	st := DefaultSettings(t.Id)
+	st.MappingId = nil
 	if err := s.repo.CreateSetting(ctx, &st); err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ func (s *Service) Create(ctx context.Context, rq RqTemplate) (*RsTemplate, error
 	return &rs, nil
 }
 
-func (s *Service) Update(ctx context.Context, rq RqTemplate) (*RsTemplate, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, rq RqGlobalTemplate) (*RsTemplate, error) {
 	html, err := crypto.EncryptAndCompress(rq.Html, s.encryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt layout stream: %w", err)
@@ -90,14 +92,12 @@ func (s *Service) Update(ctx context.Context, rq RqTemplate) (*RsTemplate, error
 	}
 
 	t := Template{
-		Id:          rq.Id,
-		Name:        rq.Name,
-		ClinicId:    rq.ClinicId,
-		Description: rq.Description,
-		Html:        html,
-		Css:         css,
-		IsDefault:   rq.IsDefault,
-		IsActive:    rq.IsActive,
+		Id:        id,
+		Name:      rq.Name,
+		Html:      html,
+		Css:       css,
+		IsDefault: rq.IsDefault,
+		IsActive:  rq.IsActive,
 	}
 
 	if err := s.repo.Update(ctx, &t); err != nil {
@@ -110,53 +110,71 @@ func (s *Service) Update(ctx context.Context, rq RqTemplate) (*RsTemplate, error
 	return &rs, nil
 }
 
-func (s *Service) Get(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) (*RsTemplate, error) {
-	t, err := s.repo.Get(ctx, clinicId, id)
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error) {
+	t, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	rs := t.ToRs()
-
-	// Convert pre-encrypted binary byte blocks into clean Base64
 	rs.Html = base64.StdEncoding.EncodeToString(t.Html)
 	rs.Css = base64.StdEncoding.EncodeToString(t.Css)
 	return &rs, nil
 }
 
+// Internal helper function to enrich media file structures from cloud IDs
+func (s *Service) enrichSettingDocuments(ctx context.Context, st *Setting) error {
+	if st.LogoId != nil {
+		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
+		if err == nil && logo != nil {
+			st.Logo = logo
+		}
+	}
+	if st.LetterHeadId != nil {
+		lh, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
+		if err == nil && lh != nil {
+			st.LetterHead = lh
+		}
+	}
+	if st.FooterId != nil {
+		f, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
+		if err == nil && f != nil {
+			st.Footer = f
+		}
+	}
+	return nil
+}
+
+// GetSetting retrieves the default template settings
 func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error) {
 	st, err := s.repo.GetSetting(ctx, templateId)
 	if err != nil {
 		return nil, err
 	}
-
 	if st == nil {
-		return nil, fmt.Errorf("template setting not found for template id: %s", templateId)
+		return nil, fmt.Errorf("global default setting configuration not provisioned for template: %s", templateId)
 	}
 
-	// Fetch document details if IDs are present
-	if st.LogoId != nil {
-		logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
-		if err != nil {
-			return nil, err
-		}
-		st.Logo = logo
+	if err := s.enrichSettingDocuments(ctx, st); err != nil {
+		return nil, err
 	}
 
-	if st.LetterHeadId != nil {
-		letterhead, err := s.repo.GetDocumentByID(ctx, *st.LetterHeadId)
-		if err != nil {
-			return nil, err
-		}
-		st.LetterHead = letterhead
+	rs := st.ToRs()
+	return &rs, nil
+}
+
+// GetInvoiceSetting retrieves custom settings for an invoice template
+func (s *Service) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error) {
+	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
+	if err != nil {
+		return nil, fmt.Errorf("failed looking up configuration hierarchy matching target: %w", err)
+	}
+	if st == nil {
+		return nil, fmt.Errorf("no operational setting baseline or default profiles discovered for parameters")
 	}
 
-	if st.FooterId != nil {
-		footer, err := s.repo.GetDocumentByID(ctx, *st.FooterId)
-		if err != nil {
-			return nil, err
-		}
-		st.Footer = footer
+	if err := s.enrichSettingDocuments(ctx, st); err != nil {
+		return nil, err
 	}
 
 	rs := st.ToRs()
@@ -165,35 +183,33 @@ func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSett
 
 func (s *Service) UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error) {
 	st := rq.ToDB()
-	if err := s.repo.UpdateSetting(ctx, &st); err != nil {
+	if err := s.repo.UpdateSetting(ctx, &st, rq.TemplateId); err != nil {
 		return nil, err
 	}
 	rs := st.ToRs()
 	return &rs, nil
 }
 
-func (s *Service) BulkCreate(ctx context.Context, clinicId uuid.UUID) (*[]RsTemplate, error) {
-	rqs := DefaultTemplates(clinicId)
+func (s *Service) BulkCreate(ctx context.Context) (*[]RsTemplate, error) {
+	rqs := DefaultTemplates()
 	templates := make([]Template, 0, len(rqs))
 
 	for _, rq := range rqs {
-		html, err := crypto.EncryptAndCompress(rq.Html, s.encryptionKey)
+		html, err := crypto.EncryptAndCompress(string(freshRqHTMLFix(rq.Html)), s.encryptionKey)
 		if err != nil {
 			return nil, err
 		}
-		cssBlob, err := crypto.EncryptAndCompress(rq.Css, s.encryptionKey)
+		cssBlob, err := crypto.EncryptAndCompress(string(freshRqHTMLFix(rq.Css)), s.encryptionKey)
 		if err != nil {
 			return nil, err
 		}
 
 		templates = append(templates, Template{
-			Name:        rq.Name,
-			ClinicId:    rq.ClinicId,
-			Description: rq.Description,
-			Html:        html,
-			Css:         cssBlob,
-			IsDefault:   rq.IsDefault,
-			IsActive:    rq.IsActive,
+			Name:      rq.Name,
+			Html:      html,
+			Css:       cssBlob,
+			IsDefault: rq.IsDefault,
+			IsActive:  rq.IsActive,
 		})
 	}
 
@@ -203,6 +219,7 @@ func (s *Service) BulkCreate(ctx context.Context, clinicId uuid.UUID) (*[]RsTemp
 
 	for _, t := range templates {
 		st := DefaultSettings(t.Id)
+		st.MappingId = nil
 		if err := s.repo.CreateSetting(ctx, &st); err != nil {
 			return nil, err
 		}
@@ -215,20 +232,19 @@ func (s *Service) BulkCreate(ctx context.Context, clinicId uuid.UUID) (*[]RsTemp
 		rsItem.Css = base64.StdEncoding.EncodeToString(t.Css)
 		rs = append(rs, rsItem)
 	}
-
 	return &rs, nil
 }
 
-// Pass-through routines remain untouched
-func (s *Service) Delete(ctx context.Context, clinicId uuid.UUID, id uuid.UUID) error {
-	return s.repo.Delete(ctx, clinicId, id)
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Delete(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context, clinicId uuid.UUID) (*util.RsList, error) {
-	return s.repo.List(ctx, clinicId)
+func (s *Service) List(ctx context.Context, types []string) (*util.RsList, error) {
+	return s.repo.List(ctx, types)
 }
+
 func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error) {
-	t, err := s.repo.Get(ctx, rq.ClinicId, rq.TemplateId)
+	t, err := s.repo.Get(ctx, rq.TemplateId)
 	if err != nil {
 		return nil, err
 	}
@@ -242,19 +258,17 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 		return nil, fmt.Errorf("failed to decrypt css: %w", err)
 	}
 
-	// Pull settings so CSS vars (primary_color, fonts etc.) resolve correctly
 	st, err := s.repo.GetSetting(ctx, rq.TemplateId)
 	if err != nil {
 		return nil, err
 	}
+
 	if st != nil {
 		rq.Data.PrimaryColor = st.PrimaryColor
 		rq.Data.AccentColor = st.AccentColor
 		rq.Data.BodyFontFamily = st.BodyFontFamily
 		rq.Data.HeaderFontFamily = st.HeaderFontFamily
-		if st.IsTax {
-			rq.Data.ShowTax = true
-		}
+		rq.Data.ShowTax = st.IsTax
 		if st.TableStyle != nil {
 			rq.Data.TableStyleClass = *st.TableStyle
 		}
@@ -262,92 +276,33 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 			rq.Data.WatermarkEnabled = true
 			rq.Data.WatermarkText = *st.WaterMarkText
 		}
-		if st.TermText != nil && rq.Data.Notes == "" {
-			// only fall back to setting terms if caller didn't supply notes
-		}
 	}
 
-	data := invoiceDataToMap(rq.Data)
+	dataMap, err := invoiceDataToMap(rq.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed mapping dynamic payload context: %w", err)
+	}
 
-	fullHTML, err := chromepdf.Render(html, css, data)
+	fullHTML, err := chromepdf.Render(html, css, dataMap)
 	if err != nil {
 		return nil, err
 	}
-
 	return chromepdf.Generate(ctx, fullHTML)
 }
 
-func invoiceDataToMap(d InvoiceData) map[string]any {
-	return map[string]any{
-		"clinic_name":        d.ClinicName,
-		"issue_date_display": d.IssueDateDisplay,
-		"due_date_display":   d.DueDateDisplay,
-		"billing_period":     d.BillingPeriod,
-		"invoice_frequency":  d.InvoiceFrequency,
-		"show_logo":          d.ShowLogo,
-		"show_logo_image":    d.ShowLogoImage,
-		"logo_url":           d.LogoURL,
-		"logo_initial":       d.LogoInitial,
-		"watermark_enabled":  d.WatermarkEnabled,
-		"watermark_text":     d.WatermarkText,
-		"show_tax":           d.ShowTax,
-		"letterhead_html":    d.LetterheadHTML,
-		"footer_html":        d.FooterHTML,
-		"notes":              d.Notes,
-		"amount_in_words":    d.AmountInWords,
-		"has_attachments":    d.HasAttachments,
-		"bill_from": map[string]any{
-			"name": d.BillFrom.Name, "address": d.BillFrom.Address,
-			"abn": d.BillFrom.ABN, "email": d.BillFrom.Email, "phone": d.BillFrom.Phone,
-		},
-		"bill_to": map[string]any{
-			"name": d.BillTo.Name, "address": d.BillTo.Address,
-			"abn": d.BillTo.ABN, "email": d.BillTo.Email, "phone": d.BillTo.Phone,
-		},
-		"items":                  lineItemsToMap(d.Items),
-		"grand_total":            d.GrandTotal,
-		"totals_amounts_caption": d.TotalsAmountsCaption,
-		"totals_grand_label":     d.TotalsGrandLabel,
-		"table_style_class":      d.TableStyleClass,
-		"attachments":            attachmentsToMap(d.Attachments),
-		"primary_color":          d.PrimaryColor,
-		"accent_color":           d.AccentColor,
-		"body_font_family":       d.BodyFontFamily,
-		"header_font_family":     d.HeaderFontFamily,
-	}
-}
-
-func lineItemsToMap(items []LineItem) []map[string]any {
-	out := make([]map[string]any, len(items))
-	for i, it := range items {
-		out[i] = map[string]any{
-			"name": it.Name, "description": it.Description,
-			"unit_price": it.Amount,
-			"line_total": it.LineTotal,
-		}
-	}
-	return out
-}
-
-func attachmentsToMap(items []Attachment) []map[string]any {
-	out := make([]map[string]any, len(items))
-	for i, a := range items {
-		out[i] = map[string]any{"file_name": a.FileName}
-	}
-	return out
-}
-
 func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
-	// Fetch invoice
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
+		// FIXED: Surface explicit mismatch or query execution bubble-up errors cleanly
+		if errors.Is(err, ErrInvoiceNotFound) {
+			return nil, "", fmt.Errorf("failed to fetch invoice: invoice record matching id %s not found for clinic %s", invoiceId, clinicId)
+		}
 		return nil, "", fmt.Errorf("failed to fetch invoice: %w", err)
 	}
 
-	// Fetch template
-	t, err := s.repo.Get(ctx, clinicId, templateId)
+	t, err := s.repo.Get(ctx, templateId)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to fetch base template structural data: %w", err)
 	}
 
 	html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
@@ -359,16 +314,13 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed to decrypt css: %w", err)
 	}
 
-	// Fetch settings
-	st, err := s.repo.GetSetting(ctx, templateId)
+	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
 	if err != nil {
 		return nil, "", err
 	}
 
-	// Map invoice → InvoiceData
 	data := invoiceToData(inv)
 
-	// Overlay settings
 	if st != nil {
 		data.PrimaryColor = st.PrimaryColor
 		data.AccentColor = st.AccentColor
@@ -387,16 +339,24 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		}
 		if st.IsLogo {
 			data.ShowLogo = true
-			if st.Logo != nil {
-				data.ShowLogoImage = true
-				data.LogoURL = s.cfg.R2StoragePrefix + st.Logo.ToRsDocument().FileKey
+			if st.LogoId != nil {
+				logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
+				if err == nil && logo != nil {
+					data.ShowLogoImage = true
+					data.LogoURL = s.cfg.R2StoragePrefix + logo.ToRsDocument().FileKey
+				}
 			} else if len(inv.ClinicName) > 0 {
 				data.LogoInitial = string([]rune(inv.ClinicName)[0])
 			}
 		}
 	}
 
-	fullHTML, err := chromepdf.Render(html, css, invoiceDataToMap(data))
+	dataMap, err := invoiceDataToMap(data)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed mapping static properties schema payload: %w", err)
+	}
+
+	fullHTML, err := chromepdf.Render(html, css, dataMap)
 	if err != nil {
 		return nil, "", err
 	}
@@ -406,6 +366,108 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", err
 	}
 
-	filename := fmt.Sprintf("invoice-%s-%s", inv.ID.String()[:8], inv.ClinicName)
+	filename := fmt.Sprintf("INVOICE %s", inv.InvoiceNumber)
 	return pdf, filename, nil
+}
+
+func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
+	freshTemplates := DefaultTemplates()
+	existingList, err := s.repo.List(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed listing global blueprints: %w", err)
+	}
+
+	existingMap := make(map[string]RsTemplate)
+	if existingList != nil && existingList.Items != nil {
+		if itemsSlice, ok := existingList.Items.([]RsTemplate); ok {
+			for _, item := range itemsSlice {
+				existingMap[item.Name] = item
+			}
+		}
+	}
+
+	for _, freshRq := range freshTemplates {
+		htmlBlob, err := crypto.EncryptAndCompress(string(freshRqHTMLFix(freshRq.Html)), s.encryptionKey)
+		if err != nil {
+			return err
+		}
+		cssBlob, err := crypto.EncryptAndCompress(string(freshRqHTMLFix(freshRq.Css)), s.encryptionKey)
+		if err != nil {
+			return err
+		}
+
+		if existingMatched, exists := existingMap[freshRq.Name]; exists {
+			// CASE 1: OVERWRITE EXISTING TEMPLATE BLUEPRINT
+			t := Template{
+				Id:        existingMatched.Id,
+				Name:      freshRq.Name,
+				Html:      htmlBlob,
+				Css:       cssBlob,
+				IsDefault: freshRq.IsDefault,
+				IsActive:  freshRq.IsActive,
+			}
+			if err := s.repo.Update(ctx, &t); err != nil {
+				return fmt.Errorf("failed overwriting central design template text context '%s': %w", freshRq.Name, err)
+			}
+
+		} else {
+			// CASE 2: PROVISION NEW TEMPLATE BLUEPRINT
+			t := Template{
+				Name:      freshRq.Name,
+				Html:      htmlBlob,
+				Css:       cssBlob,
+				IsDefault: freshRq.IsDefault,
+				IsActive:  freshRq.IsActive,
+			}
+			if err := s.repo.Create(ctx, &t); err != nil {
+				return fmt.Errorf("failed tracking fresh template layout baseline: %w", err)
+			}
+
+			mappingID := uuid.New()
+			settingID := uuid.New()
+
+			st := DefaultSettings(t.Id)
+			st.Id = settingID
+			st.MappingId = &mappingID
+
+			if err := s.repo.CreateSetting(ctx, &st); err != nil {
+				return fmt.Errorf("failed tracking default options values profiles: %w", err)
+			}
+
+			m := Mapping{
+				ID:         mappingID,
+				InvoiceID:  nil, // Explicitly NULL because it represents a default blueprint configuration
+				TemplateID: t.Id,
+				SettingID:  settingID,
+				ClinicID:   nil, // System-wide global default
+			}
+
+			if err := s.repo.CreateMapping(ctx, &m); err != nil {
+				return fmt.Errorf("failed creating global default mapping linkage: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func freshRqHTMLFix(v interface{}) string {
+	if str, ok := v.(string); ok {
+		return str
+	}
+	if bytes, ok := v.([]byte); ok {
+		return string(bytes)
+	}
+	return ""
+}
+
+func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	var res map[string]interface{}
+	if err := json.Unmarshal(bytes, &res); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
