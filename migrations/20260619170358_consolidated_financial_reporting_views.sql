@@ -363,7 +363,6 @@ SELECT fe.clinic_id,
     fev.description,
     cfv.form_id AS form_id,
     COALESCE(coa.account_tax_id, tpl.account_tax_id) AS tax_id,
-    -- 🚀 FIX: Map sign correctly for the 900-range Equity templates to ensure credit entries report positive
     CASE
         WHEN COALESCE(coa.code, tpl.code) >= 900 AND COALESCE(coa.code, tpl.code) <= 999 THEN -COALESCE(fev.net_amount, 0) 
         ELSE COALESCE(fev.net_amount, 0)
@@ -491,7 +490,7 @@ WHERE fe.status      = 'SUBMITTED'
   AND coa.deleted_at IS NULL
   AND (coa.is_custom = true OR tpl.deleted_at IS NULL);
 
-CREATE VIEW vw_bas_summary AS
+CREATE OR REPLACE VIEW vw_bas_summary AS
 WITH base AS (
     SELECT
         clinic_id,
@@ -612,8 +611,6 @@ SELECT fe.clinic_id,
     COALESCE(coa.name, tpl.name) AS account_name,
     at.id AS account_type_id,
     at.name AS account_type,
-    
-    -- 🚀 FIX: Absolute presentation amounts matching your table's data pattern
     CASE 
         WHEN at.name = 'Revenue' THEN ABS(COALESCE(fev.net_amount, 0))
         WHEN at.name IN ('Liability', 'Equity') THEN -COALESCE(fev.net_amount, 0)
@@ -625,7 +622,6 @@ SELECT fe.clinic_id,
         WHEN at.name IN ('Liability', 'Equity') THEN -COALESCE(fev.gross_amount, 0)
         ELSE COALESCE(fev.gross_amount, 0)
     END AS gross_amount,
-    
     fev.description,
     fev.business_percentage,
     cfv.form_id AS form_id,
@@ -635,19 +631,16 @@ SELECT fe.clinic_id,
         WHEN at.name IN ('Liability', 'Equity', 'Revenue') THEN 'CREDIT'
         ELSE 'UNKNOWN'
     END AS normal_balance,
-    -- Calculate True Physical Debits
     CASE
         WHEN at.name IN ('Asset', 'Expense', 'Bank', 'Direct Cost', 'Other - ITR Reporting Item') AND COALESCE(fev.net_amount, 0) >= 0 THEN COALESCE(fev.net_amount, 0)
         WHEN at.name IN ('Liability', 'Equity', 'Revenue') AND COALESCE(fev.net_amount, 0) < 0 THEN ABS(COALESCE(fev.net_amount, 0))
         ELSE 0
     END AS debit_amount,
-    -- Calculate True Physical Credits
     CASE
         WHEN at.name IN ('Asset', 'Expense', 'Bank', 'Direct Cost', 'Other - ITR Reporting Item') AND COALESCE(fev.net_amount, 0) < 0 THEN ABS(COALESCE(fev.net_amount, 0))
         WHEN at.name IN ('Liability', 'Equity', 'Revenue') AND COALESCE(fev.net_amount, 0) >= 0 THEN COALESCE(fev.net_amount, 0)
         ELSE 0
     END AS credit_amount,
-    -- True Net Balance impact factor relative to Ledger Rules
     CASE
         WHEN at.name IN ('Asset', 'Expense', 'Bank', 'Direct Cost', 'Other - ITR Reporting Item') THEN COALESCE(fev.net_amount, 0)
         WHEN at.name IN ('Liability', 'Equity', 'Revenue') THEN -COALESCE(fev.net_amount, 0)
@@ -701,7 +694,6 @@ WHERE fe.status = 'SUBMITTED'
         (ff.id IS NULL AND fev.coa_id IS NOT NULL)
     );
 
-    
 CREATE OR REPLACE VIEW vw_double_entry_entry_summary AS
 SELECT practitioner_id,
     clinic_id,
@@ -724,6 +716,7 @@ GROUP BY practitioner_id,
     date,
     entry_date;
 
+-- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
