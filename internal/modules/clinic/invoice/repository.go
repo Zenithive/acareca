@@ -189,7 +189,7 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 
 	selectQuery := `
 		SELECT 
-			id, clinic_id, contact_id, template_id, name,
+			id, clinic_id, contact_id, name,
 			billing_period_from, billing_period_to,
 			invoice_frequency, status, issue_date, due_date,
 			created_at, updated_at

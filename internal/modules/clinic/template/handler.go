@@ -169,6 +169,7 @@ func (h *Handler) List(c *gin.Context) {
 			}
 		}
 	}
+
 	rs, err := h.svc.List(c.Request.Context(), types)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -214,14 +215,8 @@ func (h *Handler) GetSetting(c *gin.Context) {
 // @Failure      400  {object}  map[string]string "Invalid parameters profile lookup request values"
 // @Failure      500  {object}  map[string]string "Internal Server Error"
 // @Security BearerToken
-// @Router       /templates/{id}/invoice-settings [get]
+// @Router       /templates/invoice-settings [get]
 func (h *Handler) GetInvoiceSetting(c *gin.Context) {
-	templateId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid template id"})
-		return
-	}
-
 	clinicId, ok := util.GetEntityID(c)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clinic id"})
@@ -234,7 +229,24 @@ func (h *Handler) GetInvoiceSetting(c *gin.Context) {
 		return
 	}
 
-	rs, err := h.svc.GetInvoiceSetting(c.Request.Context(), clinicId, invoiceId, templateId)
+	// supports ?templateId=<uuid>&templateId=<uuid>...
+	rawIds := c.QueryArray("templateId")
+	if len(rawIds) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing templateId query parameter"})
+		return
+	}
+
+	templateIds := make([]uuid.UUID, 0, len(rawIds))
+	for _, raw := range rawIds {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid templateId: " + raw})
+			return
+		}
+		templateIds = append(templateIds, id)
+	}
+
+	rs, err := h.svc.GetInvoiceSetting(c.Request.Context(), clinicId, invoiceId, templateIds)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -338,14 +350,8 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 // @Failure      404         {object}  map[string]string "Target entities unavailable"
 // @Failure      500         {object}  map[string]string "Internal Server Error"
 // @Security BearerToken
-// @Router       /templates/{id}/invoices/{invoice_id}/download [get]
+// @Router       /templates/invoices/{invoice_id}/download [get]
 func (h *Handler) DownloadPDF(c *gin.Context) {
-	templateId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid template id"})
-		return
-	}
-
 	invoiceId, err := uuid.Parse(c.Param("invoice_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice id"})
@@ -358,7 +364,23 @@ func (h *Handler) DownloadPDF(c *gin.Context) {
 		return
 	}
 
-	pdf, filename, err := h.svc.DownloadPDF(c.Request.Context(), clinicId, templateId, invoiceId)
+	rawIds := c.QueryArray("templateId")
+	if len(rawIds) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing templateId query parameter"})
+		return
+	}
+
+	templateIds := make([]uuid.UUID, 0, len(rawIds))
+	for _, raw := range rawIds {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid templateId: " + raw})
+			return
+		}
+		templateIds = append(templateIds, id)
+	}
+
+	pdf, filename, err := h.svc.DownloadPDF(c.Request.Context(), clinicId, templateIds, invoiceId)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)

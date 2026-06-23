@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
@@ -22,10 +23,10 @@ type IService interface {
 	Get(ctx context.Context, id uuid.UUID) (*RsTemplate, error)
 	List(ctx context.Context, types []string) (*util.RsList, error)
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSetting, error)
-	GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error)
+	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateId []uuid.UUID) (map[uuid.UUID]*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
-	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
+	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
 	BulkUpdateDefaults(ctx context.Context) error
 }
 
@@ -164,21 +165,29 @@ func (s *Service) GetSetting(ctx context.Context, templateId uuid.UUID) (*RsSett
 }
 
 // GetInvoiceSetting retrieves custom settings for an invoice template
-func (s *Service) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*RsSetting, error) {
-	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
-	if err != nil {
-		return nil, fmt.Errorf("failed looking up configuration hierarchy matching target: %w", err)
-	}
-	if st == nil {
-		return nil, fmt.Errorf("no operational setting baseline or default profiles discovered for parameters")
+func (s *Service) GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateId []uuid.UUID) (map[uuid.UUID]*RsSetting, error) {
+	result := make(map[uuid.UUID]*RsSetting, len(templateId))
+
+	for _, tId := range templateId {
+		st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, []uuid.UUID{tId})
+		if err != nil {
+			return nil, fmt.Errorf("failed looking up configuration hierarchy for template %s: %w", tId, err)
+		}
+		if st == nil {
+			// no setting found for this template — skip rather than fail the whole batch
+			result[tId] = nil
+			continue
+		}
+
+		if err := s.enrichSettingDocuments(ctx, st); err != nil {
+			return nil, fmt.Errorf("failed enriching setting documents for template %s: %w", tId, err)
+		}
+
+		rs := st.ToRs()
+		result[tId] = &rs
 	}
 
-	if err := s.enrichSettingDocuments(ctx, st); err != nil {
-		return nil, err
-	}
-
-	rs := st.ToRs()
-	return &rs, nil
+	return result, nil
 }
 
 func (s *Service) UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error) {
@@ -290,7 +299,7 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 	return chromepdf.Generate(ctx, fullHTML)
 }
 
-func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
+func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
 		if errors.Is(err, ErrInvoiceNotFound) {
@@ -299,19 +308,30 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed to fetch invoice: %w", err)
 	}
 
-	t, err := s.repo.Get(ctx, templateId)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to fetch base template structural data: %w", err)
+	var htmlBuilder, cssBuilder strings.Builder
+
+	for _, tId := range templateId {
+		t, err := s.repo.Get(ctx, tId)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to fetch base template structural data: %w", err)
+		}
+		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to decrypt html: %w", err)
+		}
+		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to decrypt css: %w", err)
+		}
+
+		htmlBuilder.WriteString(html)
+		htmlBuilder.WriteString("\n")
+		cssBuilder.WriteString(css)
+		cssBuilder.WriteString("\n")
 	}
 
-	html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to decrypt html: %w", err)
-	}
-	css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to decrypt css: %w", err)
-	}
+	html := htmlBuilder.String()
+	css := cssBuilder.String()
 
 	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
 	if err != nil {

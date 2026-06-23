@@ -259,9 +259,7 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// Internal Backend Helper: Maps RsInvoice data models directly into template.RqGeneratePDF configurations
 func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string, error) {
-	// --- BillTo from contact ---
 	var billToName, billToEmail, billToPhone, billToABN, billToAddress string
 	if inv.ContactTo != nil {
 		billToName = strings.TrimSpace(inv.ContactTo.Fname + " " + inv.ContactTo.Lname)
@@ -285,7 +283,6 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		}
 	}
 
-	// --- BillFrom + clinic meta from clinicSvc ---
 	var clinicName, billFromName, billFromABN, billFromEmail, billFromPhone, billFromAddress string
 	if s.clinicSvc != nil {
 		clinic, err := s.clinicSvc.GetProfile(ctx, inv.ClinicID)
@@ -329,7 +326,6 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		}
 	}
 
-	// --- Line items ---
 	var pdfItems []template.LineItem
 	var grandTotal float64
 
@@ -441,7 +437,6 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 				ShowTax:              tplSetting.IsTax,
 				TableStyleClass:      tableStyleClass,
 
-				// Core CSS Layout variable bindings
 				PrimaryColor:     tplSetting.PrimaryColor,
 				AccentColor:      tplSetting.AccentColor,
 				BodyFontFamily:   tplSetting.BodyFontFamily,

@@ -11,6 +11,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/file"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 var ErrNotFound = errors.New("template not found")
@@ -32,7 +33,7 @@ type IRepository interface {
 	GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error)
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
-	GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*Setting, error)
+	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error)
 }
 
 type Repository struct {
@@ -142,29 +143,27 @@ func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Set
 	return &st, nil
 }
 
-func (r *Repository) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*Setting, error) {
+func (r *Repository) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error) {
 	const q = `
 		SELECT s.*, m.template_id 
 		FROM tbl_template_setting s
 		INNER JOIN tbl_invoice_template_mapping m ON s.id = m.setting_id
-		WHERE m.template_id = $3 
+		WHERE m.template_id = ANY($3)
 		  AND m.deleted_at IS NULL
 		  AND s.deleted_at IS NULL
 		  AND (
-		      -- Exact match (Clinic + Invoice)
 		      (m.clinic_id = $1 AND m.invoice_id = $2)
-		      -- Global fallback 
 		      OR (m.clinic_id IS NULL AND m.invoice_id IS NULL)
 		  )
 		ORDER BY 
 			CASE 
-				WHEN m.clinic_id = $1 AND m.invoice_id = $2 THEN 1  -- First Priority
-				ELSE 2                                              -- Global Fallback
+				WHEN m.clinic_id = $1 AND m.invoice_id = $2 THEN 1
+				ELSE 2
 			END ASC
 		LIMIT 1;`
 
 	var st Setting
-	if err := r.db.GetContext(ctx, &st, q, clinicId, invoiceId, templateId); err != nil {
+	if err := r.db.GetContext(ctx, &st, q, clinicId, invoiceId, pq.Array(templateIds)); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
