@@ -477,7 +477,7 @@ func DefaultTemplates() []RqGlobalTemplate {
       <tbody>
         <tr>
           <td style="font-weight: bold; width: 45%%;">Payment method</td>
-          <td style="width: 55%%;">Electronic funds transfer (EFT)</td>
+          <td style="width: 55%%;">{{bill_to.payment_method}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Account name</td>
