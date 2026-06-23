@@ -471,17 +471,17 @@ func DefaultTemplates() []RqGlobalTemplate {
     </tbody>
   </table>
 
-  <div class="payment-details-container">
+ <div class="payment-details-container">
     <div class="payment-details-header">PAYMENT DETAILS</div>
     <table class="payment-details-table">
       <tbody>
         <tr>
           <td style="font-weight: bold; width: 45%%;">Payment method</td>
-          <td style="width: 55%%;">{{bill_to.payment_method}}</td>
+          <td style="width: 55%%;">{{#if custom_payment_method}}{{custom_payment_method}}{{else}}{{#if payment_method_label}}{{payment_method_label}}{{else}}Electronic funds transfer (EFT){{/if}}{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Account name</td>
-          <td>{{bill_to.name}}</td>
+          <td>{{#if custom_payment_account_name}}{{custom_payment_account_name}}{{else}}{{bill_to.name}}{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">BSB / Account No.</td>
@@ -489,7 +489,7 @@ func DefaultTemplates() []RqGlobalTemplate {
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment date</td>
-          <td>{{issue_date_display}}</td>
+          <td>{{#if payment_date_display}}{{payment_date_display}}{{else}}{{issue_date_display}}{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment reference</td>
