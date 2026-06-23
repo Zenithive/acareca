@@ -5894,7 +5894,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/coa.RqCreateChartOfAccountOfAccount"
+                            "$ref": "#/definitions/coa.RqCreateChartOfAccount"
                         }
                     }
                 ],
@@ -6144,7 +6144,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/coa.RqUpdateCharOfAccountOfAccount"
+                            "$ref": "#/definitions/coa.RqUpdateChartOfAccount"
                         }
                     }
                 ],
@@ -6259,6 +6259,258 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Gathers a generalized collection indexing active charts mapped to system rules.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "List Account Templates",
+                "responses": {
+                    "200": {
+                        "description": "An array matching structural index configuration items",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/coa.RsAccountTemplate"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal scanning array processing sequence broken",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Overwrites and updates a target chart structure mapped inside the active repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Update Account Template",
+                "parameters": [
+                    {
+                        "description": "Mutation values specifications struct bundle wrapper",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqUpdateAccountTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Structural transformation or payload validation parameter failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Underlying relational mapping updating failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Creates a new chart of account blueprint record within the DB storage pool.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Create Account Template",
+                "parameters": [
+                    {
+                        "description": "Account baseline specifications structure payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqAccountTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input request body error context parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal system storage engine baseline failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/templates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries and returns a single account template baseline context view record.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Get Account Template By ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Valid string parsed UUID pattern match filter",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Matching records successfully unpacked and transformed from storage",
+                        "schema": {
+                            "$ref": "#/definitions/coa.RsAccountTemplate"
+                        }
+                    },
+                    "400": {
+                        "description": "Path variables missing precise conversion requirements",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The requested configuration item does not exist inside the target index",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Removes a global chart blueprint record and removes/decouples matching active records across downstream practitioners.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Delete Account Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target account template string parsed UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The template configuration was successfully removed and cascade transformations executed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Path parameters missing matching conversion standards or authorization missing",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Cascading database deletions or records severance operation processing failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -13220,34 +13472,40 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.AccountClassification": {
-            "type": "string",
-            "enum": [
-                "Current Asset",
-                "Non-Current Asset",
-                "Contra-Asset",
-                "Current Liability",
-                "Non-Current Liability",
-                "Equity",
-                "Contra-Equity",
-                "Operating Revenue",
-                "Other Revenue",
-                "Direct Costs",
-                "Operating Expense"
+        "coa.RqAccountTemplate": {
+            "type": "object",
+            "required": [
+                "account_tax_id",
+                "account_type_id",
+                "code",
+                "name"
             ],
-            "x-enum-varnames": [
-                "ClassificationCurrentAsset",
-                "ClassificationNonCurrentAsset",
-                "ClassificationContraAsset",
-                "ClassificationCurrentLiability",
-                "ClassificationNonCurrentLiability",
-                "ClassificationEquity",
-                "ClassificationContraEquity",
-                "ClassificationOperatingRevenue",
-                "ClassificationOtherRevenue",
-                "ClassificationDirectCosts",
-                "ClassificationOperatingExpense"
-            ]
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
         },
         "coa.RqCheckCodeUnique": {
             "type": "object",
@@ -13268,7 +13526,7 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.RqCreateChartOfAccountOfAccount": {
+        "coa.RqCreateChartOfAccount": {
             "type": "object",
             "required": [
                 "account_tax_id",
@@ -13285,16 +13543,22 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1
                 },
-                "classification": {
-                    "$ref": "#/definitions/coa.AccountClassification"
-                },
                 "code": {
                     "type": "integer",
                     "maximum": 9999,
                     "minimum": 100
                 },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
                 "is_system": {
                     "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string",
@@ -13305,7 +13569,39 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.RqUpdateCharOfAccountOfAccount": {
+        "coa.RqUpdateAccountTemplate": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "coa.RqUpdateChartOfAccount": {
             "type": "object",
             "properties": {
                 "account_tax_id": {
@@ -13316,19 +13612,63 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1
                 },
-                "classification": {
-                    "$ref": "#/definitions/coa.AccountClassification"
-                },
                 "code": {
                     "type": "integer",
                     "maximum": 9999,
                     "minimum": 100
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string",
                     "maxLength": 255
                 },
                 "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "coa.RsAccountTemplate": {
+            "type": "object",
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }

@@ -26,56 +26,52 @@ func NewRepository(db *sqlx.DB) Repository {
 func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
-		// Accountant: show clinic entries they have access to + expense entries from those practitioners
 		permissionClause = ` AND (
-			c.practitioner_id IN (
+			v.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation 
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id IN (
+			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
 				SELECT practitioner_id FROM tbl_invitation 
 				WHERE accountant_id = ? AND status = 'COMPLETED'
 			))
 		)`
 	} else {
-		// Practitioner: show own clinic entries + own expense entries
 		permissionClause = ` AND (
-			c.id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)
-			OR (e.clinic_id = '00000000-0000-0000-0000-000000000000' AND fv.practitioner_id = ?)
+			v.clinic_id IN (SELECT id FROM tbl_clinic WHERE practitioner_id = ? AND deleted_at IS NULL)
+			OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
 		)`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id":       "e.clinic_id",
-		"form_id":         "fm.id",
-		"coa_id":          "coa.id",
-		"practitioner_id": "COALESCE(c.practitioner_id, fv.practitioner_id)",
-		// For expense entries use item-level date; for all others use entry-level date
-		"start_date": "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
-		"end_date":   "CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END",
+		"clinic_id":       "v.clinic_id",
+		"form_id":         "v.form_id",
+		"coa_id":          "v.coa_id",
+		"practitioner_id": "v.practitioner_id",
+		"start_date":      "v.entry_date",
+		"end_date":        "v.entry_date",
 	}
 
 	base := `
         SELECT
-            coa.id                            AS coa_id,
-            coa.name                          AS coa_name,
-            ff.section_type                   AS section_type,
-            COALESCE(SUM(ev.net_amount), 0)   AS total_net_amount,
-			COALESCE(SUM(ev.gst_amount), 0)   AS total_gst_amount,
-            COALESCE(SUM(ev.gross_amount), 0) AS total_gross_amount,
-            COUNT(DISTINCT ev.id)             AS entry_count
-        FROM tbl_chart_of_accounts coa
-        INNER JOIN tbl_form_field ff ON ff.coa_id = coa.id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-        INNER JOIN tbl_form_entry_value ev ON ev.form_field_id = ff.id AND ev.updated_at IS NULL
-        INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
-        INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
-        INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
-        LEFT  JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
-        WHERE coa.deleted_at IS NULL AND coa.is_system = FALSE AND ff.section_type IS NOT NULL` + permissionClause
+            v.coa_id                          AS coa_id,
+            v.account_name                    AS coa_name,
+            ff.section_type::text             AS section_type,
+            ROUND(SUM(ABS(v.net_amount))::numeric, 2)::float8   AS total_net_amount,
+			ROUND(SUM(ABS(v.gst_amount))::numeric, 2)::float8   AS total_gst_amount,
+            ROUND(SUM(ABS(v.gross_amount))::numeric, 2)::float8 AS total_gross_amount,
+            COUNT(fev.id)                     AS entry_count
+        FROM vw_double_entry_line_items v
+        INNER JOIN tbl_form_field ff ON ff.id = v.form_field_id AND ff.deleted_at IS NULL
+        INNER JOIN tbl_form_entry_value fev
+			ON fev.entry_id = v.entry_id
+				AND fev.deleted_at IS NULL
+				AND fev.form_field_id = v.form_field_id
+        WHERE ff.section_type IN ('COST', 'OTHER_COST', 'COLLECTION') ` + permissionClause
 
-	q, qArgs := common.BuildQuery(base, f, allowedColumns, []string{"coa.name"}, false)
+	q, qArgs := common.BuildQuery(base, f, allowedColumns, []string{"v.account_name"}, false)
 
-	groupBy := ` GROUP BY coa.id, coa.name, ff.section_type `
+	groupBy := ` GROUP BY v.coa_id, v.account_name, ff.section_type `
 
 	var finalQuery string
 	if strings.Contains(q, "ORDER BY") {

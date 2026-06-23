@@ -417,7 +417,6 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 	}
 
 	// Process each entry: calculate proper net/gst/gross based on field tax type
-	// The frontend sends the ENTERED value as net_amount, but we need to interpret it correctly
 	for _, entry := range req.Entries {
 		fieldID, err := uuid.Parse(entry.FormFieldID)
 		if err != nil {
@@ -426,7 +425,18 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 
 		f, ok := fieldMap[fieldID]
 		if !ok {
-			return nil, fmt.Errorf("field %s not found in form version", entry.FormFieldID)
+			// Fallback: Lazy-load version-skewed fields from DB instead of crashing
+			fallbackField, err := s.fieldSvc.GetByID(ctx, fieldID)
+			if err != nil || fallbackField == nil {
+				return nil, fmt.Errorf("field %s not found in form version or system fallback", entry.FormFieldID)
+			}
+			f = fallbackField
+
+			// Populate back into map so it's transparently visible to subsequent logic loops
+			fieldMap[fieldID] = f
+			if !f.IsComputed {
+				keyValues[f.FieldKey] = 0
+			}
 		}
 
 		if f.IsComputed {
@@ -440,13 +450,11 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 			taxType := method.TaxTreatment(*f.TaxType)
 			switch taxType {
 			case method.TaxTreatmentInclusive:
-				// User entered GROSS amount (includes GST), extract NET
-				// Example: entered 1000 → net = 1000/1.1 = 909.09
 				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
 				if err != nil {
 					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
 				}
-				if (f.SectionType) != nil && *f.SectionType == "OTHER_COST" {
+				if f.SectionType != nil && *f.SectionType == "OTHER_COST" {
 					actualNetAmount = taxResult.TotalAmount
 				} else {
 					actualNetAmount = taxResult.Amount
@@ -457,23 +465,17 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 				if err != nil {
 					return nil, fmt.Errorf("tax calc for field %s: %w", f.FieldKey, err)
 				}
-				if (f.SectionType) != nil && *f.SectionType == "OTHER_COST" {
+				if f.SectionType != nil && *f.SectionType == "OTHER_COST" {
 					actualNetAmount = taxResult.TotalAmount
 				} else {
 					actualNetAmount = entry.NetAmount
 				}
-				// User entered NET amount, use as-is
 
 			case method.TaxTreatmentManual:
-				// Xero Manual GST: user enters Gross + explicit GST
-				// On CREATE/preview: entry.NetAmount = user's entered Gross
-				// On UPDATE/live: entry.GrossAmount = actual Gross (if provided)
 				var grossInput float64
 				if entry.GrossAmount != nil {
-					// Use explicit gross_amount if provided
 					grossInput = *entry.GrossAmount
 				} else {
-					// Treat entry.NetAmount as Gross (backward compat)
 					grossInput = entry.NetAmount
 				}
 
@@ -485,7 +487,6 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 				// Calculate Net from Gross - GST
 				actualNetAmount = grossInput - *entry.GstAmount
 			}
-
 		}
 
 		keyValues[f.FieldKey] = actualNetAmount
@@ -530,13 +531,11 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 			continue
 		}
 
-		// Calculate actual net amount based on tax type (same logic as above)
 		actualNetAmount := entry.NetAmount
 		if f.TaxType != nil && *f.TaxType != "" {
 			taxType := method.TaxTreatment(*f.TaxType)
 			switch taxType {
 			case method.TaxTreatmentInclusive:
-				// Extract net from gross (entered value)
 				taxResult, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: entry.NetAmount})
 				if err == nil {
 					actualNetAmount = taxResult.Amount
@@ -560,8 +559,33 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 
 	formulas, err := s.formulaSvc.ListByFormVersionID(ctx, formVersionID)
 	if err != nil {
-		// Log error but perhaps don't fail the whole calculation if formulas are just for preview
 		return nil, fmt.Errorf("fetch formulas for preview: %w", err)
+	}
+
+	// Fallback mechanism: If target version configuration lacks formulas, pull ancestral rules
+	if len(formulas) == 0 {
+		for _, f := range fieldMap {
+			if f.FormVersionID != formVersionID {
+				fallbackFormulas, err := s.formulaSvc.ListByFormVersionID(ctx, f.FormVersionID)
+				if err == nil && len(fallbackFormulas) > 0 {
+					formulas = fallbackFormulas
+
+					// Pull the entire historic field configuration map so computed field lookups succeed below
+					historicFieldMap, err := s.fieldSvc.GetFieldMap(ctx, f.FormVersionID)
+					if err == nil {
+						for k, v := range historicFieldMap {
+							if _, exists := fieldMap[k]; !exists {
+								fieldMap[k] = v
+							}
+						}
+					}
+
+					// Re-evaluate the values on top of the original working context layout
+					computed, _ = s.formulaSvc.EvalFormulas(ctx, f.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
+					break
+				}
+			}
+		}
 	}
 
 	results := make([]RsComputedFieldValue, 0, len(computed))
@@ -578,9 +602,7 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 		if f.TaxType != nil && *f.TaxType != "" {
 			input := &method.Input{Amount: val}
 
-			// For MANUAL tax type on computed fields, check if GST was provided in entries
 			if method.TaxTreatment(*f.TaxType) == method.TaxTreatmentManual {
-				// Find if this computed field has a corresponding entry with GST amount
 				var entryGST *float64
 				for _, entry := range req.Entries {
 					entryFieldID, _ := uuid.Parse(entry.FormFieldID)
@@ -590,7 +612,6 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 					}
 				}
 
-				// If GST amount is empty or zero, send net with gst=0, gross=net
 				if entryGST == nil {
 					net := util.Round(val, 2)
 					gst := 0.0
@@ -600,7 +621,6 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 					gstAmount = &gst
 					grossAmount = &gross
 				} else {
-					// If GST provided, send net=net, gst=entry.gst, gross=net+gst
 					net := util.Round(val, 2)
 					gst := util.Round(*entryGST, 2)
 					gross := util.Round(net+gst, 2)

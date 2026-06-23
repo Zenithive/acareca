@@ -1498,32 +1498,30 @@ definitions:
       lock_date:
         type: string
     type: object
-  coa.AccountClassification:
-    enum:
-    - Current Asset
-    - Non-Current Asset
-    - Contra-Asset
-    - Current Liability
-    - Non-Current Liability
-    - Equity
-    - Contra-Equity
-    - Operating Revenue
-    - Other Revenue
-    - Direct Costs
-    - Operating Expense
-    type: string
-    x-enum-varnames:
-    - ClassificationCurrentAsset
-    - ClassificationNonCurrentAsset
-    - ClassificationContraAsset
-    - ClassificationCurrentLiability
-    - ClassificationNonCurrentLiability
-    - ClassificationEquity
-    - ClassificationContraEquity
-    - ClassificationOperatingRevenue
-    - ClassificationOtherRevenue
-    - ClassificationDirectCosts
-    - ClassificationOperatingExpense
+  coa.RqAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+    required:
+    - account_tax_id
+    - account_type_id
+    - code
+    - name
+    type: object
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -1537,7 +1535,7 @@ definitions:
     required:
     - code
     type: object
-  coa.RqCreateChartOfAccountOfAccount:
+  coa.RqCreateChartOfAccount:
     properties:
       account_tax_id:
         minimum: 1
@@ -1545,14 +1543,18 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
-      classification:
-        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
         type: integer
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
       is_system:
         type: boolean
+      key:
+        type: string
       name:
         maxLength: 255
         type: string
@@ -1564,7 +1566,28 @@ definitions:
     - code
     - name
     type: object
-  coa.RqUpdateCharOfAccountOfAccount:
+  coa.RqUpdateAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      id:
+        type: string
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+    required:
+    - id
+    type: object
+  coa.RqUpdateChartOfAccount:
     properties:
       account_tax_id:
         minimum: 1
@@ -1572,16 +1595,45 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
-      classification:
-        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
         type: integer
+      key:
+        type: string
       name:
         maxLength: 255
         type: string
       practitioner_id:
+        type: string
+    type: object
+  coa.RsAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
         type: string
     type: object
   coa.RsCodeUnique:
@@ -7209,7 +7261,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/coa.RqCreateChartOfAccountOfAccount'
+          $ref: '#/definitions/coa.RqCreateChartOfAccount'
       produces:
       - application/json
       responses:
@@ -7338,7 +7390,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/coa.RqUpdateCharOfAccountOfAccount'
+          $ref: '#/definitions/coa.RqUpdateChartOfAccount'
       produces:
       - application/json
       responses:
@@ -7450,6 +7502,176 @@ paths:
       summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
+  /coa/templates:
+    get:
+      description: Gathers a generalized collection indexing active charts mapped
+        to system rules.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: An array matching structural index configuration items
+          schema:
+            items:
+              $ref: '#/definitions/coa.RsAccountTemplate'
+            type: array
+        "500":
+          description: Internal scanning array processing sequence broken
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: List Account Templates
+      tags:
+      - Chart of Accounts
+    post:
+      consumes:
+      - application/json
+      description: Creates a new chart of account blueprint record within the DB storage
+        pool.
+      parameters:
+      - description: Account baseline specifications structure payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqAccountTemplate'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+        "400":
+          description: Invalid input request body error context parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal system storage engine baseline failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Create Account Template
+      tags:
+      - Chart of Accounts
+    put:
+      consumes:
+      - application/json
+      description: Overwrites and updates a target chart structure mapped inside the
+        active repository.
+      parameters:
+      - description: Mutation values specifications struct bundle wrapper
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqUpdateAccountTemplate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Structural transformation or payload validation parameter failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Underlying relational mapping updating failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Update Account Template
+      tags:
+      - Chart of Accounts
+  /coa/templates/{id}:
+    delete:
+      description: Removes a global chart blueprint record and removes/decouples matching
+        active records across downstream practitioners.
+      parameters:
+      - description: Target account template string parsed UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The template configuration was successfully removed and cascade
+            transformations executed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Path parameters missing matching conversion standards or authorization
+            missing
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Cascading database deletions or records severance operation
+            processing failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Delete Account Template
+      tags:
+      - Chart of Accounts
+    get:
+      description: Queries and returns a single account template baseline context
+        view record.
+      parameters:
+      - description: Valid string parsed UUID pattern match filter
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Matching records successfully unpacked and transformed from
+            storage
+          schema:
+            $ref: '#/definitions/coa.RsAccountTemplate'
+        "400":
+          description: Path variables missing precise conversion requirements
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: The requested configuration item does not exist inside the
+            target index
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Get Account Template By ID
+      tags:
+      - Chart of Accounts
   /entry/{id}:
     delete:
       consumes:
