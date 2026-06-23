@@ -315,7 +315,7 @@ type InvoiceItem struct {
 	Name        string    `db:"name" json:"name"`
 	Description string    `db:"description" json:"description"`
 	Amount      float64   `db:"amount" json:"amount"`
-	BASCode     string    `db:"bas_code" json:"bas_code"`
+	BASCode     *string   `db:"bas_code" json:"bas_code"`
 	EntryType   string    `db:"entry_type" json:"entry_type"`
 }
 
