@@ -97,7 +97,7 @@ body {
   min-height: 297mm;
   margin: 0 auto; 
   background: #ffffff; 
-  padding: 14mm 16mm; 
+  padding: 8mm 10mm; 
   position: relative; 
   box-sizing: border-box; 
   page-break-after: always;
@@ -184,7 +184,7 @@ body {
   background: var(--primary-color);
   padding: 3px 6px;
   display: inline-block;
-  width: 330px; 
+  width: 420px; 
   box-sizing: border-box;
   margin-bottom: 4px; 
 }
