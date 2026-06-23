@@ -338,7 +338,7 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 			pdfItems = append(pdfItems, template.LineItem{
 				Name:        it.Name,
 				Description: desc,
-				LineTotal:   it.Amount,
+				Amount:      it.Amount,
 			})
 			grandTotal += it.Amount
 		}

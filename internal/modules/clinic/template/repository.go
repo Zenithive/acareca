@@ -261,11 +261,11 @@ func (r *Repository) CreateMapping(ctx context.Context, m *Mapping) error {
 
 	const q = `
 		INSERT INTO tbl_invoice_template_mapping (
-			id, invoice_id, template_id, setting_id, clinic_id, created_at
+			id, invoice_id, template_id, setting_id, clinic_id
 		) VALUES (
-			:id, :invoice_id, :template_id, :setting_id, :clinic_id, NOW()
+			:id, :invoice_id, :template_id, :setting_id, :clinic_id
 		)
-		RETURNING created_at`
+		RETURNING created_at, updated_at`
 
 	rows, err := r.db.NamedQueryContext(ctx, q, m)
 	if err != nil {
@@ -274,7 +274,9 @@ func (r *Repository) CreateMapping(ctx context.Context, m *Mapping) error {
 	defer rows.Close()
 
 	if rows.Next() {
-		return rows.Scan(&m.CreatedAt)
+		if err := rows.Scan(&m.CreatedAt, &m.UpdatedAt); err != nil {
+			return err
+		}
 	}
 	return rows.Err()
 }
@@ -287,23 +289,24 @@ func (r *Repository) UpdateMapping(ctx context.Context, m *Mapping) error {
 			template_id = :template_id,
 			setting_id = :setting_id,
 			clinic_id = :clinic_id,
-			updated_at = now()
-		WHERE id = :id`
+			updated_at = NOW()
+		WHERE id = :id
+		RETURNING updated_at`
 
-	result, err := r.db.NamedExecContext(ctx, q, m)
+	rows, err := r.db.NamedQueryContext(ctx, q, m)
 	if err != nil {
 		return fmt.Errorf("failed to update invoice template junction mapping: %w", err)
 	}
+	defer rows.Close()
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("mapping not found for update: %s", m.ID)
+	if rows.Next() {
+		if err := rows.Scan(&m.UpdatedAt); err != nil {
+			return err
+		}
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf("mapping not found for update: %s", m.ID)
 }
 
 func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error) {

@@ -11,9 +11,9 @@ import (
 
 // RqGlobalTemplate represents incoming global template structural creation/updates
 type RqGlobalTemplate struct {
-	Name      string `json:"name"`
-	Html      string `json:"html"`
-	Css       string `json:"css"`
+	Name      string `json:"name" validate:"required,min=1,max=100"`
+	Html      string `json:"html" validate:"required"`
+	Css       string `json:"css" validate:"required"`
 	IsDefault bool   `json:"is_default"`
 	IsActive  bool   `json:"is_active"`
 }
@@ -21,9 +21,9 @@ type RqGlobalTemplate struct {
 type RqTemplate struct {
 	Id          uuid.UUID `json:"-"`
 	Description *string   `json:"description"`
-	Name        string    `json:"name"`
-	Html        string    `json:"html"`
-	Css         string    `json:"css"`
+	Name        string    `json:"name" validate:"required,min=1,max=100"`
+	Html        string    `json:"html" validate:"required"`
+	Css         string    `json:"css" validate:"required"`
 	IsDefault   bool      `json:"is_default"`
 	IsActive    bool      `json:"is_active"`
 }
@@ -111,7 +111,8 @@ type RqUpdateSetting struct {
 func (rq *RqUpdateSetting) ToDB() Setting {
 	var tableStyle *string
 	if rq.TableStyle != "" {
-		tableStyle = &rq.TableStyle
+		ts := rq.TableStyle
+		tableStyle = &ts
 	}
 
 	return Setting{
@@ -273,10 +274,10 @@ type PartyInfo struct {
 }
 
 type LineItem struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Amount      float64 `json:"amount"`
-	LineTotal   float64 `json:"line_total"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Amount       float64 `json:"amount"`
+	RunningTotal float64 `json:"running_total"`
 }
 
 type Attachment struct {
@@ -326,10 +327,10 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 	for i, it := range inv.Items {
 		grandTotal += it.Amount
 		items[i] = LineItem{
-			Name:        it.Name,
-			Description: it.Description,
-			Amount:      it.Amount,
-			LineTotal:   grandTotal,
+			Name:         it.Name,
+			Description:  it.Description,
+			Amount:       it.Amount,
+			RunningTotal: grandTotal,
 		}
 	}
 
@@ -372,7 +373,7 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 		BillTo:               billTo,
 		Items:                items,
 		GrandTotal:           grandTotal,
-		TotalsAmountsCaption: "All amounts in INR",
+		TotalsAmountsCaption: "All amounts in AUD",
 		TotalsGrandLabel:     "Total Due",
 		HasAttachments:       false,
 		Attachments:          []Attachment{},
@@ -419,7 +420,7 @@ type Mapping struct {
 	InvoiceID  *uuid.UUID `db:"invoice_id"`
 	TemplateID uuid.UUID  `db:"template_id"`
 	SettingID  uuid.UUID  `db:"setting_id"`
-	CreatedAt  string     `db:"created_at"`
-	UpdatedAt  string     `db:"updated_at"`
-	DeletedAt  string     `db:"deleted_at"`
+	CreatedAt  time.Time  `db:"created_at"`
+	UpdatedAt  *time.Time `db:"updated_at"`
+	DeletedAt  *time.Time `db:"deleted_at"`
 }

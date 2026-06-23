@@ -59,6 +59,17 @@ CREATE INDEX IF NOT EXISTS idx_tpl_setting_mapping
     ON tbl_template_setting(mapping_id)
     WHERE deleted_at IS NULL;
 
+ALTER TABLE tbl_invoice_item
+    ADD COLUMN IF NOT EXISTS is_final BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE tbl_map_invoice_section
+    ADD COLUMN IF NOT EXISTS template_id UUID;
+
+ALTER TABLE tbl_map_invoice_section
+    ADD CONSTRAINT fk_invoice_section_template
+    FOREIGN KEY (template_id)
+    REFERENCES tbl_template(id);
+
 -- +goose StatementEnd
 
 
@@ -71,5 +82,13 @@ DROP INDEX IF EXISTS idx_inv_tpl_map_lookup;
 DROP TABLE IF EXISTS tbl_invoice_template_mapping;
 DROP TABLE IF EXISTS tbl_template_setting;
 DROP TABLE IF EXISTS tbl_template;
+
+DROP INDEX IF EXISTS idx_invoice_section_template_id;
+
+ALTER TABLE tbl_map_invoice_section
+    DROP CONSTRAINT IF EXISTS fk_invoice_section_template;
+
+ALTER TABLE tbl_invoice_item
+    DROP COLUMN IF EXISTS is_final;
 
 -- +goose StatementEnd
