@@ -328,8 +328,12 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
             i.billing_period_from::text, i.billing_period_to::text,
             i.invoice_frequency, i.issue_date::text, i.due_date::text,
             i.status,
-            cp.fname, cp.lname, cp.email, cp.phone, cp.abn,
-            cl.clinic_name as clinic_name,
+            COALESCE(cp.fname, '') as fname, 
+            COALESCE(cp.lname, '') as lname, 
+            COALESCE(cp.email, '') as email, 
+            COALESCE(cp.phone, '') as phone, 
+            COALESCE(cp.abn, '') as abn,
+            COALESCE(cl.clinic_name, '') as clinic_name,
             COALESCE(a.address_line1, '') as address_line1,
             COALESCE(a.city, '') as city,
             COALESCE(a.state, '') as state,
@@ -341,11 +345,11 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
                 WHERE invoice_id = i.id AND deleted_at IS NULL 
                 ORDER BY created_at ASC LIMIT 1
             ), '') as section_document_number
-		FROM tbl_invoice i
-		LEFT JOIN tbl_invoice_clinic cl ON cl.id = i.clinic_id AND cl.deleted_at IS NULL
+        FROM tbl_invoice i
+        LEFT JOIN tbl_invoice_clinic cl ON cl.id = i.clinic_id AND cl.deleted_at IS NULL
         LEFT JOIN tbl_clinic_contact_person cp ON cp.clinic_id = i.clinic_id AND cp.deleted_at IS NULL
         LEFT JOIN tbl_clinic_contact_person_address a ON a.contact_id = cp.id AND a.is_primary = TRUE AND a.deleted_at IS NULL
-		WHERE i.id = $2 AND i.clinic_id = $1 AND i.deleted_at IS NULL`
+        WHERE i.id = $2 AND i.clinic_id = $1 AND i.deleted_at IS NULL`
 
 	var row struct {
 		invoiceRow
@@ -360,7 +364,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	const itemQ = `
-        SELECT id, name, description, amount, bas_code, entry_type
+        SELECT id, name, COALESCE(description, '') AS description, amount, bas_code, COALESCE(entry_type, '') AS entry_type
         FROM tbl_invoice_item
         WHERE invoice_id = $1`
 	var items []InvoiceItem

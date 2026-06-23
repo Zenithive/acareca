@@ -97,7 +97,7 @@ body {
   min-height: 297mm;
   margin: 0 auto; 
   background: #ffffff; 
-  padding: 14mm 16mm; 
+  padding: 8mm 10mm; 
   position: relative; 
   box-sizing: border-box; 
   page-break-after: always;
@@ -159,7 +159,7 @@ body {
 
 .hdr-doc-title { 
   font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
-  font-size: 20px; 
+  font-size: 18px; 
   font-weight: bold; 
   color: var(--primary-color); 
   margin-bottom: 6px; 
@@ -184,7 +184,7 @@ body {
   background: var(--primary-color);
   padding: 3px 6px;
   display: inline-block;
-  width: 330px; 
+  width: 420px; 
   box-sizing: border-box;
   margin-bottom: 4px; 
 }
@@ -471,17 +471,17 @@ func DefaultTemplates() []RqGlobalTemplate {
     </tbody>
   </table>
 
-  <div class="payment-details-container">
+ <div class="payment-details-container">
     <div class="payment-details-header">PAYMENT DETAILS</div>
     <table class="payment-details-table">
       <tbody>
         <tr>
           <td style="font-weight: bold; width: 45%%;">Payment method</td>
-          <td style="width: 55%%;">{{bill_to.payment_method}}</td>
+          <td style="width: 55%%;">{{#if custom_payment_method}}{{custom_payment_method}}{{else}}{{#if payment_method_label}}{{payment_method_label}}{{else}}Electronic funds transfer (EFT){{/if}}{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Account name</td>
-          <td>{{bill_to.name}}</td>
+          <td>{{#if custom_payment_account_name}}{{custom_payment_account_name}}{{else}}{{bill_to.name}}{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">BSB / Account No.</td>
@@ -489,7 +489,7 @@ func DefaultTemplates() []RqGlobalTemplate {
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment date</td>
-          <td>{{issue_date_display}}</td>
+          <td>{{#if payment_date_display}}{{payment_date_display}}{{else}}{{issue_date_display}}{{/if}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Payment reference</td>

@@ -343,13 +343,13 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 // @Description  Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response
 // @Tags         Templates
 // @Produce      application/pdf
-// @Param        id          path      string  true  "Template UUID ID"
-// @Param        invoice_id  path      string  true  "Target Invoice Entity Context Index UUID"
-// @Success      200         {file}    string  "Target invoice document byte stream file object matches"
+// @Param        invoice_id  path      string    true  "Target Invoice Entity Context Index UUID"
+// @Param        templateId  query     []string  true  "Array of Template UUID IDs to render" collectionFormat(multi)
+// @Success      200         {file}    file      "Target invoice document byte stream file object matches"
 // @Failure      400         {object}  map[string]string "Target routing value errors or profile validation flaws"
 // @Failure      404         {object}  map[string]string "Target entities unavailable"
 // @Failure      500         {object}  map[string]string "Internal Server Error"
-// @Security BearerToken
+// @Security     BearerToken
 // @Router       /templates/invoices/{invoice_id}/download [get]
 func (h *Handler) DownloadPDF(c *gin.Context) {
 	invoiceId, err := uuid.Parse(c.Param("invoice_id"))
