@@ -324,7 +324,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.D
 func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error) {
 	const q = `
         SELECT
-            i.id, i.clinic_id, i.template_id, 
+            i.id, i.clinic_id, 
             i.billing_period_from::text, i.billing_period_to::text,
             i.invoice_frequency, i.issue_date::text, i.due_date::text,
             i.status,
@@ -395,7 +395,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	return &InvoiceResponse{
 		ID:                row.Id,
 		ClinicID:          row.ClinicId,
-		TemplateID:        row.TemplateId,
+		TemplateID:        uuid.Nil, // Templates now stored in tbl_map_invoice_section
 		BillingPeriodFrom: row.BillingPeriodFrom,
 		BillingPeriodTo:   row.BillingPeriodTo,
 		InvoiceFrequency:  row.InvoiceFrequency,
