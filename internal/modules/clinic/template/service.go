@@ -300,6 +300,16 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 }
 
 func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
+	// Validate template IDs first
+	if len(templateId) == 0 {
+		return nil, "", fmt.Errorf("at least one template ID is required")
+	}
+
+	if err := s.repo.ValidateTemplateAccess(ctx, templateId); err != nil {
+		return nil, "", err
+	}
+
+	// Fetch invoice and verify it belongs to this clinic
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
 		if errors.Is(err, ErrInvoiceNotFound) {
@@ -310,18 +320,22 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	var htmlBuilder, cssBuilder strings.Builder
 
+	// Fetch and decrypt all templates
 	for _, tId := range templateId {
 		t, err := s.repo.Get(ctx, tId)
 		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, "", fmt.Errorf("template %s not found or inaccessible", tId)
+			}
 			return nil, "", fmt.Errorf("failed to fetch base template structural data: %w", err)
 		}
 		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to decrypt html: %w", err)
+			return nil, "", fmt.Errorf("failed to decrypt html for template %s: %w", tId, err)
 		}
 		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to decrypt css: %w", err)
+			return nil, "", fmt.Errorf("failed to decrypt css for template %s: %w", tId, err)
 		}
 
 		htmlBuilder.WriteString(html)
@@ -333,13 +347,15 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 	html := htmlBuilder.String()
 	css := cssBuilder.String()
 
+	// Get invoice-specific settings (falls back to defaults if none exist)
 	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
 
 	data := invoiceToData(inv)
 
+	// Apply settings if they exist
 	if st != nil {
 		data.PrimaryColor = st.PrimaryColor
 		data.AccentColor = st.AccentColor
@@ -377,12 +393,12 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	fullHTML, err := chromepdf.Render(html, css, dataMap)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to render HTML: %w", err)
 	}
 
 	pdf, err := chromepdf.Generate(ctx, fullHTML)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to generate PDF: %w", err)
 	}
 
 	filename := fmt.Sprintf("INVOICE %s", inv.InvoiceNumber)

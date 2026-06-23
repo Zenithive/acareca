@@ -209,9 +209,9 @@ func (h *Handler) GetSetting(c *gin.Context) {
 // @Description  Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically
 // @Tags         Templates
 // @Produce      json
-// @Param        id          path      string     true  "Template UUID ID"
 // @Param        invoiceId   query     string     true  "Invoice UUID ID Context"
-// @Success      200  {object}  RsSetting  "Resolved style settings specifications map"
+// @Param        templateId  query     string     true  "Template UUID ID (can be repeated for multiple templates)"
+// @Success      200  {object}  map[string]interface{}  "Resolved style settings specifications map keyed by template ID"
 // @Failure      400  {object}  map[string]string "Invalid parameters profile lookup request values"
 // @Failure      500  {object}  map[string]string "Internal Server Error"
 // @Security BearerToken
@@ -233,6 +233,12 @@ func (h *Handler) GetInvoiceSetting(c *gin.Context) {
 	rawIds := c.QueryArray("templateId")
 	if len(rawIds) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing templateId query parameter"})
+		return
+	}
+
+	const maxTemplateIds = 10
+	if len(rawIds) > maxTemplateIds {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("too many template IDs provided, maximum is %d", maxTemplateIds)})
 		return
 	}
 
@@ -343,8 +349,8 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 // @Description  Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response
 // @Tags         Templates
 // @Produce      application/pdf
-// @Param        id          path      string  true  "Template UUID ID"
 // @Param        invoice_id  path      string  true  "Target Invoice Entity Context Index UUID"
+// @Param        templateId  query     string  true  "Template UUID ID (can be repeated for multiple templates)"
 // @Success      200         {file}    string  "Target invoice document byte stream file object matches"
 // @Failure      400         {object}  map[string]string "Target routing value errors or profile validation flaws"
 // @Failure      404         {object}  map[string]string "Target entities unavailable"
@@ -370,6 +376,13 @@ func (h *Handler) DownloadPDF(c *gin.Context) {
 		return
 	}
 
+	// Limit template IDs to prevent abuse
+	const maxTemplateIds = 10
+	if len(rawIds) > maxTemplateIds {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("too many template IDs provided, maximum is %d", maxTemplateIds)})
+		return
+	}
+
 	templateIds := make([]uuid.UUID, 0, len(rawIds))
 	for _, raw := range rawIds {
 		id, err := uuid.Parse(raw)
@@ -384,6 +397,14 @@ func (h *Handler) DownloadPDF(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		if errors.Is(err, ErrInvoiceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, ErrUnauthorized) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

@@ -2530,15 +2530,12 @@ definitions:
         $ref: '#/definitions/invoice.RqInvoiceSetting'
       status:
         type: string
-      templateId:
-        type: string
     required:
     - billingPeriodFrom
     - billingPeriodTo
     - contactId
     - issueDate
     - name
-    - templateId
     type: object
   invoice.RqInvoiceSetting:
     properties:
@@ -2618,8 +2615,6 @@ definitions:
         $ref: '#/definitions/invoice.RqInvoiceSetting'
       status:
         type: string
-      templateId:
-        type: string
     type: object
   invoice.RsInvoice:
     properties:
@@ -2650,8 +2645,6 @@ definitions:
           $ref: '#/definitions/section.RsSection'
         type: array
       status:
-        type: string
-      templateId:
         type: string
       updatedAt:
         type: string
@@ -2702,6 +2695,8 @@ definitions:
         type: string
       invoiceSectionId:
         type: string
+      isFinal:
+        type: boolean
       name:
         type: string
       sortOrder:
@@ -2727,6 +2722,8 @@ definitions:
         type: string
       invoiceSectionId:
         type: string
+      isFinal:
+        type: boolean
       name:
         type: string
       sortOrder:
@@ -2749,6 +2746,8 @@ definitions:
         type: string
       invoiceSectionId:
         type: string
+      isFinal:
+        type: boolean
       name:
         type: string
       sortOrder:
@@ -2955,6 +2954,8 @@ definitions:
         - INCLUSIVE
         - EXCLUSIVE
         - NO_TAX
+      templateId:
+        type: string
     required:
     - documentNumber
     - sectionType
@@ -3001,6 +3002,8 @@ definitions:
         - INCLUSIVE
         - EXCLUSIVE
         - NO_TAX
+      templateId:
+        type: string
     type: object
   section.RsSection:
     properties:
@@ -3032,6 +3035,8 @@ definitions:
         $ref: '#/definitions/section.SectionType'
       taxMethod:
         $ref: '#/definitions/section.TaxMethod'
+      templateId:
+        type: string
       updatedAt:
         type: string
     type: object
@@ -3277,10 +3282,10 @@ definitions:
         type: number
       description:
         type: string
-      line_total:
-        type: number
       name:
         type: string
+      running_total:
+        type: number
     type: object
   template.PartyInfo:
     properties:
@@ -3306,7 +3311,13 @@ definitions:
       is_default:
         type: boolean
       name:
+        maxLength: 100
+        minLength: 1
         type: string
+    required:
+    - css
+    - html
+    - name
     type: object
   template.RqUpdateSetting:
     properties:
@@ -10473,90 +10484,6 @@ paths:
       summary: Update Global Template
       tags:
       - Templates
-  /templates/{id}/invoice-settings:
-    get:
-      description: Queries UI visual presets prioritizing custom invoice overrides,
-        falling back to global defaults automatically
-      parameters:
-      - description: Template UUID ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Invoice UUID ID Context
-        in: query
-        name: invoiceId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Resolved style settings specifications map
-          schema:
-            $ref: '#/definitions/template.RsSetting'
-        "400":
-          description: Invalid parameters profile lookup request values
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerToken: []
-      summary: Get Invoice-Specific Template Settings
-      tags:
-      - Templates
-  /templates/{id}/invoices/{invoice_id}/download:
-    get:
-      description: Queries static database invoice documents, evaluates values natively
-        against dynamic parameters, and streams a file binary response
-      parameters:
-      - description: Template UUID ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Target Invoice Entity Context Index UUID
-        in: path
-        name: invoice_id
-        required: true
-        type: string
-      produces:
-      - application/pdf
-      responses:
-        "200":
-          description: Target invoice document byte stream file object matches
-          schema:
-            type: file
-        "400":
-          description: Target routing value errors or profile validation flaws
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Target entities unavailable
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerToken: []
-      summary: Download Compiled Invoice PDF
-      tags:
-      - Templates
   /templates/{id}/preview-pdf:
     post:
       consumes:
@@ -10678,6 +10605,92 @@ paths:
       security:
       - BearerToken: []
       summary: Update Template Settings
+      tags:
+      - Templates
+  /templates/invoice-settings:
+    get:
+      description: Queries UI visual presets prioritizing custom invoice overrides,
+        falling back to global defaults automatically
+      parameters:
+      - description: Invoice UUID ID Context
+        in: query
+        name: invoiceId
+        required: true
+        type: string
+      - description: Template UUID ID (can be repeated for multiple templates)
+        in: query
+        name: templateId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Resolved style settings specifications map keyed by template
+            ID
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid parameters profile lookup request values
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Get Invoice-Specific Template Settings
+      tags:
+      - Templates
+  /templates/invoices/{invoice_id}/download:
+    get:
+      description: Queries static database invoice documents, evaluates values natively
+        against dynamic parameters, and streams a file binary response
+      parameters:
+      - description: Target Invoice Entity Context Index UUID
+        in: path
+        name: invoice_id
+        required: true
+        type: string
+      - description: Template UUID ID (can be repeated for multiple templates)
+        in: query
+        name: templateId
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: Target invoice document byte stream file object matches
+          schema:
+            type: file
+        "400":
+          description: Target routing value errors or profile validation flaws
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Target entities unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Download Compiled Invoice PDF
       tags:
       - Templates
   /templates/sync-defaults:

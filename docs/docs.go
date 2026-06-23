@@ -10697,6 +10697,134 @@ const docTemplate = `{
                 }
             }
         },
+        "/templates/invoice-settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Get Invoice-Specific Template Settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID ID Context",
+                        "name": "invoiceId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID (can be repeated for multiple templates)",
+                        "name": "templateId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resolved style settings specifications map keyed by template ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters profile lookup request values",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/invoices/{invoice_id}/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Download Compiled Invoice PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target Invoice Entity Context Index UUID",
+                        "name": "invoice_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID (can be repeated for multiple templates)",
+                        "name": "templateId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Target invoice document byte stream file object matches",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Target routing value errors or profile validation flaws",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Target entities unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/templates/sync-defaults": {
             "post": {
                 "security": [
@@ -10882,133 +11010,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid dynamic parameters",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/templates/{id}/invoice-settings": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Templates"
-                ],
-                "summary": "Get Invoice-Specific Template Settings",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Template UUID ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Invoice UUID ID Context",
-                        "name": "invoiceId",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Resolved style settings specifications map",
-                        "schema": {
-                            "$ref": "#/definitions/template.RsSetting"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid parameters profile lookup request values",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/templates/{id}/invoices/{invoice_id}/download": {
-            "get": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
-                "produces": [
-                    "application/pdf"
-                ],
-                "tags": [
-                    "Templates"
-                ],
-                "summary": "Download Compiled Invoice PDF",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Template UUID ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Target Invoice Entity Context Index UUID",
-                        "name": "invoice_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Target invoice document byte stream file object matches",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Target routing value errors or profile validation flaws",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Target entities unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -14955,8 +14956,7 @@ const docTemplate = `{
                 "billingPeriodTo",
                 "contactId",
                 "issueDate",
-                "name",
-                "templateId"
+                "name"
             ],
             "properties": {
                 "billingPeriodFrom": {
@@ -14999,9 +14999,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/invoice.RqInvoiceSetting"
                 },
                 "status": {
-                    "type": "string"
-                },
-                "templateId": {
                     "type": "string"
                 }
             }
@@ -15121,9 +15118,6 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
-                },
-                "templateId": {
-                    "type": "string"
                 }
             }
         },
@@ -15170,9 +15164,6 @@ const docTemplate = `{
                     }
                 },
                 "status": {
-                    "type": "string"
-                },
-                "templateId": {
                     "type": "string"
                 },
                 "updatedAt": {
@@ -15248,6 +15239,9 @@ const docTemplate = `{
                 "invoiceSectionId": {
                     "type": "string"
                 },
+                "isFinal": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -15281,6 +15275,9 @@ const docTemplate = `{
                 "invoiceSectionId": {
                     "type": "string"
                 },
+                "isFinal": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -15313,6 +15310,9 @@ const docTemplate = `{
                 },
                 "invoiceSectionId": {
                     "type": "string"
+                },
+                "isFinal": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -15633,6 +15633,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/section.TaxMethod"
                         }
                     ]
+                },
+                "templateId": {
+                    "type": "string"
                 }
             }
         },
@@ -15701,6 +15704,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/section.TaxMethod"
                         }
                     ]
+                },
+                "templateId": {
+                    "type": "string"
                 }
             }
         },
@@ -15748,6 +15754,9 @@ const docTemplate = `{
                 },
                 "taxMethod": {
                     "$ref": "#/definitions/section.TaxMethod"
+                },
+                "templateId": {
+                    "type": "string"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -16108,11 +16117,11 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
-                "line_total": {
-                    "type": "number"
-                },
                 "name": {
                     "type": "string"
+                },
+                "running_total": {
+                    "type": "number"
                 }
             }
         },
@@ -16138,6 +16147,11 @@ const docTemplate = `{
         },
         "template.RqGlobalTemplate": {
             "type": "object",
+            "required": [
+                "css",
+                "html",
+                "name"
+            ],
             "properties": {
                 "css": {
                     "type": "string"
@@ -16152,7 +16166,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
                 }
             }
         },

@@ -16,6 +16,7 @@ import (
 
 var ErrNotFound = errors.New("template not found")
 var ErrInvoiceNotFound = errors.New("invoice record not found")
+var ErrUnauthorized = errors.New("unauthorized access to template or invoice")
 
 type IRepository interface {
 	Create(ctx context.Context, t *Template) error
@@ -34,6 +35,7 @@ type IRepository interface {
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
 	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error)
+	ValidateTemplateAccess(ctx context.Context, templateIds []uuid.UUID) error
 }
 
 type Repository struct {
@@ -144,6 +146,15 @@ func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Set
 }
 
 func (r *Repository) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error) {
+	if len(templateIds) == 0 {
+		return nil, fmt.Errorf("at least one template ID is required")
+	}
+
+	const maxTemplateIds = 10
+	if len(templateIds) > maxTemplateIds {
+		return nil, fmt.Errorf("too many template IDs provided, maximum is %d", maxTemplateIds)
+	}
+
 	const q = `
 		SELECT s.*, m.template_id 
 		FROM tbl_template_setting s
@@ -452,4 +463,34 @@ func (r *Repository) SaveClinicMailTemplate(ctx context.Context, clinicID uuid.U
 	`, clinicID, subject, body)
 
 	return err
+}
+
+func (r *Repository) ValidateTemplateAccess(ctx context.Context, templateIds []uuid.UUID) error {
+	if len(templateIds) == 0 {
+		return nil
+	}
+
+	const maxTemplateIds = 10
+	if len(templateIds) > maxTemplateIds {
+		return fmt.Errorf("too many template IDs provided, maximum is %d", maxTemplateIds)
+	}
+
+	// Check that all templates exist and are active
+	const q = `
+		SELECT COUNT(*) 
+		FROM tbl_template 
+		WHERE id = ANY($1) 
+		  AND deleted_at IS NULL 
+		  AND is_active = TRUE`
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, q, pq.Array(templateIds)); err != nil {
+		return fmt.Errorf("failed to validate template access: %w", err)
+	}
+
+	if count != len(templateIds) {
+		return ErrUnauthorized
+	}
+
+	return nil
 }
