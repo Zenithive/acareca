@@ -40,57 +40,123 @@ func (a *AccountTax) ToRs() AccountTax {
 	return *a
 }
 
+// ChartOfAccount mirrors the precise schema of tbl_chart_of_accounts
 type ChartOfAccount struct {
-	ID              uuid.UUID             `db:"id"`
-	PractitionerID  uuid.UUID             `db:"practitioner_id"`
-	AccountTypeID   int16                 `db:"account_type_id"`
-	AccountTypeName string                `db:"account_type_name"`
-	AccountTaxID    int16                 `db:"account_tax_id"`
-	Code            int16                 `db:"code"`
-	Name            string                `db:"name"`
-	Key             string                `db:"key"`
-	IsSystem        bool                  `db:"is_system"`
-	IsTaxable       bool                  `db:"is_taxable"`
-	Classification  AccountClassification `db:"classification"`
-	CreatedAt       time.Time             `db:"created_at"`
-	UpdatedAt       time.Time             `db:"updated_at"`
-	DeletedAt       *time.Time            `db:"deleted_at"`
+	ID              uuid.UUID  `db:"id"`
+	PractitionerID  uuid.UUID  `db:"practitioner_id"`
+	TemplateID      *uuid.UUID `db:"template_id"`
+	IsCustom        bool       `db:"is_custom"`
+	Key             string     `db:"key"`
+	AccountTypeID   *int16     `db:"account_type_id"`
+	AccountTypeName string     `db:"account_type_name"`
+	IsTaxable       bool       `db:"is_taxable"`
+	AccountTaxID    *int16     `db:"account_tax_id"`
+	Code            *int16     `db:"code"`
+	Name            *string    `db:"name"`
+	IsSystem        *bool      `db:"is_system"`
+	IsCos           *bool      `db:"is_cos"`
+	IsCapital       *bool      `db:"is_capital"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       *time.Time `db:"updated_at"`
+	DeletedAt       *time.Time `db:"deleted_at"`
+
+	TemplateUUID          *uuid.UUID `db:"template_uuid"`
+	TemplateAccountTypeID *int16     `db:"template_account_type_id"`
+	TemplateAccountTaxID  *int16     `db:"template_account_tax_id"`
+	TemplateCode          *int16     `db:"template_code"`
+	TemplateName          *string    `db:"template_name"`
+	TemplateIsSystem      *bool      `db:"template_is_system"`
+	TemplateIsCos         *bool      `db:"template_is_cos"`
+	TemplateIsCapital     *bool      `db:"template_is_capital"`
 }
 
+// ToRs safely extracts values by using local overrides if custom, or falling back to the template if not.
 func (c *ChartOfAccount) ToRs() RsChartOfAccount {
-	return RsChartOfAccount{
-		ID:              c.ID,
-		PractitionerID:  c.PractitionerID,
-		AccountTypeID:   c.AccountTypeID,
-		AccountTypeName: c.AccountTypeName,
-		AccountTaxID:    c.AccountTaxID,
-		Code:            c.Code,
-		Name:            c.Name,
-		IsSystem:        c.IsSystem,
-		IsTaxable:       c.IsTaxable,
-		Classification:  c.Classification,
-		CreatedAt:       c.CreatedAt,
-		UpdatedAt:       c.UpdatedAt,
+	res := RsChartOfAccount{
+		ID:             c.ID,
+		PractitionerID: c.PractitionerID,
+		IsCustom:       c.IsCustom,
+		Key:            c.Key,
+		IsTaxable:      c.IsTaxable,
+		CreatedAt:      c.CreatedAt,
 	}
+
+	if c.UpdatedAt != nil {
+		res.UpdatedAt = *c.UpdatedAt
+	}
+
+	// Dynamic Resolution Engine Strategy
+	if c.IsCustom || c.TemplateUUID == nil {
+		if c.AccountTypeID != nil {
+			res.AccountTypeID = *c.AccountTypeID
+		}
+		res.AccountTypeName = c.AccountTypeName
+		if c.AccountTaxID != nil {
+			res.AccountTaxID = *c.AccountTaxID
+		}
+		if c.Code != nil {
+			res.Code = *c.Code
+		}
+		if c.Name != nil {
+			res.Name = *c.Name
+		}
+		if c.IsSystem != nil {
+			res.IsSystem = *c.IsSystem
+		}
+		if c.IsCos != nil {
+			res.IsCos = *c.IsCos
+		}
+		if c.IsCapital != nil {
+			res.IsCapital = *c.IsCapital
+		}
+	} else {
+		// Fallback: Pull directly from the flattened template fields mapped during SQL collection
+		if c.TemplateAccountTypeID != nil {
+			res.AccountTypeID = *c.TemplateAccountTypeID
+		}
+		res.AccountTypeName = c.AccountTypeName
+		if c.TemplateAccountTaxID != nil {
+			res.AccountTaxID = *c.TemplateAccountTaxID
+		}
+		if c.TemplateCode != nil {
+			res.Code = *c.TemplateCode
+		}
+		if c.TemplateName != nil {
+			res.Name = *c.TemplateName
+		}
+		if c.TemplateIsSystem != nil {
+			res.IsSystem = *c.TemplateIsSystem
+		}
+		if c.TemplateIsCos != nil {
+			res.IsCos = *c.TemplateIsCos
+		}
+		if c.TemplateIsCapital != nil {
+			res.IsCapital = *c.TemplateIsCapital
+		}
+	}
+
+	return res
 }
 
-type RqCreateChartOfAccountOfAccount struct {
-	PractitionerID uuid.UUID             `json:"practitioner_id" validate:"required_if=Role Accountant"`
-	AccountTypeID  int16                 `json:"account_type_id" validate:"required,min=1"`
-	AccountTaxID   int16                 `json:"account_tax_id" validate:"required,min=1"`
-	Code           int16                 `json:"code" validate:"required,gte=100,lte=9999"`
-	Name           string                `json:"name" validate:"required,max=255"`
-	IsSystem       *bool                 `json:"is_system"`
-	Classification AccountClassification `json:"classification"`
+type RqCreateChartOfAccount struct {
+	PractitionerID uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  int16     `json:"account_type_id" validate:"required,min=1"`
+	AccountTaxID   int16     `json:"account_tax_id" validate:"required,min=1"`
+	Code           int16     `json:"code" validate:"required,gte=100,lte=9999"`
+	Name           string    `json:"name" validate:"required,max=255"`
+	Key            string    `json:"key"`
+	IsSystem       *bool     `json:"is_system"`
+	IsCos          *bool     `json:"is_cos"`
+	IsCapital      *bool     `json:"is_capital"`
 }
 
-type RqUpdateCharOfAccountOfAccount struct {
-	PractitionerID *uuid.UUID             `json:"practitioner_id" validate:"required_if=Role Accountant"`
-	AccountTypeID  *int16                 `json:"account_type_id" validate:"omitempty,min=1"`
-	AccountTaxID   *int16                 `json:"account_tax_id" validate:"omitempty,min=1"`
-	Code           *int16                 `json:"code" validate:"omitempty,gte=100,lte=9999"`
-	Name           *string                `json:"name" validate:"omitempty,max=255"`
-	Classification *AccountClassification `json:"classification"`
+type RqUpdateChartOfAccount struct {
+	PractitionerID *uuid.UUID `json:"practitioner_id" validate:"required_if=Role Accountant"`
+	AccountTypeID  *int16     `json:"account_type_id" validate:"omitempty,min=1"`
+	AccountTaxID   *int16     `json:"account_tax_id" validate:"omitempty,min=1"`
+	Code           *int16     `json:"code" validate:"omitempty,gte=100,lte=9999"`
+	Name           *string    `json:"name" validate:"omitempty,max=255"`
+	Key            *string    `json:"key"`
 }
 
 type RqCheckCodeUnique struct {
@@ -100,18 +166,21 @@ type RqCheckCodeUnique struct {
 }
 
 type RsChartOfAccount struct {
-	ID              uuid.UUID             `json:"id"`
-	PractitionerID  uuid.UUID             `json:"practitioner_id"`
-	AccountTypeID   int16                 `json:"account_type_id"`
-	AccountTypeName string                `json:"account_type_name"`
-	AccountTaxID    int16                 `json:"account_tax_id"`
-	Code            int16                 `json:"code"`
-	Name            string                `json:"name"`
-	IsSystem        bool                  `json:"is_system"`
-	IsTaxable       bool                  `json:"is_taxable"`
-	Classification  AccountClassification `json:"classification"`
-	CreatedAt       time.Time             `json:"created_at"`
-	UpdatedAt       time.Time             `json:"updated_at"`
+	ID              uuid.UUID `json:"id"`
+	PractitionerID  uuid.UUID `json:"practitioner_id"`
+	IsCustom        bool      `json:"is_custom"`
+	Key             string    `json:"key"`
+	IsTaxable       bool      `json:"is_taxable"`
+	AccountTypeID   int16     `json:"account_type_id"`
+	AccountTypeName string    `json:"account_type_name"`
+	AccountTaxID    int16     `json:"account_tax_id"`
+	Code            int16     `json:"code"`
+	Name            string    `json:"name"`
+	IsSystem        bool      `json:"is_system"`
+	IsCos           bool      `json:"is_cos"`
+	IsCapital       bool      `json:"is_capital"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type RsCodeUnique struct {
@@ -130,12 +199,12 @@ type Filter struct {
 	Name           *string     `form:"name"`
 	Id             *string     `form:"id"`
 	Code           *int        `form:"code"`
+	Key            *string     `form:"key"`
 	AccountType    *string     `form:"account_type"`
 	ExcludeType    []string    `form:"exclude_type"`
 	AccountTypeID  *int16      `form:"-"`
 	ExcludeTypeIDs []int16     `form:"-"`
 	AccountTaxID   *int16      `form:"account_tax_id"`
-	Classification *string     `form:"classification"`
 	common.Filter
 }
 
@@ -149,6 +218,9 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.Name != nil {
 		filters["name"] = filter.Name
 	}
+	if filter.Key != nil {
+		filters["key"] = filter.Key
+	}
 	if filter.Code != nil {
 		filters["code"] = filter.Code
 	}
@@ -158,9 +230,24 @@ func (filter *Filter) MapToFilter() common.Filter {
 	if filter.AccountTaxID != nil {
 		filters["account_tax_id"] = filter.AccountTaxID
 	}
-	if filter.Classification != nil {
-		filters["classification"] = filter.Classification
-	}
 
 	return common.NewFilter(filter.Search, filters, nil, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)
+}
+
+// COATemplate mirrors the schema of tbl_chart_of_accounts_template
+type COATemplate struct {
+	ID            *uuid.UUID `db:"id"`
+	AccountTypeID *int16     `db:"account_type_id"`
+	AccountTaxID  *int16     `db:"account_tax_id"`
+	Code          *int16     `db:"code"`
+	Name          *string    `db:"name"`
+	Key           *string    `db:"key"`
+	IsSystem      *bool      `db:"is_system"`
+	IsCos         *bool      `db:"is_cos"`
+	IsCapital     *bool      `db:"is_capital"`
+	CreatedBy     *uuid.UUID `db:"created_by"`
+	UpdatedBy     *uuid.UUID `db:"updated_by"`
+	CreatedAt     *time.Time `db:"created_at"`
+	UpdatedAt     *time.Time `db:"updated_at"`
+	DeletedAt     *time.Time `db:"deleted_at"`
 }

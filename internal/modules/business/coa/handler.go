@@ -295,7 +295,7 @@ func (h *handler) GetChartOfAccountByKey(c *gin.Context) {
 // @Tags coa
 // @Accept json
 // @Produce json
-// @Param request body RqCreateChartOfAccountOfAccount true "COA Data"
+// @Param request body RqCreateChartOfAccount true "COA Data"
 // @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -304,7 +304,7 @@ func (h *handler) GetChartOfAccountByKey(c *gin.Context) {
 // @Security BearerToken
 // @Router /coa/chart-of-account [post]
 func (h *handler) CreateChartOfAccount(c *gin.Context) {
-	var req RqCreateChartOfAccountOfAccount
+	var req RqCreateChartOfAccount
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -336,7 +336,7 @@ func (h *handler) CreateChartOfAccount(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Chart of Account UUID"
-// @Param request body RqUpdateCharOfAccountOfAccount true "Updated COA Data"
+// @Param request body RqUpdateChartOfAccount true "Updated COA Data"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -353,7 +353,7 @@ func (h *handler) UpdateCharOfAccount(c *gin.Context) {
 		return
 	}
 
-	var req RqUpdateCharOfAccountOfAccount
+	var req RqUpdateChartOfAccount
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return

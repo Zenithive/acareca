@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/iamarpitzala/acareca/migrations"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"

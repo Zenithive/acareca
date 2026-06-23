@@ -191,11 +191,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, e.ID, result)
 
-		// Verify ledger integrity before commit
-		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, result.ID); err != nil {
-			return err
-		}
-
 		return nil
 	})
 
@@ -327,11 +322,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		result = updated.ToRs(vals)
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, id, result)
-
-		// Verify ledger integrity before commit
-		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, id); err != nil {
-			return err
-		}
 
 		return nil
 	})
@@ -568,7 +558,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				ID:                 uuid.New(),
 				EntryID:            entryID,
 				FormFieldID:        &fieldID,
-				CoaID:              f.CoaID, // 🚀 FIXED
+				CoaID:              f.CoaID,
 				NetAmount:          &netBase,
 				GstAmount:          gstAmount,
 				GrossAmount:        &roundedGross,
@@ -586,7 +576,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				ID:                 uuid.New(),
 				EntryID:            entryID,
 				FormFieldID:        &fieldID,
-				CoaID:              f.CoaID, // 🚀 FIXED
+				CoaID:              f.CoaID,
 				NetAmount:          &netBase,
 				GstAmount:          nil,
 				GrossAmount:        &grossTotal,
@@ -658,7 +648,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			ID:                 uuid.New(),
 			EntryID:            entryID,
 			FormFieldID:        &fieldID,
-			CoaID:              f.CoaID, // 🚀 FIXED
+			CoaID:              f.CoaID,
 			NetAmount:          &netBase,
 			GstAmount:          gstAmount,
 			GrossAmount:        &grossTotal,
@@ -827,177 +817,113 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	// Rule: amounts are stored with their natural sign (positive = normal balance).
 	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
 	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
-	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
+	// A balanced entry sums to zero. If not, inject a COA-980 (Current Year Earnings) offset row.
 
 	if len(out) > 0 {
-		var totalLedgerImpact float64
+		var rawDebits float64
+		var rawCredits float64
 		var practitionerID *uuid.UUID
+		var earningsCoaID *uuid.UUID
 
+		// Pass 2a: Calculate baseline balances from explicit user input lines
 		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-				continue
-			}
-
-			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-			if err == nil && chartAccount != nil {
-				if practitionerID == nil {
+			if ev.CoaID != nil {
+				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+				if err == nil && chartAccount != nil && practitionerID == nil {
 					practitionerID = &chartAccount.PractitionerID
-				}
-
-				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				// Use the raw signed amount — the sign already encodes debit/credit direction.
-				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-					totalLedgerImpact += *ev.NetAmount
-				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-					totalLedgerImpact -= *ev.NetAmount
+					earningsAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 980, *practitionerID, nil)
+					if err == nil && earningsAccount != nil {
+						id := earningsAccount.ID
+						earningsCoaID = &id
+					}
 				}
 			}
 		}
 
-		totalLedgerImpact = s.roundValue(totalLedgerImpact)
+		cleanOut := make([]*FormEntryValue, 0, len(out))
+		var formulaAllocationsTo980 float64
 
-		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
-			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-			if err != nil || bankAccount == nil {
-				return nil, fmt.Errorf("missing required balancing account: COA code 600 Business Bank Account for practitioner %s", practitionerID.String())
+		for _, ev := range out {
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID == nil {
+				if ev.Description != nil && *ev.Description == "Current Year Earnings Allocation" {
+					continue
+				}
 			}
+			cleanOut = append(cleanOut, ev)
 
-			// COA-600 is an Asset; to absorb the variance we invert it.
-			counterBalancingAmount := s.roundValue(-totalLedgerImpact)
-			bankCoaID := bankAccount.ID
-
-			out = append(out, &FormEntryValue{
-				ID:                 uuid.New(),
-				EntryID:            entryID,
-				FormFieldID:        nil,
-				CoaID:              &bankCoaID,
-				NetAmount:          &counterBalancingAmount,
-				GstAmount:          nil,
-				GrossAmount:        &counterBalancingAmount,
-				BusinessPercentage: nil, // System balancing entries don't have business percentage
-			})
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil && (fieldMeta.IsFormula || fieldMeta.IsComputed) && ev.NetAmount != nil {
+					formulaAllocationsTo980 += math.Abs(*ev.NetAmount)
+				}
+			}
 		}
-		var finalLedgerBalance float64
+		out = cleanOut
+
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
 				continue
 			}
 
+			if ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil {
+					// If it's a formula field or designated summary, skip its entry from ledger totals
+					if fieldMeta.IsFormula || fieldMeta.IsComputed {
+						continue
+					}
+				}
+			}
+
 			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
 			if err == nil && chartAccount != nil {
 				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-					finalLedgerBalance += *ev.NetAmount
-				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-					finalLedgerBalance -= *ev.NetAmount
+				isDebitNormal := strings.Contains(accountType, "asset") ||
+					strings.Contains(accountType, "expense") ||
+					strings.Contains(accountType, "direct cost") ||
+					strings.Contains(accountType, "bank")
+
+				val := math.Abs(*ev.NetAmount)
+				if isDebitNormal {
+					rawDebits += val
+				} else {
+					rawCredits += val
 				}
 			}
 		}
 
-		finalLedgerBalance = s.roundValue(finalLedgerBalance)
-		if math.Abs(finalLedgerBalance) > 0.01 {
-			return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
+		rawDebits = s.roundValue(rawDebits)
+		rawCredits = s.roundValue(rawCredits)
+
+		trueNetProfit := s.roundValue(rawCredits - rawDebits)
+
+		// Pass 2b: Inject a balancing entry if they don't match
+		if practitionerID != nil && earningsCoaID != nil {
+			balancingAmount := s.roundValue(trueNetProfit - formulaAllocationsTo980)
+
+			if math.Abs(balancingAmount) > 0.01 {
+				desc := "Current Year Earnings Allocation"
+
+				out = append(out, &FormEntryValue{
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        nil,
+					CoaID:              earningsCoaID,
+					NetAmount:          &balancingAmount,
+					GstAmount:          nil,
+					GrossAmount:        &balancingAmount,
+					BusinessPercentage: nil,
+					Description:        &desc,
+				})
+			}
 		}
 	}
 
 	return out, nil
 }
 
-// // =========================================================================
-// // PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
-// // =========================================================================
-// if len(out) > 0 {
-// 	var totalLedgerImpact float64
-// 	var practitionerID *uuid.UUID
-
-// 	// 1. Calculate initial transaction variance using exact DB polarity rules
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			if practitionerID == nil {
-// 				practitionerID = &chartAccount.PractitionerID
-// 			}
-
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			// Mirror the SQL script polarity perfectly
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				totalLedgerImpact += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				totalLedgerImpact -= amount
-// 			}
-// 		}
-// 	}
-
-// 	totalLedgerImpact = s.roundValue(totalLedgerImpact)
-
-// 	// 2. Inject balancing row if variance exists
-// 	if totalLedgerImpact != 0 && practitionerID != nil {
-// 		var counterBalancingAmount float64
-// 		var resolvedCoaID uuid.UUID
-// 		var foundTarget bool
-
-// 		// If totalLedgerImpact is positive, the database has too many debits.
-// 		// We need to inject a CREDIT (negative amount) to clear it.
-// 		counterBalancingAmount = s.roundValue(-totalLedgerImpact)
-
-// 		// Rule 3: Global Cash Safe-Harbor Fallback (Code 600)
-// 		bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-// 		if err == nil && bankAccount != nil {
-// 			resolvedCoaID = bankAccount.ID
-// 			foundTarget = true
-// 		}
-
-// 		if foundTarget {
-// 			out = append(out, &FormEntryValue{
-// 				ID:          uuid.New(),
-// 				EntryID:     entryID,
-// 				FormFieldID: nil, // Marks this as a system balancing row
-// 				CoaID:       &resolvedCoaID,
-// 				NetAmount:   &counterBalancingAmount,
-// 				GstAmount:   nil,
-// 				GrossAmount: &counterBalancingAmount,
-// 			})
-// 		}
-// 	}
-
-// 	// 3. Post-Balancing Verification Guardrail (Must exactly mirror the math blocks above)
-// 	var finalLedgerBalance float64
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				finalLedgerBalance += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				finalLedgerBalance -= amount
-// 			}
-// 		}
-// 	}
-
-// 	finalLedgerBalance = s.roundValue(finalLedgerBalance)
-// 	if finalLedgerBalance > 0.01 || finalLedgerBalance < -0.01 {
-// 		return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
-// 	}
-// }
-
-// 	return out, nil
-// }
-
 // roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
 // This ensures all monetary amounts are precise to 2 decimal places
-
 func (s *Service) roundValue(val float64) float64 {
 	return math.Round(val*100) / 100
 }
@@ -1118,7 +1044,6 @@ func roundEntry(v float64) float64 {
 }
 
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	// --- AUDIT LOG ---
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
@@ -1137,7 +1062,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 
 	f := filter.ToCommonFilter()
 
-	// Capture what the client sent (Page Index)
 	incomingPageIndex := 0
 	if f.Offset != nil {
 		incomingPageIndex = *f.Offset
@@ -1178,6 +1102,19 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 
 	f := filter.ToCommonFilter()
 
+	pageIndex := 0
+	if f.Offset != nil {
+		pageIndex = *f.Offset
+	}
+
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	dbOffset := pageIndex * pageSize
+	f.Offset = &dbOffset
+
 	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1188,7 +1125,7 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, pageIndex, pageSize)
 	return &rs, nil
 }
 

@@ -656,7 +656,7 @@ func coaSectionType(accountTypeName string) string {
 // resolveTaxRate returns the tax rate (as a decimal) for a COA entry.
 // Returns 0.0 when no tax applies.
 func resolveTaxRate(ctx context.Context, coaSvc coa.Service, coaDetail *coa.RsChartOfAccount) float64 {
-	if !coaDetail.IsTaxable || coaDetail.AccountTaxID <= 0 {
+	if coaDetail.AccountTaxID <= 0 {
 		return 0.0
 	}
 	taxDetail, err := coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
