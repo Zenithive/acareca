@@ -374,10 +374,19 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		return nil, err
 	}
 
+	// Fixed: Query items from tbl_invoice_item table joined with sections
 	const itemQ = `
-        SELECT id, name, COALESCE(description, '') AS description, amount, bas_code, COALESCE(entry_type, '') AS entry_type
-        FROM tbl_invoice_item
-        WHERE invoice_id = $1`
+        SELECT 
+            ii.id, 
+            ii.name, 
+            COALESCE(ii.description, '') AS description, 
+            ii.amount, 
+            ii.bas_code, 
+            COALESCE(ii.entry_type, '') AS entry_type
+        FROM tbl_invoice_item ii
+        INNER JOIN tbl_map_invoice_section s ON ii.invoice_section_id = s.id
+        WHERE s.invoice_id = $1 AND ii.deleted_at IS NULL AND s.deleted_at IS NULL
+        ORDER BY ii.sort_order ASC, ii.created_at ASC`
 	var items []InvoiceItem
 	if err := r.db.SelectContext(ctx, &items, itemQ, row.Id); err != nil {
 		return nil, err
