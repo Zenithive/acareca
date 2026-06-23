@@ -558,7 +558,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				ID:                 uuid.New(),
 				EntryID:            entryID,
 				FormFieldID:        &fieldID,
-				CoaID:              f.CoaID, // 🚀 FIXED
+				CoaID:              f.CoaID,
 				NetAmount:          &netBase,
 				GstAmount:          gstAmount,
 				GrossAmount:        &roundedGross,
@@ -823,15 +823,50 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		var rawDebits float64
 		var rawCredits float64
 		var practitionerID *uuid.UUID
+		var earningsCoaID *uuid.UUID
 
 		// Pass 2a: Calculate baseline balances from explicit user input lines
+		for _, ev := range out {
+			if ev.CoaID != nil {
+				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+				if err == nil && chartAccount != nil && practitionerID == nil {
+					practitionerID = &chartAccount.PractitionerID
+					earningsAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 980, *practitionerID, nil)
+					if err == nil && earningsAccount != nil {
+						id := earningsAccount.ID
+						earningsCoaID = &id
+					}
+				}
+			}
+		}
+
+		cleanOut := make([]*FormEntryValue, 0, len(out))
+		var formulaAllocationsTo980 float64
+
+		for _, ev := range out {
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID == nil {
+				if ev.Description != nil && *ev.Description == "Current Year Earnings Allocation" {
+					continue
+				}
+			}
+			cleanOut = append(cleanOut, ev)
+
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil && (fieldMeta.IsFormula || fieldMeta.IsComputed) && ev.NetAmount != nil {
+					formulaAllocationsTo980 += math.Abs(*ev.NetAmount)
+				}
+			}
+		}
+		out = cleanOut
+
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
 				continue
 			}
 
 			if ev.FormFieldID != nil {
-				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID) // adjust to your actual repo method
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
 				if err == nil && fieldMeta != nil {
 					// If it's a formula field or designated summary, skip its entry from ledger totals
 					if fieldMeta.IsFormula || fieldMeta.IsComputed {
@@ -842,10 +877,6 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
 			if err == nil && chartAccount != nil {
-				if practitionerID == nil {
-					practitionerID = &chartAccount.PractitionerID
-				}
-
 				accountType := strings.ToLower(chartAccount.AccountTypeName)
 				isDebitNormal := strings.Contains(accountType, "asset") ||
 					strings.Contains(accountType, "expense") ||
@@ -863,29 +894,28 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 
 		rawDebits = s.roundValue(rawDebits)
 		rawCredits = s.roundValue(rawCredits)
-		initialVariance := s.roundValue(rawDebits - rawCredits)
+
+		trueNetProfit := s.roundValue(rawCredits - rawDebits)
 
 		// Pass 2b: Inject a balancing entry if they don't match
-		if math.Abs(initialVariance) > 0.01 && practitionerID != nil {
-			earningsAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 980, *practitionerID, nil)
-			if err != nil || earningsAccount == nil {
-				return nil, fmt.Errorf("missing required balancing account: COA code 980 Current Year Earnings")
+		if practitionerID != nil && earningsCoaID != nil {
+			balancingAmount := s.roundValue(trueNetProfit - formulaAllocationsTo980)
+
+			if math.Abs(balancingAmount) > 0.01 {
+				desc := "Current Year Earnings Allocation"
+
+				out = append(out, &FormEntryValue{
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        nil,
+					CoaID:              earningsCoaID,
+					NetAmount:          &balancingAmount,
+					GstAmount:          nil,
+					GrossAmount:        &balancingAmount,
+					BusinessPercentage: nil,
+					Description:        &desc,
+				})
 			}
-
-			balancingAmount := s.roundValue(initialVariance)
-
-			earningsCoaID := earningsAccount.ID
-
-			out = append(out, &FormEntryValue{
-				ID:                 uuid.New(),
-				EntryID:            entryID,
-				FormFieldID:        nil,
-				CoaID:              &earningsCoaID,
-				NetAmount:          &balancingAmount,
-				GstAmount:          nil,
-				GrossAmount:        &balancingAmount,
-				BusinessPercentage: nil,
-			})
 		}
 	}
 
@@ -1014,7 +1044,6 @@ func roundEntry(v float64) float64 {
 }
 
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	// --- AUDIT LOG ---
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
@@ -1033,7 +1062,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 
 	f := filter.ToCommonFilter()
 
-	// Capture what the client sent (Page Index)
 	incomingPageIndex := 0
 	if f.Offset != nil {
 		incomingPageIndex = *f.Offset
@@ -1074,6 +1102,19 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 
 	f := filter.ToCommonFilter()
 
+	pageIndex := 0
+	if f.Offset != nil {
+		pageIndex = *f.Offset
+	}
+
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	dbOffset := pageIndex * pageSize
+	f.Offset = &dbOffset
+
 	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1084,7 +1125,7 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, pageIndex, pageSize)
 	return &rs, nil
 }
 

@@ -522,7 +522,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` WHERE (
+		permissionClause = ` AND (
             v.practitioner_id IN (
                 SELECT practitioner_id FROM tbl_invitation
                 WHERE accountant_id = ? AND status = 'COMPLETED'
@@ -533,7 +533,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
             ))
         )`
 	} else {
-		permissionClause = ` WHERE (
+		permissionClause = ` AND (
             v.clinic_id IN (
                 SELECT id FROM tbl_clinic
                 WHERE practitioner_id = ? AND deleted_at IS NULL
@@ -554,15 +554,27 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 
 	base := `
     SELECT
-        MAX(v.coa_id::text)::uuid                                                     AS coa_id,
-        v.account_name                                                                AS coa_name,
-        COALESCE(MAX(coa.is_system::int)::bool, false)                                AS is_system,
-        ROUND(SUM(v.net_amount)::numeric, 2)::float8                                  AS total_net_amount,
-        ROUND(SUM(v.gst_amount)::numeric, 2)::float8                                  AS total_gst_amount,
-        ROUND(SUM(v.gross_amount)::numeric, 2)::float8                                AS total_gross_amount,
-        COUNT(DISTINCT v.entry_id)                                                    AS entry_count
+        MAX(v.coa_id::text)::uuid                                                      AS coa_id,
+        v.account_name                                                                 AS coa_name,
+        COALESCE(MAX(coa.is_system::int)::bool, false)                                 AS is_system,
+        ABS(ROUND(SUM(v.net_amount)::numeric, 2))::float8                             AS total_net_amount,
+        ABS(ROUND(SUM(v.gst_amount)::numeric, 2))::float8                             AS total_gst_amount,
+        ABS(ROUND(SUM(v.gross_amount)::numeric, 2))::float8                           AS total_gross_amount,
+        COUNT(DISTINCT fev.id)                                                         AS entry_count
     FROM vw_double_entry_line_items v
-    LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id` + permissionClause
+    LEFT JOIN tbl_chart_of_accounts coa ON coa.id = v.coa_id
+    INNER JOIN tbl_form_entry_value fev
+		ON fev.entry_id = v.entry_id
+			AND fev.deleted_at IS NULL
+			AND (
+				-- Match form fields 1-to-1 safely
+				(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+				OR
+				-- Match unmapped system fallback lines directly via their shared allocation to account 980
+				-- without causing multi-row loop compounding explosions.
+				(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+			)
+    WHERE 1=1` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -614,43 +626,52 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 	var permissionClause string
 
 	if strings.EqualFold(role, util.RoleAccountant) {
-		permissionClause = ` WHERE (
-            practitioner_id IN (
+		permissionClause = ` AND (
+            v.practitioner_id IN (
                 SELECT practitioner_id FROM tbl_invitation
                 WHERE accountant_id = ? AND status = 'COMPLETED'
             )
-            OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id IN (
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id IN (
                 SELECT practitioner_id FROM tbl_invitation
                 WHERE accountant_id = ? AND status = 'COMPLETED'
             ))
         )`
 	} else {
-		permissionClause = ` WHERE (
-            clinic_id IN (
+		permissionClause = ` AND (
+            v.clinic_id IN (
                 SELECT id FROM tbl_clinic
                 WHERE practitioner_id = ? AND deleted_at IS NULL
             )
-            OR (clinic_id = '00000000-0000-0000-0000-000000000000' AND practitioner_id = ?)
+            OR (v.clinic_id = '00000000-0000-0000-0000-000000000000' AND v.practitioner_id = ?)
         )`
 	}
 
 	allowedColumns := map[string]string{
-		"clinic_id":       "clinic_id",
-		"form_id":         "form_id",
-		"coa_id":          "coa_id",
-		"tax_type_id":     "tax_id",
-		"practitioner_id": "practitioner_id",
-		"start_date":      "entry_date",
-		"end_date":        "entry_date",
+		"clinic_id":       "v.clinic_id",
+		"form_id":         "v.form_id",
+		"coa_id":          "v.coa_id",
+		"tax_type_id":     "v.tax_id",
+		"practitioner_id": "v.practitioner_id",
+		"start_date":      "v.entry_date",
+		"end_date":        "v.entry_date",
 	}
 
-	base := ` FROM vw_double_entry_line_items` + permissionClause
+	base := ` FROM vw_double_entry_line_items v
+    INNER JOIN tbl_form_entry_value fev
+		ON fev.entry_id = v.entry_id
+			AND fev.deleted_at IS NULL
+			AND (
+			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+			OR
+			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+		)
+    WHERE 1=1` + permissionClause
 
-	searchCols := []string{"account_name", "account_code"}
+	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
 
 	if strings.Contains(strings.ToUpper(q), "COUNT(*)") {
-		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT account_name)")
+		q = strings.ReplaceAll(q, "COUNT(*)", "COUNT(DISTINCT v.account_name)")
 	}
 
 	args := []any{actorID, actorID}
@@ -701,7 +722,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 
 	base := `
         SELECT
-            MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(v.net_amount::text, '0'))::uuid AS id,
+            MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(fev.id::text, ''))::uuid AS id,
             fev.id                                                                                         AS form_entry_value_id,
             v.entry_id                                                                                     AS entry_id,
             v.form_field_id                                                                                AS form_field_id,
@@ -720,7 +741,6 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
             CASE
                 WHEN COALESCE(v.debit_amount, 0) > 0 THEN 'DEBIT'
                 WHEN COALESCE(v.credit_amount, 0) > 0 THEN 'CREDIT'
-                -- Fallback evaluation if debit/credit metrics are empty
                 WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) >= 0 THEN 'DEBIT'
                 WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) <  0 THEN 'CREDIT'
                 WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) >= 0 THEN 'CREDIT'
@@ -739,15 +759,25 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
         LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
         LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
         LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
-        INNER JOIN tbl_form_entry_value fev
-        ON fev.entry_id = v.entry_id
-            AND fev.deleted_at IS NULL
-            AND (
-            (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-            OR
-            (v.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-        )
+       INNER JOIN tbl_form_entry_value fev
+		ON fev.entry_id = v.entry_id
+			AND fev.deleted_at IS NULL
+			AND (
+			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+			OR
+			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+		)
         WHERE v.account_name = ?` + permissionClause
+
+	if f.SortBy == nil || *f.SortBy == "" {
+		defaultSort := "v.entry_date"
+		f.SortBy = &defaultSort
+		defaultOrder := "DESC, fev.id ASC"
+		f.OrderBy = &defaultOrder
+	} else {
+		extendedOrder := *f.OrderBy + ", fev.id ASC"
+		f.OrderBy = &extendedOrder
+	}
 
 	searchCols := []string{"ff.label", "v.account_name", "f.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -798,6 +828,15 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 		gstVal := row.GstAmount
 		grossVal := row.GrossAmount
 		bizPct := row.BusinessPercentage
+
+		if row.TransactionType == "CREDIT" {
+			if netVal < 0 {
+				netVal = netVal * -1
+			}
+			if grossVal < 0 {
+				grossVal = grossVal * -1
+			}
+		}
 
 		detail := &RsCoaEntryDetail{
 			ID:                 row.ID.String(),
@@ -884,6 +923,14 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 	base := `
         FROM vw_double_entry_line_items v
+		INNER JOIN tbl_form_entry_value fev
+		ON fev.entry_id = v.entry_id
+			AND fev.deleted_at IS NULL
+			AND (
+			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+			OR
+			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+		)
         WHERE v.account_name = ?` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.description"}
