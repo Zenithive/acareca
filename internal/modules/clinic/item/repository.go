@@ -221,6 +221,22 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 
 	for _, item := range sorted {
 		if item.Expression != nil {
+			// Validate expression is a proper JSON object
+			_, ok := item.Expression.(map[string]interface{})
+			if !ok {
+				fieldKey := ""
+				if item.FieldKey != nil {
+					fieldKey = *item.FieldKey
+				}
+				return &FormulaError{
+					ItemName:   item.Name,
+					FieldKey:   fieldKey,
+					Expression: fmt.Sprintf("%v", item.Expression),
+					Err:        fmt.Errorf("expression is not a valid JSON object"),
+					Context:    contextValues,
+				}
+			}
+
 			exprJSON, err := json.Marshal(item.Expression)
 			if err != nil {
 				fieldKey := ""
@@ -230,7 +246,7 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 				return &FormulaError{
 					ItemName:   item.Name,
 					FieldKey:   fieldKey,
-					Expression: string(exprJSON),
+					Expression: fmt.Sprintf("%v", item.Expression),
 					Err:        err,
 					Context:    contextValues,
 				}
@@ -351,6 +367,27 @@ func topologicalSort(items []*Item) ([]*Item, error) {
 	}
 
 	if len(sorted) != len(items) {
+		sortedSet := make(map[*Item]bool, len(sorted))
+		for _, s := range sorted {
+			sortedSet[s] = true
+		}
+
+		unsorted := make([]string, 0)
+		for _, item := range items {
+			if !sortedSet[item] {
+				if item.FieldKey != nil && *item.FieldKey != "" {
+					unsorted = append(unsorted, *item.FieldKey)
+				} else if item.BASCode != nil {
+					unsorted = append(unsorted, string(*item.BASCode))
+				} else {
+					unsorted = append(unsorted, item.Name)
+				}
+			}
+		}
+
+		if len(unsorted) > 0 {
+			return nil, fmt.Errorf("circular dependency detected in fields: %v", unsorted)
+		}
 		return nil, fmt.Errorf("circular dependency detected")
 	}
 

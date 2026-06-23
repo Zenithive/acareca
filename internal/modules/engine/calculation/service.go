@@ -136,7 +136,7 @@ func (s *service) GrossMethod(ctx context.Context, formDetail *detail.RsFormDeta
 		clinicShare = float64(*formDetail.ClinicShare)
 	}
 	serviceFee := netAmount * (clinicShare / 100)
-	gstServiceFee := serviceFee * 0.1
+	gstServiceFee := serviceFee * method.GSTRate
 	totalServiceFee := serviceFee + gstServiceFee
 
 	remittedAmount := netAmount - totalServiceFee - otherCostSum + paidByOwnerSum + incomeGST
@@ -211,7 +211,7 @@ func (s *service) NetMethod(ctx context.Context, formDetail *detail.RsFormDetail
 		superAmount = commissionBase * superDecimal
 	}
 
-	gstOnRemuneration := commissionBase * 0.10
+	gstOnRemuneration := commissionBase * method.GSTRate
 	invoiceTotal := commissionBase + gstOnRemuneration + superAmount
 
 	netResult := NetResult{
@@ -477,12 +477,13 @@ func (s *service) LiveCalculate(ctx context.Context, req *RqLiveCalculate) (*RsL
 					grossInput = entry.NetAmount
 				}
 
-				// Calculate Net from Gross - GST
-				if entry.GstAmount != nil {
-					actualNetAmount = grossInput - *entry.GstAmount
-				} else {
-					actualNetAmount = grossInput
+				// MANUAL tax requires explicit GST amount
+				if entry.GstAmount == nil {
+					return nil, fmt.Errorf("GST amount is required for MANUAL tax type on field %s", f.FieldKey)
 				}
+
+				// Calculate Net from Gross - GST
+				actualNetAmount = grossInput - *entry.GstAmount
 			}
 
 		}
@@ -1051,8 +1052,8 @@ func (s *service) TaxCalculation(ctx context.Context, entry RqPreviewEntry, fiel
 			if err != nil {
 				return nil, fmt.Errorf("tax calc for field %s: %w", field.FieldKey, err)
 			}
-			netVal := taxResult.Amount       // derived: Gross - GST
-			gstVal := taxResult.GstAmount    // as entered
+			netVal := taxResult.Amount        // derived: Gross - GST
+			gstVal := taxResult.GstAmount     // as entered
 			grossVal := taxResult.TotalAmount // as entered (Gross)
 
 			payload.displaynet = netVal
@@ -1086,7 +1087,7 @@ func roundPreview(v float64) float64 {
 }
 
 // evaluatePreviewFormulas evaluates formulas for computed fields in preview mode
-func (s *service) evaluatePreviewFormulas(ctx context.Context, fields []RqPreviewField, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[string]float64, error) {
+func (s *service) evaluatePreviewFormulas(_ context.Context, fields []RqPreviewField, keyValues map[string]float64, taxTypeByKey map[string]string, manualGSTByKey map[string]float64) (map[string]float64, error) {
 	// Collect computed fields with formulas
 	type computedField struct {
 		fieldKey string
@@ -1161,7 +1162,7 @@ func (s *service) evaluatePreviewFormulas(ctx context.Context, fields []RqPrevie
 		if taxType, hasTax := taxTypeByKey[cf.fieldKey]; hasTax {
 			switch taxType {
 			case "EXCLUSIVE":
-				feedbackVal = val * 1.1 // Add 10% GST
+				feedbackVal = val * method.GSTMultiplier // Add 10% GST (multiply by 1.1)
 			case "INCLUSIVE":
 				feedbackVal = val // Already gross
 			case "ZERO":

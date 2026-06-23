@@ -64,7 +64,10 @@ func (v *ASTValidator) validateNode(node Evaluator) error {
 		return nil
 
 	case *BasCodeNode:
-		// BAS codes are system-defined and always valid.
+		// BAS codes should be validated to ensure they exist in context
+		// However, BAS codes may not be pre-populated in allowed fields
+		// So we only validate field references, not BAS codes at validation time
+		// Runtime evaluation will catch missing BAS codes
 		return nil
 
 	case *AddNode:
