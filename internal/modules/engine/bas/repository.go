@@ -158,25 +158,25 @@ func (r *repository) GetQuarterDates(ctx context.Context, quarterID uuid.UUID) (
 }
 
 func (r *repository) GetReport(ctx context.Context, practitionerID uuid.UUID, from, to string) (*BASReportRow, error) {
-query := `
+	query := `
     SELECT
         COALESCE(SUM(gross_amount) FILTER (
-            WHERE section_type = 'COLLECTION'
+            WHERE (section_type = 'COLLECTION' OR account_type = 'Revenue')
             AND bas_category != 'BAS_EXCLUDED'
         ), 0) AS g1_total_sales_gross,
 
         COALESCE(SUM(gst_amount) FILTER (
-            WHERE section_type = 'COLLECTION'
+            WHERE (section_type = 'COLLECTION' OR account_type = 'Revenue')
             AND bas_category != 'BAS_EXCLUDED'
         ), 0) AS label_1a_gst_on_sales,
 
         COALESCE(SUM(gross_amount) FILTER (
-            WHERE section_type IN ('COST', 'OTHER_COST')
+            WHERE (section_type IN ('COST', 'OTHER_COST') OR account_type = 'Direct Cost')
             AND bas_category != 'BAS_EXCLUDED'
         ), 0) AS g11_total_purchases_gross,
 
         COALESCE(SUM(gst_amount) FILTER (
-            WHERE section_type IN ('COST', 'OTHER_COST')
+            WHERE (section_type IN ('COST', 'OTHER_COST') OR account_type = 'Direct Cost')
             AND bas_category != 'BAS_EXCLUDED'
         ), 0) AS label_1b_gst_on_purchases
     FROM vw_bas_line_items
