@@ -30,6 +30,7 @@ type RqEntry struct {
 	SortOrder        int         `json:"sortOrder" validate:"required"`
 	Expression       interface{} `json:"expression"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
+	IsFinal          bool        `json:"isFinal"`
 }
 
 func (r *RqEntry) ToItem() *Item {
@@ -54,6 +55,7 @@ func (r *RqEntry) ToItem() *Item {
 		SortOrder:        r.SortOrder,
 		Expression:       r.Expression,
 		InvoiceSectionID: invoiceSectionID,
+		IsFinal:          r.IsFinal,
 	}
 }
 
@@ -68,6 +70,7 @@ type RqUpdateEntry struct {
 	SortOrder        *int        `json:"sortOrder,omitempty"`
 	Expression       interface{} `json:"expression,omitempty"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
+	IsFinal          *bool       `json:"isFinal,omitempty"`
 }
 
 func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
@@ -100,6 +103,9 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 	if r.Expression != nil {
 		item.Expression = r.Expression
 	}
+	if r.IsFinal != nil {
+		item.IsFinal = *r.IsFinal
+	}
 	item.FieldKey = r.FieldKey
 	return item
 }
@@ -116,6 +122,7 @@ type Item struct {
 	SortOrder        int         `db:"sort_order"`
 	Expression       interface{} `db:"-"`
 	InvoiceSectionID *uuid.UUID  `db:"invoice_section_id,omitempty"`
+	IsFinal          bool        `db:"is_final"`
 }
 
 func (i *Item) ToRsEntry() *RsEntry {
@@ -135,6 +142,7 @@ func (i *Item) ToRsEntry() *RsEntry {
 		SortOrder:        i.SortOrder,
 		Expression:       i.Expression,
 		InvoiceSectionID: invoiceSectionID,
+		IsFinal:          i.IsFinal,
 	}
 }
 
@@ -149,4 +157,5 @@ type RsEntry struct {
 	SortOrder        int         `json:"sortOrder"`
 	Expression       interface{} `json:"expression"`
 	InvoiceSectionID *uuid.UUID  `json:"invoiceSectionId,omitempty"`
+	IsFinal          bool        `json:"isFinal"`
 }
