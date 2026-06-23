@@ -10691,11 +10691,14 @@
         },
         "/templates/invoice-settings": {
             "get": {
+        "/templates/invoice-settings": {
+            "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
+                "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
                 "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
                 "produces": [
                     "application/json"
@@ -10750,6 +10753,7 @@
             }
         },
         "/templates/invoices/{invoice_id}/download": {
+        "/templates/invoices/{invoice_id}/download": {
             "get": {
                 "security": [
                     {
@@ -10757,16 +10761,21 @@
                     }
                 ],
                 "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
+                "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
                 "produces": [
+                    "application/pdf"
                     "application/pdf"
                 ],
                 "tags": [
                     "Templates"
                 ],
                 "summary": "Download Compiled Invoice PDF",
+                "summary": "Download Compiled Invoice PDF",
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Target Invoice Entity Context Index UUID",
+                        "name": "invoice_id",
                         "description": "Target Invoice Entity Context Index UUID",
                         "name": "invoice_id",
                         "in": "path",
@@ -10783,11 +10792,14 @@
                 "responses": {
                     "200": {
                         "description": "Target invoice document byte stream file object matches",
+                        "description": "Target invoice document byte stream file object matches",
                         "schema": {
+                            "type": "file"
                             "type": "file"
                         }
                     },
                     "400": {
+                        "description": "Target routing value errors or profile validation flaws",
                         "description": "Target routing value errors or profile validation flaws",
                         "schema": {
                             "type": "object",
@@ -10797,6 +10809,7 @@
                         }
                     },
                     "404": {
+                        "description": "Target entities unavailable",
                         "description": "Target entities unavailable",
                         "schema": {
                             "type": "object",
@@ -10819,11 +10832,20 @@
         },
         "/templates/sync-defaults": {
             "post": {
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/sync-defaults": {
+            "post": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
+                "description": "Forces state evaluations to verify, sync, or seed layout definitions directly to internal storage",
                 "description": "Forces state evaluations to verify, sync, or seed layout definitions directly to internal storage",
                 "produces": [
                     "application/json"
@@ -10832,8 +10854,10 @@
                     "Templates"
                 ],
                 "summary": "Synchronize Global Default Layouts",
+                "summary": "Synchronize Global Default Layouts",
                 "responses": {
                     "200": {
+                        "description": "Initialization completion message mappings",
                         "description": "Initialization completion message mappings",
                         "schema": {
                             "type": "object",
@@ -10856,6 +10880,14 @@
         },
         "/templates/{id}": {
             "get": {
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerToken": []
@@ -10865,9 +10897,14 @@
                 "produces": [
                     "application/json"
                 ],
+                "description": "Returns the decoupled layout configuration values for a designated template ID",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Templates"
                 ],
+                "summary": "Get Global Template",
                 "summary": "Get Global Template",
                 "parameters": [
                     {
@@ -10884,8 +10921,23 @@
                         "schema": {
                             "$ref": "#/definitions/template.RsTemplate"
                         }
+                    "200": {
+                        "description": "Success payload containing raw blueprint configurations",
+                        "schema": {
+                            "$ref": "#/definitions/template.RsTemplate"
+                        }
                     },
                     "400": {
+                        "description": "Invalid configuration criteria identifier",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Target document or template context completely absent",
                         "description": "Invalid configuration criteria identifier",
                         "schema": {
                             "type": "object",
@@ -10915,10 +10967,20 @@
                 }
             },
             "put": {
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
                 "security": [
                     {
                         "BearerToken": []
                     }
+                ],
+                "description": "Modifies the foundational attributes, HTML blueprints, or styling tags of an existing configuration profile",
+                "consumes": [
+                    "application/json"
                 ],
                 "description": "Modifies the foundational attributes, HTML blueprints, or styling tags of an existing configuration profile",
                 "consumes": [
@@ -10930,6 +10992,7 @@
                 "tags": [
                     "Templates"
                 ],
+                "summary": "Update Global Template",
                 "summary": "Update Global Template",
                 "parameters": [
                     {
@@ -10947,16 +11010,26 @@
                         "schema": {
                             "$ref": "#/definitions/template.RqGlobalTemplate"
                         }
+                        "description": "Updated Configuration Payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.RqGlobalTemplate"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Template updated successfully!",
+                        "description": "Template updated successfully!",
                         "schema": {
+                            "$ref": "#/definitions/template.RsTemplate"
                             "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
+                        "description": "Invalid Request parameters",
                         "description": "Invalid Request parameters",
                         "schema": {
                             "type": "object",
@@ -10977,15 +11050,23 @@
                 }
             },
             "delete": {
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
                 "description": "Removes or flags a template definition from active usage routing context pools",
+                "description": "Removes or flags a template definition from active usage routing context pools",
                 "tags": [
                     "Templates"
                 ],
+                "summary": "Delete Global Template",
                 "summary": "Delete Global Template",
                 "parameters": [
                     {
@@ -10999,8 +11080,11 @@
                 "responses": {
                     "24": {
                         "description": "Template deleted successfully"
+                    "24": {
+                        "description": "Template deleted successfully"
                     },
                     "400": {
+                        "description": "Invalid dynamic parameters",
                         "description": "Invalid dynamic parameters",
                         "schema": {
                             "type": "object",
@@ -14949,6 +15033,7 @@
                 "contactId",
                 "issueDate",
                 "name"
+                "name"
             ],
             "properties": {
                 "billingPeriodFrom": {
@@ -15628,6 +15713,9 @@
                 },
                 "templateId": {
                     "type": "string"
+                },
+                "templateId": {
+                    "type": "string"
                 }
             }
         },
@@ -15699,6 +15787,9 @@
                 },
                 "templateId": {
                     "type": "string"
+                },
+                "templateId": {
+                    "type": "string"
                 }
             }
         },
@@ -15746,6 +15837,9 @@
                 },
                 "taxMethod": {
                     "$ref": "#/definitions/section.TaxMethod"
+                },
+                "templateId": {
+                    "type": "string"
                 },
                 "templateId": {
                     "type": "string"

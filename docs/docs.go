@@ -10715,25 +10715,42 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+<<<<<<< HEAD
                         "description": "Invoice UUID ID Context",
                         "name": "invoiceId",
                         "in": "query",
+=======
+                        "description": "Template UUID ID",
+                        "name": "id",
+                        "in": "path",
+>>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         "required": true
                     },
                     {
                         "type": "string",
+<<<<<<< HEAD
                         "description": "Template UUID ID (can be repeated for multiple templates)",
                         "name": "templateId",
+=======
+                        "description": "Invoice UUID ID Context",
+                        "name": "invoiceId",
+>>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         "in": "query",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
+<<<<<<< HEAD
                         "description": "Resolved style settings specifications map keyed by template ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+=======
+                        "description": "Resolved style settings specifications map",
+                        "schema": {
+                            "$ref": "#/definitions/template.RsSetting"
+>>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         }
                     },
                     "400": {
@@ -10781,8 +10798,17 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+<<<<<<< HEAD
                         "type": "string",
                         "description": "Template UUID ID (can be repeated for multiple templates)",
+=======
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Array of Template UUID IDs to render",
+>>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         "name": "templateId",
                         "in": "query",
                         "required": true

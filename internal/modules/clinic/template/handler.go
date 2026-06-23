@@ -355,7 +355,7 @@ func (h *Handler) GeneratePDF(c *gin.Context) {
 // @Failure      400         {object}  map[string]string "Target routing value errors or profile validation flaws"
 // @Failure      404         {object}  map[string]string "Target entities unavailable"
 // @Failure      500         {object}  map[string]string "Internal Server Error"
-// @Security BearerToken
+// @Security     BearerToken
 // @Router       /templates/invoices/{invoice_id}/download [get]
 func (h *Handler) DownloadPDF(c *gin.Context) {
 	invoiceId, err := uuid.Parse(c.Param("invoice_id"))
