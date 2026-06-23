@@ -92,25 +92,23 @@ func (r *Repository) List(ctx context.Context, types []string) (*util.RsList, er
 	var err error
 
 	if len(types) > 0 {
-		// General purpose structure handling dynamic IN matches safely
 		query, args, err = sqlx.In(`
-			SELECT * FROM tbl_template 
+			SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at 
+			FROM tbl_template 
 			WHERE deleted_at IS NULL 
 			  AND name IN (?) 
 			ORDER BY created_at DESC`, types)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to build query: %w", err)
 		}
-		// Rebind query positional variables safely for your chosen SQL dialect driver (PostgreSQL/MySQL)
 		query = r.db.Rebind(query)
 	} else {
-		// General purpose fallback: retrieve full table records if parameter array is empty
-		query = `SELECT * FROM tbl_template WHERE deleted_at IS NULL ORDER BY created_at DESC`
+		query = `SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at FROM tbl_template WHERE deleted_at IS NULL ORDER BY created_at DESC`
 	}
 
 	var items []Template
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to scan templates: %w", err)
 	}
 
 	rs := make([]RsTemplate, len(items))
@@ -124,7 +122,6 @@ func (r *Repository) List(ctx context.Context, types []string) (*util.RsList, er
 }
 
 func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error) {
-	// Fetches the global default baseline setup where clinic_id and invoice_id are both NULL
 	const q = `
 		SELECT s.*, m.template_id FROM tbl_template_setting s
 		INNER JOIN tbl_invoice_template_mapping m ON s.id = m.setting_id

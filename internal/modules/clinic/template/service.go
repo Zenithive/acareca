@@ -293,7 +293,6 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
-		// FIXED: Surface explicit mismatch or query execution bubble-up errors cleanly
 		if errors.Is(err, ErrInvoiceNotFound) {
 			return nil, "", fmt.Errorf("failed to fetch invoice: invoice record matching id %s not found for clinic %s", invoiceId, clinicId)
 		}
@@ -379,10 +378,19 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 
 	existingMap := make(map[string]RsTemplate)
 	if existingList != nil && existingList.Items != nil {
-		if itemsSlice, ok := existingList.Items.([]RsTemplate); ok {
-			for _, item := range itemsSlice {
+		switch items := existingList.Items.(type) {
+		case []RsTemplate:
+			for _, item := range items {
 				existingMap[item.Name] = item
 			}
+		case []interface{}:
+			for _, v := range items {
+				if item, ok := v.(RsTemplate); ok {
+					existingMap[item.Name] = item
+				}
+			}
+		default:
+			return fmt.Errorf("unexpected Items type in list response: %T", existingList.Items)
 		}
 	}
 
@@ -397,7 +405,6 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 		}
 
 		if existingMatched, exists := existingMap[freshRq.Name]; exists {
-			// CASE 1: OVERWRITE EXISTING TEMPLATE BLUEPRINT
 			t := Template{
 				Id:        existingMatched.Id,
 				Name:      freshRq.Name,
@@ -411,7 +418,6 @@ func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
 			}
 
 		} else {
-			// CASE 2: PROVISION NEW TEMPLATE BLUEPRINT
 			t := Template{
 				Name:      freshRq.Name,
 				Html:      htmlBlob,
