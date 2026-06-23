@@ -186,10 +186,10 @@ func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, i
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tbl_invoice_item (
-			id, invoice_id, name, description, entry_type, bas_code, field_key,
+			id, name, description, entry_type, bas_code, field_key,
 			amount, invoice_section_id, sort_order, expression
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, item.ID, invoiceID, item.Name, item.Description, item.EntryType, item.BASCode,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
 		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON)
 	return err
 }

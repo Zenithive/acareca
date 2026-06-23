@@ -75,13 +75,13 @@ func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*Template, error) {
-	const q = `SELECT * FROM tbl_template WHERE id = $1 AND deleted_at IS NULL`
+	const q = `SELECT id, name, description, html, css, is_default, is_active, created_at, updated_at, deleted_at FROM tbl_template WHERE id = $1 AND deleted_at IS NULL`
 	var t Template
 	if err := r.db.GetContext(ctx, &t, q, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to get template: %w", err)
 	}
 	return &t, nil
 }
@@ -350,7 +350,6 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		SectionDocumentNumber string `db:"section_document_number"`
 	}
 
-	// FIXED: Bound parameters matching schema expectations ($1 = clinicId, $2 = invoiceId)
 	if err := r.db.GetContext(ctx, &row, q, clinicId, invoiceId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvoiceNotFound
@@ -359,7 +358,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	}
 
 	const itemQ = `
-        SELECT name, description, amount, bas_code, entry_type
+        SELECT id, name, description, amount, bas_code, entry_type
         FROM tbl_invoice_item
         WHERE invoice_id = $1`
 	var items []InvoiceItem

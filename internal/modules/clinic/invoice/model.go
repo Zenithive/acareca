@@ -13,7 +13,6 @@ import (
 type RqInvoice struct {
 	ClinicID          uuid.UUID           `json:"clinicId" validate:"-"`
 	ContactID         uuid.UUID           `json:"contactId" validate:"required"`
-	TemplateID        uuid.UUID           `json:"templateId" validate:"required"`
 	Name              string              `json:"name" validate:"required"`
 	BillingPeriodFrom string              `json:"billingPeriodFrom" validate:"required"`
 	BillingPeriodTo   string              `json:"billingPeriodTo" validate:"required"`
@@ -73,7 +72,6 @@ func (r *RqInvoice) ToInvoice() *Invoice {
 		ID:                invoiceID,
 		ClinicID:          r.ClinicID,
 		ContactID:         &r.ContactID,
-		TemplateID:        r.TemplateID,
 		Name:              r.Name,
 		BillingPeriodFrom: &r.BillingPeriodFrom,
 		BillingPeriodTo:   &r.BillingPeriodTo,
@@ -90,7 +88,6 @@ type RqUpdateInvoice struct {
 	ID                *uuid.UUID                `json:"id" validate:"-"`
 	ClinicID          uuid.UUID                 `json:"clinicId"`
 	ContactID         *uuid.UUID                `json:"contactId,omitempty"`
-	TemplateID        *uuid.UUID                `json:"templateId,omitempty"`
 	Name              *string                   `json:"name,omitempty"`
 	BillingPeriodFrom *string                   `json:"billingPeriodFrom,omitempty" validate:"omitempty,datetime=2006-01-02"`
 	BillingPeriodTo   *string                   `json:"billingPeriodTo,omitempty" validate:"omitempty,datetime=2006-01-02"`
@@ -110,9 +107,6 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	}
 	if r.ContactID != nil {
 		inv.ContactID = r.ContactID
-	}
-	if r.TemplateID != nil {
-		inv.TemplateID = *r.TemplateID
 	}
 	if r.Name != nil {
 		inv.Name = *r.Name
@@ -159,7 +153,6 @@ type Invoice struct {
 	ID                uuid.UUID         `db:"id"`
 	ClinicID          uuid.UUID         `db:"clinic_id"`
 	ContactID         *uuid.UUID        `db:"contact_id"`
-	TemplateID        uuid.UUID         `db:"template_id"`
 	Name              string            `db:"name"`
 	BillingPeriodFrom *string           `db:"billing_period_from"`
 	BillingPeriodTo   *string           `db:"billing_period_to"`
@@ -186,7 +179,6 @@ func (i *Invoice) ToRsInvoiceSummary() *RsInvoiceSummary {
 		ClinicID:          i.ClinicID,
 		ContactID:         i.ContactID,
 		ContactTo:         contactTo,
-		TemplateID:        i.TemplateID,
 		Name:              i.Name,
 		BillingPeriodFrom: lo.FromPtrOr(i.BillingPeriodFrom, ""),
 		BillingPeriodTo:   lo.FromPtrOr(i.BillingPeriodTo, ""),
@@ -225,7 +217,6 @@ func (i *Invoice) ToRsInvoice() *RsInvoice {
 		ClinicID:          i.ClinicID,
 		ContactID:         i.ContactID,
 		ContactTo:         contactTo,
-		TemplateID:        i.TemplateID,
 		Name:              i.Name,
 		BillingPeriodFrom: billingPeriodFrom,
 		BillingPeriodTo:   billingPeriodTo,
@@ -244,7 +235,6 @@ type RsInvoiceSummary struct {
 	ClinicID          uuid.UUID          `json:"clinicId"`
 	ContactID         *uuid.UUID         `json:"contactId,omitempty"`
 	ContactTo         *contact.RsContact `json:"contactTo,omitempty"`
-	TemplateID        uuid.UUID          `json:"templateId"`
 	Name              string             `json:"name"`
 	BillingPeriodFrom string             `json:"billingPeriodFrom"`
 	BillingPeriodTo   string             `json:"billingPeriodTo"`
@@ -261,7 +251,6 @@ type RsInvoice struct {
 	ClinicID          uuid.UUID           `json:"clinicId"`
 	ContactID         *uuid.UUID          `json:"contactId,omitempty"`
 	ContactTo         *contact.RsContact  `json:"contactTo,omitempty"`
-	TemplateID        uuid.UUID           `json:"templateId"`
 	Name              string              `json:"name"`
 	BillingPeriodFrom string              `json:"billingPeriodFrom"`
 	BillingPeriodTo   string              `json:"billingPeriodTo"`

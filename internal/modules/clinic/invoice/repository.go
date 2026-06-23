@@ -62,16 +62,15 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 
 		query := `
 		INSERT INTO tbl_invoice (
-			id, clinic_id, contact_id, template_id, name,
+			id, clinic_id, contact_id, name,
 			billing_period_from, billing_period_to, invoice_frequency,
 			issue_date, due_date, status
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 		_, err := tx.ExecContext(ctx, query,
 			invoice.ID,
 			invoice.ClinicID,
 			invoice.ContactID,
-			invoice.TemplateID,
 			invoice.Name,
 			invoice.BillingPeriodFrom,
 			invoice.BillingPeriodTo,
@@ -81,11 +80,6 @@ func (r *Repository) Create(ctx context.Context, invoice *Invoice) error {
 			invoice.Status,
 		)
 		if err != nil {
-			return err
-		}
-
-		// If the create request payload explicitly contains settings customization overrides, apply them
-		if err := r.upsertInvoiceSettingsOverride(ctx, tx, invoice.ID, invoice.TemplateID, invoice.ClinicID, invoice.Settings); err != nil {
 			return err
 		}
 
@@ -106,16 +100,15 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 
 		query := `
 		UPDATE tbl_invoice
-		SET contact_id = $1, template_id = $2, name = $3,
-			billing_period_from = $4, billing_period_to = $5,
-			invoice_frequency = $6, issue_date = $7, due_date = $8,
-			status = $9, updated_at = NOW()
-		WHERE id = $10 AND deleted_at IS NULL
+		SET contact_id = $1, name = $2,
+			billing_period_from = $3, billing_period_to = $4,
+			invoice_frequency = $5, issue_date = $6, due_date = $7,
+			status = $8, updated_at = NOW()
+		WHERE id = $9 AND deleted_at IS NULL
 	`
 
 		result, err := tx.ExecContext(ctx, query,
 			invoice.ContactID,
-			invoice.TemplateID,
 			invoice.Name,
 			invoice.BillingPeriodFrom,
 			invoice.BillingPeriodTo,
@@ -131,11 +124,6 @@ func (r *Repository) Update(ctx context.Context, invoice *Invoice) error {
 
 		if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
 			return ErrNotFound
-		}
-
-		// Evaluate and upsert integrated configurations
-		if err := r.upsertInvoiceSettingsOverride(ctx, tx, invoice.ID, invoice.TemplateID, invoice.ClinicID, invoice.Settings); err != nil {
-			return err
 		}
 
 		// Get existing sections
@@ -229,7 +217,7 @@ func (r *Repository) List(ctx context.Context, filter common.Filter) ([]*Invoice
 func (r *Repository) GetByID(ctx context.Context, q sqlx.QueryerContext, id uuid.UUID) (*Invoice, error) {
 	query := `
 		SELECT
-			id, clinic_id, contact_id::text, template_id, name,
+			id, clinic_id, contact_id::text, name,
 			billing_period_from::text, billing_period_to::text,
 			invoice_frequency, status, issue_date, due_date,
 			created_at, updated_at
@@ -242,7 +230,6 @@ func (r *Repository) GetByID(ctx context.Context, q sqlx.QueryerContext, id uuid
 		&invoice.ID,
 		&invoice.ClinicID,
 		&invoice.ContactID,
-		&invoice.TemplateID,
 		&invoice.Name,
 		&invoice.BillingPeriodFrom,
 		&invoice.BillingPeriodTo,
@@ -386,16 +373,15 @@ func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, s
 
 		query := `
 		UPDATE tbl_invoice
-		SET contact_id = $1, template_id = $2, name = $3,
-			billing_period_from = $4, billing_period_to = $5,
-			invoice_frequency = $6, issue_date = $7, due_date = $8,
-			status = $9, updated_at = NOW()
-		WHERE id = $10 AND deleted_at IS NULL
+		SET contact_id = $1,  name = $2,
+			billing_period_from = $3, billing_period_to = $4,
+			invoice_frequency = $5, issue_date = $6, due_date = $7,
+			status = $8, updated_at = NOW()
+		WHERE id = $9 AND deleted_at IS NULL
 	`
 
 		result, err := tx.ExecContext(ctx, query,
 			invoice.ContactID,
-			invoice.TemplateID,
 			invoice.Name,
 			invoice.BillingPeriodFrom,
 			invoice.BillingPeriodTo,
@@ -413,100 +399,12 @@ func (r *Repository) UpdateWithSections(ctx context.Context, invoice *Invoice, s
 			return ErrNotFound
 		}
 
-		// Evaluate and apply layout overrides
-		if err := r.upsertInvoiceSettingsOverride(ctx, tx, invoice.ID, invoice.TemplateID, invoice.ClinicID, invoice.Settings); err != nil {
-			return err
-		}
-
 		if err := r.sectionRepo.UpsertSections(ctx, tx, invoice.ID, sections, deleteSectionIDs, deleteItemIDs); err != nil {
 			return fmt.Errorf("failed to upsert sections: %w", err)
 		}
 
 		return nil
 	})
-}
-
-// Internal transactional assistant to isolate or save per-invoice configuration records dynamically
-func (r *Repository) upsertInvoiceSettingsOverride(ctx context.Context, tx *sqlx.Tx, invoiceID, templateID, clinicID uuid.UUID, settings *RqInvoiceSetting) error {
-	if settings == nil {
-		return nil // No customizations, fallback to global settings
-	}
-
-	var existingSettingID uuid.UUID
-	checkQuery := `
-		SELECT setting_id 
-		FROM tbl_invoice_template_mapping 
-		WHERE invoice_id = $1 AND template_id = $2 AND clinic_id = $3 AND deleted_at IS NULL 
-		LIMIT 1`
-
-	err := tx.QueryRowContext(ctx, checkQuery, invoiceID, templateID, clinicID).Scan(&existingSettingID)
-
-	if err == nil {
-		// CASE A: Custom record exists. Update values.
-		updateQuery := `
-			UPDATE tbl_template_setting
-			SET primary_color = COALESCE($1, primary_color),
-				accent_color = COALESCE($2, accent_color),
-				body_font_family = COALESCE($3, body_font_family),
-				header_font_family = COALESCE($4, header_font_family),
-				is_logo = COALESCE($5, is_logo),
-				logo_id = COALESCE($6, logo_id),
-				letterhead_id = COALESCE($7, letterhead_id),
-				footer_id = COALESCE($8, footer_id),
-				terms_text = COALESCE($9, terms_text),
-				is_watermark = COALESCE($10, is_watermark),
-				watermark_text = COALESCE($11, watermark_text),
-				is_tax = COALESCE($12, is_tax),
-				table_style = COALESCE($13, table_style),
-				updated_at = NOW()
-			WHERE id = $14`
-
-		_, err = tx.ExecContext(ctx, updateQuery,
-			settings.PrimaryColor, settings.AccentColor, settings.BodyFontFamily, settings.HeaderFontFamily,
-			settings.IsLogo, settings.LogoID, settings.LetterheadID, settings.FooterID, settings.TermsText,
-			settings.IsWatermark, settings.WatermarkText, settings.IsTax, settings.TableStyle,
-			existingSettingID,
-		)
-		if err != nil {
-			return fmt.Errorf("failed upgrading existing custom invoice option values profiles: %w", err)
-		}
-		return nil
-	}
-
-	if errors.Is(err, sql.ErrNoRows) {
-		// CASE B: First customization. Initialize new records.
-		newMappingID := uuid.New()
-		newSettingID := uuid.New()
-
-		insertSettingQuery := `
-			INSERT INTO tbl_template_setting (
-				id, mapping_id, primary_color, accent_color, body_font_family, header_font_family,
-				is_logo, logo_id, letterhead_id, footer_id, terms_text, is_watermark, watermark_text, is_tax, table_style,
-				created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())`
-
-		_, err = tx.ExecContext(ctx, insertSettingQuery,
-			newSettingID, newMappingID,
-			settings.PrimaryColor, settings.AccentColor, settings.BodyFontFamily, settings.HeaderFontFamily,
-			settings.IsLogo, settings.LogoID, settings.LetterheadID, settings.FooterID, settings.TermsText,
-			settings.IsWatermark, settings.WatermarkText, settings.IsTax, settings.TableStyle,
-		)
-		if err != nil {
-			return fmt.Errorf("failed provisioning custom settings payload block: %w", err)
-		}
-
-		insertMappingQuery := `
-			INSERT INTO tbl_invoice_template_mapping (id, invoice_id, template_id, setting_id, clinic_id, created_at)
-			VALUES ($1, $2, $3, $4, $5, NOW())`
-
-		_, err = tx.ExecContext(ctx, insertMappingQuery, newMappingID, invoiceID, templateID, newSettingID, clinicID)
-		if err != nil {
-			return fmt.Errorf("failed linking custom blueprint overrides profile records: %w", err)
-		}
-		return nil
-	}
-
-	return err
 }
 
 func (r *Repository) GetNextSequenceForYear(ctx context.Context, prefix string, year string) (string, error) {

@@ -55,10 +55,10 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 
 		query := `
 		INSERT INTO tbl_map_invoice_section (
-			id, invoice_id, invoice_section, document_number, tax_method,
+			id, invoice_id, template_id, invoice_section, document_number, tax_method,
 			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING created_at
 	`
 
@@ -67,6 +67,7 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 			query,
 			sections[i].ID,
 			sections[i].InvoiceID,
+			sections[i].TemplateID,
 			sections[i].InvoiceSection,
 			sections[i].DocumentNumber,
 			sections[i].TaxMethod,
@@ -84,12 +85,10 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 
 		// Link all entries to this section
 		if len(sections[i].Entries) > 0 {
-			// 👇 FORCE-ALLOCATE A FRESH EXPLICIT SLICE TO BYPASS ANY POINTER SCALPING
 			explicitEntries := make([]*item.Item, len(sections[i].Entries))
 
 			for j, entry := range sections[i].Entries {
 				if entry != nil {
-					// Make a dedicated copy of the item and explicitly inject our IDs
 					itemCopy := *entry
 					itemCopy.InvoiceSectionID = &sections[i].ID
 					itemCopy.InvoiceID = invoiceID
@@ -98,12 +97,10 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 				}
 			}
 
-			// Save using our newly built explicit entries array
 			if err := r.itemRepo.Create(ctx, tx, invoiceID, explicitEntries); err != nil {
 				return fmt.Errorf("failed to create section entries: %w", err)
 			}
 
-			// Update the parent structure so the application state remains accurate
 			sections[i].Entries = explicitEntries
 		}
 	}
@@ -121,14 +118,15 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 		SET 
 			document_number = $1,
 			tax_method = $2,
-			payment_method = $3,
-			account_name = $4,
-			bsb_number = $5,
-			account_number = $6,
-			payment_date = $7,
-			payment_reference = $8,
+			template_id = $3,
+			payment_method = $4,
+			account_name = $5,
+			bsb_number = $6,
+			account_number = $7,
+			payment_date = $8,
+			payment_reference = $9,
 			updated_at = NOW()
-		WHERE id = $9 AND deleted_at IS NULL
+		WHERE id = $10 AND deleted_at IS NULL
 		RETURNING updated_at
 	`
 
@@ -137,6 +135,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 			query,
 			sections[i].DocumentNumber,
 			sections[i].TaxMethod,
+			sections[i].TemplateID,
 			sections[i].PaymentMethod,
 			sections[i].AccountName,
 			sections[i].Bsb,
@@ -153,9 +152,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 			return fmt.Errorf("failed to update section: %w", err)
 		}
 
-		// Update section entries if provided
 		if sections[i].Entries != nil {
-			// Delete existing entries
 			_, err := tx.ExecContext(ctx, `
 			UPDATE tbl_invoice_item
 			SET deleted_at = NOW(), updated_at = NOW()
@@ -165,14 +162,12 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, sections []Section
 				return fmt.Errorf("failed to delete old entries: %w", err)
 			}
 
-			// Create new entries
 			if len(sections[i].Entries) > 0 {
 				var invID uuid.UUID
 				if sections[i].InvoiceID != nil {
 					invID = *sections[i].InvoiceID
 				}
 
-				// 👇 FIX: Use range index here to ensure fields map without tracking faults
 				for j := range sections[i].Entries {
 					if sections[i].Entries[j] != nil {
 						sections[i].Entries[j].InvoiceSectionID = &sections[i].ID
@@ -194,7 +189,6 @@ func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) erro
 		return ErrInvalidSectionData
 	}
 
-	// Soft delete the section
 	result, err := tx.ExecContext(ctx, `
 		UPDATE tbl_map_invoice_section 
 		SET deleted_at = NOW(), updated_at = NOW()
@@ -212,7 +206,6 @@ func (r *Repository) Delete(ctx context.Context, tx *sqlx.Tx, id uuid.UUID) erro
 		return ErrSectionNotFound
 	}
 
-	// Soft delete associated items
 	_, err = tx.ExecContext(ctx, `
 		UPDATE tbl_invoice_item
 		SET deleted_at = NOW(), updated_at = NOW()
@@ -233,7 +226,7 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 
 	query := `
 		SELECT 
-			id, invoice_id, invoice_section, document_number, tax_method, 
+			id, invoice_id, template_id, invoice_section, document_number, tax_method, 
 			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
@@ -244,6 +237,7 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 	err := r.db.QueryRowContext(ctx, query, invoiceID, sectionID).Scan(
 		&section.ID,
 		&section.InvoiceID,
+		&section.TemplateID,
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
@@ -264,13 +258,11 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 		return nil, fmt.Errorf("failed to get section: %w", err)
 	}
 
-	// Load section items
 	items, err := r.itemRepo.GetByInvoiceID(ctx, r.db, invoiceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load section items: %w", err)
 	}
 
-	// Filter items for this section
 	section.Entries = make([]*item.Item, 0)
 	for _, itm := range items {
 		if itm.InvoiceSectionID != nil && *itm.InvoiceSectionID == sectionID {
@@ -289,7 +281,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 
 	query := `
 		SELECT 
-			id, invoice_id, invoice_section, document_number, tax_method,
+			id, invoice_id, template_id, invoice_section, document_number, tax_method,
 			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
@@ -311,6 +303,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 		err := rows.Scan(
 			&section.ID,
 			&section.InvoiceID,
+			&section.TemplateID,
 			&section.InvoiceSection,
 			&section.DocumentNumber,
 			&section.TaxMethod,
@@ -362,7 +355,7 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 
 	query := `
 		SELECT 
-			id, invoice_id, invoice_section, document_number, tax_method,
+			id, invoice_id, template_id, invoice_section, document_number, tax_method,
 			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
@@ -374,6 +367,7 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 	err := r.db.QueryRowContext(ctx, query, invoiceID, sectionType).Scan(
 		&section.ID,
 		&section.InvoiceID,
+		&section.TemplateID,
 		&section.InvoiceSection,
 		&section.DocumentNumber,
 		&section.TaxMethod,
@@ -428,7 +422,6 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 				section.InvoiceID = &invoiceID
 			}
 
-			// Protect against zero-value string mapping issues
 			if section.InvoiceSection == "" {
 				return fmt.Errorf("failed to create new section: field 'section_type' cannot be empty for new records")
 			}
@@ -437,14 +430,12 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 				return fmt.Errorf("failed to create new section: %w", err)
 			}
 		} else {
-			// Check if the record already physically exists inside your tracking matrix
 			var dbSection Section
 			err := tx.QueryRowxContext(ctx, `
-				SELECT id, invoice_section, invoice_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
+				SELECT id, invoice_section, invoice_id, template_id FROM tbl_map_invoice_section WHERE id = $1 AND deleted_at IS NULL
 			`, section.ID).StructScan(&dbSection)
 
 			if err == nil {
-				// Critical fix: If the incoming payload left out the ENUM field, preserve what's already saved in DB
 				if section.InvoiceSection == "" {
 					section.InvoiceSection = dbSection.InvoiceSection
 				}
@@ -452,7 +443,7 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 					section.InvoiceID = dbSection.InvoiceID
 				}
 
-				if err := r.updateSectionOnly(ctx, tx, section); err != nil {
+				if err := r.updateSection(ctx, tx, section); err != nil {
 					return fmt.Errorf("failed to update section %s: %w", section.ID, err)
 				}
 
@@ -475,7 +466,6 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 					section.InvoiceID = &invoiceID
 				}
 
-				// Strict verification fallback catch block
 				if section.InvoiceSection == "" {
 					return fmt.Errorf("failed to create section with ID %s: 'section_type' is a required enum value and cannot be blank", section.ID)
 				}
@@ -492,22 +482,23 @@ func (r *Repository) UpsertSections(ctx context.Context, tx *sqlx.Tx, invoiceID 
 	return nil
 }
 
-// updateSectionOnly updates only the section metadata without touching items
-func (r *Repository) updateSectionOnly(ctx context.Context, tx *sqlx.Tx, section Section) error {
+// updateSection updates only the section metadata without touching items
+func (r *Repository) updateSection(ctx context.Context, tx *sqlx.Tx, section Section) error {
 	query := `
 		UPDATE tbl_map_invoice_section
 		SET 
 			document_number = $1,
 			tax_method = $2,
 			invoice_section = $3,
-			payment_method = $4,
-			account_name = $5,
-			bsb_number = $6,
-			account_number = $7,
-			payment_date = $8,
-			payment_reference = $9,
+			template_id = $4,
+			payment_method = $5,
+			account_name = $6,
+			bsb_number = $7,
+			account_number = $8,
+			payment_date = $9,
+			payment_reference = $10,
 			updated_at = NOW()
-		WHERE id = $10 AND deleted_at IS NULL
+		WHERE id = $11 AND deleted_at IS NULL
 	`
 
 	_, err := tx.ExecContext(
@@ -516,6 +507,7 @@ func (r *Repository) updateSectionOnly(ctx context.Context, tx *sqlx.Tx, section
 		section.DocumentNumber,
 		section.TaxMethod,
 		section.InvoiceSection,
+		section.TemplateID,
 		section.PaymentMethod,
 		section.AccountName,
 		section.Bsb,

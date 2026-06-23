@@ -348,105 +348,107 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		}
 	}
 
-	// --- Template settings: logo, letterhead, footer, terms ---
 	var showLogo, showLogoImage bool
 	var logoURL, logoInitial, letterheadHTML, footerHTML, notes string
+	var tplSetting *template.RsSetting
+	var err error
+	var pdfRq template.RqGeneratePDF
+	for _, v := range inv.Sections {
+		tplSetting, err = s.tplService.GetSetting(ctx, v.TemplateID)
+		if err != nil {
+			log.Printf("[PDF-WARN] Specified TemplateID %s not found, falling back to default theme layout. Err: %v", v.TemplateID, err)
 
-	tplSetting, err := s.tplService.GetSetting(ctx, inv.TemplateID)
-	if err != nil {
-		// Log the warning instead of breaking the entire execution context pipeline
-		log.Printf("[PDF-WARN] Specified TemplateID %s not found, falling back to default theme layout. Err: %v", inv.TemplateID, err)
-
-		// Resilient Fallback: Generate generic text initials for the header logo identity
-		showLogo = true
-		if clinicName != "" {
-			runes := []rune(clinicName)
-			if len(runes) > 0 {
-				logoInitial = string(runes[0])
-			}
-		}
-	} else if tplSetting != nil {
-		if tplSetting.IsLogo {
 			showLogo = true
-			if tplSetting.Logo != nil && tplSetting.Logo.FileKey != "" {
-				logoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Logo.FileKey
-				showLogoImage = true
-			} else if clinicName != "" {
+			if clinicName != "" {
 				runes := []rune(clinicName)
 				if len(runes) > 0 {
 					logoInitial = string(runes[0])
 				}
 			}
+		} else if tplSetting != nil {
+			if tplSetting.IsLogo {
+				showLogo = true
+				if tplSetting.Logo != nil && tplSetting.Logo.FileKey != "" {
+					logoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Logo.FileKey
+					showLogoImage = true
+				} else if clinicName != "" {
+					runes := []rune(clinicName)
+					if len(runes) > 0 {
+						logoInitial = string(runes[0])
+					}
+				}
+			}
+			if tplSetting.LetterHead != nil && tplSetting.LetterHead.FileKey != "" {
+				letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
+			}
+			if tplSetting.Footer != nil && tplSetting.Footer.FileKey != "" {
+				footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
+			}
+			if tplSetting.TermText != nil {
+				notes = *tplSetting.TermText
+			}
 		}
-		if tplSetting.LetterHead != nil && tplSetting.LetterHead.FileKey != "" {
-			letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
-		}
-		if tplSetting.Footer != nil && tplSetting.Footer.FileKey != "" {
-			footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
-		}
-		if tplSetting.TermText != nil {
-			notes = *tplSetting.TermText
-		}
-	}
 
-	issueDateFormatted := inv.IssueDate.Format("02 January 2006")
-	dueDateFormatted := ""
-	if inv.DueDate != nil {
-		dueDateFormatted = inv.DueDate.Format("02 January 2006")
-	}
-	billingPeriodFormatted := inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo
+		issueDateFormatted := inv.IssueDate.Format("02 January 2006")
+		dueDateFormatted := ""
+		if inv.DueDate != nil {
+			dueDateFormatted = inv.DueDate.Format("02 January 2006")
+		}
+		billingPeriodFormatted := inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo
 
-	tableStyleClass := ""
-	if tplSetting != nil {
-		tableStyleClass = tplSetting.TableStyle
-	}
+		tableStyleClass := ""
+		if tplSetting != nil {
+			tableStyleClass = tplSetting.TableStyle
+		}
 
-	pdfRq := template.RqGeneratePDF{
-		ClinicId:   inv.ClinicID,
-		TemplateId: inv.TemplateID,
-		Data: template.InvoiceData{
-			ClinicName:       clinicName,
-			IssueDateDisplay: issueDateFormatted,
-			DueDateDisplay:   dueDateFormatted,
-			BillingPeriod:    billingPeriodFormatted,
-			InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, ""),
-			ShowLogo:         showLogo,
-			ShowLogoImage:    showLogoImage,
-			LogoURL:          logoURL,
-			LogoInitial:      logoInitial,
-			LetterheadHTML:   letterheadHTML,
-			FooterHTML:       footerHTML,
-			Notes:            notes,
-			BillFrom: template.PartyInfo{
-				Name:    billFromName,
-				Address: billFromAddress,
-				ABN:     billFromABN,
-				Email:   billFromEmail,
-				Phone:   billFromPhone,
+		pdfRq = template.RqGeneratePDF{
+			ClinicId:   inv.ClinicID,
+			TemplateId: v.TemplateID,
+			Data: template.InvoiceData{
+				ClinicName:       clinicName,
+				IssueDateDisplay: issueDateFormatted,
+				DueDateDisplay:   dueDateFormatted,
+				BillingPeriod:    billingPeriodFormatted,
+				InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, ""),
+				ShowLogo:         showLogo,
+				ShowLogoImage:    showLogoImage,
+				LogoURL:          logoURL,
+				LogoInitial:      logoInitial,
+				LetterheadHTML:   letterheadHTML,
+				FooterHTML:       footerHTML,
+				Notes:            notes,
+				BillFrom: template.PartyInfo{
+					Name:    billFromName,
+					Address: billFromAddress,
+					ABN:     billFromABN,
+					Email:   billFromEmail,
+					Phone:   billFromPhone,
+				},
+				BillTo: template.PartyInfo{
+					Name:    billToName,
+					Address: billToAddress,
+					ABN:     billToABN,
+					Email:   billToEmail,
+					Phone:   billToPhone,
+				},
+				Items:      pdfItems,
+				GrandTotal: grandTotal,
+
+				TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
+				TotalsGrandLabel:     "Total (AUD)",
+				WatermarkEnabled:     tplSetting.IsWaterMark,
+				WatermarkText:        lo.FromPtr(tplSetting.WaterMarkText),
+				ShowTax:              tplSetting.IsTax,
+				TableStyleClass:      tableStyleClass,
+
+				// Core CSS Layout variable bindings
+				PrimaryColor:     tplSetting.PrimaryColor,
+				AccentColor:      tplSetting.AccentColor,
+				BodyFontFamily:   tplSetting.BodyFontFamily,
+				HeaderFontFamily: tplSetting.HeaderFontFamily,
 			},
-			BillTo: template.PartyInfo{
-				Name:    billToName,
-				Address: billToAddress,
-				ABN:     billToABN,
-				Email:   billToEmail,
-				Phone:   billToPhone,
-			},
-			Items:      pdfItems,
-			GrandTotal: grandTotal,
+		}
 
-			TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
-			TotalsGrandLabel:     "Total (AUD)",
-			WatermarkEnabled:     tplSetting.IsWaterMark,
-			WatermarkText:        lo.FromPtr(tplSetting.WaterMarkText),
-			ShowTax:              tplSetting.IsTax,
-			TableStyleClass:      tableStyleClass,
-
-			// Core CSS Layout variable bindings
-			PrimaryColor:     tplSetting.PrimaryColor,
-			AccentColor:      tplSetting.AccentColor,
-			BodyFontFamily:   tplSetting.BodyFontFamily,
-			HeaderFontFamily: tplSetting.HeaderFontFamily,
-		},
 	}
 
 	pdfBytes, err := s.tplService.GeneratePDF(ctx, pdfRq)
