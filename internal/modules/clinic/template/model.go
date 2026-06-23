@@ -92,7 +92,7 @@ type RsTemplate struct {
 type RqUpdateSetting struct {
 	Id               uuid.UUID  `json:"id"`
 	TemplateId       uuid.UUID  `json:"template_id"`
-	MappingId        *uuid.UUID `json:"mapping_id"` // Nullable: links overrides back to custom contexts
+	MappingId        *uuid.UUID `json:"mapping_id"`
 	PrimaryColor     string     `json:"primary_color"`
 	AccentColor      string     `json:"accent_color"`
 	BodyFontFamily   string     `json:"body_font_family"`
@@ -138,7 +138,7 @@ func (rq *RqUpdateSetting) ToDB() Setting {
 type Setting struct {
 	Id               uuid.UUID  `db:"id"`
 	TemplateId       uuid.UUID  `db:"template_id"`
-	MappingId        *uuid.UUID `db:"mapping_id"` // NULL indicates global application layout settings baseline
+	MappingId        *uuid.UUID `db:"mapping_id"`
 	PrimaryColor     string     `db:"primary_color"`
 	AccentColor      string     `db:"accent_color"`
 	BodyFontFamily   string     `db:"body_font_family"`
@@ -153,7 +153,6 @@ type Setting struct {
 	IsTax            bool       `db:"is_tax"`
 	TableStyle       *string    `db:"table_style"`
 
-	// Populated via downstream dependency resolution queries or joins
 	Logo       *file.Document `db:"-"`
 	LetterHead *file.Document `db:"-"`
 	Footer     *file.Document `db:"-"`
@@ -234,43 +233,69 @@ type RqGeneratePDF struct {
 }
 
 type InvoiceData struct {
-	ClinicName           string       `json:"clinic_name"`
-	IssueDateDisplay     string       `json:"issue_date_display"`
-	DueDateDisplay       string       `json:"due_date_display"`
-	BillingPeriod        string       `json:"billing_period"`
-	InvoiceFrequency     string       `json:"invoice_frequency"`
-	ShowLogo             bool         `json:"show_logo"`
-	ShowLogoImage        bool         `json:"show_logo_image"`
-	LogoURL              string       `json:"logo_url"`
-	LogoInitial          string       `json:"logo_initial"`
-	WatermarkEnabled     bool         `json:"watermark_enabled"`
-	WatermarkText        string       `json:"watermark_text"`
-	ShowTax              bool         `json:"show_tax"`
-	LetterheadHTML       string       `json:"letterhead_html"`
-	FooterHTML           string       `json:"footer_html"`
-	Notes                string       `json:"notes"`
-	AmountInWords        string       `json:"amount_in_words"`
-	HasAttachments       bool         `json:"has_attachments"`
-	BillFrom             PartyInfo    `json:"bill_from"`
-	BillTo               PartyInfo    `json:"bill_to"`
-	Items                []LineItem   `json:"items"`
-	GrandTotal           float64      `json:"grand_total"`
-	TotalsAmountsCaption string       `json:"totals_amounts_caption"`
-	TotalsGrandLabel     string       `json:"totals_grand_label"`
-	TableStyleClass      string       `json:"table_style_class"`
-	Attachments          []Attachment `json:"attachments"`
-	PrimaryColor         string       `json:"-"`
-	AccentColor          string       `json:"-"`
-	BodyFontFamily       string       `json:"-"`
-	HeaderFontFamily     string       `json:"-"`
+	InvoiceNumber        string                 `json:"invoice_number"`
+	ClinicName           string                 `json:"clinic_name"`
+	IssueDateDisplay     string                 `json:"issue_date_display"`
+	DueDateDisplay       string                 `json:"due_date_display"`
+	BillingPeriod        string                 `json:"billing_period"`
+	InvoiceFrequency     string                 `json:"invoice_frequency"`
+	ShowLogo             bool                   `json:"show_logo"`
+	ShowLogoImage        bool                   `json:"show_logo_image"`
+	LogoURL              string                 `json:"logo_url"`
+	LogoInitial          string                 `json:"logo_initial"`
+	WatermarkEnabled     bool                   `json:"watermark_enabled"`
+	WatermarkText        string                 `json:"watermark_text"`
+	ShowTax              bool                   `json:"show_tax"`
+	LetterheadHTML       string                 `json:"letterhead_html"`
+	FooterHTML           string                 `json:"footer_html"`
+	Notes                string                 `json:"notes"`
+	AmountInWords        string                 `json:"amount_in_words"`
+	HasAttachments       bool                   `json:"has_attachments"`
+	BillFrom             PartyInfo              `json:"bill_from"`
+	BillTo               PartyInfo              `json:"bill_to"`
+	Items                []LineItem             `json:"items"`
+	GrandTotal           float64                `json:"grand_total"`
+	Subtotal             float64                `json:"subtotal"`
+	TaxTotal             float64                `json:"tax_total"`
+	TotalsAmountsCaption string                 `json:"totals_amounts_caption"`
+	TotalsGrandLabel     string                 `json:"totals_grand_label"`
+	TableStyleClass      string                 `json:"table_style_class"`
+	TemplateSettings     map[string]interface{} `json:"template_settings"`
+	Attachments          []Attachment           `json:"attachments"`
+
+	// Exported styling fields targetable by structural assignments
+	PrimaryColor     string `json:"primary_color"`
+	AccentColor      string `json:"accent_color"`
+	BodyFontFamily   string `json:"body_font_family"`
+	HeaderFontFamily string `json:"header_font_family"`
+
+	// Calculation Sheet Collections
+	PatientFeeItems []map[string]interface{} `json:"patient_fee_items"`
+	ServiceFeeItems []map[string]interface{} `json:"service_fee_items"`
+	SettlementItems []map[string]interface{} `json:"settlement_items"`
+	CustomFeeRate   string                   `json:"custom_fee_rate"`
+
+	// Tax Invoice Collections
+	TaxInvoiceItems []map[string]interface{} `json:"tax_invoice_items"`
+	TermsText       string                   `json:"terms_text"`
+
+	// Remittance Advice Collections
+	RemittanceItems          []map[string]interface{} `json:"remittance_items"`
+	CustomPaymentMethod      string                   `json:"custom_payment_method"`
+	PaymentMethodLabel       string                   `json:"payment_method_label"`
+	CustomPaymentAccountName string                   `json:"custom_payment_account_name"`
+	CustomPaymentBsb         string                   `json:"custom_payment_bsb"`
+	CustomPaymentAccount     string                   `json:"custom_payment_account"`
+	PaymentDateDisplay       string                   `json:"payment_date_display"`
 }
 
 type PartyInfo struct {
-	Name    string `json:"name"`
-	Address string `json:"address"`
-	ABN     string `json:"abn"`
-	Email   string `json:"email"`
-	Phone   string `json:"phone"`
+	Name          string `json:"name"`
+	Address       string `json:"address"`
+	ABN           string `json:"abn"`
+	Email         string `json:"email"`
+	Phone         string `json:"phone"`
+	PaymentMethod string `json:"payment_method"`
 }
 
 type LineItem struct {
@@ -311,6 +336,18 @@ type InvoiceContact struct {
 	Address []string  `db:"address" json:"address"`
 }
 
+type InvoiceSectionMeta struct {
+	ID               uuid.UUID `db:"id"`
+	SectionType      string    `db:"section_type"`
+	DocumentNumber   string    `db:"document_number"`
+	PaymentMethod    *string   `db:"payment_method"`
+	AccountName      *string   `db:"account_name"`
+	Bsb              *string   `db:"bsb_number"`
+	AccountNumber    *string   `db:"account_number"`
+	PaymentDate      *string   `db:"payment_date"`
+	PaymentReference *string   `db:"payment_reference"`
+}
+
 type InvoiceItem struct {
 	ID          uuid.UUID `db:"id" json:"id"`
 	Name        string    `db:"name" json:"name"`
@@ -318,9 +355,13 @@ type InvoiceItem struct {
 	Amount      float64   `db:"amount" json:"amount"`
 	BASCode     *string   `db:"bas_code" json:"bas_code"`
 	EntryType   string    `db:"entry_type" json:"entry_type"`
+	SectionType string    `db:"section_type" json:"section_type"`
+	FieldKey    *string   `db:"field_key" json:"field_key"`
+	IsFinal     bool      `db:"is_final" json:"is_final"`
 }
 
-func invoiceToData(inv *InvoiceResponse) InvoiceData {
+// InvoiceToData works for external callers
+func InvoiceToData(inv *InvoiceResponse) InvoiceData {
 	items := make([]LineItem, len(inv.Items))
 	var grandTotal float64
 
@@ -354,11 +395,11 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 		billFrom.Address = inv.SentBy.Address[0]
 	}
 
-	formattedIssueDate := formatDateString(inv.IssueDate)
+	formattedIssueDate := FormatDateString(inv.IssueDate)
 
 	var formattedBillingPeriod string
 	if inv.BillingPeriodFrom != "" && inv.BillingPeriodTo != "" {
-		formattedBillingPeriod = fmt.Sprintf("%s to %s", formatDateString(inv.BillingPeriodFrom), formatDateString(inv.BillingPeriodTo))
+		formattedBillingPeriod = fmt.Sprintf("%s to %s", FormatDateString(inv.BillingPeriodFrom), FormatDateString(inv.BillingPeriodTo))
 	} else {
 		formattedBillingPeriod = inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo
 	}
@@ -380,7 +421,12 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 	}
 }
 
-type invoiceRow struct {
+// invoiceToData acts as a private alias so template/service.go doesn't fail compilation
+func invoiceToData(inv *InvoiceResponse) InvoiceData {
+	return InvoiceToData(inv)
+}
+
+type InvoiceRow struct {
 	Id                uuid.UUID `db:"id"`
 	ClinicId          uuid.UUID `db:"clinic_id"`
 	TemplateId        uuid.UUID `db:"template_id"`
@@ -403,7 +449,10 @@ type invoiceRow struct {
 	Country           string    `db:"country"`
 }
 
-func formatDateString(dateStr string) string {
+// invoiceRow acts as a private alias so template/repository.go compiles cleanly
+type invoiceRow = InvoiceRow
+
+func FormatDateString(dateStr string) string {
 	if dateStr == "" {
 		return ""
 	}

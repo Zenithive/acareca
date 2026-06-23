@@ -273,6 +273,10 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 	}
 
 	if st != nil {
+		if err := s.enrichSettingDocuments(ctx, st); err != nil {
+			return nil, fmt.Errorf("failed enriching setting documents: %w", err)
+		}
+
 		rq.Data.PrimaryColor = st.PrimaryColor
 		rq.Data.AccentColor = st.AccentColor
 		rq.Data.BodyFontFamily = st.BodyFontFamily
@@ -281,9 +285,41 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 		if st.TableStyle != nil {
 			rq.Data.TableStyleClass = *st.TableStyle
 		}
+		if st.TermText != nil {
+			rq.Data.Notes = *st.TermText
+			rq.Data.TermsText = *st.TermText
+		}
 		if st.IsWaterMark && st.WaterMarkText != nil {
 			rq.Data.WatermarkEnabled = true
 			rq.Data.WatermarkText = *st.WaterMarkText
+		}
+		if st.IsLogo {
+			rq.Data.ShowLogo = true
+			if st.LogoId != nil && st.Logo != nil {
+				rq.Data.ShowLogoImage = true
+				rq.Data.LogoURL = s.cfg.R2StoragePrefix + st.Logo.ToRsDocument().FileKey
+			}
+		}
+
+		// Build template_settings map so CSS/HTML {{template_settings.*}} variables resolve
+		watermarkText := "PAID"
+		if st.WaterMarkText != nil {
+			watermarkText = *st.WaterMarkText
+		}
+		termsText := ""
+		if st.TermText != nil {
+			termsText = *st.TermText
+		}
+		rq.Data.TemplateSettings = map[string]interface{}{
+			"primary_color":      st.PrimaryColor,
+			"accent_color":       st.AccentColor,
+			"body_font_family":   st.BodyFontFamily,
+			"header_font_family": st.HeaderFontFamily,
+			"is_logo":            st.IsLogo,
+			"is_watermark":       st.IsWaterMark,
+			"watermark_text":     watermarkText,
+			"is_tax":             st.IsTax,
+			"terms_text":         termsText,
 		}
 	}
 
@@ -300,7 +336,6 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 }
 
 func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
-	// Validate template IDs first
 	if len(templateId) == 0 {
 		return nil, "", fmt.Errorf("at least one template ID is required")
 	}
@@ -309,7 +344,6 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", err
 	}
 
-	// Fetch invoice and verify it belongs to this clinic
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
 		if errors.Is(err, ErrInvoiceNotFound) {
@@ -320,7 +354,6 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	var htmlBuilder, cssBuilder strings.Builder
 
-	// Fetch and decrypt all templates
 	for _, tId := range templateId {
 		t, err := s.repo.Get(ctx, tId)
 		if err != nil {
@@ -347,15 +380,40 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 	html := htmlBuilder.String()
 	css := cssBuilder.String()
 
-	// Get invoice-specific settings (falls back to defaults if none exist)
 	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
 
-	data := invoiceToData(inv)
+	// Fetch section metadata (section type, payment fields, document number)
+	sections, err := s.repo.GetInvoiceSectionMeta(ctx, invoiceId)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch invoice section metadata: %w", err)
+	}
 
-	// Apply settings if they exist
+	data := InvoiceToData(inv)
+
+	// Build per-section line item collections
+	collections, invoiceNumber, paymentMeta := buildInvoiceCollections(inv.Items, sections, inv.InvoiceNumber)
+	data.PatientFeeItems = collections.patientFeeItems
+	data.ServiceFeeItems = collections.serviceFeeItems
+	data.SettlementItems = collections.settlementItems
+	data.TaxInvoiceItems = collections.taxInvoiceItems
+	data.RemittanceItems = collections.remittanceItems
+	data.Subtotal = collections.subtotal
+	data.TaxTotal = collections.taxTotal
+	data.GrandTotal = collections.grandTotal
+	data.CustomFeeRate = collections.customFeeRate
+	if invoiceNumber != "" {
+		data.InvoiceNumber = invoiceNumber
+	}
+	data.CustomPaymentMethod = paymentMeta.paymentMethod
+	data.PaymentMethodLabel = paymentMeta.paymentMethod
+	data.CustomPaymentAccountName = paymentMeta.accountName
+	data.CustomPaymentBsb = paymentMeta.bsb
+	data.CustomPaymentAccount = paymentMeta.accountNumber
+	data.PaymentDateDisplay = FormatDateString(paymentMeta.paymentDate)
+
 	if st != nil {
 		data.PrimaryColor = st.PrimaryColor
 		data.AccentColor = st.AccentColor
@@ -371,6 +429,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		}
 		if st.TermText != nil {
 			data.Notes = *st.TermText
+			data.TermsText = *st.TermText
 		}
 		if st.IsLogo {
 			data.ShowLogo = true
@@ -383,6 +442,27 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			} else if len(inv.ClinicName) > 0 {
 				data.LogoInitial = string([]rune(inv.ClinicName)[0])
 			}
+		}
+
+		// Build template_settings map so CSS/HTML {{template_settings.*}} variables resolve
+		watermarkText := "PAID"
+		if st.WaterMarkText != nil {
+			watermarkText = *st.WaterMarkText
+		}
+		termsText := ""
+		if st.TermText != nil {
+			termsText = *st.TermText
+		}
+		data.TemplateSettings = map[string]interface{}{
+			"primary_color":      st.PrimaryColor,
+			"accent_color":       st.AccentColor,
+			"body_font_family":   st.BodyFontFamily,
+			"header_font_family": st.HeaderFontFamily,
+			"is_logo":            st.IsLogo,
+			"is_watermark":       st.IsWaterMark,
+			"watermark_text":     watermarkText,
+			"is_tax":             st.IsTax,
+			"terms_text":         termsText,
 		}
 	}
 
@@ -403,6 +483,156 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	filename := fmt.Sprintf("INVOICE %s", inv.InvoiceNumber)
 	return pdf, filename, nil
+}
+
+type invoiceCollections struct {
+	patientFeeItems []map[string]interface{}
+	serviceFeeItems []map[string]interface{}
+	settlementItems []map[string]interface{}
+	taxInvoiceItems []map[string]interface{}
+	remittanceItems []map[string]interface{}
+	subtotal        float64
+	taxTotal        float64
+	grandTotal      float64
+	customFeeRate   string
+}
+
+type invoicePaymentMeta struct {
+	paymentMethod string
+	accountName   string
+	bsb           string
+	accountNumber string
+	paymentDate   string
+}
+
+// buildInvoiceCollections categorises flat invoice items into per-template
+// collections using the section type stored alongside each item.
+func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta, fallbackInvoiceNumber string) (invoiceCollections, string, invoicePaymentMeta) {
+	var c invoiceCollections
+	c.customFeeRate = "0"
+	var meta invoicePaymentMeta
+	invoiceNumber := fallbackInvoiceNumber
+
+	// Build a lookup of section ID → section meta
+	sectionByID := make(map[uuid.UUID]InvoiceSectionMeta, len(sections))
+	for _, sec := range sections {
+		sectionByID[sec.ID] = sec
+	}
+
+	// Collect per-section payment fields and document number from first section
+	for i, sec := range sections {
+		if i == 0 && sec.DocumentNumber != "" {
+			invoiceNumber = sec.DocumentNumber
+		}
+		if sec.PaymentMethod != nil && meta.paymentMethod == "" {
+			meta.paymentMethod = *sec.PaymentMethod
+		}
+		if sec.AccountName != nil && meta.accountName == "" {
+			meta.accountName = *sec.AccountName
+		}
+		if sec.Bsb != nil && meta.bsb == "" {
+			meta.bsb = *sec.Bsb
+		}
+		if sec.AccountNumber != nil && meta.accountNumber == "" {
+			meta.accountNumber = *sec.AccountNumber
+		}
+		if sec.PaymentDate != nil && meta.paymentDate == "" {
+			meta.paymentDate = *sec.PaymentDate
+		}
+	}
+
+	for _, it := range items {
+		basStr := ""
+		if it.BASCode != nil {
+			basStr = *it.BASCode
+		}
+		fieldKey := ""
+		if it.FieldKey != nil {
+			fieldKey = *it.FieldKey
+		}
+		isCredit := strings.ToUpper(it.EntryType) == "CREDIT"
+
+		itemMap := map[string]interface{}{
+			"label":       it.Name,
+			"description": it.Description,
+			"amount":      it.Amount,
+			"bas_code":    basStr,
+			"entry_type":  it.EntryType,
+			"row_class":   "",
+			"value_class": "",
+		}
+		if it.IsFinal {
+			itemMap["row_class"] = "row-final-balance"
+		}
+
+		switch it.SectionType {
+		case "CALCULATION_STATEMENT":
+			keyUpper := strings.ToUpper(fieldKey)
+			if strings.Contains(keyUpper, "FACILITY") || strings.Contains(keyUpper, "SERVICE") {
+				if strings.Contains(keyUpper, "RATE") && c.customFeeRate == "0" {
+					c.customFeeRate = fmt.Sprintf("%.1f", it.Amount)
+				}
+				c.serviceFeeItems = append(c.serviceFeeItems, itemMap)
+			} else if strings.Contains(keyUpper, "SETTLE") || strings.Contains(keyUpper, "NET") || it.IsFinal {
+				itemMap["is_bold"] = true
+				if isCredit {
+					itemMap["is_negative"] = true
+				}
+				c.settlementItems = append(c.settlementItems, itemMap)
+			} else {
+				c.patientFeeItems = append(c.patientFeeItems, itemMap)
+			}
+
+		case "SFA_INVOICE", "TAX_INVOICE":
+			itemGst := 0.0
+			itemSubtotal := it.Amount
+			if basStr == "G1" {
+				itemSubtotal = it.Amount / 1.1
+				itemGst = it.Amount - itemSubtotal
+			}
+			c.taxInvoiceItems = append(c.taxInvoiceItems, map[string]interface{}{
+				"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, it.Description),
+				"amount":      itemSubtotal,
+				"gst":         itemGst,
+				"row_class":   itemMap["row_class"],
+			})
+			c.subtotal += itemSubtotal
+			c.taxTotal += itemGst
+			c.grandTotal += it.Amount
+
+		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
+			if isCredit {
+				itemMap["is_negative"] = true
+			}
+			c.remittanceItems = append(c.remittanceItems, itemMap)
+		}
+	}
+
+	// Fallback: if no typed sections produced tax items, treat everything as tax items
+	if len(c.taxInvoiceItems) == 0 {
+		for _, it := range items {
+			basStr := ""
+			if it.BASCode != nil {
+				basStr = *it.BASCode
+			}
+			itemGst := 0.0
+			itemSubtotal := it.Amount
+			if basStr == "G1" {
+				itemSubtotal = it.Amount / 1.1
+				itemGst = it.Amount - itemSubtotal
+			}
+			c.taxInvoiceItems = append(c.taxInvoiceItems, map[string]interface{}{
+				"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, it.Description),
+				"amount":      itemSubtotal,
+				"gst":         itemGst,
+			})
+			c.subtotal += itemSubtotal
+			c.taxTotal += itemGst
+			c.grandTotal += it.Amount
+		}
+	}
+
+	return c, invoiceNumber, meta
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
@@ -502,14 +732,58 @@ func freshRqHTMLFix(v interface{}) string {
 	return ""
 }
 
+// invoiceDataToMap converts the InvoiceData struct into a generic map
+// while fully preserving the json structural tags expected by the HTML template engine.
 func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
+	// Step 1: Marshal the struct into JSON bytes.
+	// This automatically maps fields according to your json struct tags (e.g., InvoiceNumber -> "invoice_number")
 	bytes, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal invoice data to json: %w", err)
 	}
-	var res map[string]interface{}
-	if err := json.Unmarshal(bytes, &res); err != nil {
-		return nil, err
+
+	// Step 2: Unmarshal back into a generic map
+	var dataMap map[string]interface{}
+	if err := json.Unmarshal(bytes, &dataMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal json bytes into map: %w", err)
 	}
-	return res, nil
+
+	// Step 3: Explicitly map the direct styling properties just in case your HTML templates
+	// look for CamelCase variables instead of snake_case.
+	dataMap["InvoiceNumber"] = data.InvoiceNumber
+	dataMap["ClinicName"] = data.ClinicName
+	dataMap["IssueDateDisplay"] = data.IssueDateDisplay
+	dataMap["DueDateDisplay"] = data.DueDateDisplay
+	dataMap["BillingPeriod"] = data.BillingPeriod
+	dataMap["InvoiceFrequency"] = data.InvoiceFrequency
+	dataMap["ShowLogo"] = data.ShowLogo
+	dataMap["ShowLogoImage"] = data.ShowLogoImage
+	dataMap["LogoURL"] = data.LogoURL
+	dataMap["LogoInitial"] = data.LogoInitial
+	dataMap["WatermarkEnabled"] = data.WatermarkEnabled
+	dataMap["WatermarkText"] = data.WatermarkText
+	dataMap["ShowTax"] = data.ShowTax
+	dataMap["LetterheadHTML"] = data.LetterheadHTML
+	dataMap["FooterHTML"] = data.FooterHTML
+	dataMap["Notes"] = data.Notes
+	dataMap["GrandTotal"] = data.GrandTotal
+	dataMap["Subtotal"] = data.Subtotal
+	dataMap["TaxTotal"] = data.TaxTotal
+	dataMap["PrimaryColor"] = data.PrimaryColor
+	dataMap["AccentColor"] = data.AccentColor
+	dataMap["BodyFontFamily"] = data.BodyFontFamily
+	dataMap["HeaderFontFamily"] = data.HeaderFontFamily
+	dataMap["CustomFeeRate"] = data.CustomFeeRate
+	dataMap["TermsText"] = data.TermsText
+	dataMap["TableStyleClass"] = data.TableStyleClass
+
+	// Handle remittance attributes specifically matching the PDF text placeholders
+	dataMap["CustomPaymentMethod"] = data.CustomPaymentMethod
+	dataMap["PaymentMethodLabel"] = data.PaymentMethodLabel
+	dataMap["CustomPaymentAccountName"] = data.CustomPaymentAccountName
+	dataMap["CustomPaymentBsb"] = data.CustomPaymentBsb
+	dataMap["CustomPaymentAccount"] = data.CustomPaymentAccount
+	dataMap["PaymentDateDisplay"] = data.PaymentDateDisplay
+
+	return dataMap, nil
 }

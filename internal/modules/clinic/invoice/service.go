@@ -326,124 +326,313 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		}
 	}
 
-	var pdfItems []template.LineItem
-	var grandTotal float64
+	var patientFeeItems []map[string]interface{}
+	var serviceFeeItems []map[string]interface{}
+	var settlementItems []map[string]interface{}
+	var taxInvoiceItems []map[string]interface{}
+	var remittanceItems []map[string]interface{}
+
+	var globalLineItems []template.LineItem
+	var subtotal, taxTotal, grandTotal float64
+	var customFeeRate string = "0"
+
+	var invoiceNumber string = inv.Name
+	var paymentMethod, accountName, bsb, accountNumber, paymentDate, paymentRef string
 
 	for _, sec := range inv.Sections {
+		if sec.DocumentNumber != "" {
+			invoiceNumber = sec.DocumentNumber
+		}
+		if sec.PaymentMethod != nil {
+			paymentMethod = *sec.PaymentMethod
+		}
+		if sec.AccountName != nil {
+			accountName = *sec.AccountName
+		}
+		if sec.Bsb != nil {
+			bsb = *sec.Bsb
+		}
+		if sec.AccountNumber != nil {
+			accountNumber = *sec.AccountNumber
+		}
+		if sec.PaymentDate != nil {
+			paymentDate = *sec.PaymentDate
+		}
+		if sec.PaymentReference != nil {
+			paymentRef = *sec.PaymentReference
+		}
+
 		for _, it := range sec.Entries {
 			var desc string
 			if it.Description != nil {
 				desc = *it.Description
 			}
-			pdfItems = append(pdfItems, template.LineItem{
-				Name:        it.Name,
-				Description: desc,
-				Amount:      it.Amount,
+			var basStr string
+			if it.BASCode != nil {
+				basStr = string(*it.BASCode)
+			}
+			var typeStr string
+			if it.EntryType != nil {
+				typeStr = string(*it.EntryType)
+			}
+			var keyStr string
+			if it.FieldKey != nil {
+				keyStr = *it.FieldKey
+			}
+
+			isCredit := strings.ToUpper(typeStr) == "CREDIT"
+
+			itemMap := map[string]interface{}{
+				"label":       it.Name,
+				"description": desc,
+				"amount":      it.Amount,
+				"bas_code":    basStr,
+				"entry_type":  typeStr,
+				"row_class":   "",
+				"value_class": "",
+			}
+
+			if it.IsFinal {
+				itemMap["row_class"] = "row-final-balance"
+			}
+
+			globalLineItems = append(globalLineItems, template.LineItem{
+				Name:         it.Name,
+				Description:  desc,
+				Amount:       it.Amount,
+				RunningTotal: grandTotal + it.Amount,
 			})
-			grandTotal += it.Amount
+
+			switch sec.SectionType {
+			case "CALCULATION_STATEMENT":
+				if strings.Contains(strings.ToUpper(keyStr), "FACILITY") || strings.Contains(strings.ToUpper(keyStr), "SERVICE") {
+					if strings.Contains(strings.ToUpper(keyStr), "RATE") && customFeeRate == "0" {
+						customFeeRate = fmt.Sprintf("%.1f", it.Amount)
+					}
+					serviceFeeItems = append(serviceFeeItems, itemMap)
+				} else if strings.Contains(strings.ToUpper(keyStr), "SETTLE") || strings.Contains(strings.ToUpper(keyStr), "NET") || it.IsFinal {
+					itemMap["is_bold"] = true
+					if isCredit {
+						itemMap["is_negative"] = true
+					}
+					settlementItems = append(settlementItems, itemMap)
+				} else {
+					patientFeeItems = append(patientFeeItems, itemMap)
+				}
+
+			case "TAX_INVOICE":
+				itemGst := 0.0
+				itemSubtotal := it.Amount
+				if basStr == "G1" {
+					itemSubtotal = it.Amount / 1.1
+					itemGst = it.Amount - itemSubtotal
+				}
+
+				taxInvoiceItems = append(taxInvoiceItems, map[string]interface{}{
+					"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, desc),
+					"amount":      itemSubtotal,
+					"gst":         itemGst,
+					"row_class":   itemMap["row_class"],
+				})
+
+				subtotal += itemSubtotal
+				taxTotal += itemGst
+				grandTotal += it.Amount
+
+			case "REMITTANCE_ADVICE":
+				if isCredit {
+					itemMap["is_negative"] = true
+				}
+				remittanceItems = append(remittanceItems, itemMap)
+			}
 		}
+	}
+
+	if len(taxInvoiceItems) == 0 {
+		for _, sec := range inv.Sections {
+			for _, it := range sec.Entries {
+				var desc string
+				if it.Description != nil {
+					desc = *it.Description
+				}
+				var basStr string
+				if it.BASCode != nil {
+					basStr = string(*it.BASCode)
+				}
+
+				itemGst := 0.0
+				itemSubtotal := it.Amount
+				if basStr == "G1" {
+					itemSubtotal = it.Amount / 1.1
+					itemGst = it.Amount - itemSubtotal
+				}
+
+				taxInvoiceItems = append(taxInvoiceItems, map[string]interface{}{
+					"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, desc),
+					"amount":      itemSubtotal,
+					"gst":         itemGst,
+				})
+				subtotal += itemSubtotal
+				taxTotal += itemGst
+				grandTotal += it.Amount
+			}
+		}
+	}
+
+	var primaryTemplateID uuid.UUID
+	if len(inv.Sections) > 0 {
+		primaryTemplateID = inv.Sections[0].TemplateID
 	}
 
 	var showLogo, showLogoImage bool
 	var logoURL, logoInitial, letterheadHTML, footerHTML, notes string
-	var tplSetting *template.RsSetting
-	var err error
-	var pdfRq template.RqGeneratePDF
-	for _, v := range inv.Sections {
-		tplSetting, err = s.tplService.GetSetting(ctx, v.TemplateID)
-		if err != nil {
-			log.Printf("[PDF-WARN] Specified TemplateID %s not found, falling back to default theme layout. Err: %v", v.TemplateID, err)
+	var tableStyleClass string
 
+	watermarkText := "PAID"
+	watermarkEnabled := false
+	showTax := true
+	primaryColor := "#1f4e5f"
+	accentColor := "#1f4e5f"
+	bodyFontFamily := "Arial"
+	headerFontFamily := "Arial"
+
+	tplSetting, err := s.tplService.GetSetting(ctx, primaryTemplateID)
+	if err != nil {
+		log.Printf("[PDF-WARN] Specified Template settings not found, error: %v", err)
+		showLogo = true
+		if clinicName != "" {
+			runes := []rune(clinicName)
+			if len(runes) > 0 {
+				logoInitial = string(runes[0])
+			}
+		}
+	} else if tplSetting != nil {
+		if tplSetting.IsLogo {
 			showLogo = true
-			if clinicName != "" {
+			if tplSetting.Logo != nil && tplSetting.Logo.FileKey != "" {
+				logoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Logo.FileKey
+				showLogoImage = true
+			} else if clinicName != "" {
 				runes := []rune(clinicName)
 				if len(runes) > 0 {
 					logoInitial = string(runes[0])
 				}
 			}
-		} else if tplSetting != nil {
-			if tplSetting.IsLogo {
-				showLogo = true
-				if tplSetting.Logo != nil && tplSetting.Logo.FileKey != "" {
-					logoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Logo.FileKey
-					showLogoImage = true
-				} else if clinicName != "" {
-					runes := []rune(clinicName)
-					if len(runes) > 0 {
-						logoInitial = string(runes[0])
-					}
-				}
-			}
-			if tplSetting.LetterHead != nil && tplSetting.LetterHead.FileKey != "" {
-				letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
-			}
-			if tplSetting.Footer != nil && tplSetting.Footer.FileKey != "" {
-				footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
-			}
-			if tplSetting.TermText != nil {
-				notes = *tplSetting.TermText
-			}
+		}
+		if tplSetting.LetterHead != nil && tplSetting.LetterHead.FileKey != "" {
+			letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
+		}
+		if tplSetting.Footer != nil && tplSetting.Footer.FileKey != "" {
+			footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
+		}
+		if tplSetting.TermText != nil {
+			notes = *tplSetting.TermText
 		}
 
-		issueDateFormatted := inv.IssueDate.Format("02 January 2006")
-		dueDateFormatted := ""
-		if inv.DueDate != nil {
-			dueDateFormatted = inv.DueDate.Format("02 January 2006")
+		tableStyleClass = tplSetting.TableStyle
+		watermarkEnabled = tplSetting.IsWaterMark
+		if tplSetting.WaterMarkText != nil {
+			watermarkText = *tplSetting.WaterMarkText
 		}
-		billingPeriodFormatted := inv.BillingPeriodFrom + " to " + inv.BillingPeriodTo
+		showTax = tplSetting.IsTax
+		primaryColor = tplSetting.PrimaryColor
+		accentColor = tplSetting.AccentColor
+		bodyFontFamily = tplSetting.BodyFontFamily
+		headerFontFamily = tplSetting.HeaderFontFamily
+	}
 
-		tableStyleClass := ""
-		if tplSetting != nil {
-			tableStyleClass = tplSetting.TableStyle
-		}
+	issueDateFormatted := inv.IssueDate.Format("02 January 2006")
+	dueDateFormatted := ""
+	if inv.DueDate != nil {
+		dueDateFormatted = inv.DueDate.Format("02 January 2006")
+	}
+	billingPeriodFormatted := template.FormatDateString(inv.BillingPeriodFrom) + " to " + template.FormatDateString(inv.BillingPeriodTo)
 
-		pdfRq = template.RqGeneratePDF{
-			ClinicId:   inv.ClinicID,
-			TemplateId: v.TemplateID,
-			Data: template.InvoiceData{
-				ClinicName:       clinicName,
-				IssueDateDisplay: issueDateFormatted,
-				DueDateDisplay:   dueDateFormatted,
-				BillingPeriod:    billingPeriodFormatted,
-				InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, ""),
-				ShowLogo:         showLogo,
-				ShowLogoImage:    showLogoImage,
-				LogoURL:          logoURL,
-				LogoInitial:      logoInitial,
-				LetterheadHTML:   letterheadHTML,
-				FooterHTML:       footerHTML,
-				Notes:            notes,
-				BillFrom: template.PartyInfo{
-					Name:    billFromName,
-					Address: billFromAddress,
-					ABN:     billFromABN,
-					Email:   billFromEmail,
-					Phone:   billFromPhone,
-				},
-				BillTo: template.PartyInfo{
-					Name:    billToName,
-					Address: billToAddress,
-					ABN:     billToABN,
-					Email:   billToEmail,
-					Phone:   billToPhone,
-				},
-				Items:      pdfItems,
-				GrandTotal: grandTotal,
+	templateSettingsPayload := map[string]interface{}{
+		"is_logo":            showLogo,
+		"primary_color":      primaryColor,
+		"accent_color":       accentColor,
+		"body_font_family":   bodyFontFamily,
+		"header_font_family": headerFontFamily,
+		"is_watermark":       watermarkEnabled,
+		"watermark_text":     watermarkText,
+		"is_tax":             showTax,
+		"terms_text":         notes,
+	}
 
-				TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
-				TotalsGrandLabel:     "Total (AUD)",
-				WatermarkEnabled:     tplSetting.IsWaterMark,
-				WatermarkText:        lo.FromPtr(tplSetting.WaterMarkText),
-				ShowTax:              tplSetting.IsTax,
-				TableStyleClass:      tableStyleClass,
+	if paymentRef == "" {
+		paymentRef = invoiceNumber
+	}
 
-				PrimaryColor:     tplSetting.PrimaryColor,
-				AccentColor:      tplSetting.AccentColor,
-				BodyFontFamily:   tplSetting.BodyFontFamily,
-				HeaderFontFamily: tplSetting.HeaderFontFamily,
+	pdfRq := template.RqGeneratePDF{
+		TemplateId: primaryTemplateID,
+		ClinicId:   inv.ClinicID,
+		Data: template.InvoiceData{
+			InvoiceNumber:    invoiceNumber,
+			ClinicName:       clinicName,
+			IssueDateDisplay: issueDateFormatted,
+			DueDateDisplay:   dueDateFormatted,
+			BillingPeriod:    billingPeriodFormatted,
+			InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, "MONTHLY"),
+			ShowLogo:         showLogo,
+			ShowLogoImage:    showLogoImage,
+			LogoURL:          logoURL,
+			LogoInitial:      logoInitial,
+			WatermarkEnabled: watermarkEnabled,
+			WatermarkText:    watermarkText,
+			ShowTax:          showTax,
+			LetterheadHTML:   letterheadHTML,
+			FooterHTML:       footerHTML,
+			Notes:            notes,
+			TableStyleClass:  tableStyleClass,
+			TemplateSettings: templateSettingsPayload,
+			PrimaryColor:     primaryColor,
+			AccentColor:      accentColor,
+			BodyFontFamily:   bodyFontFamily,
+			HeaderFontFamily: headerFontFamily,
+
+			BillFrom: template.PartyInfo{
+				Name:    billFromName,
+				Address: billFromAddress,
+				ABN:     billFromABN,
+				Email:   billFromEmail,
+				Phone:   billFromPhone,
 			},
-		}
+			BillTo: template.PartyInfo{
+				Name:    billToName,
+				Address: billToAddress,
+				ABN:     billToABN,
+				Email:   billToEmail,
+				Phone:   billToPhone,
+			},
 
+			Items:                globalLineItems,
+			GrandTotal:           grandTotal,
+			Subtotal:             subtotal,
+			TaxTotal:             taxTotal,
+			TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
+			TotalsGrandLabel:     "Total (AUD)",
+
+			PatientFeeItems: patientFeeItems,
+			ServiceFeeItems: serviceFeeItems,
+			SettlementItems: settlementItems,
+			CustomFeeRate:   customFeeRate,
+			TaxInvoiceItems: taxInvoiceItems,
+			TermsText:       notes,
+
+			RemittanceItems:          remittanceItems,
+			CustomPaymentMethod:      paymentMethod,
+			PaymentMethodLabel:       paymentMethod,
+			CustomPaymentAccountName: accountName,
+			CustomPaymentBsb:         bsb,
+			CustomPaymentAccount:     accountNumber,
+			PaymentDateDisplay:       template.FormatDateString(paymentDate),
+		},
+	}
+
+	// We use paymentRef context mapping to safely ensure it isn't labeled as an unused compilation item
+	if pdfRq.Data.TemplateSettings != nil {
+		pdfRq.Data.TemplateSettings["payment_reference_id"] = paymentRef
 	}
 
 	pdfBytes, err := s.tplService.GeneratePDF(ctx, pdfRq)

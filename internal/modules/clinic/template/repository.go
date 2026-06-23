@@ -32,6 +32,7 @@ type IRepository interface {
 	UpdateMapping(ctx context.Context, m *Mapping) error
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
 	GetInvoice(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID) (*InvoiceResponse, error)
+	GetInvoiceSectionMeta(ctx context.Context, invoiceId uuid.UUID) ([]InvoiceSectionMeta, error)
 	GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error)
 	SaveClinicMailTemplate(ctx context.Context, clinicID uuid.UUID, subject, body string) error
 	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateIds []uuid.UUID) (*Setting, error)
@@ -382,7 +383,10 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
             COALESCE(ii.description, '') AS description, 
             ii.amount, 
             ii.bas_code, 
-            COALESCE(ii.entry_type, '') AS entry_type
+            COALESCE(ii.entry_type, '') AS entry_type,
+            COALESCE(s.invoice_section::text, '') AS section_type,
+            ii.field_key,
+            COALESCE(ii.is_final, false) AS is_final
         FROM tbl_invoice_item ii
         INNER JOIN tbl_map_invoice_section s ON ii.invoice_section_id = s.id
         WHERE s.invoice_id = $1 AND ii.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -446,6 +450,29 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 		},
 		Items: items,
 	}, nil
+}
+
+func (r *Repository) GetInvoiceSectionMeta(ctx context.Context, invoiceId uuid.UUID) ([]InvoiceSectionMeta, error) {
+	const q = `
+		SELECT 
+			id,
+			COALESCE(invoice_section::text, '') AS section_type,
+			COALESCE(document_number, '') AS document_number,
+			payment_method,
+			account_name,
+			bsb_number,
+			account_number,
+			payment_date,
+			payment_reference
+		FROM tbl_map_invoice_section
+		WHERE invoice_id = $1 AND deleted_at IS NULL
+		ORDER BY created_at ASC`
+
+	var sections []InvoiceSectionMeta
+	if err := r.db.SelectContext(ctx, &sections, q, invoiceId); err != nil {
+		return nil, fmt.Errorf("failed to fetch invoice section metadata: %w", err)
+	}
+	return sections, nil
 }
 
 func (r *Repository) GetSavedClinicMailTemplate(ctx context.Context, clinicID uuid.UUID) (string, string, error) {
