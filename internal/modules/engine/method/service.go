@@ -33,7 +33,7 @@ func (s *service) Calculate(ctx context.Context, taxType TaxTreatment, input *In
 }
 
 func (s *service) exclusive(_ context.Context, input *Input) (*Result, error) {
-	gstAmount := input.Amount * 0.10 // 10% GST
+	gstAmount := input.Amount * GSTRate
 	return &Result{
 		Amount:      input.Amount,
 		GstAmount:   gstAmount,
@@ -42,7 +42,7 @@ func (s *service) exclusive(_ context.Context, input *Input) (*Result, error) {
 }
 
 func (s *service) inclusive(_ context.Context, input *Input) (*Result, error) {
-	gstAmount := input.Amount / 11
+	gstAmount := input.Amount / GSTDivisor
 	baseAmount := input.Amount - gstAmount
 
 	return &Result{

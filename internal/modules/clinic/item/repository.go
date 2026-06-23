@@ -35,7 +35,7 @@ func (r *Repository) Create(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 		if item.ID == uuid.Nil {
 			item.ID = uuid.New()
 		}
-		if err := r.persistItem(ctx, tx, item, false); err != nil {
+		if err := r.persistItem(ctx, tx, item, false, invoiceID); err != nil {
 			return err
 		}
 	}
@@ -107,7 +107,7 @@ func (r *Repository) Update(ctx context.Context, tx *sqlx.Tx, invoiceID uuid.UUI
 		if item.ID == uuid.Nil {
 			item.ID = uuid.New()
 		}
-		if err := r.persistItem(ctx, tx, item, true); err != nil {
+		if err := r.persistItem(ctx, tx, item, true, invoiceID); err != nil {
 			return err
 		}
 	}
@@ -153,7 +153,7 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 			}
 		}
 
-		if err := r.persistItem(ctx, tx, item, exists); err != nil {
+		if err := r.persistItem(ctx, tx, item, exists, invoiceID); err != nil {
 			return err
 		}
 	}
@@ -162,7 +162,7 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 }
 
 // persistItem inserts or updates a single item based on isUpdate flag
-func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool) error {
+func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool, invoiceID uuid.UUID) error {
 	var exprJSON []byte
 	var err error
 	if item.Expression != nil {
@@ -186,10 +186,10 @@ func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, i
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tbl_invoice_item (
-			id, name, description, entry_type, bas_code, field_key,
+			id, invoice_id, name, description, entry_type, bas_code, field_key,
 			amount, invoice_section_id, sort_order, expression
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, item.ID, invoiceID, item.Name, item.Description, item.EntryType, item.BASCode,
 		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON)
 	return err
 }
@@ -221,6 +221,22 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 
 	for _, item := range sorted {
 		if item.Expression != nil {
+			// Validate expression is a proper JSON object
+			_, ok := item.Expression.(map[string]interface{})
+			if !ok {
+				fieldKey := ""
+				if item.FieldKey != nil {
+					fieldKey = *item.FieldKey
+				}
+				return &FormulaError{
+					ItemName:   item.Name,
+					FieldKey:   fieldKey,
+					Expression: fmt.Sprintf("%v", item.Expression),
+					Err:        fmt.Errorf("expression is not a valid JSON object"),
+					Context:    contextValues,
+				}
+			}
+
 			exprJSON, err := json.Marshal(item.Expression)
 			if err != nil {
 				fieldKey := ""
@@ -230,7 +246,7 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 				return &FormulaError{
 					ItemName:   item.Name,
 					FieldKey:   fieldKey,
-					Expression: string(exprJSON),
+					Expression: fmt.Sprintf("%v", item.Expression),
 					Err:        err,
 					Context:    contextValues,
 				}
@@ -351,6 +367,27 @@ func topologicalSort(items []*Item) ([]*Item, error) {
 	}
 
 	if len(sorted) != len(items) {
+		sortedSet := make(map[*Item]bool, len(sorted))
+		for _, s := range sorted {
+			sortedSet[s] = true
+		}
+
+		unsorted := make([]string, 0)
+		for _, item := range items {
+			if !sortedSet[item] {
+				if item.FieldKey != nil && *item.FieldKey != "" {
+					unsorted = append(unsorted, *item.FieldKey)
+				} else if item.BASCode != nil {
+					unsorted = append(unsorted, string(*item.BASCode))
+				} else {
+					unsorted = append(unsorted, item.Name)
+				}
+			}
+		}
+
+		if len(unsorted) > 0 {
+			return nil, fmt.Errorf("circular dependency detected in fields: %v", unsorted)
+		}
 		return nil, fmt.Errorf("circular dependency detected")
 	}
 

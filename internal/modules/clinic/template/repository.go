@@ -146,21 +146,24 @@ func (r *Repository) GetSetting(ctx context.Context, templateId uuid.UUID) (*Set
 }
 
 func (r *Repository) GetInvoiceSetting(ctx context.Context, clinicId, invoiceId, templateId uuid.UUID) (*Setting, error) {
-	// 1st Priority: Match exact invoice_id override
-	// 2nd Priority: Fall back to global default configuration (where invoice_id and clinic_id are NULL)
 	const q = `
-		SELECT s.*, m.template_id FROM tbl_template_setting s
+		SELECT s.*, m.template_id 
+		FROM tbl_template_setting s
 		INNER JOIN tbl_invoice_template_mapping m ON s.id = m.setting_id
 		WHERE m.template_id = $3 
 		  AND m.deleted_at IS NULL
 		  AND s.deleted_at IS NULL
 		  AND (
+		      -- Exact match (Clinic + Invoice)
 		      (m.clinic_id = $1 AND m.invoice_id = $2)
+		      -- Global fallback 
 		      OR (m.clinic_id IS NULL AND m.invoice_id IS NULL)
 		  )
 		ORDER BY 
-			(m.invoice_id = $2) DESC, 
-			(m.invoice_id IS NULL) DESC
+			CASE 
+				WHEN m.clinic_id = $1 AND m.invoice_id = $2 THEN 1  -- First Priority
+				ELSE 2                                              -- Global Fallback
+			END ASC
 		LIMIT 1;`
 
 	var st Setting

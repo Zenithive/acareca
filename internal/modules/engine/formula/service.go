@@ -6,6 +6,7 @@ import (
 	"maps"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -319,18 +320,18 @@ func (s *service) EvalFormulas(ctx context.Context, formVersionID uuid.UUID, key
 		// Non-tax computed fields feed NET amount
 		feedbackVal := val
 		if taxType, hasTax := taxTypeByKey[fw.formula.FieldKey]; hasTax {
-			// Calculate gross amount: for exclusive tax, gross = net * 1.1
+			// Calculate gross amount: for exclusive tax, gross = net * GSTMultiplier
 			// For inclusive, the formula already returns gross, so use as-is
 			switch taxType {
 			case "EXCLUSIVE":
-				feedbackVal = val * 1.1 // Add 10% GST
+				feedbackVal = val * method.GSTMultiplier // Add 10% GST (multiply by 1.1)
 			case "INCLUSIVE":
 				feedbackVal = val // Already gross
 			case "ZERO":
 				feedbackVal = val // No GST
 			case "MANUAL":
-				// For MANUAL, val is GROSS amount from formula calculation
-				// No need to add GST since formula already used GROSS
+				// For MANUAL, val is NET amount from formula calculation
+				// Downstream formulas should receive NET (not GROSS) for consistency
 				feedbackVal = val
 			}
 		}

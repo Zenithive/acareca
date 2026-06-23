@@ -61,7 +61,7 @@ func (n *FieldNode) Evaluate(ctx Context) (float64, error) {
 func (n *BasCodeNode) Evaluate(ctx Context) (float64, error) {
 	value, ok := ctx.Values[n.Key]
 	if !ok {
-		return 0, fmt.Errorf("bas code %s not found", n.Key)
+		return 0, fmt.Errorf("BAS code %s not found in context values", n.Key)
 	}
 	return value, nil
 }
@@ -113,6 +113,10 @@ func (n *DivideNode) Evaluate(ctx Context) (float64, error) {
 	r, err := n.Right.Evaluate(ctx)
 	if err != nil {
 		return 0, err
+	}
+
+	if r == 0 {
+		return 0, ErrDivisionByZero
 	}
 
 	return l / r, nil

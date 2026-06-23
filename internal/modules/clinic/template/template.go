@@ -306,7 +306,6 @@ func DefaultTemplates() []RqGlobalTemplate {
 			Name:      "Calculation Statement",
 			IsDefault: true,
 			IsActive:  true,
-			// Removed []byte wrapper conversion to perfectly fit string literal expectations
 			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
   <table class="data-table">
     <thead>
@@ -317,38 +316,20 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
     </thead>
     <tbody>
-      <tr class="bg-sky-row">
-        <td>Total patient fees collected (incl. GST)</td>
-        <td class="num txt-blue-val">{{custom_patient_fees_collected}}</td>
-        <td class="center">G1</td>
+      {{#each patient_fee_items}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td>{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{format_currency amount}}</td>
+        <td class="center">{{bas_code}}</td>
       </tr>
-      <tr>
-        <td>GST collected on patient fees (taxable services)</td>
-        <td class="num txt-blue-val">{{custom_patient_fees_gst}}</td>
-        <td class="center">1A</td>
-      </tr>
-      <tr>
-        <td>GST-free sales [G1 &ndash; (1A &times; 11)]</td>
-        <td class="num" style="font-weight: bold;">{{custom_patient_fees_gst_free}}</td>
-        <td class="center">G3</td>
-      </tr>
-      <tr>
-        <td>Less: laboratory fees (net of GST)</td>
-        <td class="num txt-blue-val">{{custom_lab_fees}}</td>
-        <td class="center"></td>
-      </tr>
-      <tr class="row-bold bg-sky-row">
-        <td>Net patient fees [G1 &ndash; 1A &ndash; lab fees]</td>
-        <td class="num">{{custom_net_patient_fees}}</td>
-        <td class="center"></td>
-      </tr>
+      {{/each}}
     </tbody>
   </table>
 
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%%; text-align: left;">2. SERVICE & FACILITY FEE (see Tax Invoice &mdash; page 2)</th>
+        <th style="width: 65%%; text-align: left;">2. SERVICE &amp; FACILITY FEE</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
@@ -368,65 +349,32 @@ func DefaultTemplates() []RqGlobalTemplate {
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
-          <ul class="bullet-list" style="list-style-type: decimal; margin-top: 6px;">
-            <li>Rent of dental surgery/room</li>
-            <li>Patient booking & reception</li>
-            <li>Fee collection & banking</li>
-            <li>Equipment & instrument hire</li>
-            <li>General administration & support staff</li>
-          </ul>
         </td>
       </tr>
-      <tr class="bg-sky-row">
-        <td style="width: 65%%;">Service & Facility Fee [net patient fees &times; fee rate]</td>
-        <td class="num" style="width: 20%%; font-weight: bold;">{{subtotal}}</td>
-        <td class="center" style="width: 15%%;"></td>
+      {{#each service_fee_items}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{format_currency amount}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
-      <tr>
-        <td style="width: 65%%;">GST on Service & Facility Fee (10%%)</td>
-        <td class="num" style="width: 20%%;">{{tax_total}}</td>
-        <td class="center" style="width: 15%%;">1B</td>
-      </tr>
-      <tr class="row-total bg-sky-row">
-        <td>Total Service & Facility Fee (incl. GST)</td>
-        <td class="num">{{grand_total}}</td>
-        <td class="center">G11</td>
-      </tr>
+      {{/each}}
     </tbody>
   </table>
 
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 85%%; text-align: left;">3. NET SETTLEMENT (see Remittance Advice &mdash; page 3)</th>
+        <th style="width: 85%%; text-align: left;">3. NET SETTLEMENT</th>
         <th style="width: 15%%; text-align: right;">Amount</th>
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>Total patient fees collected on your behalf (incl. GST) [G1]</td>
-        <td class="num">{{custom_patient_fees_collected}}</td>
+      {{#each settlement_items}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td>{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}"{{#if is_bold}} style="font-weight: bold;"{{/if}}>{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
       </tr>
-      <tr>
-        <td>Less: laboratory fees (net of GST)</td>
-        <td class="num">({{custom_lab_fees}})</td>
-      </tr>
-      <tr>
-        <td>Less: Total Service & Facility Fee (incl. GST)</td>
-        <td class="num">({{grand_total}})</td>
-      </tr>
-      <tr class="row-bold bg-sky-row">
-        <td>Amount due to dentist</td>
-        <td class="num">{{custom_amount_due_to_dentist}}</td>
-      </tr>
-      <tr>
-        <td>Less: retainers / drawings previously paid this period</td>
-        <td class="num txt-blue-val">{{discount_total}}</td>
-      </tr>
-      <tr class="row-final-balance">
-        <td>BALANCE REMITTED TO DENTIST</td>
-        <td class="num amt-pos" style="font-size: 11.5px;">{{custom_balance_remitted}}</td>
-      </tr>
+      {{/each}}
     </tbody>
   </table>
 
@@ -448,27 +396,19 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table" style="margin-top: 4px;">
     <thead>
       <tr>
-        <th style="width: 70%%; text-align: left;">SERVICE & FACILITY FEE</th>
+        <th style="width: 70%%; text-align: left;">SERVICE &amp; FACILITY FEE</th>
         <th style="width: 15%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: right; padding-right: 8px;">GST</th>
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td style="padding: 6px; line-height: 1.4;">
-          <p style="margin-bottom: 2px;">Service and facility fee for the period {{billing_period}},<br>calculated at the agreed rate on net patient fees, comprising:</p>
-          <ul class="bullet-list" style="list-style-type: decimal;">
-            <li>Rent of dental surgery/room</li>
-            <li>Patient booking & reception</li>
-            <li>Fee collection & banking</li>
-            <li>Equipment & instrument hire</li>
-            <li>General administration & support staff</li>
-          </ul>
-          <p style="color: var(--text-dark); margin-top: 6px; font-weight: normal;">Service & Facility Fee (per Calculation Statement)</p>
-        </td>
-        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%%;">{{subtotal}}</td>
-        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%%; color: var(--text-dark); padding-right: 8px;">{{tax_total}}</td>
+      {{#each tax_invoice_items}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td style="padding: 6px; line-height: 1.4;">{{{description}}}</td>
+        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%%;">{{format_currency amount}}</td>
+        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%%; color: var(--text-dark); padding-right: 8px;">{{format_currency gst}}</td>
       </tr>
+      {{/each}}
     </tbody>
   </table>
 
@@ -479,15 +419,15 @@ func DefaultTemplates() []RqGlobalTemplate {
         <table class="layout-table" style="font-size: 11px; line-height: 1.6;">
           <tr>
             <td style="padding: 3px 6px; text-align: left;">Subtotal (excl. GST)</td>
-            <td class="num" style="padding: 3px 6px;">{{subtotal}}</td>
+            <td class="num" style="padding: 3px 6px;">{{format_currency subtotal}}</td>
           </tr>
           <tr>
             <td style="padding: 3px 6px; text-align: left;">GST (10%%)</td>
-            <td class="num" style="padding: 3px 6px;">{{tax_total}}</td>
+            <td class="num" style="padding: 3px 6px;">{{format_currency tax_total}}</td>
           </tr>
           <tr style="font-weight: bold; background-color: var(--bg-input-blue);">
             <td style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000; text-align: left;">TOTAL (incl. GST)</td>
-            <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{grand_total}}</td>
+            <td class="num" style="padding: 5px 6px; border-top: 1px solid #000000; border-bottom: 2px solid #000000;">{{format_currency grand_total}}</td>
           </tr>
         </table>
       </td>
@@ -522,28 +462,12 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>Total patient fees collected on your behalf (incl. GST)</td>
-        <td class="num amt-pos">{{custom_patient_fees_collected}}</td>
+      {{#each remittance_items}}
+      <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
+        <td>{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}">{{#if is_negative}}({{format_currency amount}}){{else}}{{format_currency amount}}{{/if}}</td>
       </tr>
-      <tr>
-        <td>Less: laboratory fees (net of GST)</td>
-        <td class="num">({{custom_lab_fees}})</td>
-      </tr>
-      <tr>
-        <td>Less: Service & Facility Fee incl. GST (Tax Invoice)</td>
-        <td class="num">({{grand_total}})</td>
-      </tr>
-      {{#if discount_total}}
-      <tr>
-        <td>Less: retainers / drawings previously paid this period</td>
-        <td class="num">({{discount_total}})</td>
-      </tr>
-      {{/if}}
-      <tr class="row-final-balance">
-        <td>NET PAYABLE TO DENTIST</td>
-        <td class="num amt-pos" style="font-size: 11.5px;">{{custom_balance_remitted}}</td>
-      </tr>
+      {{/each}}
     </tbody>
   </table>
 
@@ -553,7 +477,7 @@ func DefaultTemplates() []RqGlobalTemplate {
       <tbody>
         <tr>
           <td style="font-weight: bold; width: 45%%;">Payment method</td>
-          <td style="width: 55%%;">Electronic funds transfer (EFT)</td>
+          <td style="width: 55%%;">{{bill_to.payment_method}}</td>
         </tr>
         <tr>
           <td style="font-weight: bold;">Account name</td>
