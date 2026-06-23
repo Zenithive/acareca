@@ -159,7 +159,7 @@ body {
 
 .hdr-doc-title { 
   font-family: {{#if template_settings.header_font_family}}'{{template_settings.header_font_family}}'{{else}}'Arial'{{/if}}, sans-serif;
-  font-size: 20px; 
+  font-size: 18px; 
   font-weight: bold; 
   color: var(--primary-color); 
   margin-bottom: 6px; 
