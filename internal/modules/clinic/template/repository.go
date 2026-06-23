@@ -399,7 +399,7 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
 	return &InvoiceResponse{
 		ID:                row.Id,
 		ClinicID:          row.ClinicId,
-		TemplateID:        row.TemplateId,
+		TemplateID:        uuid.Nil, // Templates now stored in tbl_map_invoice_section
 		BillingPeriodFrom: row.BillingPeriodFrom,
 		BillingPeriodTo:   row.BillingPeriodTo,
 		InvoiceFrequency:  row.InvoiceFrequency,

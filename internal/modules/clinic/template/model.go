@@ -383,7 +383,6 @@ func invoiceToData(inv *InvoiceResponse) InvoiceData {
 type invoiceRow struct {
 	Id                uuid.UUID `db:"id"`
 	ClinicId          uuid.UUID `db:"clinic_id"`
-	TemplateId        uuid.UUID `db:"template_id"`
 	BillingPeriodFrom string    `db:"billing_period_from"`
 	BillingPeriodTo   string    `db:"billing_period_to"`
 	InvoiceFrequency  string    `db:"invoice_frequency"`
