@@ -266,6 +266,16 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 	}
 
 	base := `
+		WITH ranked_ev AS (
+			SELECT 
+				ev.id,
+				ROW_NUMBER() OVER (
+					PARTITION BY ev.entry_id, ev.form_field_id 
+					ORDER BY (ev.updated_at IS NULL) DESC, ev.created_at DESC
+				) as rn
+			FROM tbl_form_entry_value ev
+			WHERE ev.deleted_at IS NULL
+		)
 		SELECT
 			ev.id,
 			e.id AS entry_id,
@@ -288,15 +298,16 @@ func (r *Repository) ListTransactions(ctx context.Context, f common.Filter, acto
 			ev.updated_at,
 			CASE WHEN fm.method = 'EXPENSE_ENTRY' THEN ev.date ELSE e.date END AS date,
 			(e.clinic_id = '00000000-0000-0000-0000-000000000000') AS is_expense
-		FROM tbl_form_entry_value ev
+		FROM ranked_ev
+		INNER JOIN tbl_form_entry_value ev ON ev.id = ranked_ev.id AND ranked_ev.rn = 1
 		INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
-		INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE AND ff.label IS NOT NULL AND ff.label != ''
+		INNER JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id AND coa.deleted_at IS NULL
 		LEFT JOIN tbl_account_tax at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
 		LEFT JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
-		WHERE e.deleted_at IS NULL AND ev.updated_at IS NULL` + permissionClause
+		WHERE e.deleted_at IS NULL` + permissionClause
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, false)
@@ -353,15 +364,26 @@ func (r *Repository) CountTransactions(ctx context.Context, f common.Filter, act
 	}
 
 	base := `
-		FROM tbl_form_entry_value ev
+		WITH ranked_ev AS (
+			SELECT 
+				ev.id,
+				ROW_NUMBER() OVER (
+					PARTITION BY ev.entry_id, ev.form_field_id 
+					ORDER BY (ev.updated_at IS NULL) DESC, ev.created_at DESC
+				) as rn
+			FROM tbl_form_entry_value ev
+			WHERE ev.deleted_at IS NULL
+		)
+		FROM ranked_ev
+		INNER JOIN tbl_form_entry_value ev ON ev.id = ranked_ev.id AND ranked_ev.rn = 1
 		INNER JOIN tbl_form_entry e ON e.id = ev.entry_id AND e.deleted_at IS NULL
-		INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE
-		INNER JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id AND coa.deleted_at IS NULL AND coa.is_system = FALSE
+		INNER JOIN tbl_form_field ff ON ff.id = ev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE AND ff.label IS NOT NULL AND ff.label != ''
+		INNER JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id AND coa.deleted_at IS NULL
 		LEFT JOIN tbl_account_tax at2 ON at2.id = coa.account_tax_id
 		INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
 		INNER JOIN tbl_form fm ON fm.id = fv.form_id AND fm.deleted_at IS NULL
 		LEFT JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
-		WHERE e.deleted_at IS NULL AND ev.updated_at IS NULL` + permissionClause
+		WHERE e.deleted_at IS NULL` + permissionClause
 
 	searchCols := []string{"ff.label", "coa.name", "fm.name", "c.name"}
 	q, qArgs := common.BuildQuery(base, f, allowedTransactionColumns, searchCols, true)
@@ -721,53 +743,58 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	}
 
 	base := `
+        WITH ranked_ev AS (
+            SELECT 
+                fev.id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY fev.entry_id, fev.form_field_id 
+                    ORDER BY (fev.updated_at IS NULL) DESC, fev.created_at DESC
+                ) as rn
+            FROM tbl_form_entry_value fev
+            WHERE fev.deleted_at IS NULL
+        )
         SELECT
-            MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(fev.id::text, ''))::uuid AS id,
+            MD5(COALESCE(e.id::text, '') || COALESCE(COALESCE(ff.coa_id, fev.coa_id)::text, '') || COALESCE(fev.id::text, ''))::uuid AS id,
             fev.id                                                                                         AS form_entry_value_id,
-            v.entry_id                                                                                     AS entry_id,
-            v.form_field_id                                                                                AS form_field_id,
-            v.coa_id                                                                                       AS coa_id,
-            v.tax_id                                                                                       AS tax_type_id,
-            v.form_id                                                                                      AS form_id,
-            v.clinic_id                                                                                    AS clinic_id,
+            e.id                                                                                           AS entry_id,
+            fev.form_field_id                                                                              AS form_field_id,
+            COALESCE(ff.coa_id, fev.coa_id)                                                                AS coa_id,
+            at2.id                                                                                         AS tax_type_id,
+            f.id                                                                                           AS form_id,
+            e.clinic_id                                                                                    AS clinic_id,
             NULL::uuid                                                                                     AS line_item_value_id,
-            v.form_id                                                                                      AS version_id,
-            COALESCE(ff.label, 'System Accounts')                                                          AS form_field_name,
-            v.account_name                                                                                 AS coa_name,
-            COALESCE(t.name, '')                                                                           AS tax_type_name,
+            fv.form_id                                                                                     AS version_id,
+            ff.label                                                                                       AS form_field_name,
+            coa.name                                                                                       AS coa_name,
+            COALESCE(at2.name, '')                                                                         AS tax_type_name,
             COALESCE(f.name, '')                                                                           AS form_name,
             COALESCE(f.method::text, '')                                                                   AS form_method,
             COALESCE(c.name, '')                                                                           AS clinic_name,
             CASE
-                WHEN COALESCE(v.debit_amount, 0) > 0 THEN 'DEBIT'
-                WHEN COALESCE(v.credit_amount, 0) > 0 THEN 'CREDIT'
-                WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) >= 0 THEN 'DEBIT'
-                WHEN v.normal_balance = 'DEBIT'  AND COALESCE(v.net_amount, 0) <  0 THEN 'CREDIT'
-                WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) >= 0 THEN 'CREDIT'
-                WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) <  0 THEN 'DEBIT'
+                WHEN COALESCE(at.normal_balance, 'DEBIT') = 'DEBIT' AND COALESCE(fev.net_amount, 0) >= 0 THEN 'DEBIT'
+                WHEN COALESCE(at.normal_balance, 'DEBIT') = 'DEBIT' AND COALESCE(fev.net_amount, 0) < 0 THEN 'CREDIT'
+                WHEN COALESCE(at.normal_balance, 'DEBIT') = 'CREDIT' AND COALESCE(fev.net_amount, 0) >= 0 THEN 'CREDIT'
+                WHEN COALESCE(at.normal_balance, 'DEBIT') = 'CREDIT' AND COALESCE(fev.net_amount, 0) < 0 THEN 'DEBIT'
                 ELSE 'UNKNOWN'
             END                                                                                            AS transaction_type,
-            COALESCE(v.account_type, '')                                                                   AS account_type,
-	        ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8                                           AS net_amount,
-       		ROUND(COALESCE(v.gst_amount, 0)::numeric, 2)::float8                                           AS gst_amount,
-        	ROUND(COALESCE(v.gross_amount, 0)::numeric, 2)::float8                                         AS gross_amount,
-            COALESCE(v.business_percentage::float8, 100.00::float8)                                        AS business_percentage,
-            COALESCE(v.description, '-')                                                                   AS description,
-            TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                                                 AS created_at
-        FROM vw_double_entry_line_items v
-        LEFT JOIN tbl_form f        ON f.id = v.form_id
-        LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
-        LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
-        LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
-       INNER JOIN tbl_form_entry_value fev
-		ON fev.entry_id = v.entry_id
-			AND fev.deleted_at IS NULL
-			AND (
-			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-			OR
-			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-		)
-        WHERE v.account_name = ?` + permissionClause
+            COALESCE(at.name, '')                                                                          AS account_type,
+	        ROUND(COALESCE(fev.net_amount, 0)::numeric, 2)::float8                                           AS net_amount,
+       		ROUND(COALESCE(fev.gst_amount, 0)::numeric, 2)::float8                                           AS gst_amount,
+        	ROUND(COALESCE(fev.gross_amount, 0)::numeric, 2)::float8                                         AS gross_amount,
+            COALESCE(fev.business_percentage::float8, 100.00::float8)                                      AS business_percentage,
+            COALESCE(fev.description, '-')                                                                  AS description,
+            TO_CHAR(e.date, 'YYYY-MM-DD HH24:MI:SS')                                                       AS created_at
+        FROM ranked_ev
+        INNER JOIN tbl_form_entry_value fev ON fev.id = ranked_ev.id AND ranked_ev.rn = 1
+        INNER JOIN tbl_form_entry e ON e.id = fev.entry_id AND e.deleted_at IS NULL
+        INNER JOIN tbl_custom_form_version fv ON fv.id = e.form_version_id AND fv.deleted_at IS NULL
+        INNER JOIN tbl_form f ON f.id = fv.form_id AND f.deleted_at IS NULL
+        INNER JOIN tbl_form_field ff ON ff.id = fev.form_field_id AND ff.deleted_at IS NULL AND ff.is_formula = FALSE AND ff.label IS NOT NULL AND ff.label != ''
+        LEFT JOIN tbl_chart_of_accounts coa ON coa.id = COALESCE(ff.coa_id, fev.coa_id) AND coa.deleted_at IS NULL
+        LEFT JOIN tbl_account_type at ON at.id = coa.account_type_id
+        LEFT JOIN tbl_account_tax at2 ON at2.id = coa.account_tax_id
+        LEFT JOIN tbl_clinic c ON c.id = e.clinic_id AND c.deleted_at IS NULL
+        WHERE e.deleted_at IS NULL` + permissionClause
 
 	if f.SortBy == nil || *f.SortBy == "" {
 		defaultSort := "v.entry_date"
