@@ -420,7 +420,7 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 					patientFeeItems = append(patientFeeItems, itemMap)
 				}
 
-			case "TAX_INVOICE":
+			case "SFA_INVOICE":
 				itemGst := 0.0
 				itemSubtotal := it.Amount
 				if basStr == "G1" {
@@ -439,7 +439,7 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 				taxTotal += itemGst
 				grandTotal += it.Amount
 
-			case "REMITTANCE_ADVICE":
+			case "REMITTANCE_INVOICE":
 				if isCredit {
 					itemMap["is_negative"] = true
 				}
