@@ -344,7 +344,7 @@ func DefaultTemplates() []RqGlobalTemplate {
               </td>
               <td style="padding: 0; font-weight: bold; width: 20%%; text-align: right; vertical-align: middle; white-space: nowrap;">
                 Fee rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%%</span>
+                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%</span>
               </td>
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
@@ -353,7 +353,7 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
       {{#each service_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td style="width: 65%%;">{{label}}</td>
+        <td style="width: 65%%;">{{#if is_fee_rate}}{{custom_fee_rate}}% - {{/if}}{{label}}</td>
         <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{format_currency amount}}</td>
         <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>

@@ -540,7 +540,7 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			if sec.PaymentDate != nil {
 				meta.paymentDate = *sec.PaymentDate
 			}
-			break 
+			break
 		} else {
 			if sec.PaymentMethod != nil && meta.paymentMethod == "" {
 				meta.paymentMethod = *sec.PaymentMethod
@@ -593,6 +593,10 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 				if strings.Contains(keyUpper, "RATE") && c.customFeeRate == "0" {
 					c.customFeeRate = fmt.Sprintf("%.1f", it.Amount)
 				}
+				if strings.Contains(keyUpper, "RATE") {
+					itemMap["is_fee_rate"] = true
+					itemMap["amount"] = -it.Amount
+				}
 				c.serviceFeeItems = append(c.serviceFeeItems, itemMap)
 			} else if strings.Contains(keyUpper, "SETTLE") || strings.Contains(keyUpper, "NET") || it.IsFinal {
 				itemMap["is_bold"] = true
@@ -611,11 +615,15 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 				itemSubtotal = it.Amount / 1.1
 				itemGst = it.Amount - itemSubtotal
 			}
+			rowClass := itemMap["row_class"]
+			if it.IsFinal {
+				rowClass = "row-final-balance"
+			}
 			c.taxInvoiceItems = append(c.taxInvoiceItems, map[string]interface{}{
 				"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, it.Description),
 				"amount":      itemSubtotal,
 				"gst":         itemGst,
-				"row_class":   itemMap["row_class"],
+				"row_class":   rowClass,
 			})
 			c.subtotal += itemSubtotal
 			c.taxTotal += itemGst
@@ -625,6 +633,9 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			itemMap["is_bold"] = it.IsFinal
 			if isCredit {
 				itemMap["is_negative"] = true
+			}
+			if it.IsFinal {
+				itemMap["row_class"] = "row-final-balance"
 			}
 			c.remittanceItems = append(c.remittanceItems, itemMap)
 
