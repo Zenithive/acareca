@@ -208,13 +208,11 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 	contextValues := make(map[string]float64)
 
 	for _, item := range sorted {
-		if item.Expression == nil {
-			if item.BASCode != nil {
-				contextValues[string(*item.BASCode)] = item.Amount
-			}
-			if item.FieldKey != nil && *item.FieldKey != "" {
-				contextValues[*item.FieldKey] = item.Amount
-			}
+		if item.BASCode != nil {
+			contextValues[string(*item.BASCode)] = item.Amount
+		}
+		if item.FieldKey != nil && *item.FieldKey != "" {
+			contextValues[*item.FieldKey] = item.Amount
 		}
 	}
 
@@ -274,6 +272,13 @@ func (r *Repository) EvaluateFormulas(ctx context.Context, items []*Item) error 
 			}
 			if item.BASCode != nil {
 				contextValues[string(*item.BASCode)] = result
+			}
+		} else {
+			if item.BASCode != nil {
+				contextValues[string(*item.BASCode)] = item.Amount
+			}
+			if item.FieldKey != nil && *item.FieldKey != "" {
+				contextValues[*item.FieldKey] = item.Amount
 			}
 		}
 	}
