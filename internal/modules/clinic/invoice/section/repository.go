@@ -227,7 +227,7 @@ func (r *Repository) GetByID(ctx context.Context, invoiceID, sectionID uuid.UUID
 	query := `
 		SELECT 
 			id, invoice_id, template_id, invoice_section, document_number, tax_method, 
-			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference,
+			payment_method, account_name, bsb_number as bsb, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND id = $2 AND deleted_at IS NULL
@@ -282,7 +282,7 @@ func (r *Repository) ListByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (
 	query := `
 		SELECT 
 			id, invoice_id, template_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date::text, payment_reference,
+			payment_method, account_name, bsb_number as bsb, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL
@@ -356,7 +356,7 @@ func (r *Repository) GetByType(ctx context.Context, invoiceID uuid.UUID, section
 	query := `
 		SELECT 
 			id, invoice_id, template_id, invoice_section, document_number, tax_method,
-			payment_method, account_name, bsb_number, account_number, payment_date, payment_reference,
+			payment_method, account_name, bsb_number as bsb, account_number, payment_date::text, payment_reference,
 			created_at, updated_at
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND invoice_section = $2 AND deleted_at IS NULL

@@ -462,7 +462,7 @@ func (r *Repository) GetInvoiceSectionMeta(ctx context.Context, invoiceId uuid.U
 			account_name,
 			bsb_number,
 			account_number,
-			payment_date,
+			payment_date::text,
 			payment_reference
 		FROM tbl_map_invoice_section
 		WHERE invoice_id = $1 AND deleted_at IS NULL

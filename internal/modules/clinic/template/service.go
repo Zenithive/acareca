@@ -524,20 +524,39 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 		if i == 0 && sec.DocumentNumber != "" {
 			invoiceNumber = sec.DocumentNumber
 		}
-		if sec.PaymentMethod != nil && meta.paymentMethod == "" {
-			meta.paymentMethod = *sec.PaymentMethod
-		}
-		if sec.AccountName != nil && meta.accountName == "" {
-			meta.accountName = *sec.AccountName
-		}
-		if sec.Bsb != nil && meta.bsb == "" {
-			meta.bsb = *sec.Bsb
-		}
-		if sec.AccountNumber != nil && meta.accountNumber == "" {
-			meta.accountNumber = *sec.AccountNumber
-		}
-		if sec.PaymentDate != nil && meta.paymentDate == "" {
-			meta.paymentDate = *sec.PaymentDate
+		if sec.SectionType == "REMITTANCE_INVOICE" || sec.SectionType == "REMITTANCE_ADVICE" {
+			if sec.PaymentMethod != nil {
+				meta.paymentMethod = *sec.PaymentMethod
+			}
+			if sec.AccountName != nil {
+				meta.accountName = *sec.AccountName
+			}
+			if sec.Bsb != nil {
+				meta.bsb = *sec.Bsb
+			}
+			if sec.AccountNumber != nil {
+				meta.accountNumber = *sec.AccountNumber
+			}
+			if sec.PaymentDate != nil {
+				meta.paymentDate = *sec.PaymentDate
+			}
+			break 
+		} else {
+			if sec.PaymentMethod != nil && meta.paymentMethod == "" {
+				meta.paymentMethod = *sec.PaymentMethod
+			}
+			if sec.AccountName != nil && meta.accountName == "" {
+				meta.accountName = *sec.AccountName
+			}
+			if sec.Bsb != nil && meta.bsb == "" {
+				meta.bsb = *sec.Bsb
+			}
+			if sec.AccountNumber != nil && meta.accountNumber == "" {
+				meta.accountNumber = *sec.AccountNumber
+			}
+			if sec.PaymentDate != nil && meta.paymentDate == "" {
+				meta.paymentDate = *sec.PaymentDate
+			}
 		}
 	}
 
@@ -565,8 +584,10 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			itemMap["row_class"] = "row-final-balance"
 		}
 
-		switch it.SectionType {
-		case "CALCULATION_STATEMENT":
+		sectionTypeUpper := strings.ToUpper(it.SectionType)
+
+		switch {
+		case sectionTypeUpper == "CALCULATION_STATEMENT":
 			keyUpper := strings.ToUpper(fieldKey)
 			if strings.Contains(keyUpper, "FACILITY") || strings.Contains(keyUpper, "SERVICE") {
 				if strings.Contains(keyUpper, "RATE") && c.customFeeRate == "0" {
@@ -583,7 +604,7 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 				c.patientFeeItems = append(c.patientFeeItems, itemMap)
 			}
 
-		case "SFA_INVOICE", "TAX_INVOICE":
+		case sectionTypeUpper == "SFA_INVOICE" || sectionTypeUpper == "TAX_INVOICE":
 			itemGst := 0.0
 			itemSubtotal := it.Amount
 			if basStr == "G1" {
@@ -600,11 +621,14 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			c.taxTotal += itemGst
 			c.grandTotal += it.Amount
 
-		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
+		case sectionTypeUpper == "REMITTANCE_INVOICE" || sectionTypeUpper == "REMITTANCE_ADVICE":
+			itemMap["is_bold"] = it.IsFinal
 			if isCredit {
 				itemMap["is_negative"] = true
 			}
 			c.remittanceItems = append(c.remittanceItems, itemMap)
+
+		default:
 		}
 	}
 
