@@ -10715,42 +10715,25 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-<<<<<<< HEAD
                         "description": "Invoice UUID ID Context",
                         "name": "invoiceId",
                         "in": "query",
-=======
-                        "description": "Template UUID ID",
-                        "name": "id",
-                        "in": "path",
->>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         "required": true
                     },
                     {
                         "type": "string",
-<<<<<<< HEAD
                         "description": "Template UUID ID (can be repeated for multiple templates)",
                         "name": "templateId",
-=======
-                        "description": "Invoice UUID ID Context",
-                        "name": "invoiceId",
->>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         "in": "query",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-<<<<<<< HEAD
                         "description": "Resolved style settings specifications map keyed by template ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
-=======
-                        "description": "Resolved style settings specifications map",
-                        "schema": {
-                            "$ref": "#/definitions/template.RsSetting"
->>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         }
                     },
                     "400": {
@@ -10798,17 +10781,8 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-<<<<<<< HEAD
                         "type": "string",
                         "description": "Template UUID ID (can be repeated for multiple templates)",
-=======
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "collectionFormat": "multi",
-                        "description": "Array of Template UUID IDs to render",
->>>>>>> 7434763dd9671f77bac7dbaba4d7c4289ab3fa02
                         "name": "templateId",
                         "in": "query",
                         "required": true
@@ -16051,6 +16025,9 @@ const docTemplate = `{
         "template.InvoiceData": {
             "type": "object",
             "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
                 "amount_in_words": {
                     "type": "string"
                 },
@@ -16069,7 +16046,29 @@ const docTemplate = `{
                 "billing_period": {
                     "type": "string"
                 },
+                "body_font_family": {
+                    "type": "string"
+                },
                 "clinic_name": {
+                    "type": "string"
+                },
+                "custom_fee_rate": {
+                    "type": "string"
+                },
+                "custom_fee_rate_display": {
+                    "description": "Tax Invoice fee rate display (e.g. \"38.5%\")",
+                    "type": "string"
+                },
+                "custom_payment_account": {
+                    "type": "string"
+                },
+                "custom_payment_account_name": {
+                    "type": "string"
+                },
+                "custom_payment_bsb": {
+                    "type": "string"
+                },
+                "custom_payment_method": {
                     "type": "string"
                 },
                 "due_date_display": {
@@ -16084,7 +16083,13 @@ const docTemplate = `{
                 "has_attachments": {
                     "type": "boolean"
                 },
+                "header_font_family": {
+                    "type": "string"
+                },
                 "invoice_frequency": {
+                    "type": "string"
+                },
+                "invoice_number": {
                     "type": "string"
                 },
                 "issue_date_display": {
@@ -16108,6 +16113,46 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
+                "patient_fee_items": {
+                    "description": "Calculation Sheet Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "payment_date_display": {
+                    "type": "string"
+                },
+                "payment_method_label": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "description": "Exported styling fields targetable by structural assignments",
+                    "type": "string"
+                },
+                "remittance_items": {
+                    "description": "Remittance Advice Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "service_fee_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "settlement_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
                 "show_logo": {
                     "type": "boolean"
                 },
@@ -16117,7 +16162,28 @@ const docTemplate = `{
                 "show_tax": {
                     "type": "boolean"
                 },
+                "subtotal": {
+                    "type": "number"
+                },
                 "table_style_class": {
+                    "type": "string"
+                },
+                "tax_invoice_items": {
+                    "description": "Tax Invoice Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "tax_total": {
+                    "type": "number"
+                },
+                "template_settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "terms_text": {
                     "type": "string"
                 },
                 "totals_amounts_caption": {
@@ -16164,6 +16230,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "payment_method": {
                     "type": "string"
                 },
                 "phone": {
@@ -16232,7 +16301,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "mapping_id": {
-                    "description": "Nullable: links overrides back to custom contexts",
                     "type": "string"
                 },
                 "primary_color": {

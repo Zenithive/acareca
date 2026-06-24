@@ -3,10 +3,9 @@ package template
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
@@ -346,185 +345,166 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
-		if errors.Is(err, ErrInvoiceNotFound) {
-			return nil, "", fmt.Errorf("failed to fetch invoice: invoice record matching id %s not found for clinic %s", invoiceId, clinicId)
-		}
 		return nil, "", fmt.Errorf("failed to fetch invoice: %w", err)
 	}
 
-	var htmlBuilder, cssBuilder strings.Builder
-
-	for _, tId := range templateId {
-		t, err := s.repo.Get(ctx, tId)
-		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, "", fmt.Errorf("template %s not found or inaccessible", tId)
-			}
-			return nil, "", fmt.Errorf("failed to fetch base template structural data: %w", err)
-		}
-		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to decrypt html for template %s: %w", tId, err)
-		}
-		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to decrypt css for template %s: %w", tId, err)
-		}
-
-		htmlBuilder.WriteString(html)
-		htmlBuilder.WriteString("\n")
-		cssBuilder.WriteString(css)
-		cssBuilder.WriteString("\n")
+	sections, err := s.repo.GetInvoiceSectionMeta(ctx, invoiceId)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch invoice section metadata: %w", err)
 	}
-
-	html := htmlBuilder.String()
-	css := cssBuilder.String()
 
 	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
 
-	// Fetch section metadata (section type, payment fields, document number)
-	sections, err := s.repo.GetInvoiceSectionMeta(ctx, invoiceId)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to fetch invoice section metadata: %w", err)
+	if st != nil {
+		if err := s.enrichSettingDocuments(ctx, st); err != nil {
+			return nil, "", fmt.Errorf("failed enriching setting documents: %w", err)
+		}
 	}
 
-	data := InvoiceToData(inv)
+	var htmlBuilder, cssBuilder strings.Builder
+	for _, tId := range templateId {
+		t, err := s.repo.Get(ctx, tId)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to fetch template %s: %w", tId, err)
+		}
+		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to decrypt html for template: %w", err)
+		}
+		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to decrypt css for template: %w", err)
+		}
+		htmlBuilder.WriteString(html)
+		htmlBuilder.WriteString("\n")
+		cssBuilder.WriteString(css)
+		cssBuilder.WriteString("\n")
+	}
 
-	// Build per-section line item collections
 	collections, invoiceNumber, paymentMeta := buildInvoiceCollections(inv.Items, sections, inv.InvoiceNumber)
+
+	data := InvoiceToData(inv)
+	if invoiceNumber != "" {
+		data.InvoiceNumber = invoiceNumber
+	}
+
+	// Dynamic Template Array Bindings
 	data.PatientFeeItems = collections.patientFeeItems
 	data.ServiceFeeItems = collections.serviceFeeItems
 	data.SettlementItems = collections.settlementItems
-	data.TaxInvoiceItems = collections.taxInvoiceItems
 	data.RemittanceItems = collections.remittanceItems
+
+	// Dynamic Template Totals Mappings
 	data.Subtotal = collections.subtotal
 	data.TaxTotal = collections.taxTotal
 	data.GrandTotal = collections.grandTotal
 	data.CustomFeeRate = collections.customFeeRate
-	if invoiceNumber != "" {
-		data.InvoiceNumber = invoiceNumber
-	}
+	data.CustomFeeRateDisplay = collections.customFeeRate + "%"
+
+	// Remittance Metadata Assignment
 	data.CustomPaymentMethod = paymentMeta.paymentMethod
 	data.PaymentMethodLabel = paymentMeta.paymentMethod
 	data.CustomPaymentAccountName = paymentMeta.accountName
 	data.CustomPaymentBsb = paymentMeta.bsb
 	data.CustomPaymentAccount = paymentMeta.accountNumber
-	data.PaymentDateDisplay = FormatDateString(paymentMeta.paymentDate)
+
+	if paymentMeta.paymentDate != "" {
+		if parsedTime, err := time.Parse("2006-01-02 15:04:05.999999-07", paymentMeta.paymentDate); err == nil {
+			data.PaymentDateDisplay = parsedTime.Format("02 June 2026")
+		} else if parsedTime, err := time.Parse("2006-01-02", paymentMeta.paymentDate); err == nil {
+			data.PaymentDateDisplay = parsedTime.Format("02 June 2026")
+		} else {
+			data.PaymentDateDisplay = paymentMeta.paymentDate
+		}
+	} else {
+		data.PaymentDateDisplay = data.IssueDateDisplay
+	}
+
+	primaryColor := "#1f4e5f"
+	accentColor := "#1f4e5f"
+	bodyFontFamily := "Arial"
+	headerFontFamily := "Arial"
+	watermarkText := "PAID"
+	watermarkEnabled := false
+	showTax := true
+	termsText := ""
+	isLogo := false
 
 	if st != nil {
-		data.PrimaryColor = st.PrimaryColor
-		data.AccentColor = st.AccentColor
-		data.BodyFontFamily = st.BodyFontFamily
-		data.HeaderFontFamily = st.HeaderFontFamily
-		data.ShowTax = st.IsTax
+		primaryColor = st.PrimaryColor
+		accentColor = st.AccentColor
+		bodyFontFamily = st.BodyFontFamily
+		headerFontFamily = st.HeaderFontFamily
+		showTax = st.IsTax
+
 		if st.TableStyle != nil {
 			data.TableStyleClass = *st.TableStyle
 		}
 		if st.IsWaterMark && st.WaterMarkText != nil {
-			data.WatermarkEnabled = true
-			data.WatermarkText = *st.WaterMarkText
-		}
-		if st.TermText != nil {
-			data.Notes = *st.TermText
-			data.TermsText = *st.TermText
-		}
-		if st.IsLogo {
-			data.ShowLogo = true
-			if st.LogoId != nil {
-				logo, err := s.repo.GetDocumentByID(ctx, *st.LogoId)
-				if err == nil && logo != nil {
-					data.ShowLogoImage = true
-					data.LogoURL = s.cfg.R2StoragePrefix + logo.ToRsDocument().FileKey
-				}
-			} else if len(inv.ClinicName) > 0 {
-				data.LogoInitial = string([]rune(inv.ClinicName)[0])
-			}
-		}
-
-		// Build template_settings map so CSS/HTML {{template_settings.*}} variables resolve
-		watermarkText := "PAID"
-		if st.WaterMarkText != nil {
+			watermarkEnabled = true
 			watermarkText = *st.WaterMarkText
 		}
-		termsText := ""
 		if st.TermText != nil {
 			termsText = *st.TermText
+			data.Notes = termsText
+			data.TermsText = termsText
 		}
-		data.TemplateSettings = map[string]interface{}{
-			"primary_color":      st.PrimaryColor,
-			"accent_color":       st.AccentColor,
-			"body_font_family":   st.BodyFontFamily,
-			"header_font_family": st.HeaderFontFamily,
-			"is_logo":            st.IsLogo,
-			"is_watermark":       st.IsWaterMark,
-			"watermark_text":     watermarkText,
-			"is_tax":             st.IsTax,
-			"terms_text":         termsText,
+		if st.IsLogo {
+			isLogo = true
+			data.ShowLogo = true
+			if st.Logo != nil && st.Logo.ToRsDocument().FileKey != "" {
+				data.ShowLogoImage = true
+				data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
+			}
 		}
+	}
+
+	data.TemplateSettings = map[string]interface{}{
+		"primary_color":      primaryColor,
+		"accent_color":       accentColor,
+		"body_font_family":   bodyFontFamily,
+		"header_font_family": headerFontFamily,
+		"is_logo":            isLogo,
+		"is_watermark":       watermarkEnabled,
+		"watermark_text":     watermarkText,
+		"is_tax":             showTax,
+		"terms_text":         termsText,
 	}
 
 	dataMap, err := invoiceDataToMap(data)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed mapping static properties schema payload: %w", err)
+		return nil, "", fmt.Errorf("failed mapping template data: %w", err)
 	}
 
-	fullHTML, err := chromepdf.Render(html, css, dataMap)
+	fullHTML, err := chromepdf.Render(htmlBuilder.String(), cssBuilder.String(), dataMap)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to render HTML: %w", err)
+		return nil, "", fmt.Errorf("failed to render HTML context: %w", err)
 	}
 
 	pdf, err := chromepdf.Generate(ctx, fullHTML)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate PDF: %w", err)
+		return nil, "", fmt.Errorf("failed to generate output PDF: %w", err)
 	}
 
-	filename := fmt.Sprintf("INVOICE %s", inv.InvoiceNumber)
-	return pdf, filename, nil
+	return pdf, fmt.Sprintf("INVOICE_%s", data.InvoiceNumber), nil
 }
 
-type invoiceCollections struct {
-	patientFeeItems []map[string]interface{}
-	serviceFeeItems []map[string]interface{}
-	settlementItems []map[string]interface{}
-	taxInvoiceItems []map[string]interface{}
-	remittanceItems []map[string]interface{}
-	subtotal        float64
-	taxTotal        float64
-	grandTotal      float64
-	customFeeRate   string
-}
-
-type invoicePaymentMeta struct {
-	paymentMethod string
-	accountName   string
-	bsb           string
-	accountNumber string
-	paymentDate   string
-}
-
-// buildInvoiceCollections categorises flat invoice items into per-template
-// collections using the section type stored alongside each item.
+// buildInvoiceCollections assigns items purely according to DB SectionType metadata matching the template rows
 func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta, fallbackInvoiceNumber string) (invoiceCollections, string, invoicePaymentMeta) {
 	var c invoiceCollections
-	c.customFeeRate = "0"
+	c.customFeeRate = "0.0"
 	var meta invoicePaymentMeta
 	invoiceNumber := fallbackInvoiceNumber
 
-	// Build a lookup of section ID → section meta
-	sectionByID := make(map[uuid.UUID]InvoiceSectionMeta, len(sections))
 	for _, sec := range sections {
-		sectionByID[sec.ID] = sec
-	}
-
-	// Collect per-section payment fields and document number from first section
-	for i, sec := range sections {
-		if i == 0 && sec.DocumentNumber != "" {
+		secTypeUpper := strings.TrimSpace(strings.ToUpper(sec.SectionType))
+		if secTypeUpper == "SFA_INVOICE" && sec.DocumentNumber != "" {
 			invoiceNumber = sec.DocumentNumber
 		}
-		if sec.SectionType == "REMITTANCE_INVOICE" {
+		if secTypeUpper == "REMITTANCE_INVOICE" || secTypeUpper == "REMITTANCE_ADVICE" {
 			if sec.PaymentMethod != nil {
 				meta.paymentMethod = *sec.PaymentMethod
 			}
@@ -540,38 +520,71 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			if sec.PaymentDate != nil {
 				meta.paymentDate = *sec.PaymentDate
 			}
-			break
-		} else {
-			if sec.PaymentMethod != nil && meta.paymentMethod == "" {
-				meta.paymentMethod = *sec.PaymentMethod
-			}
-			if sec.AccountName != nil && meta.accountName == "" {
-				meta.accountName = *sec.AccountName
-			}
-			if sec.Bsb != nil && meta.bsb == "" {
-				meta.bsb = *sec.Bsb
-			}
-			if sec.AccountNumber != nil && meta.accountNumber == "" {
-				meta.accountNumber = *sec.AccountNumber
-			}
-			if sec.PaymentDate != nil && meta.paymentDate == "" {
-				meta.paymentDate = *sec.PaymentDate
-			}
 		}
 	}
 
+	// Extract global configurations first
+	for _, it := range items {
+		var fk string
+		if it.FieldKey != nil {
+			fk = *it.FieldKey
+		}
+		if strings.TrimSpace(strings.ToUpper(fk)) == "FEE_RATE" {
+			if it.Amount > 0.0 && it.Amount <= 1.0 {
+				c.customFeeRate = fmt.Sprintf("%.1f", it.Amount*100)
+			} else {
+				c.customFeeRate = fmt.Sprintf("%.1f", it.Amount)
+			}
+			break
+		}
+	}
+
+	// Section-by-section population logic mirroring the layout requirements
 	for _, it := range items {
 		basStr := ""
 		if it.BASCode != nil {
 			basStr = *it.BASCode
 		}
-		fieldKey := ""
-		if it.FieldKey != nil {
-			fieldKey = *it.FieldKey
-		}
-		isCredit := strings.ToUpper(it.EntryType) == "CREDIT"
 
-		itemMap := map[string]interface{}{
+		var fk string
+		if it.FieldKey != nil {
+			fk = *it.FieldKey
+		}
+
+		keyUpper := strings.TrimSpace(strings.ToUpper(fk))
+		secTypeUpper := strings.TrimSpace(strings.ToUpper(it.SectionType))
+		isDebit := strings.TrimSpace(strings.ToUpper(it.EntryType)) == "DEBIT"
+
+		if keyUpper == "FEE_RATE" {
+
+			feeRateDisplay := fmt.Sprintf("%.1f", it.Amount)
+
+			if it.Amount <= 1 {
+				feeRateDisplay = fmt.Sprintf("%.1f", it.Amount*100)
+			}
+
+			c.customFeeRate = feeRateDisplay
+
+			c.serviceFeeRateIntro = map[string]interface{}{
+				"label":            it.Name,
+				"fee_rate_display": feeRateDisplay,
+				"amount_display":   it.Amount,
+			}
+
+			continue
+		}
+
+		if keyUpper == "SERVICE_DESCRIPTION" {
+
+			if strings.TrimSpace(it.Description) != "" {
+				c.serviceDescriptionItems =
+					append(c.serviceDescriptionItems, it.Description)
+			}
+
+			continue
+		}
+
+		row := map[string]interface{}{
 			"label":       it.Name,
 			"description": it.Description,
 			"amount":      it.Amount,
@@ -579,95 +592,169 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			"entry_type":  it.EntryType,
 			"row_class":   "",
 			"value_class": "",
+			"is_bold":     it.IsFinal,
+			"is_negative": false,
 		}
+
 		if it.IsFinal {
-			itemMap["row_class"] = "row-final-balance"
+			row["row_class"] = "row-total"
+			row["is_bold"] = true
 		}
 
-		sectionTypeUpper := strings.ToUpper(it.SectionType)
-
-		switch {
-		case sectionTypeUpper == "CALCULATION_STATEMENT":
-			keyUpper := strings.ToUpper(fieldKey)
-			if strings.Contains(keyUpper, "FACILITY") || strings.Contains(keyUpper, "SERVICE") {
-				if strings.Contains(keyUpper, "RATE") && c.customFeeRate == "0" {
-					c.customFeeRate = fmt.Sprintf("%.1f", it.Amount)
-				}
-				if strings.Contains(keyUpper, "RATE") {
-					itemMap["is_fee_rate"] = true
-					itemMap["amount"] = -it.Amount
-				}
-				c.serviceFeeItems = append(c.serviceFeeItems, itemMap)
-			} else if strings.Contains(keyUpper, "SETTLE") || strings.Contains(keyUpper, "NET") || it.IsFinal {
-				itemMap["is_bold"] = true
-				if isCredit {
-					itemMap["is_negative"] = true
-				}
-				c.settlementItems = append(c.settlementItems, itemMap)
+		switch secTypeUpper {
+		case "CALCULATION_STATEMENT":
+			// Assign rows purely to the targeted sections
+			if keyUpper == "G1" || basStr == "G1" || strings.Contains(strings.ToUpper(it.Name), "INCOME") {
+				c.patientFeeItems = append(c.patientFeeItems, row)
+			} else if keyUpper == "1A" || basStr == "1A" || strings.Contains(strings.ToUpper(it.Name), "EXPENSE") || keyUpper == "G11" {
+				c.serviceFeeItems = append(c.serviceFeeItems, row)
 			} else {
-				c.patientFeeItems = append(c.patientFeeItems, itemMap)
+				row["row_class"] = "row-final-balance"
+				c.settlementItems = append(c.settlementItems, row)
 			}
 
-		case sectionTypeUpper == "SFA_INVOICE":
-			itemGst := 0.0
-			itemSubtotal := it.Amount
-			if basStr == "G1" {
-				itemSubtotal = it.Amount / 1.1
-				itemGst = it.Amount - itemSubtotal
+		case "SFA_INVOICE", "TAX_INVOICE":
+			if it.IsFinal || keyUpper == "TOTAL" {
+				c.grandTotal = it.Amount
+				c.subtotal = it.Amount / 1.1
+				c.taxTotal = it.Amount - c.subtotal
 			}
-			rowClass := itemMap["row_class"]
-			if it.IsFinal {
-				rowClass = "row-final-balance"
-			}
-			c.taxInvoiceItems = append(c.taxInvoiceItems, map[string]interface{}{
-				"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, it.Description),
-				"amount":      itemSubtotal,
-				"gst":         itemGst,
-				"row_class":   rowClass,
-			})
-			c.subtotal += itemSubtotal
-			c.taxTotal += itemGst
-			c.grandTotal += it.Amount
+			c.serviceFeeItems = append(c.serviceFeeItems, row)
 
-		case sectionTypeUpper == "REMITTANCE_INVOICE":
-			itemMap["is_bold"] = it.IsFinal
-			if isCredit {
-				itemMap["is_negative"] = true
+		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
+			if isDebit || strings.Contains(strings.ToUpper(it.Name), "EXPENSE") || strings.Contains(strings.ToUpper(it.Name), "FEE") {
+				row["is_negative"] = true
 			}
 			if it.IsFinal {
-				itemMap["row_class"] = "row-final-balance"
+				row["row_class"] = "row-final-balance"
 			}
-			c.remittanceItems = append(c.remittanceItems, itemMap)
-
-		default:
-		}
-	}
-
-	// Fallback: if no typed sections produced tax items, treat everything as tax items
-	if len(c.taxInvoiceItems) == 0 {
-		for _, it := range items {
-			basStr := ""
-			if it.BASCode != nil {
-				basStr = *it.BASCode
-			}
-			itemGst := 0.0
-			itemSubtotal := it.Amount
-			if basStr == "G1" {
-				itemSubtotal = it.Amount / 1.1
-				itemGst = it.Amount - itemSubtotal
-			}
-			c.taxInvoiceItems = append(c.taxInvoiceItems, map[string]interface{}{
-				"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, it.Description),
-				"amount":      itemSubtotal,
-				"gst":         itemGst,
-			})
-			c.subtotal += itemSubtotal
-			c.taxTotal += itemGst
-			c.grandTotal += it.Amount
+			c.remittanceItems = append(c.remittanceItems, row)
 		}
 	}
 
 	return c, invoiceNumber, meta
+}
+
+func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
+	dataMap := make(map[string]interface{})
+
+	// Top-level simple fields
+	dataMap["invoice_number"] = data.InvoiceNumber
+	dataMap["clinic_name"] = data.ClinicName
+	dataMap["issue_date_display"] = data.IssueDateDisplay
+	dataMap["due_date_display"] = data.DueDateDisplay
+	dataMap["billing_period"] = data.BillingPeriod
+	dataMap["invoice_frequency"] = data.InvoiceFrequency
+	dataMap["show_logo"] = data.ShowLogo
+	dataMap["show_logo_image"] = data.ShowLogoImage
+	dataMap["logo_url"] = data.LogoURL
+	dataMap["logo_initial"] = data.LogoInitial
+	dataMap["watermark_enabled"] = data.WatermarkEnabled
+	dataMap["watermark_text"] = data.WatermarkText
+	dataMap["show_tax"] = data.ShowTax
+	dataMap["letterhead_html"] = data.LetterheadHTML
+	dataMap["footer_html"] = data.FooterHTML
+	dataMap["notes"] = data.Notes
+	dataMap["amount_in_words"] = data.AmountInWords
+	dataMap["has_attachments"] = data.HasAttachments
+	dataMap["grand_total"] = data.GrandTotal
+	dataMap["subtotal"] = data.Subtotal
+	dataMap["tax_total"] = data.TaxTotal
+	dataMap["totals_amounts_caption"] = data.TotalsAmountsCaption
+	dataMap["totals_grand_label"] = data.TotalsGrandLabel
+	dataMap["table_style_class"] = data.TableStyleClass
+	dataMap["terms_text"] = data.TermsText
+	dataMap["custom_fee_rate"] = data.CustomFeeRate
+	dataMap["custom_fee_rate_display"] = data.CustomFeeRateDisplay
+
+	// Styling fields
+	dataMap["primary_color"] = data.PrimaryColor
+	dataMap["accent_color"] = data.AccentColor
+	dataMap["body_font_family"] = data.BodyFontFamily
+	dataMap["header_font_family"] = data.HeaderFontFamily
+
+	// Nested PartyInfo — bill_from
+	billFrom := map[string]interface{}{
+		"name":           data.BillFrom.Name,
+		"address":        data.BillFrom.Address,
+		"abn":            data.BillFrom.ABN,
+		"email":          data.BillFrom.Email,
+		"phone":          data.BillFrom.Phone,
+		"payment_method": data.BillFrom.PaymentMethod,
+	}
+	dataMap["bill_from"] = billFrom
+	// Flat aliases for legacy / convenience access in templates
+	dataMap["bill_from_name"] = data.BillFrom.Name
+	dataMap["bill_from_address"] = data.BillFrom.Address
+	dataMap["bill_from_abn"] = data.BillFrom.ABN
+	dataMap["bill_from_email"] = data.BillFrom.Email
+	dataMap["bill_from_phone"] = data.BillFrom.Phone
+	dataMap["bill_from_payment_method"] = data.BillFrom.PaymentMethod
+
+	// Nested PartyInfo — bill_to
+	billTo := map[string]interface{}{
+		"name":           data.BillTo.Name,
+		"address":        data.BillTo.Address,
+		"abn":            data.BillTo.ABN,
+		"email":          data.BillTo.Email,
+		"phone":          data.BillTo.Phone,
+		"payment_method": data.BillTo.PaymentMethod,
+	}
+	dataMap["bill_to"] = billTo
+	dataMap["bill_to_name"] = data.BillTo.Name
+	dataMap["bill_to_address"] = data.BillTo.Address
+	dataMap["bill_to_abn"] = data.BillTo.ABN
+	dataMap["bill_to_email"] = data.BillTo.Email
+	dataMap["bill_to_phone"] = data.BillTo.Phone
+	dataMap["bill_to_payment_method"] = data.BillTo.PaymentMethod
+
+	// Line items
+	items := make([]map[string]interface{}, 0, len(data.Items))
+	for _, it := range data.Items {
+		items = append(items, map[string]interface{}{
+			"name":          it.Name,
+			"description":   it.Description,
+			"amount":        it.Amount,
+			"running_total": it.RunningTotal,
+		})
+	}
+	dataMap["items"] = items
+
+	// Attachments
+	attachments := make([]map[string]interface{}, 0, len(data.Attachments))
+	for _, att := range data.Attachments {
+		attachments = append(attachments, map[string]interface{}{
+			"file_name": att.FileName,
+		})
+	}
+	dataMap["attachments"] = attachments
+
+	// Template settings (pass-through map)
+	if data.TemplateSettings != nil {
+		dataMap["template_settings"] = data.TemplateSettings
+		for k, v := range data.TemplateSettings {
+			dataMap["ts_"+k] = v
+		}
+	}
+
+	// Calculation-sheet collections
+	dataMap["patient_fee_items"] = data.PatientFeeItems
+	dataMap["service_fee_items"] = data.ServiceFeeItems
+	dataMap["settlement_items"] = data.SettlementItems
+
+	// Tax-invoice collections
+	dataMap["tax_invoice_items"] = data.TaxInvoiceItems
+
+	// Remittance-advice collections & payment meta
+	dataMap["remittance_items"] = data.RemittanceItems
+	dataMap["custom_payment_method"] = data.CustomPaymentMethod
+	dataMap["payment_method_label"] = data.PaymentMethodLabel
+	dataMap["custom_payment_account_name"] = data.CustomPaymentAccountName
+	dataMap["custom_payment_bsb"] = data.CustomPaymentBsb
+	dataMap["custom_payment_account"] = data.CustomPaymentAccount
+	dataMap["payment_date_display"] = data.PaymentDateDisplay
+
+	return dataMap, nil
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
@@ -765,60 +852,4 @@ func freshRqHTMLFix(v interface{}) string {
 		return string(bytes)
 	}
 	return ""
-}
-
-// invoiceDataToMap converts the InvoiceData struct into a generic map
-// while fully preserving the json structural tags expected by the HTML template engine.
-func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
-	// Step 1: Marshal the struct into JSON bytes.
-	// This automatically maps fields according to your json struct tags (e.g., InvoiceNumber -> "invoice_number")
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal invoice data to json: %w", err)
-	}
-
-	// Step 2: Unmarshal back into a generic map
-	var dataMap map[string]interface{}
-	if err := json.Unmarshal(bytes, &dataMap); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal json bytes into map: %w", err)
-	}
-
-	// Step 3: Explicitly map the direct styling properties just in case your HTML templates
-	// look for CamelCase variables instead of snake_case.
-	dataMap["InvoiceNumber"] = data.InvoiceNumber
-	dataMap["ClinicName"] = data.ClinicName
-	dataMap["IssueDateDisplay"] = data.IssueDateDisplay
-	dataMap["DueDateDisplay"] = data.DueDateDisplay
-	dataMap["BillingPeriod"] = data.BillingPeriod
-	dataMap["InvoiceFrequency"] = data.InvoiceFrequency
-	dataMap["ShowLogo"] = data.ShowLogo
-	dataMap["ShowLogoImage"] = data.ShowLogoImage
-	dataMap["LogoURL"] = data.LogoURL
-	dataMap["LogoInitial"] = data.LogoInitial
-	dataMap["WatermarkEnabled"] = data.WatermarkEnabled
-	dataMap["WatermarkText"] = data.WatermarkText
-	dataMap["ShowTax"] = data.ShowTax
-	dataMap["LetterheadHTML"] = data.LetterheadHTML
-	dataMap["FooterHTML"] = data.FooterHTML
-	dataMap["Notes"] = data.Notes
-	dataMap["GrandTotal"] = data.GrandTotal
-	dataMap["Subtotal"] = data.Subtotal
-	dataMap["TaxTotal"] = data.TaxTotal
-	dataMap["PrimaryColor"] = data.PrimaryColor
-	dataMap["AccentColor"] = data.AccentColor
-	dataMap["BodyFontFamily"] = data.BodyFontFamily
-	dataMap["HeaderFontFamily"] = data.HeaderFontFamily
-	dataMap["CustomFeeRate"] = data.CustomFeeRate
-	dataMap["TermsText"] = data.TermsText
-	dataMap["TableStyleClass"] = data.TableStyleClass
-
-	// Handle remittance attributes specifically matching the PDF text placeholders
-	dataMap["CustomPaymentMethod"] = data.CustomPaymentMethod
-	dataMap["PaymentMethodLabel"] = data.PaymentMethodLabel
-	dataMap["CustomPaymentAccountName"] = data.CustomPaymentAccountName
-	dataMap["CustomPaymentBsb"] = data.CustomPaymentBsb
-	dataMap["CustomPaymentAccount"] = data.CustomPaymentAccount
-	dataMap["PaymentDateDisplay"] = data.PaymentDateDisplay
-
-	return dataMap, nil
 }
