@@ -328,163 +328,31 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		}
 	}
 
-	var patientFeeItems []map[string]interface{}
-	var serviceFeeItems []map[string]interface{}
-	var settlementItems []map[string]interface{}
-	var taxInvoiceItems []map[string]interface{}
-	var remittanceItems []map[string]interface{}
-
-	var globalLineItems []template.LineItem
-	var subtotal, taxTotal, grandTotal float64
-	var customFeeRate string = "0"
+	items, sectionMeta := rsInvoiceToTemplateItems(inv)
 
 	var invoiceNumber string = inv.Name
-	var paymentMethod, accountName, bsb, accountNumber, paymentDate, paymentRef string
-
 	for _, sec := range inv.Sections {
 		if sec.DocumentNumber != "" {
 			invoiceNumber = sec.DocumentNumber
+			break
 		}
-		if sec.PaymentMethod != nil {
-			paymentMethod = *sec.PaymentMethod
+	}
+
+	templateIDs := make([]uuid.UUID, 0, len(inv.Sections))
+	var paymentRef string
+	for _, sec := range inv.Sections {
+		if sec.TemplateID != uuid.Nil {
+			templateIDs = append(templateIDs, sec.TemplateID)
 		}
-		if sec.AccountName != nil {
-			accountName = *sec.AccountName
-		}
-		if sec.Bsb != nil {
-			bsb = *sec.Bsb
-		}
-		if sec.AccountNumber != nil {
-			accountNumber = *sec.AccountNumber
-		}
-		if sec.PaymentDate != nil {
-			paymentDate = *sec.PaymentDate
-		}
-		if sec.PaymentReference != nil {
+		if sec.PaymentReference != nil && *sec.PaymentReference != "" {
 			paymentRef = *sec.PaymentReference
 		}
-
-		for _, it := range sec.Entries {
-			var desc string
-			if it.Description != nil {
-				desc = *it.Description
-			}
-			var basStr string
-			if it.BASCode != nil {
-				basStr = string(*it.BASCode)
-			}
-			var typeStr string
-			if it.EntryType != nil {
-				typeStr = string(*it.EntryType)
-			}
-			var keyStr string
-			if it.FieldKey != nil {
-				keyStr = *it.FieldKey
-			}
-
-			isCredit := strings.ToUpper(typeStr) == "CREDIT"
-
-			itemMap := map[string]interface{}{
-				"label":       it.Name,
-				"description": desc,
-				"amount":      it.Amount,
-				"bas_code":    basStr,
-				"entry_type":  typeStr,
-				"row_class":   "",
-				"value_class": "",
-			}
-
-			if it.IsFinal {
-				itemMap["row_class"] = "row-final-balance"
-			}
-
-			globalLineItems = append(globalLineItems, template.LineItem{
-				Name:         it.Name,
-				Description:  desc,
-				Amount:       it.Amount,
-				RunningTotal: grandTotal + it.Amount,
-			})
-
-			switch sec.SectionType {
-			case "CALCULATION_STATEMENT":
-				if strings.Contains(strings.ToUpper(keyStr), "FACILITY") || strings.Contains(strings.ToUpper(keyStr), "SERVICE") {
-					if strings.Contains(strings.ToUpper(keyStr), "RATE") && customFeeRate == "0" {
-						customFeeRate = fmt.Sprintf("%.1f", it.Amount)
-					}
-					serviceFeeItems = append(serviceFeeItems, itemMap)
-				} else if strings.Contains(strings.ToUpper(keyStr), "SETTLE") || strings.Contains(strings.ToUpper(keyStr), "NET") || it.IsFinal {
-					itemMap["is_bold"] = true
-					if isCredit {
-						itemMap["is_negative"] = true
-					}
-					settlementItems = append(settlementItems, itemMap)
-				} else {
-					patientFeeItems = append(patientFeeItems, itemMap)
-				}
-
-			case "SFA_INVOICE":
-				itemGst := 0.0
-				itemSubtotal := it.Amount
-				if basStr == "G1" {
-					itemSubtotal = it.Amount / 1.1
-					itemGst = it.Amount - itemSubtotal
-				}
-
-				taxInvoiceItems = append(taxInvoiceItems, map[string]interface{}{
-					"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, desc),
-					"amount":      itemSubtotal,
-					"gst":         itemGst,
-					"row_class":   itemMap["row_class"],
-				})
-
-				subtotal += itemSubtotal
-				taxTotal += itemGst
-				grandTotal += it.Amount
-
-			case "REMITTANCE_INVOICE":
-				if isCredit {
-					itemMap["is_negative"] = true
-				}
-				remittanceItems = append(remittanceItems, itemMap)
-			}
-		}
+	}
+	if len(templateIDs) == 0 {
+		return "", errors.New("invoice has no template configured")
 	}
 
-	if len(taxInvoiceItems) == 0 {
-		for _, sec := range inv.Sections {
-			for _, it := range sec.Entries {
-				var desc string
-				if it.Description != nil {
-					desc = *it.Description
-				}
-				var basStr string
-				if it.BASCode != nil {
-					basStr = string(*it.BASCode)
-				}
-
-				itemGst := 0.0
-				itemSubtotal := it.Amount
-				if basStr == "G1" {
-					itemSubtotal = it.Amount / 1.1
-					itemGst = it.Amount - itemSubtotal
-				}
-
-				taxInvoiceItems = append(taxInvoiceItems, map[string]interface{}{
-					"description": fmt.Sprintf("<strong>%s</strong><br/>%s", it.Name, desc),
-					"amount":      itemSubtotal,
-					"gst":         itemGst,
-				})
-				subtotal += itemSubtotal
-				taxTotal += itemGst
-				grandTotal += it.Amount
-			}
-		}
-	}
-
-	var primaryTemplateID uuid.UUID
-	if len(inv.Sections) > 0 {
-		primaryTemplateID = inv.Sections[0].TemplateID
-	}
+	var primaryTemplateID uuid.UUID = templateIDs[0]
 
 	var showLogo, showLogoImage bool
 	var logoURL, logoInitial, letterheadHTML, footerHTML, notes string
@@ -566,81 +434,115 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 		paymentRef = invoiceNumber
 	}
 
-	pdfRq := template.RqGeneratePDF{
-		TemplateId: primaryTemplateID,
-		ClinicId:   inv.ClinicID,
-		Data: template.InvoiceData{
-			InvoiceNumber:    invoiceNumber,
-			ClinicName:       clinicName,
-			IssueDateDisplay: issueDateFormatted,
-			DueDateDisplay:   dueDateFormatted,
-			BillingPeriod:    billingPeriodFormatted,
-			InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, "MONTHLY"),
-			ShowLogo:         showLogo,
-			ShowLogoImage:    showLogoImage,
-			LogoURL:          logoURL,
-			LogoInitial:      logoInitial,
-			WatermarkEnabled: watermarkEnabled,
-			WatermarkText:    watermarkText,
-			ShowTax:          showTax,
-			LetterheadHTML:   letterheadHTML,
-			FooterHTML:       footerHTML,
-			Notes:            notes,
-			TableStyleClass:  tableStyleClass,
-			TemplateSettings: templateSettingsPayload,
-			PrimaryColor:     primaryColor,
-			AccentColor:      accentColor,
-			BodyFontFamily:   bodyFontFamily,
-			HeaderFontFamily: headerFontFamily,
-
-			BillFrom: template.PartyInfo{
-				Name:    billFromName,
-				Address: billFromAddress,
-				ABN:     billFromABN,
-				Email:   billFromEmail,
-				Phone:   billFromPhone,
-			},
-			BillTo: template.PartyInfo{
-				Name:    billToName,
-				Address: billToAddress,
-				ABN:     billToABN,
-				Email:   billToEmail,
-				Phone:   billToPhone,
-			},
-
-			Items:                globalLineItems,
-			GrandTotal:           grandTotal,
-			Subtotal:             subtotal,
-			TaxTotal:             taxTotal,
-			TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
-			TotalsGrandLabel:     "Total (AUD)",
-
-			PatientFeeItems: patientFeeItems,
-			ServiceFeeItems: serviceFeeItems,
-			SettlementItems: settlementItems,
-			CustomFeeRate:   customFeeRate,
-			TaxInvoiceItems: taxInvoiceItems,
-			TermsText:       notes,
-
-			RemittanceItems:          remittanceItems,
-			CustomPaymentMethod:      paymentMethod,
-			PaymentMethodLabel:       paymentMethod,
-			CustomPaymentAccountName: accountName,
-			CustomPaymentBsb:         bsb,
-			CustomPaymentAccount:     accountNumber,
-			PaymentDateDisplay:       template.FormatDateString(paymentDate),
+	pdfData := template.InvoiceData{
+		InvoiceNumber:    invoiceNumber,
+		ClinicName:       clinicName,
+		IssueDateDisplay: issueDateFormatted,
+		DueDateDisplay:   dueDateFormatted,
+		BillingPeriod:    billingPeriodFormatted,
+		InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, "MONTHLY"),
+		ShowLogo:         showLogo,
+		ShowLogoImage:    showLogoImage,
+		LogoURL:          logoURL,
+		LogoInitial:      logoInitial,
+		WatermarkEnabled: watermarkEnabled,
+		WatermarkText:    watermarkText,
+		ShowTax:          showTax,
+		LetterheadHTML:   letterheadHTML,
+		FooterHTML:       footerHTML,
+		Notes:            notes,
+		TableStyleClass:  tableStyleClass,
+		TemplateSettings: templateSettingsPayload,
+		PrimaryColor:     primaryColor,
+		AccentColor:      accentColor,
+		BodyFontFamily:   bodyFontFamily,
+		HeaderFontFamily: headerFontFamily,
+		BillFrom: template.PartyInfo{
+			Name:    billFromName,
+			Address: billFromAddress,
+			ABN:     billFromABN,
+			Email:   billFromEmail,
+			Phone:   billFromPhone,
 		},
+		BillTo: template.PartyInfo{
+			Name:    billToName,
+			Address: billToAddress,
+			ABN:     billToABN,
+			Email:   billToEmail,
+			Phone:   billToPhone,
+		},
+		TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
+		TotalsGrandLabel:     "Total (AUD)",
+		TermsText:            notes,
 	}
 
-	// We use paymentRef context mapping to safely ensure it isn't labeled as an unused compilation item
-	if pdfRq.Data.TemplateSettings != nil {
-		pdfRq.Data.TemplateSettings["payment_reference_id"] = paymentRef
+	template.ApplyPDFCollections(&pdfData, items, sectionMeta, invoiceNumber)
+	if pdfData.PaymentDateDisplay == "" {
+		pdfData.PaymentDateDisplay = issueDateFormatted
 	}
 
-	pdfBytes, err := s.tplService.GeneratePDF(ctx, pdfRq)
+	if pdfData.TemplateSettings != nil {
+		pdfData.TemplateSettings["payment_reference_id"] = paymentRef
+	}
+
+	pdfBytes, err := s.tplService.GenerateMultiPDF(ctx, templateIDs, pdfData)
 	if err != nil {
 		return "", err
 	}
 
 	return base64.StdEncoding.EncodeToString(pdfBytes), nil
+}
+
+func rsInvoiceToTemplateItems(inv *RsInvoice) ([]template.InvoiceItem, []template.InvoiceSectionMeta) {
+	items := make([]template.InvoiceItem, 0)
+	sections := make([]template.InvoiceSectionMeta, 0, len(inv.Sections))
+
+	for _, sec := range inv.Sections {
+		sections = append(sections, template.InvoiceSectionMeta{
+			ID:               sec.ID,
+			SectionType:      string(sec.SectionType),
+			DocumentNumber:   sec.DocumentNumber,
+			PaymentMethod:    sec.PaymentMethod,
+			AccountName:      sec.AccountName,
+			Bsb:              sec.Bsb,
+			AccountNumber:    sec.AccountNumber,
+			PaymentDate:      sec.PaymentDate,
+			PaymentReference: sec.PaymentReference,
+		})
+
+		for _, it := range sec.Entries {
+			if it == nil {
+				continue
+			}
+
+			desc := ""
+			if it.Description != nil {
+				desc = *it.Description
+			}
+
+			var basCode *string
+			if it.BASCode != nil {
+				s := string(*it.BASCode)
+				basCode = &s
+			}
+
+			entryType := ""
+			if it.EntryType != nil {
+				entryType = string(*it.EntryType)
+			}
+
+			items = append(items, template.InvoiceItem{
+				Name:        it.Name,
+				Description: desc,
+				Amount:      it.Amount,
+				BASCode:     basCode,
+				EntryType:   entryType,
+				SectionType: string(sec.SectionType),
+				FieldKey:    it.FieldKey,
+				IsFinal:     it.IsFinal,
+			})
+		}
+	}
+
+	return items, sections
 }

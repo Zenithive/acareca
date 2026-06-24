@@ -3,10 +3,8 @@ package template
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
@@ -26,6 +24,7 @@ type IService interface {
 	GetInvoiceSetting(ctx context.Context, clinicId uuid.UUID, invoiceId uuid.UUID, templateId []uuid.UUID) (map[uuid.UUID]*RsSetting, error)
 	UpdateSetting(ctx context.Context, rq RqUpdateSetting) (*RsSetting, error)
 	GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error)
+	GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data InvoiceData) ([]byte, error)
 	DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error)
 	BulkUpdateDefaults(ctx context.Context) error
 }
@@ -252,6 +251,54 @@ func (s *Service) List(ctx context.Context, types []string) (*util.RsList, error
 	return s.repo.List(ctx, types)
 }
 
+func (s *Service) GenerateMultiPDF(ctx context.Context, templateIds []uuid.UUID, data InvoiceData) ([]byte, error) {
+	if len(templateIds) == 0 {
+		return nil, fmt.Errorf("at least one template ID is required")
+	}
+	if err := s.repo.ValidateTemplateAccess(ctx, templateIds); err != nil {
+		return nil, err
+	}
+	return s.renderTemplatesPDF(ctx, templateIds, data)
+}
+
+func (s *Service) renderTemplatesPDF(ctx context.Context, templateIds []uuid.UUID, data InvoiceData) ([]byte, error) {
+	var htmlBuilder, cssBuilder strings.Builder
+	for _, tId := range templateIds {
+		t, err := s.repo.Get(ctx, tId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch template %s: %w", tId, err)
+		}
+		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt html for template: %w", err)
+		}
+		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt css for template: %w", err)
+		}
+		htmlBuilder.WriteString(html)
+		htmlBuilder.WriteString("\n")
+		cssBuilder.WriteString(css)
+		cssBuilder.WriteString("\n")
+	}
+
+	dataMap, err := invoiceDataToMap(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed mapping template data: %w", err)
+	}
+
+	fullHTML, err := chromepdf.Render(htmlBuilder.String(), cssBuilder.String(), dataMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render HTML context: %w", err)
+	}
+
+	pdf, err := chromepdf.Generate(ctx, fullHTML)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate output PDF: %w", err)
+	}
+	return pdf, nil
+}
+
 func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, error) {
 	t, err := s.repo.Get(ctx, rq.TemplateId)
 	if err != nil {
@@ -365,62 +412,9 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		}
 	}
 
-	var htmlBuilder, cssBuilder strings.Builder
-	for _, tId := range templateId {
-		t, err := s.repo.Get(ctx, tId)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to fetch template %s: %w", tId, err)
-		}
-		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to decrypt html for template: %w", err)
-		}
-		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to decrypt css for template: %w", err)
-		}
-		htmlBuilder.WriteString(html)
-		htmlBuilder.WriteString("\n")
-		cssBuilder.WriteString(css)
-		cssBuilder.WriteString("\n")
-	}
-
-	collections, invoiceNumber, paymentMeta := buildInvoiceCollections(inv.Items, sections, inv.InvoiceNumber)
-
 	data := InvoiceToData(inv)
-	if invoiceNumber != "" {
-		data.InvoiceNumber = invoiceNumber
-	}
-
-	// Dynamic Template Array Bindings
-	data.PatientFeeItems = collections.patientFeeItems
-	data.ServiceFeeItems = collections.serviceFeeItems
-	data.SettlementItems = collections.settlementItems
-	data.RemittanceItems = collections.remittanceItems
-
-	// Dynamic Template Totals Mappings
-	data.Subtotal = collections.subtotal
-	data.TaxTotal = collections.taxTotal
-	data.GrandTotal = collections.grandTotal
-	data.CustomFeeRate = collections.customFeeRate
-	data.CustomFeeRateDisplay = collections.customFeeRate + "%"
-
-	// Remittance Metadata Assignment
-	data.CustomPaymentMethod = paymentMeta.paymentMethod
-	data.PaymentMethodLabel = paymentMeta.paymentMethod
-	data.CustomPaymentAccountName = paymentMeta.accountName
-	data.CustomPaymentBsb = paymentMeta.bsb
-	data.CustomPaymentAccount = paymentMeta.accountNumber
-
-	if paymentMeta.paymentDate != "" {
-		if parsedTime, err := time.Parse("2006-01-02 15:04:05.999999-07", paymentMeta.paymentDate); err == nil {
-			data.PaymentDateDisplay = parsedTime.Format("02 June 2026")
-		} else if parsedTime, err := time.Parse("2006-01-02", paymentMeta.paymentDate); err == nil {
-			data.PaymentDateDisplay = parsedTime.Format("02 June 2026")
-		} else {
-			data.PaymentDateDisplay = paymentMeta.paymentDate
-		}
-	} else {
+	ApplyPDFCollections(&data, inv.Items, sections, inv.InvoiceNumber)
+	if data.PaymentDateDisplay == "" {
 		data.PaymentDateDisplay = data.IssueDateDisplay
 	}
 
@@ -475,19 +469,9 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		"terms_text":         termsText,
 	}
 
-	dataMap, err := invoiceDataToMap(data)
+	pdf, err := s.renderTemplatesPDF(ctx, templateId, data)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed mapping template data: %w", err)
-	}
-
-	fullHTML, err := chromepdf.Render(htmlBuilder.String(), cssBuilder.String(), dataMap)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to render HTML context: %w", err)
-	}
-
-	pdf, err := chromepdf.Generate(ctx, fullHTML)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate output PDF: %w", err)
+		return nil, "", err
 	}
 
 	return pdf, fmt.Sprintf("INVOICE_%s", data.InvoiceNumber), nil
@@ -634,44 +618,6 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 	}
 
 	return c, invoiceNumber, meta
-}
-
-func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	var dataMap map[string]interface{}
-	if err := json.Unmarshal(bytes, &dataMap); err != nil {
-		return nil, err
-	}
-
-	dataMap["invoice_number"] = data.InvoiceNumber
-	dataMap["issue_date_display"] = data.IssueDateDisplay
-	dataMap["billing_period"] = data.BillingPeriod
-	dataMap["invoice_frequency"] = data.InvoiceFrequency
-	dataMap["custom_fee_rate"] = data.CustomFeeRate
-	dataMap["custom_fee_rate_display"] = data.CustomFeeRateDisplay
-	dataMap["grand_total"] = data.GrandTotal
-	dataMap["subtotal"] = data.Subtotal
-	dataMap["tax_total"] = data.TaxTotal
-	dataMap["notes"] = data.Notes
-	dataMap["terms_text"] = data.TermsText
-
-	dataMap["patient_fee_items"] = data.PatientFeeItems
-	dataMap["service_fee_items"] = data.ServiceFeeItems
-	dataMap["settlement_items"] = data.SettlementItems
-	dataMap["remittance_items"] = data.RemittanceItems
-
-	dataMap["custom_payment_method"] = data.CustomPaymentMethod
-	dataMap["payment_method_label"] = data.PaymentMethodLabel
-	dataMap["custom_payment_account_name"] = data.CustomPaymentAccountName
-	dataMap["custom_payment_bsb"] = data.CustomPaymentBsb
-	dataMap["custom_payment_account"] = data.CustomPaymentAccount
-	dataMap["payment_date_display"] = data.PaymentDateDisplay
-
-	return dataMap, nil
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
