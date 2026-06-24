@@ -165,6 +165,10 @@ func (r *Repository) UpsertItems(ctx context.Context, tx *sqlx.Tx, invoiceID uui
 
 // persistItem inserts or updates a single item based on isUpdate flag
 func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, isUpdate bool, invoiceID uuid.UUID) error {
+	if item.InvoiceID == uuid.Nil {
+		item.InvoiceID = invoiceID
+	}
+
 	var exprJSON []byte
 	var err error
 	if item.Expression != nil {
@@ -178,21 +182,21 @@ func (r *Repository) persistItem(ctx context.Context, tx *sqlx.Tx, item *Item, i
 		_, err := tx.ExecContext(ctx, `
 			UPDATE tbl_invoice_item
 			SET name = $2, description = $3, entry_type = $4, bas_code = $5,
-				field_key = $6, amount = $7, invoice_section_id = $8,
-				sort_order = $9, expression = $10, is_final = $11, updated_at = NOW()
+				field_key = $6, amount = $7, invoice_id = $8, invoice_section_id = $9,
+				sort_order = $10, expression = $11, is_final = $12, updated_at = NOW()
 			WHERE id = $1 AND deleted_at IS NULL
 		`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
-			item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
+			item.FieldKey, item.Amount, item.InvoiceID, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
 		return err
 	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tbl_invoice_item (
 			id, name, description, entry_type, bas_code, field_key,
-			amount, invoice_section_id, sort_order, expression, is_final
+			invoice_id, invoice_section_id, sort_order, expression, is_final
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`, item.ID, item.Name, item.Description, item.EntryType, item.BASCode,
-		item.FieldKey, item.Amount, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
+		item.FieldKey, item.InvoiceID, item.InvoiceSectionID, item.SortOrder, exprJSON, item.IsFinal)
 	return err
 }
 
