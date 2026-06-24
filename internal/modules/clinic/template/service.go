@@ -3,6 +3,7 @@ package template
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -636,117 +637,33 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 }
 
 func invoiceDataToMap(data InvoiceData) (map[string]interface{}, error) {
-	dataMap := make(map[string]interface{})
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
 
-	// Top-level simple fields
+	var dataMap map[string]interface{}
+	if err := json.Unmarshal(bytes, &dataMap); err != nil {
+		return nil, err
+	}
+
 	dataMap["invoice_number"] = data.InvoiceNumber
-	dataMap["clinic_name"] = data.ClinicName
 	dataMap["issue_date_display"] = data.IssueDateDisplay
-	dataMap["due_date_display"] = data.DueDateDisplay
 	dataMap["billing_period"] = data.BillingPeriod
 	dataMap["invoice_frequency"] = data.InvoiceFrequency
-	dataMap["show_logo"] = data.ShowLogo
-	dataMap["show_logo_image"] = data.ShowLogoImage
-	dataMap["logo_url"] = data.LogoURL
-	dataMap["logo_initial"] = data.LogoInitial
-	dataMap["watermark_enabled"] = data.WatermarkEnabled
-	dataMap["watermark_text"] = data.WatermarkText
-	dataMap["show_tax"] = data.ShowTax
-	dataMap["letterhead_html"] = data.LetterheadHTML
-	dataMap["footer_html"] = data.FooterHTML
-	dataMap["notes"] = data.Notes
-	dataMap["amount_in_words"] = data.AmountInWords
-	dataMap["has_attachments"] = data.HasAttachments
+	dataMap["custom_fee_rate"] = data.CustomFeeRate
+	dataMap["custom_fee_rate_display"] = data.CustomFeeRateDisplay
 	dataMap["grand_total"] = data.GrandTotal
 	dataMap["subtotal"] = data.Subtotal
 	dataMap["tax_total"] = data.TaxTotal
-	dataMap["totals_amounts_caption"] = data.TotalsAmountsCaption
-	dataMap["totals_grand_label"] = data.TotalsGrandLabel
-	dataMap["table_style_class"] = data.TableStyleClass
+	dataMap["notes"] = data.Notes
 	dataMap["terms_text"] = data.TermsText
-	dataMap["custom_fee_rate"] = data.CustomFeeRate
-	dataMap["custom_fee_rate_display"] = data.CustomFeeRateDisplay
 
-	// Styling fields
-	dataMap["primary_color"] = data.PrimaryColor
-	dataMap["accent_color"] = data.AccentColor
-	dataMap["body_font_family"] = data.BodyFontFamily
-	dataMap["header_font_family"] = data.HeaderFontFamily
-
-	// Nested PartyInfo — bill_from
-	billFrom := map[string]interface{}{
-		"name":           data.BillFrom.Name,
-		"address":        data.BillFrom.Address,
-		"abn":            data.BillFrom.ABN,
-		"email":          data.BillFrom.Email,
-		"phone":          data.BillFrom.Phone,
-		"payment_method": data.BillFrom.PaymentMethod,
-	}
-	dataMap["bill_from"] = billFrom
-	// Flat aliases for legacy / convenience access in templates
-	dataMap["bill_from_name"] = data.BillFrom.Name
-	dataMap["bill_from_address"] = data.BillFrom.Address
-	dataMap["bill_from_abn"] = data.BillFrom.ABN
-	dataMap["bill_from_email"] = data.BillFrom.Email
-	dataMap["bill_from_phone"] = data.BillFrom.Phone
-	dataMap["bill_from_payment_method"] = data.BillFrom.PaymentMethod
-
-	// Nested PartyInfo — bill_to
-	billTo := map[string]interface{}{
-		"name":           data.BillTo.Name,
-		"address":        data.BillTo.Address,
-		"abn":            data.BillTo.ABN,
-		"email":          data.BillTo.Email,
-		"phone":          data.BillTo.Phone,
-		"payment_method": data.BillTo.PaymentMethod,
-	}
-	dataMap["bill_to"] = billTo
-	dataMap["bill_to_name"] = data.BillTo.Name
-	dataMap["bill_to_address"] = data.BillTo.Address
-	dataMap["bill_to_abn"] = data.BillTo.ABN
-	dataMap["bill_to_email"] = data.BillTo.Email
-	dataMap["bill_to_phone"] = data.BillTo.Phone
-	dataMap["bill_to_payment_method"] = data.BillTo.PaymentMethod
-
-	// Line items
-	items := make([]map[string]interface{}, 0, len(data.Items))
-	for _, it := range data.Items {
-		items = append(items, map[string]interface{}{
-			"name":          it.Name,
-			"description":   it.Description,
-			"amount":        it.Amount,
-			"running_total": it.RunningTotal,
-		})
-	}
-	dataMap["items"] = items
-
-	// Attachments
-	attachments := make([]map[string]interface{}, 0, len(data.Attachments))
-	for _, att := range data.Attachments {
-		attachments = append(attachments, map[string]interface{}{
-			"file_name": att.FileName,
-		})
-	}
-	dataMap["attachments"] = attachments
-
-	// Template settings (pass-through map)
-	if data.TemplateSettings != nil {
-		dataMap["template_settings"] = data.TemplateSettings
-		for k, v := range data.TemplateSettings {
-			dataMap["ts_"+k] = v
-		}
-	}
-
-	// Calculation-sheet collections
 	dataMap["patient_fee_items"] = data.PatientFeeItems
 	dataMap["service_fee_items"] = data.ServiceFeeItems
 	dataMap["settlement_items"] = data.SettlementItems
-
-	// Tax-invoice collections
-	dataMap["tax_invoice_items"] = data.TaxInvoiceItems
-
-	// Remittance-advice collections & payment meta
 	dataMap["remittance_items"] = data.RemittanceItems
+
 	dataMap["custom_payment_method"] = data.CustomPaymentMethod
 	dataMap["payment_method_label"] = data.PaymentMethodLabel
 	dataMap["custom_payment_account_name"] = data.CustomPaymentAccountName
