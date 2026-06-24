@@ -589,14 +589,11 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
 		ON fev.entry_id = v.entry_id
 			AND fev.deleted_at IS NULL
 			AND (
-				-- Match form fields 1-to-1 safely
 				(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
 				OR
-				-- Match unmapped system fallback lines directly via their shared allocation to account 980
-				-- without causing multi-row loop compounding explosions.
 				(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
 			)
-    WHERE 1=1` + permissionClause
+    WHERE v.form_field_id IS NOT NULL` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, false)
@@ -687,7 +684,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
 			OR
 			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
 		)
-    WHERE 1=1` + permissionClause
+    WHERE v.form_field_id IS NOT NULL` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.account_code"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
@@ -745,21 +742,21 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
 	base := `
          SELECT
             MD5(COALESCE(v.entry_id::text, '') || COALESCE(v.coa_id::text, '') || COALESCE(fev.id::text, ''))::uuid AS id,
-            fev.id                                                                                         AS form_entry_value_id,
-            v.entry_id                                                                                     AS entry_id,
-            v.form_field_id                                                                                AS form_field_id,
-            v.coa_id                                                                                       AS coa_id,
-            v.tax_id                                                                                       AS tax_type_id,
-            v.form_id                                                                                      AS form_id,
-            v.clinic_id                                                                                    AS clinic_id,
-            NULL::uuid                                                                                     AS line_item_value_id,
-            v.form_id                                                                                      AS version_id,
-            COALESCE(ff.label, 'System Accounts')                                                          AS form_field_name,
-            v.account_name                                                                                 AS coa_name,
-            COALESCE(t.name, '')                                                                           AS tax_type_name,
-            COALESCE(f.name, '')                                                                           AS form_name,
-            COALESCE(f.method::text, '')                                                                   AS form_method,
-            COALESCE(c.name, '')                                                                           AS clinic_name,
+            fev.id                                                                                                         AS form_entry_value_id,
+            v.entry_id                                                                                                     AS entry_id,
+            v.form_field_id                                                                                                AS form_field_id,
+            v.coa_id                                                                                                       AS coa_id,
+            v.tax_id                                                                                                       AS tax_type_id,
+            v.form_id                                                                                                      AS form_id,
+            v.clinic_id                                                                                                    AS clinic_id,
+            NULL::uuid                                                                                                     AS line_item_value_id,
+            v.form_id                                                                                                      AS version_id,
+            COALESCE(ff.label, 'System Accounts')                                                                          AS form_field_name,
+            v.account_name                                                                                                 AS coa_name,
+            COALESCE(t.name, '')                                                                                           AS tax_type_name,
+            COALESCE(f.name, '')                                                                                           AS form_name,
+            COALESCE(f.method::text, '')                                                                                   AS form_method,
+            COALESCE(c.name, '')                                                                                           AS clinic_name,
             CASE
                 WHEN COALESCE(v.debit_amount, 0) > 0 THEN 'DEBIT'
                 WHEN COALESCE(v.credit_amount, 0) > 0 THEN 'CREDIT'
@@ -768,28 +765,28 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
                 WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) >= 0 THEN 'CREDIT'
                 WHEN v.normal_balance = 'CREDIT' AND COALESCE(v.net_amount, 0) <  0 THEN 'DEBIT'
                 ELSE 'UNKNOWN'
-            END                                                                                            AS transaction_type,
-            COALESCE(v.account_type, '')                                                                   AS account_type,
-	        ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8                                           AS net_amount,
-       		ROUND(COALESCE(v.gst_amount, 0)::numeric, 2)::float8                                           AS gst_amount,
-        	ROUND(COALESCE(v.gross_amount, 0)::numeric, 2)::float8                                         AS gross_amount,
-            COALESCE(v.business_percentage::float8, 100.00::float8)                                        AS business_percentage,
-            COALESCE(v.description, '-')                                                                   AS description,
-            TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                                                 AS created_at
+            END                                                                                                            AS transaction_type,
+            COALESCE(v.account_type, '')                                                                                   AS account_type,
+            ROUND(COALESCE(v.net_amount, 0)::numeric, 2)::float8                                                           AS net_amount,
+            ROUND(COALESCE(v.gst_amount, 0)::numeric, 2)::float8                                                           AS gst_amount,
+            ROUND(COALESCE(v.gross_amount, 0)::numeric, 2)::float8                                                         AS gross_amount,
+            COALESCE(v.business_percentage::float8, 100.00::float8)                                                         AS business_percentage,
+            COALESCE(v.description, '-')                                                                                   AS description,
+            TO_CHAR(v.entry_date, 'YYYY-MM-DD HH24:MI:SS')                                                                 AS created_at
         FROM vw_double_entry_line_items v
         LEFT JOIN tbl_form f        ON f.id = v.form_id
         LEFT JOIN tbl_form_field ff ON ff.id = v.form_field_id
         LEFT JOIN tbl_account_tax t ON t.id = v.tax_id
         LEFT JOIN tbl_clinic c      ON c.id = v.clinic_id AND c.deleted_at IS NULL
        INNER JOIN tbl_form_entry_value fev
-		ON fev.entry_id = v.entry_id
-			AND fev.deleted_at IS NULL
-			AND (
-			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-			OR
-			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-		)
-        WHERE v.account_name = ?` + permissionClause
+        ON fev.entry_id = v.entry_id
+            AND fev.deleted_at IS NULL
+            AND (
+            (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+            OR
+            (v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+        )
+        WHERE v.account_name = ? AND v.form_field_id IS NOT NULL` + permissionClause
 
 	if f.SortBy == nil || *f.SortBy == "" {
 		defaultSort := "v.entry_date"
@@ -945,15 +942,15 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
 
 	base := `
         FROM vw_double_entry_line_items v
-		INNER JOIN tbl_form_entry_value fev
-		ON fev.entry_id = v.entry_id
-			AND fev.deleted_at IS NULL
-			AND (
-			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
-			OR
-			(v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
-		)
-        WHERE v.account_name = ?` + permissionClause
+        INNER JOIN tbl_form_entry_value fev
+        ON fev.entry_id = v.entry_id
+            AND fev.deleted_at IS NULL
+            AND (
+            (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
+            OR
+            (v.form_field_id IS NULL AND fev.form_field_id IS NULL AND fev.coa_id = v.coa_id)
+        )
+        WHERE v.account_name = ? AND v.form_field_id IS NOT NULL` + permissionClause
 
 	searchCols := []string{"v.account_name", "v.description"}
 	q, qArgs := common.BuildQuery(base, f, allowedColumns, searchCols, true)
