@@ -329,7 +329,7 @@ func DefaultTemplates() []RqGlobalTemplate {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 65%%; text-align: left;">2. SERVICE &amp; FACILITY FEE</th>
+        <th style="width: 65%%; text-align: left;">2. SERVICE & FACILITY FEE</th>
         <th style="width: 20%%; text-align: right;">Amount</th>
         <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
@@ -341,11 +341,12 @@ func DefaultTemplates() []RqGlobalTemplate {
             <tr>
               <td style="padding: 0; color: var(--text-dark); width: 65%%; vertical-align: middle;">
                 Services rendered to you for the period, including:
+                <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
+                  Fee rate&nbsp;
+                  <span class="txt-blue-val">{{custom_fee_rate}}%</span>
+                </span>
               </td>
-              <td style="padding: 0; font-weight: bold; width: 20%%; text-align: right; vertical-align: middle; white-space: nowrap;">
-                Fee rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <span class="txt-blue-val" style="display: inline-block; min-width: 50px; text-align: right;">{{custom_fee_rate}}%</span>
-              </td>
+              <td style="width: 20%%; padding: 0;"></td>
               <td style="width: 15%%; padding: 0;"></td>
             </tr>
           </table>
@@ -353,7 +354,7 @@ func DefaultTemplates() []RqGlobalTemplate {
       </tr>
       {{#each service_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td style="width: 65%%;">{{#if is_fee_rate}}{{custom_fee_rate}}% - {{/if}}{{label}}</td>
+        <td style="width: 65%%;">{{label}}</td>
         <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{format_currency amount}}</td>
         <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
@@ -393,20 +394,30 @@ func DefaultTemplates() []RqGlobalTemplate {
 			IsActive:  true,
 			Html: fmt.Sprintf(`<div class="invoice-page"><div style="display: block; width: 100%%;">%s</div>
 
-  <table class="data-table" style="margin-top: 4px;">
+    <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 70%%; text-align: left;">SERVICE &amp; FACILITY FEE</th>
-        <th style="width: 15%%; text-align: right;">Amount</th>
-        <th style="width: 15%%; text-align: right; padding-right: 8px;">GST</th>
+        <th style="width: 65%%; text-align: left;">SERVICE & FACILITY FEE</th>
+        <th style="width: 20%%; text-align: right;">Amount</th>
+        <th style="width: 15%%; text-align: center;">BAS Code</th>
       </tr>
     </thead>
     <tbody>
-      {{#each tax_invoice_items}}
+      <tr>
+        <td style="width: 65%%; border-bottom: none; padding-top: 5px; padding-bottom: 4px; color: var(--text-dark);">
+          Services rendered to you for the period, including:
+          <span style="font-weight: bold; white-space: nowrap; margin-left: 8px;">
+            Fee rate&nbsp;<span class="txt-blue-val">{{custom_fee_rate_display}}</span>
+          </span>
+        </td>
+        <td class="num" style="width: 20%%; border-bottom: none; padding-top: 5px; padding-bottom: 4px; text-align: right;">-</td>
+        <td class="center" style="width: 15%%; border-bottom: none; padding-top: 5px; padding-bottom: 4px;"></td>
+      </tr>
+      {{#each service_fee_items}}
       <tr{{#if row_class}} class="{{row_class}}"{{/if}}>
-        <td style="padding: 6px; line-height: 1.4;">{{{description}}}</td>
-        <td class="num amt-pos" style="vertical-align: bottom; font-weight: bold; width: 15%%;">{{format_currency amount}}</td>
-        <td class="num" style="vertical-align: bottom; font-weight: bold; width: 15%%; color: var(--text-dark); padding-right: 8px;">{{format_currency gst}}</td>
+        <td style="width: 65%%;">{{label}}</td>
+        <td class="num{{#if value_class}} {{value_class}}{{/if}}" style="width: 20%%;{{#if is_bold}} font-weight: bold;{{/if}}">{{#if amount_display}}{{amount_display}}{{else}}{{format_currency amount}}{{/if}}</td>
+        <td class="center" style="width: 15%%;">{{bas_code}}</td>
       </tr>
       {{/each}}
     </tbody>
