@@ -31,12 +31,24 @@ const (
 	EventInviteDeclined    EventType = "invite.declined"
 	EventPermissionUpdated EventType = "permission.updated"
 
-	EventClinicUpdated      EventType = "clinic.updated"
-	EventFormSubmitted      EventType = "form.submitted"
-	EventFormUpdated        EventType = "form.updated"
-	EventTransactionCreated EventType = "transaction.created"
-	EventTransactionUpdated EventType = "transaction.status_changed"
-	EventDocumentUploaded   EventType = "document.uploaded"
+	EventClinicUpdated              EventType = "clinic.updated"
+	EventFormSubmitted              EventType = "form.submitted"
+	EventFormUpdated                EventType = "form.updated"
+	EventTransactionCreated         EventType = "transaction.created"
+	EventTransactionUpdated         EventType = "transaction.status_changed"
+	EventDocumentUploaded           EventType = "document.uploaded"
+	EventTransactionReportExport    EventType = "transaction.event.export"
+	EventPLReportGenerated          EventType = "pl.report.generated"
+	EventPLReportExport             EventType = "pl.report.export"
+	EventBASReportGenerated         EventType = "bas.report.generated"
+	EventBASReportExport            EventType = "bas.report.export"
+	EventBalanceSheetGenerated      EventType = "balance_sheet.generated"
+	EventBalanceSheetExport         EventType = "balance_sheet.export"
+	EventActivityStatementGenerated EventType = "activity_statement.generated"
+	EventActivityStatementExport    EventType = "activity_statement.export"
+
+	//Pratitioner
+	EventPractitionerTransactionCreated EventType = "pratitioner.transaction.created"
 
 	EventAuditLogCreated EventType = "audit_log.created"
 	EventSystemError     EventType = "system.error"
@@ -55,13 +67,15 @@ const (
 type EntityType string
 
 const (
-	EntityClinic      EntityType = "clinic"
-	EntityForm        EntityType = "form"
-	EntityTransaction EntityType = "transaction"
-	EntityDocument    EntityType = "document"
-	EntityInvite      EntityType = "invite"
-	EntityAuditLog    EntityType = "audit_log"
-	EntitySystem      EntityType = "system"
+	EntityClinic       EntityType = "clinic"
+	EntityForm         EntityType = "form"
+	EntityTransaction  EntityType = "transaction"
+	EntityDocument     EntityType = "document"
+	EntityInvite       EntityType = "invite"
+	EntityAuditLog     EntityType = "audit_log"
+	EntitySystem       EntityType = "system"
+	EntityReport       EntityType = "report"
+	EntitySubscription EntityType = "subscription"
 )
 
 type ActorType string
@@ -94,8 +108,9 @@ type NotificationEventType string
 
 const (
 	// Shared (practitioner + accountant)
-	EventNewTransaction          NotificationEventType = "new.transaction"
-	EventAccountantActivityAlert NotificationEventType = "accountant.activity.alert"
+	EventNewTransaction            NotificationEventType = "new.transaction"
+	EventAccountantActivityAlert   NotificationEventType = "accountant.activity.alert"
+	EventPractitionerActivityAlert NotificationEventType = "practitioner.activity.alert"
 
 	// Admin-specific notification preference categories
 	EventSystemActivityAlert   NotificationEventType = "system.activity.alert"   // general audit log activity

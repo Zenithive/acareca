@@ -21,6 +21,7 @@ type IHandler interface {
 	Get(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	DeleteEntryValue(c *gin.Context)
 	List(c *gin.Context)
 	ListTransactions(c *gin.Context)
 
@@ -175,6 +176,39 @@ func (h *handler) Delete(c *gin.Context) {
 	}
 
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			response.Error(c, http.StatusNotFound, err)
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err)
+		return
+	}
+	response.JSON(c, http.StatusNoContent, nil, "Form entry deleted successfully")
+}
+
+// @Summary Delete a form entry value
+// @Description Remove a specific entry from the system
+// @Tags entry
+// @Accept json
+// @Produce json
+// @Param id path string true "Entry Value ID"
+// @Success 204 "No Content"
+// @Failure 404 {object} response.RsError
+// @Failure 500 {object} response.RsError
+// @Security BearerToken
+// @Router /entry/value/{id} [delete]
+func (h *handler) DeleteEntryValue(c *gin.Context) {
+	id, ok := util.ParseUuidID(c, "id")
+	if !ok {
+		return
+	}
+
+	valId, ok := util.ParseUuidID(c, "val_id")
+	if !ok {
+		return
+	}
+
+	if err := h.svc.DeleteSingleEntryValue(c.Request.Context(), id, valId); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(c, http.StatusNotFound, err)
 			return
@@ -401,6 +435,7 @@ func (h *handler) ListCoaEntryDetails(c *gin.Context) {
 // @Param start_date query string false "Filter by start date (YYYY-MM-DD)"
 // @Param end_date query string false "Filter by end date (YYYY-MM-DD)"
 // @Param search query string false "Search by account, field, or clinic name"
+// @Param selected_columns query string false  "Comma-separated list of visible columns to include. Options: date, supplier_name, description, clinic, expenses, net_amount, gst_amount, gross_amount, gst_type, business_percentage, note"
 // @Success 200 {file} binary "Excel file containing transaction report"
 // @Failure 400 {object} response.RsError "Invalid request parameters"
 // @Failure 500 {object} response.RsError "Internal server error during generation"
@@ -423,7 +458,7 @@ func (h *handler) HandleExport(c *gin.Context) {
 	}
 	filter.Role = role
 
-	var notifIDs []uuid.UUID // practitioners to notify via Shared Events
+	var notifIDs []uuid.UUID
 
 	if role == util.RoleAccountant {
 		if pracIDStr := c.Query("practitioner_id"); pracIDStr != "" {
@@ -437,15 +472,26 @@ func (h *handler) HandleExport(c *gin.Context) {
 			filter.PractitionerID = &pracUUID
 		}
 	} else {
-		// Practitioner: scope to self, no shared events
 		notifIDs = nil
 		filter.PractitionerID = actorID
+	}
+
+	// Get selected columns from query
+	rawColumns := c.Query("selected_columns")
+	var selectedColumns []string
+	if rawColumns != "" {
+		parts := strings.Split(rawColumns, ",")
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				selectedColumns = append(selectedColumns, trimmed)
+			}
+		}
 	}
 
 	// Get export type from query (default to excel)
 	exportType := c.DefaultQuery("export_type", "excel")
 
-	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs)
+	result, contentType, err := h.svc.ExportTransactionReport(c.Request.Context(), filter, *actorID, role, exportType, userID, notifIDs, selectedColumns)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, fmt.Errorf("failed to generate export: %w", err))
 		return
@@ -472,7 +518,6 @@ func (h *handler) HandleExport(c *gin.Context) {
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Header("Cache-Control", "no-cache")
 
-	// 7. Write Data
 	c.Data(http.StatusOK, contentType, buf.Bytes())
 }
 

@@ -23,7 +23,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
@@ -68,7 +67,6 @@ type service struct {
 	entryRepo       entry.IRepository
 	coaSvc          coa.Service
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	accountantRepo  accountant.Repository
 	authRepo        auth.Repository
 	formClinic      clinic.Service
@@ -81,8 +79,8 @@ type service struct {
 	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository, notificationSvc notification.Service, invitationRepo invitation.Repository, authSvc AuthService, adminRepo admin.Repository) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo, notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo), invitationRepo: invitationRepo, authSvc: authSvc, adminRepo: adminRepo}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository, notificationSvc notification.Service, invitationRepo invitation.Repository, authSvc AuthService, adminRepo admin.Repository) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo, notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo), invitationRepo: invitationRepo, authSvc: authSvc, adminRepo: adminRepo}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
@@ -168,44 +166,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 	})
 	if err != nil {
 		return nil, nil, err
-	}
-
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-
-		actorUserID, err := uuid.Parse(*meta.UserID)
-		if err != nil {
-
-		} else {
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
-
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err == nil {
-				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-				// Record the Event
-				err = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: realOwnerID,
-					AccountantID:   finalAccountantID,
-					ActorID:        actorUserID,
-					ActorName:      &fullName,
-					ActorType:      "ACCOUNTANT",
-					EventType:      "form.created",
-					EntityType:     "FORM",
-					EntityID:       created.ID,
-					Description:    fmt.Sprintf("Accountant %s created a new form: %s", fullName, created.Name),
-					Metadata:       events.JSONBMap{"form_name": created.Name},
-					CreatedAt:      time.Now(),
-				})
-
-			}
-		}
 	}
 
 	idStr := created.ID.String()
@@ -391,45 +351,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		return nil, nil, err
 	}
 
-	// Shared Event Recording (Triggered only for successful Accountant actions)
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-		actorUserID, err := uuid.Parse(*meta.UserID)
-		if err == nil {
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err == nil {
-				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-				// Record the Event
-				err = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: realOwnerID,
-					AccountantID:   finalAccountantID,
-					ActorID:        actorUserID,
-					ActorName:      &fullName,
-					ActorType:      "ACCOUNTANT",
-					EventType:      "form.updated",
-					EntityType:     "FORM",
-					EntityID:       updated.ID,
-					Description:    fmt.Sprintf("Accountant %s updated the form: %s", fullName, updated.Name),
-					Metadata: events.JSONBMap{
-						"form_name":     updated.Name,
-						"updated_count": syncResult.UpdatedCount,
-						"created_count": syncResult.CreatedCount,
-						"deleted_count": syncResult.DeletedCount,
-					},
-					CreatedAt: time.Now(),
-				})
-			}
-		}
-	}
-
 	// Audit Logging
 	idStr := updated.ID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -592,20 +513,6 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return err
 	}
 
-	// Get clinic info and owner ID only for non-expense forms
-	var realOwnerID uuid.UUID
-	if formDetail.Method != "EXPENSE_ENTRY" {
-		clinicID := uuid.Nil
-		if formDetail.ClinicID != nil {
-			clinicID = *formDetail.ClinicID
-		}
-		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
-		if err != nil {
-			return fmt.Errorf("failed to resolve clinic owner: %w", err)
-		}
-		realOwnerID = clinic.PractitionerID
-	}
-
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Delete associated permissions for this Form
@@ -621,43 +528,8 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return nil
 	})
 
-	// --- TRIGGER SHARED EVENT RECORD ---
 	meta := auditctx.GetMetadata(ctx)
-	if formDetail.Method != "EXPENSE_ENTRY" {
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-			actorUserID, err := uuid.Parse(*meta.UserID)
-			if err == nil {
-				var finalAccountantID uuid.UUID
-				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-				if err == nil {
-					finalAccountantID = accProfile.ID
-				} else {
-					finalAccountantID = actorUserID
-				}
 
-				user, err := s.authRepo.FindByID(ctx, actorUserID)
-				if err == nil {
-					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-					// Record the Shared Event
-					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-						ID:             uuid.New(),
-						PractitionerID: realOwnerID, // The Clinic Owner
-						AccountantID:   finalAccountantID,
-						ActorID:        actorUserID,
-						ActorName:      &fullName,
-						ActorType:      "ACCOUNTANT",
-						EventType:      "form.deleted",
-						EntityType:     "FORM",
-						EntityID:       formID,
-						Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
-						Metadata:       events.JSONBMap{"form_name": formDetail.Name},
-						CreatedAt:      time.Now(),
-					})
-				}
-			}
-		}
-	}
 	// Audit log: form deleted
 	idStr := formID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -784,7 +656,7 @@ func coaSectionType(accountTypeName string) string {
 // resolveTaxRate returns the tax rate (as a decimal) for a COA entry.
 // Returns 0.0 when no tax applies.
 func resolveTaxRate(ctx context.Context, coaSvc coa.Service, coaDetail *coa.RsChartOfAccount) float64 {
-	if !coaDetail.IsTaxable || coaDetail.AccountTaxID <= 0 {
+	if coaDetail.AccountTaxID <= 0 {
 		return 0.0
 	}
 	taxDetail, err := coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)

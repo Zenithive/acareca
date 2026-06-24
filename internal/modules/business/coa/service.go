@@ -22,8 +22,8 @@ type Service interface {
 	GetChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) (*RsChartOfAccount, error)
 	GetChartOfAccountByKey(ctx context.Context, key string, actorID uuid.UUID, role string) (*RsChartOfAccount, error)
 	CheckCodeUnique(ctx context.Context, practitionerID uuid.UUID, code int16, excludeID *uuid.UUID) (*RsCodeUnique, error)
-	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error)
-	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error)
+	CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error)
+	UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateChartOfAccount) (*RsChartOfAccount, error)
 	DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error
 	GetByIDInternal(ctx context.Context, id uuid.UUID) (*RsChartOfAccount, error)
 }
@@ -193,7 +193,7 @@ func (s *service) GetChartOfAccountByKey(ctx context.Context, key string, actorI
 	return &rs, nil
 }
 
-func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccountOfAccount) (*RsChartOfAccount, error) {
+func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.UUID, req *RqCreateChartOfAccount) (*RsChartOfAccount, error) {
 	existing, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, req.Code, practitionerID, nil)
 	if existing != nil {
 		return nil, ErrCodeExists
@@ -209,19 +209,31 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	if req.IsSystem != nil {
 		isSystem = *req.IsSystem
 	}
+	var isCos, isCapital bool
+	if req.IsCos != nil {
+		isCos = *req.IsCos
+	}
+	if req.IsCapital != nil {
+		isCapital = *req.IsCapital
+	}
+
+	accountKey := req.Key
+	if accountKey == "" {
+		accountKey = GenerateKeyFromName(req.Name)
+	}
 
 	chart := &ChartOfAccount{
 		PractitionerID: practitionerID,
-		AccountTypeID:  req.AccountTypeID,
-		AccountTaxID:   req.AccountTaxID,
-		Code:           req.Code,
-		Name:           req.Name,
-		Key:            GenerateKeyFromName(req.Name),
-		IsSystem:       isSystem,
-		Classification: defaultClassificationForAccountType(req.AccountTypeID),
-	}
-	if req.Classification != "" {
-		chart.Classification = req.Classification
+		TemplateID:     nil,
+		IsCustom:       true,
+		Key:            accountKey,
+		AccountTypeID:  &req.AccountTypeID,
+		AccountTaxID:   &req.AccountTaxID,
+		Code:           &req.Code,
+		Name:           &req.Name,
+		IsSystem:       &isSystem,
+		IsCos:          &isCos,
+		IsCapital:      &isCapital,
 	}
 
 	var created *ChartOfAccount
@@ -248,44 +260,53 @@ func (s *service) CreateChartOfAccount(ctx context.Context, practitionerID uuid.
 	return &rs, nil
 }
 
-func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateCharOfAccountOfAccount) (*RsChartOfAccount, error) {
+func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID, req *RqUpdateChartOfAccount) (*RsChartOfAccount, error) {
 	existing, err := s.repo.GetChartOfAccount(ctx, id, practitionerID)
 	if err != nil {
 		return nil, err
 	}
-	if existing.IsSystem {
+
+	resolvedRes := existing.ToRs()
+	if resolvedRes.IsSystem {
 		return nil, ErrSystemAccountProtected
 	}
-	if req.Code != nil && *req.Code != existing.Code {
+
+	if req.Code != nil && *req.Code != resolvedRes.Code {
 		other, _ := s.repo.GetChartByCodeAndPractitionerID(ctx, *req.Code, practitionerID, &id)
 		if other != nil {
 			return nil, ErrCodeExists
 		}
 	}
+
+	if !existing.IsCustom {
+		existing.IsCustom = true
+	}
+
 	if req.AccountTypeID != nil {
 		if _, err := s.repo.GetAccountType(ctx, *req.AccountTypeID); err != nil {
 			return nil, err
 		}
-		existing.AccountTypeID = *req.AccountTypeID
-		if req.Classification == nil {
-			existing.Classification = defaultClassificationForAccountType(*req.AccountTypeID)
-		}
+		existing.AccountTypeID = req.AccountTypeID
 	}
+
 	if req.AccountTaxID != nil {
 		if _, err := s.repo.GetAccountTax(ctx, *req.AccountTaxID); err != nil {
 			return nil, err
 		}
-		existing.AccountTaxID = *req.AccountTaxID
+		existing.AccountTaxID = req.AccountTaxID
 	}
+
 	if req.Code != nil {
-		existing.Code = *req.Code
+		existing.Code = req.Code
 	}
+
 	if req.Name != nil {
-		existing.Name = *req.Name
+		existing.Name = req.Name
 		existing.Key = GenerateKeyFromName(*req.Name)
 	}
-	if req.Classification != nil {
-		existing.Classification = *req.Classification
+
+	if req.Key != nil && *req.Key != "" {
+		existing.Key = *req.Key
 	}
 
 	updated, err := s.repo.UpdateCharOfAccount(ctx, existing)
@@ -293,7 +314,7 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 		return nil, err
 	}
 
-	rs := updated.ToRs()
+	bytes := updated.ToRs()
 	idStr := id.String()
 
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -301,27 +322,10 @@ func (s *service) UpdateCharOfAccount(ctx context.Context, id uuid.UUID, practit
 		Module:     auditctx.ModuleBusiness,
 		EntityType: lo.ToPtr(auditctx.EntityCOA),
 		EntityID:   &idStr,
-		AfterState: rs,
+		AfterState: bytes,
 	})
 
-	return &rs, nil
-}
-
-func defaultClassificationForAccountType(accountTypeID int16) AccountClassification {
-	switch accountTypeID {
-	case 1:
-		return ClassificationCurrentAsset
-	case 2:
-		return ClassificationCurrentLiability
-	case 3:
-		return ClassificationEquity
-	case 4:
-		return ClassificationOperatingRevenue
-	case 5:
-		return ClassificationOperatingExpense
-	default:
-		return ClassificationOperatingExpense
-	}
+	return &bytes, nil
 }
 
 func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practitionerID uuid.UUID) error {
@@ -329,7 +333,8 @@ func (s *service) DeleteChartOfAccount(ctx context.Context, id uuid.UUID, practi
 	if err != nil {
 		return err
 	}
-	if existing.IsSystem {
+	resolvedRes := existing.ToRs()
+	if resolvedRes.IsSystem {
 		return ErrSystemAccountProtected
 	}
 	if err := s.repo.DeleteChartOfAccount(ctx, id, practitionerID); err != nil {

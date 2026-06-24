@@ -1,0 +1,70 @@
+package chromepdf
+
+import (
+	"fmt"
+
+	"github.com/aymerick/raymond"
+)
+
+// Render resolves all {{variable}} and {{#if}} / {{#each}} blocks in the
+// template HTML/CSS using the raymond Handlebars engine, then injects the
+// CSS into the HTML as a <style> block.
+func Render(html, css string, data map[string]any) (string, error) {
+	renderedCSS, err := raymond.Render(css, data)
+	if err != nil {
+		return "", fmt.Errorf("chromepdf: css render failed: %w", err)
+	}
+
+	renderedHTML, err := raymond.Render(html, data)
+	if err != nil {
+		return "", fmt.Errorf("chromepdf: html render failed: %w", err)
+	}
+
+	// Wrap in a full HTML document so Chrome has a proper DOM
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>%s</style>
+</head>
+<body>%s</body>
+</html>`, renderedCSS, renderedHTML), nil
+}
+
+func toFloat64(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
+}
+
+func init() {
+	raymond.RegisterHelper("format_currency", func(amount float64) string {
+		return fmt.Sprintf("$%.2f", amount)
+	})
+
+	raymond.RegisterHelper("format_table_amount", func(row any) string {
+		m, ok := row.(map[string]any)
+		if !ok {
+			if m2, ok2 := row.(map[string]interface{}); ok2 {
+				m = m2
+			} else {
+				return ""
+			}
+		}
+		amount := toFloat64(m["amount"])
+		formatted := fmt.Sprintf("$%.2f", amount)
+		if neg, _ := m["is_negative"].(bool); neg {
+			return fmt.Sprintf("(%s)", formatted)
+		}
+		return formatted
+	})
+}

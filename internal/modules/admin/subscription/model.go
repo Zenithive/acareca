@@ -15,6 +15,7 @@ type Subscription struct {
 	Price           float64    `db:"price"`
 	DurationDays    int        `db:"duration_days"`
 	IsActive        bool       `db:"is_active"`
+	IsVisible       bool       `db:"is_visible"`
 	StripeProductID *string    `db:"stripe_product_id"`
 	StripePriceID   *string    `db:"stripe_price_id"`
 	CreatedAt       time.Time  `db:"created_at"`
@@ -36,6 +37,7 @@ type RqCreateSubscription struct {
 	Price        float64              `json:"price" validate:"min=0"`
 	DurationDays int                  `json:"duration_days" validate:"required,min=1"`
 	IsActive     *bool                `json:"is_active"`
+	IsVisible    *bool                `json:"is_visible"`
 	Permissions  []*RqPermissionEntry `json:"permissions"`
 }
 
@@ -44,12 +46,17 @@ func (r *RqCreateSubscription) ToSubscription() *Subscription {
 	if r.IsActive != nil {
 		active = *r.IsActive
 	}
+	visible := true
+	if r.IsVisible != nil {
+		visible = *r.IsVisible
+	}
 	return &Subscription{
 		Name:         r.Name,
 		Description:  r.Description,
 		Price:        r.Price,
 		DurationDays: r.DurationDays,
 		IsActive:     active,
+		IsVisible:    visible,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -61,6 +68,7 @@ type RqUpdateSubscription struct {
 	Price        *float64             `json:"price" validate:"omitempty,min=0"`
 	DurationDays *int                 `json:"duration_days" validate:"omitempty,min=1"`
 	IsActive     *bool                `json:"is_active"`
+	IsVisible    *bool                `json:"is_visible"`
 	Permissions  []*RqPermissionEntry `json:"permissions"`
 }
 
@@ -71,6 +79,7 @@ type RsSubscription struct {
 	Price        float64                     `json:"price"`
 	DurationDays int                         `json:"duration_days"`
 	IsActive     bool                        `json:"is_active"`
+	IsVisible    bool                        `json:"is_visible"`
 	CreatedAt    time.Time                   `json:"created_at"`
 	UpdatedAt    time.Time                   `json:"updated_at"`
 	Permissions  []*RsSubscriptionPermission `json:"permissions"`
@@ -84,6 +93,7 @@ func (s *Subscription) ToRs() *RsSubscription {
 		Price:        s.Price,
 		DurationDays: s.DurationDays,
 		IsActive:     s.IsActive,
+		IsVisible:    s.IsVisible,
 		CreatedAt:    s.CreatedAt,
 		UpdatedAt:    s.UpdatedAt,
 	}

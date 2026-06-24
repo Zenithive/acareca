@@ -1498,32 +1498,30 @@ definitions:
       lock_date:
         type: string
     type: object
-  coa.AccountClassification:
-    enum:
-    - Current Asset
-    - Non-Current Asset
-    - Contra-Asset
-    - Current Liability
-    - Non-Current Liability
-    - Equity
-    - Contra-Equity
-    - Operating Revenue
-    - Other Revenue
-    - Direct Costs
-    - Operating Expense
-    type: string
-    x-enum-varnames:
-    - ClassificationCurrentAsset
-    - ClassificationNonCurrentAsset
-    - ClassificationContraAsset
-    - ClassificationCurrentLiability
-    - ClassificationNonCurrentLiability
-    - ClassificationEquity
-    - ClassificationContraEquity
-    - ClassificationOperatingRevenue
-    - ClassificationOtherRevenue
-    - ClassificationDirectCosts
-    - ClassificationOperatingExpense
+  coa.RqAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+    required:
+    - account_tax_id
+    - account_type_id
+    - code
+    - name
+    type: object
   coa.RqCheckCodeUnique:
     properties:
       code:
@@ -1537,7 +1535,7 @@ definitions:
     required:
     - code
     type: object
-  coa.RqCreateChartOfAccountOfAccount:
+  coa.RqCreateChartOfAccount:
     properties:
       account_tax_id:
         minimum: 1
@@ -1545,14 +1543,18 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
-      classification:
-        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
         type: integer
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
       is_system:
         type: boolean
+      key:
+        type: string
       name:
         maxLength: 255
         type: string
@@ -1564,7 +1566,28 @@ definitions:
     - code
     - name
     type: object
-  coa.RqUpdateCharOfAccountOfAccount:
+  coa.RqUpdateAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      id:
+        type: string
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+    required:
+    - id
+    type: object
+  coa.RqUpdateChartOfAccount:
     properties:
       account_tax_id:
         minimum: 1
@@ -1572,16 +1595,45 @@ definitions:
       account_type_id:
         minimum: 1
         type: integer
-      classification:
-        $ref: '#/definitions/coa.AccountClassification'
       code:
         maximum: 9999
         minimum: 100
         type: integer
+      key:
+        type: string
       name:
         maxLength: 255
         type: string
       practitioner_id:
+        type: string
+    type: object
+  coa.RsAccountTemplate:
+    properties:
+      account_tax_id:
+        type: integer
+      account_type_id:
+        type: integer
+      code:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      is_capital:
+        type: boolean
+      is_cos:
+        type: boolean
+      is_system:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
         type: string
     type: object
   coa.RsCodeUnique:
@@ -1732,6 +1784,10 @@ definitions:
       amount:
         minimum: 0
         type: number
+      business_percentage:
+        maximum: 100
+        minimum: 0
+        type: number
       coa_id:
         type: string
       description:
@@ -1786,6 +1842,8 @@ definitions:
       amount:
         description: Amount is used when there is no GST (net == gross).
         type: number
+      business_percentage:
+        type: number
       coa_id:
         type: string
       description:
@@ -1806,6 +1864,8 @@ definitions:
         description: NetAmount, GstAmount, GrossAmount are used when a GST breakdown
           exists.
         type: number
+      notes:
+        type: string
     type: object
   equity.EquityMovements:
     properties:
@@ -2441,197 +2501,257 @@ definitions:
     type: object
   invoice.RqInvoice:
     properties:
-      clinic_id:
+      billingPeriodFrom:
         type: string
-      contact_id:
+      billingPeriodTo:
         type: string
-      due_date:
+      clinicId:
         type: string
-      invoice_number:
+      contactId:
         type: string
-      issue_date:
+      dueDate:
         type: string
-      items:
-        items:
-          $ref: '#/definitions/item.RqItem'
-        type: array
+      invoiceFrequency:
+        enum:
+        - DAILY
+        - WEEKLY
+        - MONTHLY
+        - YEARLY
+        type: string
+      issueDate:
+        type: string
       name:
         type: string
-      payment_method:
-        enum:
-        - CASH
-        - CARD
-        - ONLINE
-        type: string
-      reference:
-        type: string
+      sections:
+        items:
+          $ref: '#/definitions/section.RqSection'
+        type: array
+      settings:
+        $ref: '#/definitions/invoice.RqInvoiceSetting'
       status:
         type: string
-      tax_method:
-        enum:
-        - EXCLUSIVE
-        - INCLUSIVE
+    required:
+    - billingPeriodFrom
+    - billingPeriodTo
+    - contactId
+    - issueDate
+    - name
+    type: object
+  invoice.RqInvoiceSetting:
+    properties:
+      accentColor:
         type: string
-      template_id:
+      bodyFontFamily:
+        type: string
+      footerId:
+        type: string
+      headerFontFamily:
+        type: string
+      isLogo:
+        type: boolean
+      isTax:
+        type: boolean
+      isWatermark:
+        type: boolean
+      letterheadId:
+        type: string
+      logoId:
+        type: string
+      primaryColor:
+        type: string
+      tableStyle:
+        type: string
+      termsText:
+        type: string
+      watermarkText:
+        type: string
+    type: object
+  invoice.RqSaveMailTemplate:
+    properties:
+      mail_body:
+        type: string
+      mail_subject:
         type: string
     required:
-    - contact_id
-    - invoice_number
-    - issue_date
-    - items
-    - name
-    - template_id
+    - mail_body
+    - mail_subject
     type: object
   invoice.RqUpdateInvoice:
     properties:
-      contact_id:
+      attachmentBase64:
         type: string
-      due_date:
+      billingPeriodFrom:
+        type: string
+      billingPeriodTo:
+        type: string
+      clinicId:
+        type: string
+      contactId:
+        type: string
+      deleteSections:
+        items:
+          type: string
+        type: array
+      dueDate:
         type: string
       id:
         type: string
-      invoice_number:
+      invoiceFrequency:
+        enum:
+        - DAILY
+        - WEEKLY
+        - MONTHLY
+        - YEARLY
         type: string
-      issue_date:
+      issueDate:
         type: string
-      items:
-        items:
-          $ref: '#/definitions/item.RqUpdateItem'
-        type: array
       name:
         type: string
-      payment_method:
-        enum:
-        - CASH
-        - CARD
-        - ONLINE
-        type: string
-      reference:
-        type: string
+      sections:
+        items:
+          $ref: '#/definitions/section.RqUpdateSection'
+        type: array
+      settings:
+        $ref: '#/definitions/invoice.RqInvoiceSetting'
       status:
-        type: string
-      tax_method:
-        enum:
-        - EXCLUSIVE
-        - INCLUSIVE
-        type: string
-      template_id:
         type: string
     type: object
   invoice.RsInvoice:
     properties:
-      clinic_id:
+      billingPeriodFrom:
         type: string
-      contact_id:
+      billingPeriodTo:
         type: string
-      contact_to:
+      clinicId:
+        type: string
+      contactId:
+        type: string
+      contactTo:
         $ref: '#/definitions/contact.RsContact'
-      created_at:
+      createdAt:
         type: string
-      due_date:
+      dueDate:
         type: string
       id:
         type: string
-      invoice_number:
+      invoiceFrequency:
         type: string
-      issue_date:
+      issueDate:
         type: string
-      items:
-        items:
-          $ref: '#/definitions/item.RsItem'
-        type: array
       name:
         type: string
-      payment_method:
-        type: string
-      reference:
-        type: string
-      sent_to:
-        $ref: '#/definitions/contact.RsContact'
+      sections:
+        items:
+          $ref: '#/definitions/section.RsSection'
+        type: array
       status:
         type: string
-      tax_method:
-        type: string
-      template_id:
-        type: string
-      updated_at:
+      updatedAt:
         type: string
     type: object
-  item.RqItem:
+  invoice.RsInvoiceMailTemplate:
     properties:
+      is_custom:
+        type: boolean
+      mail_body:
+        type: string
+      mail_subject:
+        type: string
+    type: object
+  item.BasCode:
+    enum:
+    - G1
+    - 1A
+    - G3
+    - G11
+    - 1B
+    type: string
+    x-enum-varnames:
+    - CodeG1
+    - Code1A
+    - CodeG3
+    - CodeG11
+    - Code1B
+  item.EntryType:
+    enum:
+    - DEBIT
+    - CREDIT
+    type: string
+    x-enum-varnames:
+    - DEBIT
+    - CREDIT
+  item.RqEntry:
+    properties:
+      amount:
+        type: number
+      basCode:
+        $ref: '#/definitions/item.BasCode'
       description:
         type: string
-      discount:
-        minimum: 0
-        type: number
+      entryType:
+        $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
+        type: string
+      invoiceSectionId:
+        type: string
+      isFinal:
+        type: boolean
       name:
         type: string
-      quantity:
+      sortOrder:
         type: integer
-      tax_amount:
-        minimum: 0
-        type: number
-      tax_rate:
-        minimum: 0
-        type: number
-      total_amount:
-        type: number
-      unit_price:
-        type: number
     required:
     - name
-    - quantity
-    - total_amount
-    - unit_price
+    - sortOrder
     type: object
-  item.RqUpdateItem:
+  item.RqUpdateEntry:
     properties:
+      amount:
+        type: number
+      basCode:
+        $ref: '#/definitions/item.BasCode'
       description:
         type: string
-      discount:
-        minimum: 0
-        type: number
+      entryType:
+        $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
+        type: string
       id:
         type: string
+      invoiceSectionId:
+        type: string
+      isFinal:
+        type: boolean
       name:
         type: string
-      quantity:
+      sortOrder:
         type: integer
-      tax_amount:
-        minimum: 0
-        type: number
-      tax_rate:
-        minimum: 0
-        type: number
-      total_amount:
-        type: number
-      unit_price:
-        type: number
-    required:
-    - id
     type: object
-  item.RsItem:
+  item.RsEntry:
     properties:
+      amount:
+        type: number
+      basCode:
+        $ref: '#/definitions/item.BasCode'
       description:
         type: string
-      discount:
-        type: number
+      entryType:
+        $ref: '#/definitions/item.EntryType'
+      expression: {}
+      fieldKey:
+        type: string
       id:
         type: string
-      invoice_id:
+      invoiceSectionId:
         type: string
+      isFinal:
+        type: boolean
       name:
         type: string
-      quantity:
+      sortOrder:
         type: integer
-      tax_amount:
-        type: number
-      tax_rate:
-        type: number
-      total_amount:
-        type: number
-      unit_price:
-        type: number
     type: object
   notification.RqBulkDismiss:
     properties:
@@ -2778,7 +2898,6 @@ definitions:
         type: array
     required:
     - channels
-    - event_type
     type: object
   response.RsBase:
     properties:
@@ -2799,6 +2918,148 @@ definitions:
       message:
         type: string
     type: object
+  section.RqSection:
+    properties:
+      accountName:
+        type: string
+      accountNumber:
+        type: string
+      bsb:
+        type: string
+      documentNumber:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RqEntry'
+        type: array
+      invoiceId:
+        type: string
+      paymentDate:
+        type: string
+      paymentMethod:
+        type: string
+      paymentReference:
+        type: string
+      sectionType:
+        allOf:
+        - $ref: '#/definitions/section.SectionType'
+        enum:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
+      taxMethod:
+        allOf:
+        - $ref: '#/definitions/section.TaxMethod'
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - NO_TAX
+      templateId:
+        type: string
+    required:
+    - documentNumber
+    - sectionType
+    type: object
+  section.RqUpdateSection:
+    properties:
+      SectionType:
+        allOf:
+        - $ref: '#/definitions/section.SectionType'
+        enum:
+        - CALCULATION_STATEMENT
+        - SFA_INVOICE
+        - REMITTANCE_INVOICE
+      accountName:
+        type: string
+      accountNumber:
+        type: string
+      bsb:
+        type: string
+      deleteEntries:
+        items:
+          type: string
+        type: array
+      documentNumber:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RqUpdateEntry'
+        type: array
+      id:
+        type: string
+      invoiceId:
+        type: string
+      paymentDate:
+        type: string
+      paymentMethod:
+        type: string
+      paymentReference:
+        type: string
+      taxMethod:
+        allOf:
+        - $ref: '#/definitions/section.TaxMethod'
+        enum:
+        - INCLUSIVE
+        - EXCLUSIVE
+        - NO_TAX
+      templateId:
+        type: string
+    type: object
+  section.RsSection:
+    properties:
+      accountName:
+        type: string
+      accountNumber:
+        type: string
+      bsb:
+        type: string
+      createdAt:
+        type: string
+      documentNumber:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/item.RsEntry'
+        type: array
+      id:
+        type: string
+      invoiceId:
+        type: string
+      paymentDate:
+        type: string
+      paymentMethod:
+        type: string
+      paymentReference:
+        type: string
+      sectionType:
+        $ref: '#/definitions/section.SectionType'
+      taxMethod:
+        $ref: '#/definitions/section.TaxMethod'
+      templateId:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  section.SectionType:
+    enum:
+    - CALCULATION_STATEMENT
+    - SFA_INVOICE
+    - REMITTANCE_INVOICE
+    type: string
+    x-enum-varnames:
+    - CALCULATIONSTATEMENT
+    - SFAINVOICE
+    - REMITTANCEINVOICE
+  section.TaxMethod:
+    enum:
+    - NO_TAX
+    - INCLUSIVE
+    - EXCLUSIVE
+    type: string
+    x-enum-varnames:
+    - NoTax
+    - Inclusive
+    - Exclusive
   setting.RqCreatePractitioner:
     properties:
       abn:
@@ -2838,6 +3099,8 @@ definitions:
         minimum: 1
         type: integer
       is_active:
+        type: boolean
+      is_visible:
         type: boolean
       name:
         maxLength: 255
@@ -2894,6 +3157,8 @@ definitions:
         type: integer
       is_active:
         type: boolean
+      is_visible:
+        type: boolean
       name:
         maxLength: 255
         type: string
@@ -2949,13 +3214,162 @@ definitions:
     - StatusPaused
     - StatusExpired
     - StatusInactive
-  template.RqTemplate:
+  template.Attachment:
     properties:
-      clinic_id:
+      file_name:
         type: string
-      css:
+    type: object
+  template.InvoiceData:
+    properties:
+      accent_color:
         type: string
+      amount_in_words:
+        type: string
+      attachments:
+        items:
+          $ref: '#/definitions/template.Attachment'
+        type: array
+      bill_from:
+        $ref: '#/definitions/template.PartyInfo'
+      bill_to:
+        $ref: '#/definitions/template.PartyInfo'
+      billing_period:
+        type: string
+      body_font_family:
+        type: string
+      clinic_name:
+        type: string
+      custom_fee_rate:
+        type: string
+      custom_fee_rate_display:
+        description: Tax Invoice fee rate display (e.g. "38.5%")
+        type: string
+      custom_payment_account:
+        type: string
+      custom_payment_account_name:
+        type: string
+      custom_payment_bsb:
+        type: string
+      custom_payment_method:
+        type: string
+      due_date_display:
+        type: string
+      footer_html:
+        type: string
+      grand_total:
+        type: number
+      has_attachments:
+        type: boolean
+      header_font_family:
+        type: string
+      invoice_frequency:
+        type: string
+      invoice_number:
+        type: string
+      issue_date_display:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/template.LineItem'
+        type: array
+      letterhead_html:
+        type: string
+      logo_initial:
+        type: string
+      logo_url:
+        type: string
+      notes:
+        type: string
+      patient_fee_items:
+        description: Calculation Sheet Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      payment_date_display:
+        type: string
+      payment_method_label:
+        type: string
+      primary_color:
+        description: Exported styling fields targetable by structural assignments
+        type: string
+      remittance_items:
+        description: Remittance Advice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      service_fee_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      settlement_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      show_logo:
+        type: boolean
+      show_logo_image:
+        type: boolean
+      show_tax:
+        type: boolean
+      subtotal:
+        type: number
+      table_style_class:
+        type: string
+      tax_invoice_items:
+        description: Tax Invoice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      tax_total:
+        type: number
+      template_settings:
+        additionalProperties: true
+        type: object
+      terms_text:
+        type: string
+      totals_amounts_caption:
+        type: string
+      totals_grand_label:
+        type: string
+      watermark_enabled:
+        type: boolean
+      watermark_text:
+        type: string
+    type: object
+  template.LineItem:
+    properties:
+      amount:
+        type: number
       description:
+        type: string
+      name:
+        type: string
+      running_total:
+        type: number
+    type: object
+  template.PartyInfo:
+    properties:
+      abn:
+        type: string
+      address:
+        type: string
+      email:
+        type: string
+      name:
+        type: string
+      payment_method:
+        type: string
+      phone:
+        type: string
+    type: object
+  template.RqGlobalTemplate:
+    properties:
+      css:
         type: string
       html:
         type: string
@@ -2964,6 +3378,107 @@ definitions:
       is_default:
         type: boolean
       name:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - css
+    - html
+    - name
+    type: object
+  template.RqUpdateSetting:
+    properties:
+      accent_color:
+        type: string
+      body_font_family:
+        type: string
+      footer:
+        type: string
+      header_font_family:
+        type: string
+      id:
+        type: string
+      is_logo:
+        type: boolean
+      is_tax:
+        type: boolean
+      is_water_mark:
+        type: boolean
+      letter_head:
+        type: string
+      logo:
+        type: string
+      mapping_id:
+        type: string
+      primary_color:
+        type: string
+      table_style:
+        type: string
+      template_id:
+        type: string
+      term_text:
+        type: string
+      water_mark_text:
+        type: string
+    type: object
+  template.RsSetting:
+    properties:
+      accent_color:
+        type: string
+      body_font_family:
+        type: string
+      created_at:
+        type: string
+      footer:
+        $ref: '#/definitions/file.RsDocument'
+      header_font_family:
+        type: string
+      id:
+        type: string
+      is_logo:
+        type: boolean
+      is_tax:
+        type: boolean
+      is_water_mark:
+        type: boolean
+      letter_head:
+        $ref: '#/definitions/file.RsDocument'
+      logo:
+        $ref: '#/definitions/file.RsDocument'
+      mapping_id:
+        type: string
+      primary_color:
+        type: string
+      table_style:
+        type: string
+      template_id:
+        type: string
+      term_text:
+        type: string
+      updated_at:
+        type: string
+      water_mark_text:
+        type: string
+    type: object
+  template.RsTemplate:
+    properties:
+      created_at:
+        type: string
+      css:
+        type: string
+      description:
+        type: string
+      html:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_default:
+        type: boolean
+      name:
+        type: string
+      updated_at:
         type: string
     type: object
   util.Channel:
@@ -2980,12 +3495,41 @@ definitions:
     enum:
     - new.transaction
     - accountant.activity.alert
+    - practitioner.activity.alert
     - system.activity.alert
+    - system.error.alert
+    - system.warning.alert
+    - billing.alert
+    - subscription.alert
+    - user.registration.alert
     type: string
+    x-enum-comments:
+      EventBillingAlert: payment success/failure
+      EventSubscriptionAlert: subscription created/updated/deleted
+      EventSystemActivityAlert: general audit log activity
+      EventSystemErrorAlert: system.error only (critical)
+      EventSystemWarningAlert: system.warning only
+      EventUserRegistrationAlert: new practitioner registered
+    x-enum-descriptions:
+    - ""
+    - ""
+    - ""
+    - general audit log activity
+    - system.error only (critical)
+    - system.warning only
+    - payment success/failure
+    - subscription created/updated/deleted
+    - new practitioner registered
     x-enum-varnames:
     - EventNewTransaction
     - EventAccountantActivityAlert
+    - EventPractitionerActivityAlert
     - EventSystemActivityAlert
+    - EventSystemErrorAlert
+    - EventSystemWarningAlert
+    - EventBillingAlert
+    - EventSubscriptionAlert
+    - EventUserRegistrationAlert
   util.RsList:
     properties:
       items: {}
@@ -4922,6 +5466,14 @@ paths:
         in: query
         name: end_date
         type: string
+      - description: Anchor Financial Year snapshot UUID
+        in: query
+        name: financial_year_id
+        type: string
+      - description: Number of historical years to compare back (0 to 4)
+        in: query
+        name: comparisons
+        type: integer
       - description: 'Export Type: pdf | excel'
         in: query
         name: export_type
@@ -5561,7 +6113,7 @@ paths:
       - BearerToken: []
       summary: Delete clinic account
       tags:
-      - invoice
+      - invoice-clinic
     get:
       parameters:
       - description: Filter by clinic name
@@ -5909,7 +6461,7 @@ paths:
       - BearerToken: []
       summary: Change clinic password
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/contact:
     get:
       consumes:
@@ -5933,7 +6485,7 @@ paths:
       - BearerToken: []
       summary: List all contacts for a clinic
       tags:
-      - clinic
+      - clinic-contact
     post:
       consumes:
       - application/json
@@ -5968,7 +6520,7 @@ paths:
       - BearerToken: []
       summary: Create a new contact for a clinic
       tags:
-      - clinic
+      - clinic-contact
   /clinic/contact/{id}:
     delete:
       consumes:
@@ -5998,7 +6550,7 @@ paths:
       - BearerToken: []
       summary: Delete a contact by ID
       tags:
-      - clinic
+      - clinic-contact
     get:
       consumes:
       - application/json
@@ -6032,7 +6584,7 @@ paths:
       - BearerToken: []
       summary: Get a contact by ID
       tags:
-      - clinic
+      - clinic-contact
     put:
       consumes:
       - application/json
@@ -6067,7 +6619,7 @@ paths:
       - BearerToken: []
       summary: Update a contact by ID
       tags:
-      - clinic
+      - clinic-contact
   /clinic/contact/address/{id}:
     delete:
       consumes:
@@ -6097,7 +6649,7 @@ paths:
       - BearerToken: []
       summary: Delete a contact address by ID
       tags:
-      - clinic
+      - clinic-contact
   /clinic/forgot-password:
     post:
       consumes:
@@ -6123,7 +6675,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Initiate clinic password reset
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/invoice:
     get:
       consumes:
@@ -6277,6 +6829,72 @@ paths:
       summary: Update an invoice by ID
       tags:
       - invoice
+  /clinic/invoice/{id}/resend:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice UUID string format token
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Manually re-fire a generated paid invoice statement notification
+      tags:
+      - invoice
+  /clinic/invoice/email-templates:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.RsBase'
+            - properties:
+                data:
+                  $ref: '#/definitions/invoice.RsInvoiceMailTemplate'
+              type: object
+      security:
+      - BearerToken: []
+      summary: Fetch current invoice template context settings or system defaults
+      tags:
+      - invoice
+    post:
+      parameters:
+      - description: Custom structural templates body configurations
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/invoice.RqSaveMailTemplate'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+      security:
+      - BearerToken: []
+      summary: Save modified template layout overrides for the active clinic identity
+        context
+      tags:
+      - invoice
   /clinic/login:
     post:
       consumes:
@@ -6310,7 +6928,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Login an invoice clinic
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/logout:
     post:
       consumes:
@@ -6347,7 +6965,7 @@ paths:
       - BearerToken: []
       summary: Logout current invoice clinic session
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/profile:
     get:
       description: Returns the profile details of the authenticated clinic
@@ -6370,7 +6988,7 @@ paths:
       - BearerToken: []
       summary: Get current invoice clinic profile
       tags:
-      - invoice
+      - invoice-clinic
     put:
       consumes:
       - application/json
@@ -6405,7 +7023,7 @@ paths:
       - BearerToken: []
       summary: Update clinic profile
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/register:
     post:
       consumes:
@@ -6440,7 +7058,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Register a new invoice clinic
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/reset-password:
     post:
       consumes:
@@ -6470,7 +7088,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Reset clinic password using token
       tags:
-      - invoice
+      - invoice-clinic
   /clinic/verify-email:
     get:
       description: Validates the UUID token sent via email. If valid, marks the clinic
@@ -6498,7 +7116,7 @@ paths:
             $ref: '#/definitions/response.RsError'
       summary: Verify clinic email address
       tags:
-      - invoice
+      - invoice-clinic
   /coa/account-taxes:
     get:
       parameters:
@@ -6720,7 +7338,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/coa.RqCreateChartOfAccountOfAccount'
+          $ref: '#/definitions/coa.RqCreateChartOfAccount'
       produces:
       - application/json
       responses:
@@ -6849,7 +7467,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/coa.RqUpdateCharOfAccountOfAccount'
+          $ref: '#/definitions/coa.RqUpdateChartOfAccount'
       produces:
       - application/json
       responses:
@@ -6961,6 +7579,176 @@ paths:
       summary: Check if a chart of account code is unique for the practitioner
       tags:
       - coa
+  /coa/templates:
+    get:
+      description: Gathers a generalized collection indexing active charts mapped
+        to system rules.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: An array matching structural index configuration items
+          schema:
+            items:
+              $ref: '#/definitions/coa.RsAccountTemplate'
+            type: array
+        "500":
+          description: Internal scanning array processing sequence broken
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: List Account Templates
+      tags:
+      - Chart of Accounts
+    post:
+      consumes:
+      - application/json
+      description: Creates a new chart of account blueprint record within the DB storage
+        pool.
+      parameters:
+      - description: Account baseline specifications structure payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqAccountTemplate'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+        "400":
+          description: Invalid input request body error context parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal system storage engine baseline failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Create Account Template
+      tags:
+      - Chart of Accounts
+    put:
+      consumes:
+      - application/json
+      description: Overwrites and updates a target chart structure mapped inside the
+        active repository.
+      parameters:
+      - description: Mutation values specifications struct bundle wrapper
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/coa.RqUpdateAccountTemplate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Structural transformation or payload validation parameter failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Underlying relational mapping updating failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Update Account Template
+      tags:
+      - Chart of Accounts
+  /coa/templates/{id}:
+    delete:
+      description: Removes a global chart blueprint record and removes/decouples matching
+        active records across downstream practitioners.
+      parameters:
+      - description: Target account template string parsed UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The template configuration was successfully removed and cascade
+            transformations executed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Path parameters missing matching conversion standards or authorization
+            missing
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Cascading database deletions or records severance operation
+            processing failure
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Delete Account Template
+      tags:
+      - Chart of Accounts
+    get:
+      description: Queries and returns a single account template baseline context
+        view record.
+      parameters:
+      - description: Valid string parsed UUID pattern match filter
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Matching records successfully unpacked and transformed from
+            storage
+          schema:
+            $ref: '#/definitions/coa.RsAccountTemplate'
+        "400":
+          description: Path variables missing precise conversion requirements
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: The requested configuration item does not exist inside the
+            target index
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Get Account Template By ID
+      tags:
+      - Chart of Accounts
   /entry/{id}:
     delete:
       consumes:
@@ -7221,6 +8009,12 @@ paths:
         in: query
         name: search
         type: string
+      - description: 'Comma-separated list of visible columns to include. Options:
+          date, supplier_name, description, clinic, expenses, net_amount, gst_amount,
+          gross_amount, gst_type, business_percentage, note'
+        in: query
+        name: selected_columns
+        type: string
       produces:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
       - ' text/html'
@@ -7365,6 +8159,35 @@ paths:
       security:
       - BearerToken: []
       summary: Export transaction data for report generation
+      tags:
+      - entry
+  /entry/value/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a specific entry from the system
+      parameters:
+      - description: Entry Value ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.RsError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete a form entry value
       tags:
       - entry
   /entry/version/{version_id}:
@@ -8448,8 +9271,9 @@ paths:
       tags:
       - notification
   /notification/preferences:
-    get:
-      description: Returns the current channel preferences for the authenticated user.
+    delete:
+      description: Deletes all notification preferences for the authenticated user
+        on their current entity.
       responses:
         "200":
           description: OK
@@ -8459,8 +9283,24 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.RsError'
+      security:
+      - BearerToken: []
+      summary: Delete all notification preferences
+      tags:
+      - notification
+    get:
+      description: Returns the current channel preferences for the authenticated user.
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.RsBase'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8473,7 +9313,9 @@ paths:
       tags:
       - notification
     put:
-      description: Updates or creates a preference for a specific event type.
+      description: Updates or creates preferences. event_type is always required.
+        If channels is empty, the specified event types are deleted. If channels is
+        provided, preferences are upserted.
       parameters:
       - description: Preference Update
         in: body
@@ -8492,10 +9334,6 @@ paths:
             $ref: '#/definitions/response.RsError'
         "401":
           description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.RsError'
-        "404":
-          description: Not Found
           schema:
             $ref: '#/definitions/response.RsError'
         "500":
@@ -8651,6 +9489,10 @@ paths:
         in: query
         name: form_id
         type: string
+      - description: Number of comparative periods to include (0-4)
+        in: query
+        name: comparisons
+        type: integer
       - description: 'Export Type: PDF | Excel'
         in: query
         name: export_type
@@ -9536,95 +10378,103 @@ paths:
       summary: Get form summary by form ID (Grouped by COA)
       tags:
       - calculation
-  /template:
+  /templates:
     get:
-      consumes:
-      - application/json
+      description: Gathers paginated index parameters tracking active engine documents
+      parameters:
+      - description: 'Filter by document types (comma-separated: Calculation Statement,
+          Tax Invoice, Remittance Advice)'
+        in: query
+        name: type
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Collection index values mapped to the configuration array
           schema:
             $ref: '#/definitions/util.RsList'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.RsError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Get an template by ID
+      summary: List Global Templates
       tags:
-      - template
+      - Templates
     post:
       consumes:
       - application/json
+      description: Generates a new global HTML/CSS template standard layout block
       parameters:
-      - description: Template Data
+      - description: Global Template Schema Payload
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/template.RqTemplate'
+          $ref: '#/definitions/template.RqGlobalTemplate'
       produces:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Global template created successfully
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/template.RsTemplate'
         "400":
-          description: Bad Request
+          description: Invalid request JSON payload
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Create a new template for a clinic
+      summary: Create Global Template
       tags:
-      - template
-  /template/{id}:
+      - Templates
+  /templates/{id}:
     delete:
-      consumes:
-      - application/json
+      description: Removes or flags a template definition from active usage routing
+        context pools
       parameters:
-      - description: Template ID
+      - description: Template UUID ID
         in: path
         name: id
         required: true
         type: string
-      produces:
-      - application/json
       responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/response.RsBase'
+        "24":
+          description: Template deleted successfully
         "400":
-          description: Bad Request
+          description: Invalid dynamic parameters
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Delete an template by ID
+      summary: Delete Global Template
       tags:
-      - template
+      - Templates
     get:
-      consumes:
-      - application/json
+      description: Returns the decoupled layout configuration values for a designated
+        template ID
       parameters:
-      - description: Template ID
+      - description: Template UUID ID
         in: path
         name: id
         required: true
@@ -9633,61 +10483,127 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Success payload containing raw blueprint configurations
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/template.RsTemplate'
         "400":
-          description: Bad Request
+          description: Invalid configuration criteria identifier
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "404":
-          description: Not Found
+          description: Target document or template context completely absent
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Get an template by ID
+      summary: Get Global Template
       tags:
-      - template
+      - Templates
     put:
       consumes:
       - application/json
+      description: Modifies the foundational attributes, HTML blueprints, or styling
+        tags of an existing configuration profile
       parameters:
-      - description: Template ID
+      - description: Template UUID ID
         in: path
         name: id
         required: true
         type: string
+      - description: Updated Configuration Payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/template.RqGlobalTemplate'
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Template updated successfully!
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/template.RsTemplate'
         "400":
-          description: Bad Request
+          description: Invalid Request parameters
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Update an template by ID
+      summary: Update Global Template
       tags:
-      - template
-  /template/{id}/setting:
+      - Templates
+  /templates/{id}/preview-pdf:
+    post:
+      consumes:
+      - application/json
+      description: Takes raw arbitrary runtime invoice context and passes it to headless
+        rendering layers instantly
+      parameters:
+      - description: Template UUID ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Dynamic structural template values variables
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/template.InvoiceData'
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: application/pdf Binary context stream
+          schema:
+            type: file
+        "400":
+          description: Context assignment mapping values parsing discrepancies
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Target document base unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Preview PDF Generation
+      tags:
+      - Templates
+  /templates/{id}/settings:
     get:
-      consumes:
-      - application/json
+      description: Queries UI visual presets (e.g., brand colors, fonts, margins)
+        tracked down to structural design blocks
       parameters:
-      - description: Template ID
+      - description: Template UUID ID
         in: path
         name: id
         required: true
@@ -9696,51 +10612,177 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Style settings specifications map
           schema:
-            $ref: '#/definitions/response.RsBase'
+            $ref: '#/definitions/template.RsSetting'
         "400":
-          description: Bad Request
+          description: Invalid profile lookup request values
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Get an template settings by ID
+      summary: Get Default Template Settings
       tags:
-      - template
+      - Templates
     put:
       consumes:
       - application/json
+      description: Overrides layout details, font schemas, branding assets, or invoice
+        structural rules dynamically
       parameters:
-      - description: Template ID
+      - description: Template UUID ID
         in: path
         name: id
+        required: true
+        type: string
+      - description: Updated Layout Target Settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/template.RqUpdateSetting'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Settings modified context mapping properties updated cleanly
+          schema:
+            $ref: '#/definitions/template.RsSetting'
+        "400":
+          description: Validation failure errors
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Update Template Settings
+      tags:
+      - Templates
+  /templates/invoice-settings:
+    get:
+      description: Queries UI visual presets prioritizing custom invoice overrides,
+        falling back to global defaults automatically
+      parameters:
+      - description: Invoice UUID ID Context
+        in: query
+        name: invoiceId
+        required: true
+        type: string
+      - description: Template UUID ID (can be repeated for multiple templates)
+        in: query
+        name: templateId
         required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Resolved style settings specifications map keyed by template
+            ID
           schema:
-            $ref: '#/definitions/response.RsBase'
+            additionalProperties: true
+            type: object
         "400":
-          description: Bad Request
+          description: Invalid parameters profile lookup request values
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/response.RsError'
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerToken: []
-      summary: Update an template setting by ID
+      summary: Get Invoice-Specific Template Settings
       tags:
-      - template
+      - Templates
+  /templates/invoices/{invoice_id}/download:
+    get:
+      description: Queries static database invoice documents, evaluates values natively
+        against dynamic parameters, and streams a file binary response
+      parameters:
+      - description: Target Invoice Entity Context Index UUID
+        in: path
+        name: invoice_id
+        required: true
+        type: string
+      - description: Template UUID ID (can be repeated for multiple templates)
+        in: query
+        name: templateId
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: Target invoice document byte stream file object matches
+          schema:
+            type: file
+        "400":
+          description: Target routing value errors or profile validation flaws
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Target entities unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Download Compiled Invoice PDF
+      tags:
+      - Templates
+  /templates/sync-defaults:
+    post:
+      description: Forces state evaluations to verify, sync, or seed layout definitions
+        directly to internal storage
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Initialization completion message mappings
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerToken: []
+      summary: Synchronize Global Default Layouts
+      tags:
+      - Templates
 securityDefinitions:
   BearerToken:
     description: Type "Bearer <your_token>" to authenticate

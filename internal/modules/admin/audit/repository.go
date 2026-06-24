@@ -17,7 +17,6 @@ type Repository interface {
 	List(ctx context.Context, f common.Filter) ([]*AuditLog, error)
 	GetByID(ctx context.Context, id string) (*AuditLog, error)
 	Count(ctx context.Context, f common.Filter) (int, error)
-	GetAdminIDs(ctx context.Context) ([]uuid.UUID, error)
 	GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error)
 	GetUserName(ctx context.Context, id string) (string, error)
 	GetEntityName(ctx context.Context, table string, id string) (*string, error)

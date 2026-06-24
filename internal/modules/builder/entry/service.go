@@ -2,6 +2,8 @@ package entry
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -22,7 +24,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
@@ -41,17 +42,19 @@ type IService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
-	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
+	ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID, selectedColumns []string) (interface{}, string, error)
 	ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error)
 }
 
 type Service struct {
+	db              *sqlx.DB
 	repo            IRepository
 	fieldRepo       field.IRepository
 	methodSvc       method.IService
@@ -59,7 +62,6 @@ type Service struct {
 	detailSvc       detail.IService
 	versionSvc      version.IService
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	accountantRepo  accountant.Repository
 	authRepo        auth.Repository
 	clinicRepo      clinic.Repository
@@ -78,8 +80,9 @@ type Service struct {
 	authSvc         auth.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
 	return &Service{
+		db:              db,
 		repo:            repo,
 		fieldRepo:       fieldRepo,
 		methodSvc:       methodSvc,
@@ -88,7 +91,6 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 		versionSvc:      versionSvc,
 		auditSvc:        auditSvc,
 		formulaSvc:      formulaSvc,
-		eventsSvc:       eventsSvc,
 		accountantRepo:  accRepo,
 		authRepo:        authRepo,
 		clinicRepo:      clinicRepo,
@@ -110,8 +112,9 @@ func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, meth
 func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 
 	var result *RsFormEntry
+	var realOwnerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
 		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 		if err != nil {
@@ -121,7 +124,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			return fmt.Errorf("clinic not found: %s", req.ClinicID)
 		}
 
-		realOwnerID := clinic.PractitionerID
+		realOwnerID = clinic.PractitionerID
 
 		if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 			return err
@@ -188,23 +191,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, e.ID, result)
 
-		metaMap := events.JSONBMap{
-			"entry_id":        result.ID.String(),
-			"form_version_id": formVersionID.String(),
-			"clinic_id":       req.ClinicID.String(),
-			"status":          result.Status,
-		}
-
-		s.recordSharedEvent(ctx, tx, req.ClinicID, formVersionID, auditctx.ActionEntryCreated, result.ID,
-			"Accountant %s created a new entry for form: %s",
-			metaMap,
-		)
-
-		// Verify ledger integrity before commit
-		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, result.ID); err != nil {
-			return err
-		}
-
 		return nil
 	})
 
@@ -221,7 +207,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		AfterState: result,
 	})
 
-	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created"); err != nil {
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created", []uuid.UUID{realOwnerID}); err != nil {
 		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
@@ -232,7 +218,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	var e *FormEntry
 	var values []*FormEntryValue
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var err error
 
 		e, values, err = s.repo.GetByID(ctx, tx, id)
@@ -257,8 +243,9 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	var result *RsFormEntry
 	var beforeState any
+	var practitionerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
 
 		existing, values, innerErr := s.repo.GetByID(ctx, tx, id)
@@ -269,6 +256,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			return fmt.Errorf("form entry not found: %s", id)
 		}
 
+		practitionerID = existing.PractitionerID
 		beforeState = existing.ToRs(values)
 
 		dateToCheck := existing.Date
@@ -335,23 +323,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, id, result)
 
-		metaMap := events.JSONBMap{
-			"entry_id":        result.ID.String(),
-			"form_version_id": existing.FormVersionID.String(),
-			"clinic_id":       existing.ClinicID.String(),
-			"status":          result.Status,
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryUpdated, id,
-			"Accountant %s updated entry for form: %s",
-			metaMap,
-		)
-
-		// Verify ledger integrity before commit
-		if err := s.repo.AssertLedgerGroupBalances(ctx, tx, id); err != nil {
-			return err
-		}
-
 		return nil
 	})
 
@@ -369,16 +340,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		AfterState:  result,
 	})
 
-	// Send update notification
-	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated"); err != nil {
-		log.Printf("failed to send transaction update notification event: %v", err.Error())
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated", []uuid.UUID{practitionerID}); err != nil {
+		log.Printf("failed to send transaction notification event: %v", err.Error())
 	}
 
 	return result, nil
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		existing, values, err := s.repo.GetByID(ctx, tx, id)
 		if err != nil {
 			return err
@@ -392,16 +362,6 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 
-		metaMap := events.JSONBMap{
-			"entry_id":  existing.ID.String(),
-			"clinic_id": existing.ClinicID.String(),
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, id,
-			"Accountant %s deleted an entry for form: %s",
-			metaMap,
-		)
-
 		if err := s.repo.Delete(ctx, tx, id); err != nil {
 			return err
 		}
@@ -412,6 +372,53 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			Module:      auditctx.ModuleForms,
 			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 			EntityID:    &idStr,
+			BeforeState: beforeState,
+		})
+
+		return nil
+	})
+}
+
+func (s *Service) DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, values, err := s.repo.GetByValueID(ctx, tx, id, valueID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		beforeState := existing.ToRs(values)
+
+		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
+			return err
+		}
+
+		if err := s.repo.DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
+			return err
+		}
+
+		// Check if all remaining entry values are deleted; if so, cascade delete the parent entry
+		var remainingCount int
+		countQuery := `SELECT COUNT(*) FROM tbl_form_entry_value WHERE entry_id = $1 AND deleted_at IS NULL`
+		if err := tx.QueryRowContext(ctx, countQuery, id).Scan(&remainingCount); err != nil {
+			return fmt.Errorf("check remaining entry values: %w", err)
+		}
+		if remainingCount == 0 {
+			// All values are deleted, soft-delete the parent entry
+			deleteQuery := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+			if _, err := tx.ExecContext(ctx, deleteQuery, id); err != nil {
+				return fmt.Errorf("cascade delete form entry: %w", err)
+			}
+		}
+
+		valueIDStr := valueID.String()
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+			Action:      auditctx.ActionEntryDeleted,
+			Module:      auditctx.ModuleForms,
+			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
+			EntityID:    &valueIDStr,
 			BeforeState: beforeState,
 		})
 
@@ -551,7 +558,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				ID:                 uuid.New(),
 				EntryID:            entryID,
 				FormFieldID:        &fieldID,
-				CoaID:              f.CoaID, // 🚀 FIXED
+				CoaID:              f.CoaID,
 				NetAmount:          &netBase,
 				GstAmount:          gstAmount,
 				GrossAmount:        &roundedGross,
@@ -569,7 +576,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				ID:                 uuid.New(),
 				EntryID:            entryID,
 				FormFieldID:        &fieldID,
-				CoaID:              f.CoaID, // 🚀 FIXED
+				CoaID:              f.CoaID,
 				NetAmount:          &netBase,
 				GstAmount:          nil,
 				GrossAmount:        &grossTotal,
@@ -641,7 +648,7 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			ID:                 uuid.New(),
 			EntryID:            entryID,
 			FormFieldID:        &fieldID,
-			CoaID:              f.CoaID, // 🚀 FIXED
+			CoaID:              f.CoaID,
 			NetAmount:          &netBase,
 			GstAmount:          gstAmount,
 			GrossAmount:        &grossTotal,
@@ -810,177 +817,113 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 	// Rule: amounts are stored with their natural sign (positive = normal balance).
 	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
 	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
-	// A balanced entry sums to zero. If not, inject a COA-600 (Bank) offset row.
+	// A balanced entry sums to zero. If not, inject a COA-980 (Current Year Earnings) offset row.
 
 	if len(out) > 0 {
-		var totalLedgerImpact float64
+		var rawDebits float64
+		var rawCredits float64
 		var practitionerID *uuid.UUID
+		var earningsCoaID *uuid.UUID
 
+		// Pass 2a: Calculate baseline balances from explicit user input lines
 		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-				continue
-			}
-
-			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-			if err == nil && chartAccount != nil {
-				if practitionerID == nil {
+			if ev.CoaID != nil {
+				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+				if err == nil && chartAccount != nil && practitionerID == nil {
 					practitionerID = &chartAccount.PractitionerID
-				}
-
-				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				// Use the raw signed amount — the sign already encodes debit/credit direction.
-				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-					totalLedgerImpact += *ev.NetAmount
-				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-					totalLedgerImpact -= *ev.NetAmount
+					earningsAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 980, *practitionerID, nil)
+					if err == nil && earningsAccount != nil {
+						id := earningsAccount.ID
+						earningsCoaID = &id
+					}
 				}
 			}
 		}
 
-		totalLedgerImpact = s.roundValue(totalLedgerImpact)
+		cleanOut := make([]*FormEntryValue, 0, len(out))
+		var formulaAllocationsTo980 float64
 
-		if math.Abs(totalLedgerImpact) > 0.01 && practitionerID != nil {
-			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-			if err != nil || bankAccount == nil {
-				return nil, fmt.Errorf("missing required balancing account: COA code 600 Business Bank Account for practitioner %s", practitionerID.String())
+		for _, ev := range out {
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID == nil {
+				if ev.Description != nil && *ev.Description == "Current Year Earnings Allocation" {
+					continue
+				}
 			}
+			cleanOut = append(cleanOut, ev)
 
-			// COA-600 is an Asset; to absorb the variance we invert it.
-			counterBalancingAmount := s.roundValue(-totalLedgerImpact)
-			bankCoaID := bankAccount.ID
-
-			out = append(out, &FormEntryValue{
-				ID:                 uuid.New(),
-				EntryID:            entryID,
-				FormFieldID:        nil,
-				CoaID:              &bankCoaID,
-				NetAmount:          &counterBalancingAmount,
-				GstAmount:          nil,
-				GrossAmount:        &counterBalancingAmount,
-				BusinessPercentage: nil, // System balancing entries don't have business percentage
-			})
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil && (fieldMeta.IsFormula || fieldMeta.IsComputed) && ev.NetAmount != nil {
+					formulaAllocationsTo980 += math.Abs(*ev.NetAmount)
+				}
+			}
 		}
-		var finalLedgerBalance float64
+		out = cleanOut
+
 		for _, ev := range out {
 			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
 				continue
 			}
 
+			if ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil {
+					// If it's a formula field or designated summary, skip its entry from ledger totals
+					if fieldMeta.IsFormula || fieldMeta.IsComputed {
+						continue
+					}
+				}
+			}
+
 			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
 			if err == nil && chartAccount != nil {
 				accountType := strings.ToLower(chartAccount.AccountTypeName)
-				if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-					finalLedgerBalance += *ev.NetAmount
-				} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-					finalLedgerBalance -= *ev.NetAmount
+				isDebitNormal := strings.Contains(accountType, "asset") ||
+					strings.Contains(accountType, "expense") ||
+					strings.Contains(accountType, "direct cost") ||
+					strings.Contains(accountType, "bank")
+
+				val := math.Abs(*ev.NetAmount)
+				if isDebitNormal {
+					rawDebits += val
+				} else {
+					rawCredits += val
 				}
 			}
 		}
 
-		finalLedgerBalance = s.roundValue(finalLedgerBalance)
-		if math.Abs(finalLedgerBalance) > 0.01 {
-			return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
+		rawDebits = s.roundValue(rawDebits)
+		rawCredits = s.roundValue(rawCredits)
+
+		trueNetProfit := s.roundValue(rawCredits - rawDebits)
+
+		// Pass 2b: Inject a balancing entry if they don't match
+		if practitionerID != nil && earningsCoaID != nil {
+			balancingAmount := s.roundValue(trueNetProfit - formulaAllocationsTo980)
+
+			if math.Abs(balancingAmount) > 0.01 {
+				desc := "Current Year Earnings Allocation"
+
+				out = append(out, &FormEntryValue{
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        nil,
+					CoaID:              earningsCoaID,
+					NetAmount:          &balancingAmount,
+					GstAmount:          nil,
+					GrossAmount:        &balancingAmount,
+					BusinessPercentage: nil,
+					Description:        &desc,
+				})
+			}
 		}
 	}
 
 	return out, nil
 }
 
-// // =========================================================================
-// // PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
-// // =========================================================================
-// if len(out) > 0 {
-// 	var totalLedgerImpact float64
-// 	var practitionerID *uuid.UUID
-
-// 	// 1. Calculate initial transaction variance using exact DB polarity rules
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			if practitionerID == nil {
-// 				practitionerID = &chartAccount.PractitionerID
-// 			}
-
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			// Mirror the SQL script polarity perfectly
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				totalLedgerImpact += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				totalLedgerImpact -= amount
-// 			}
-// 		}
-// 	}
-
-// 	totalLedgerImpact = s.roundValue(totalLedgerImpact)
-
-// 	// 2. Inject balancing row if variance exists
-// 	if totalLedgerImpact != 0 && practitionerID != nil {
-// 		var counterBalancingAmount float64
-// 		var resolvedCoaID uuid.UUID
-// 		var foundTarget bool
-
-// 		// If totalLedgerImpact is positive, the database has too many debits.
-// 		// We need to inject a CREDIT (negative amount) to clear it.
-// 		counterBalancingAmount = s.roundValue(-totalLedgerImpact)
-
-// 		// Rule 3: Global Cash Safe-Harbor Fallback (Code 600)
-// 		bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-// 		if err == nil && bankAccount != nil {
-// 			resolvedCoaID = bankAccount.ID
-// 			foundTarget = true
-// 		}
-
-// 		if foundTarget {
-// 			out = append(out, &FormEntryValue{
-// 				ID:          uuid.New(),
-// 				EntryID:     entryID,
-// 				FormFieldID: nil, // Marks this as a system balancing row
-// 				CoaID:       &resolvedCoaID,
-// 				NetAmount:   &counterBalancingAmount,
-// 				GstAmount:   nil,
-// 				GrossAmount: &counterBalancingAmount,
-// 			})
-// 		}
-// 	}
-
-// 	// 3. Post-Balancing Verification Guardrail (Must exactly mirror the math blocks above)
-// 	var finalLedgerBalance float64
-// 	for _, ev := range out {
-// 		if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
-// 			continue
-// 		}
-
-// 		chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
-// 		if err == nil && chartAccount != nil {
-// 			amount := *ev.NetAmount
-// 			accountType := strings.ToLower(chartAccount.AccountTypeName)
-
-// 			if strings.Contains(accountType, "asset") || strings.Contains(accountType, "expense") {
-// 				finalLedgerBalance += amount
-// 			} else if strings.Contains(accountType, "liability") || strings.Contains(accountType, "equity") || strings.Contains(accountType, "revenue") || strings.Contains(accountType, "income") {
-// 				finalLedgerBalance -= amount
-// 			}
-// 		}
-// 	}
-
-// 	finalLedgerBalance = s.roundValue(finalLedgerBalance)
-// 	if finalLedgerBalance > 0.01 || finalLedgerBalance < -0.01 {
-// 		return nil, fmt.Errorf("ledger integrity violation: variance of %.2f exceeds 0.01 threshold after balancing", finalLedgerBalance)
-// 	}
-// }
-
-// 	return out, nil
-// }
-
 // roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
 // This ensures all monetary amounts are precise to 2 decimal places
-
 func (s *Service) roundValue(val float64) float64 {
 	return math.Round(val*100) / 100
 }
@@ -1100,67 +1043,7 @@ func roundEntry(v float64) float64 {
 	return float64(int(shifted)) / 100
 }
 
-// Helper to record shared events
-func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
-	meta := auditctx.GetMetadata(ctx)
-
-	// Only act if the user is an Accountant
-	if meta.UserType == nil || !strings.EqualFold(*meta.UserType, util.RoleAccountant) || meta.UserID == nil {
-		return
-	}
-
-	actorUserID, err := uuid.Parse(*meta.UserID)
-	if err != nil {
-		return
-	}
-
-	formName := "Form"
-	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
-	if err == nil && ver != nil {
-		form, err := s.detailRepo.GetByID(ctx, ver.FormId)
-		if err == nil && form != nil {
-			formName = form.Name
-		}
-	}
-
-	clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicID)
-	if err != nil || clinic == nil {
-		return
-	}
-	var accountantID uuid.UUID
-	var fullName string
-
-	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-	if err == nil && accProfile != nil {
-		accountantID = accProfile.ID
-	} else {
-		accountantID = actorUserID
-	}
-
-	user, err := s.authRepo.FindByID(ctx, actorUserID)
-	if err == nil && user != nil {
-		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-	}
-
-	// Record Event
-	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-		ID:             uuid.New(),
-		PractitionerID: clinic.PractitionerID,
-		AccountantID:   accountantID,
-		ActorID:        actorUserID,
-		ActorName:      &fullName,
-		ActorType:      util.RoleAccountant,
-		EventType:      action,
-		EntityType:     "FORM",
-		EntityID:       entryID,
-		Description:    fmt.Sprintf(descriptionTemplate, fullName, formName),
-		Metadata:       metadata,
-		CreatedAt:      time.Now(),
-	})
-}
-
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	// --- AUDIT LOG ---
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
@@ -1177,37 +1060,8 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		},
 	})
 
-	// Record the Shared Event
-	if role == util.RoleAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
-
-		var pID uuid.UUID
-		if filter.PractitionerID != nil {
-			pID = *filter.PractitionerID
-		}
-
-		_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-			ID:             uuid.New(),
-			PractitionerID: pID,
-			AccountantID:   actorID,
-			ActorID:        userID,
-			ActorName:      &fullName,
-			ActorType:      role,
-			EventType:      "transaction_report.generated",
-			EntityType:     "REPORT",
-			Description:    fmt.Sprintf("Accountant %s generated Transaction Report", fullName),
-			Metadata:       events.JSONBMap{"report_type": "Transaction Report"},
-			CreatedAt:      time.Now(),
-		})
-	}
-
 	f := filter.ToCommonFilter()
 
-	// Capture what the client sent (Page Index)
 	incomingPageIndex := 0
 	if f.Offset != nil {
 		incomingPageIndex = *f.Offset
@@ -1218,9 +1072,6 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		pageSize = *f.Limit
 	}
 
-	// Translate the Page Index into a real database Row Skip Offset
-	// Page 0 -> (0 * 10) = OFFSET 0  (Gets rows 1 to 10)
-	// Page 1 -> (1 * 10) = OFFSET 10 (Gets rows 11 to 20)
 	calculatedDbOffset := incomingPageIndex * pageSize
 	f.Offset = &calculatedDbOffset
 
@@ -1251,6 +1102,19 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 
 	f := filter.ToCommonFilter()
 
+	pageIndex := 0
+	if f.Offset != nil {
+		pageIndex = *f.Offset
+	}
+
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	dbOffset := pageIndex * pageSize
+	f.Offset = &dbOffset
+
 	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1261,17 +1125,21 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, pageIndex, pageSize)
 	return &rs, nil
 }
 
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error) {
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID, selectedColumns []string) (interface{}, string, error) {
 	var result interface{}
 	var contentType string
 	var fullName string
-	var targetNotifIDs []uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	// Fallback
+	if len(selectedColumns) == 0 {
+		selectedColumns = []string{"date", "supplier_name", "description", "clinic", "expenses", "net_amount", "gst_amount", "gross_amount", "gst_type", "business_percentage", "note"}
+	}
+
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			return err
@@ -1353,7 +1221,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
 		}
 
-		// Handle Excel Export
 		if strings.ToLower(exportType) == "excel" {
 			config := export.ExportConfig{
 				EntityName:     entityName,
@@ -1368,24 +1235,37 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			for i, g := range groups {
 				exportDetails := make([]*entryexport.CoaDetail, len(g.Details))
 				for j, d := range g.Details {
-					var createdAtTime time.Time
-					if d.CreatedAt != "" {
-						parsedTime, err := time.Parse("2006-01-02", d.CreatedAt)
+
+					var realizedDate time.Time
+					sourceDateStr := ""
+					if d.Date != nil {
+						sourceDateStr = *d.Date
+					} else if d.CreatedAt != "" {
+						sourceDateStr = d.CreatedAt
+					}
+
+					if sourceDateStr != "" {
+						if len(sourceDateStr) >= 10 {
+							sourceDateStr = sourceDateStr[:10]
+						}
+						parsed, err := time.Parse("2006-01-02", sourceDateStr)
 						if err == nil {
-							createdAtTime = parsedTime
+							realizedDate = parsed
 						}
 					}
 
 					exportDetails[j] = &entryexport.CoaDetail{
-						FormFieldName: d.FormFieldName,
-						TaxTypeName:   d.TaxTypeName,
-						FormName:      lo.FromPtrOr(d.FormName, "-"),
-						ClinicName:    lo.FromPtrOr(d.ClinicName, "-"),
-						NetAmount:     d.NetAmount,
-						GstAmount:     d.GstAmount,
-						GrossAmount:   d.GrossAmount,
-						CreatedAt:     createdAtTime,
-						IsExpense:     d.IsExpense,
+						FormFieldName:      d.FormFieldName,
+						TaxTypeName:        d.TaxTypeName,
+						FormName:           lo.FromPtrOr(d.FormName, "-"),
+						ClinicName:         lo.FromPtrOr(d.ClinicName, "-"),
+						NetAmount:          d.NetAmount,
+						GstAmount:          d.GstAmount,
+						GrossAmount:        d.GrossAmount,
+						CreatedAt:          realizedDate,
+						IsExpense:          d.IsExpense,
+						BusinessPercentage: d.BusinessPercentage,
+						Notes:              d.Notes,
 					}
 				}
 				exportGroups[i] = &entryexport.CoaGroup{
@@ -1397,47 +1277,12 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 				}
 			}
 
-			buf, err := entryexport.GenerateExcelReport(exportGroups, config, formatDateHelper)
+			buf, err := entryexport.GenerateExcelReport(exportGroups, config, formatDateHelper, selectedColumns)
 			if err != nil {
 				return fmt.Errorf("failed to generate excel: %w", err)
 			}
 			result = buf
 			contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-		}
-
-		// Resolve target practitioners for Notifications
-		targetNotifIDs = PracIDs
-
-		// If clinic_id is provided, look up the owner
-		if f.ClinicID != nil {
-			clinicUUID, err := uuid.Parse(*f.ClinicID)
-			if err == nil {
-				clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicUUID)
-				if err == nil && clinic != nil {
-					targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
-				}
-			}
-		}
-
-		if role == util.RoleAccountant {
-			for _, pID := range targetNotifIDs {
-				err := s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "transaction_report.exported",
-					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
-					Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
-					CreatedAt:      time.Now(),
-				})
-				if err != nil {
-					return fmt.Errorf("failed to log shared transaction export event: %w", err)
-				}
-			}
 		}
 
 		return nil
@@ -1447,7 +1292,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		return nil, "", err
 	}
 
-	// --- AUDIT LOG ---
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
@@ -1459,8 +1303,9 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		EntityType: lo.ToPtr(auditctx.EntityTransactions),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
-			"report_type": "Transaction Report",
-			"export_type": exportType,
+			"report_type":      "Transaction Report",
+			"export_type":      exportType,
+			"selected_columns": selectedColumns,
 		},
 	})
 
@@ -1574,7 +1419,7 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string) error {
+func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string, targetPractitionerIDs []uuid.UUID) error {
 	if s.notificationPub == nil {
 		return fmt.Errorf("notification publisher is nil")
 	}
@@ -1618,15 +1463,23 @@ func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, rec
 		}
 
 	case util.ActorAccountant:
-		// If the sender is an accountant, we need to find which practitioners to notify
-		// Get all practitioners linked to this accountant
-		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
-		if err != nil {
-			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
-			return nil // Don't fail transaction if notification fails
+		// If the sender is an accountant, notify only specific practitioners if provided
+		var practitionerIDs []uuid.UUID
+
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the transaction/report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil // Don't fail transaction if notification fails
+			}
 		}
 
-		// Notify each linked practitioner
+		// Notify each practitioner
 		for _, practitionerID := range practitionerIDs {
 			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
 			if err != nil {

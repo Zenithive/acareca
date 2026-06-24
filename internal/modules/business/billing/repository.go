@@ -164,9 +164,9 @@ func (r *repository) CountBillingHistory(ctx context.Context, f common.Filter) (
 
 func (r *repository) ListActiveSubscriptions(ctx context.Context) ([]*RsSubscriptionPlan, error) {
 	const query = `
-		SELECT id, name, description, price, duration_days
+		SELECT id, name, description, price, duration_days, is_visible
 		FROM tbl_subscription
-		WHERE is_active = true AND deleted_at IS NULL
+		WHERE is_active = true AND is_visible = true AND deleted_at IS NULL
 		ORDER BY price ASC
 	`
 	var rows []struct {
@@ -175,6 +175,7 @@ func (r *repository) ListActiveSubscriptions(ctx context.Context) ([]*RsSubscrip
 		Description  *string `db:"description"`
 		Price        float64 `db:"price"`
 		DurationDays int     `db:"duration_days"`
+		IsVisible    bool    `db:"is_visible"`
 	}
 	if err := r.db.SelectContext(ctx, &rows, query); err != nil {
 		return nil, fmt.Errorf("list active subscriptions: %w", err)
@@ -187,6 +188,7 @@ func (r *repository) ListActiveSubscriptions(ctx context.Context) ([]*RsSubscrip
 			Description:  row.Description,
 			Price:        row.Price,
 			DurationDays: row.DurationDays,
+			IsVisible:    row.IsVisible,
 		}
 	}
 	return result, nil

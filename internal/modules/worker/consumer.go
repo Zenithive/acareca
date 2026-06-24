@@ -187,11 +187,13 @@ func (c *Consumer) shouldNotifyUser(ctx context.Context, userID, entityID uuid.U
 		return false
 	}
 
-	notificationEventType := util.MapEventTypeToNotificationEventType(eventType)
+	notificationEventTypes := util.MapEventTypeToNotificationEventType(eventType)
 
 	if pref.EntityID == entityID && pref.EntityType == string(entityType) {
-		if slices.Contains(pref.EventType, notificationEventType) {
-			return true
+		for _, notificationEventType := range notificationEventTypes {
+			if slices.Contains(pref.EventType, notificationEventType) {
+				return true
+			}
 		}
 		return false
 	}

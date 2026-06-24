@@ -4,6 +4,9 @@ go 1.26
 
 require (
 	github.com/aws/aws-sdk-go v1.55.8
+	github.com/aymerick/raymond v2.0.2+incompatible
+	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
+	github.com/chromedp/chromedp v0.15.1
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.1
@@ -24,6 +27,14 @@ require (
 	golang.org/x/oauth2 v0.35.0
 	golang.org/x/text v0.35.0
 	golang.org/x/time v0.15.0
+)
+
+require (
+	github.com/chromedp/sysutil v1.1.0 // indirect
+	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433 // indirect
+	github.com/gobwas/httphead v0.1.0 // indirect
+	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/gobwas/ws v1.4.0 // indirect
 )
 
 require (

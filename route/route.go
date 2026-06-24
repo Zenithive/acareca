@@ -21,8 +21,8 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/business/setting"
-	businessEvents "github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	clinicauth "github.com/iamarpitzala/acareca/internal/modules/clinic/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
@@ -132,10 +132,6 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	adminHandler := admin.NewHandler(adminSvc)
 	admin.RegisterRoutes(v1, adminHandler, cfg)
 
-	// Initialize events service first
-	eventsRepo := businessEvents.NewRepository(dbConn)
-	eventsSvc := businessEvents.NewService(eventsRepo, notificationSvc, auditSvc)
-
 	// ============ COA SERVICE (cross-module dependency) ============
 	coaRepo := coa.NewRepository(dbConn)
 	coaSvc := coa.NewService(coaRepo, dbConn, auditSvc)
@@ -171,19 +167,19 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 
 	// ============ CLINIC SERVICE (cross-module dependency) ============
 	clinicRepo := clinic.NewRepository(dbConn)
-	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, eventsSvc, notificationSvc, authSvc, invitationRepo, invitationSvc, adminRepo)
+	clinicSvc := clinic.NewService(dbConn, clinicRepo, accountant.NewRepository(dbConn), authRepo, fileRepo, auditSvc, notificationSvc, authSvc, invitationRepo, invitationSvc, adminRepo)
 
 	clinicHandler := clinic.NewHandler(clinicSvc)
 	clinic.RegisterRoutes(v1, clinicHandler, cfg, permAdapter)
 
 	// ============ ENGINE MODULES (P&L, BAS, Balance Sheet) ============
 	plRepo := pl.NewRepository(dbConn)
-	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, eventsSvc)
+	plSvc := pl.NewService(plRepo, clinicRepo, accountantRepo, practitionerSvc, authRepo, auditSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	plHandler := pl.NewHandler(plSvc, invitationSvc, accountantRepo)
 	pl.RegisterRoutes(v1, plHandler, cfg, permAdapter)
 
 	basRepo := bas.NewRepository(dbConn)
-	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, eventsSvc, authRepo, practitionerSvc)
+	basSvc := bas.NewService(basRepo, accountantRepo, auditSvc, clinicRepo, fyRepo, authRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	basHandler := bas.NewHandler(basSvc, invitationSvc)
 	bas.RegisterRoutes(v1, basHandler, cfg)
 
@@ -193,7 +189,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	equity.RegisterRoutes(v1, equityHandler, cfg)
 
 	bsRepo := bs.NewRepository(dbConn)
-	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, eventsSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc)
+	bsSvc := bs.NewService(bsRepo, equitySvc, dbConn, auditSvc, authRepo, invitationSvc, accountantRepo, practitionerSvc, invitationRepo, authSvc, notificationSvc, adminRepo)
 	bsHandler := bs.NewHandler(bsSvc, invitationSvc)
 	bs.RegisterRoutes(v1, bsHandler, cfg)
 
@@ -231,17 +227,17 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	preferenceHandler := preference.NewHandler(preferenceSvc)
 	preference.RegisterRoutes(nft, preferenceHandler)
 
-	// ============ BILLING MODULE ============
-	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc)
-
-	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(invoice.NewRepository(dbConn))
-	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
-
 	// ============ INVOICE MODULE ============
 	tmpRepo := template.NewRepository(dbConn)
 	tempSvc := template.NewService(tmpRepo, cfg)
 	RegisterInvoiceRoutes(v1, cfg, dbConn, auditSvc, tempSvc)
+
+	clinicAuthRepo := clinicauth.NewRepository(dbConn)
+	clinicAuthSvc := clinicauth.NewService(clinicAuthRepo, cfg, dbConn, auditSvc, tempSvc)
+
+	contactSvc := contact.NewService(contact.NewRepository(dbConn))
+	invoiceSvc := invoice.NewService(dbConn, invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc)
+	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// Initialize notification consumer (separate from service)
 	notificationPublisher := worker.NewPublisher(events)
@@ -263,8 +259,11 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	// Register file routes
 	file.RegisterRoutes(v1, fileHandler, middleware.Auth(cfg))
 
+	// ============ BILLING MODULE ============
+	RegisterBillingRoutes(r, v1, cfg, dbConn, practitionerRepo, userSubscriptionRepo, stripeClient, auditSvc, notificationSvc, adminRepo)
+
 	// ============ BUILDER ROUTES (requires notificationPublisher) ============
-	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, eventsSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
+	RegisterBuilderRoutes(v1, cfg, dbConn, clinicSvc, coaSvc, coaRepo, practitionerSvc, accountantRepo, authRepo, auditSvc, invitationSvc, invitationRepo, notificationSvc, adminRepo, authSvc)
 
 	return auditSvc, notifier, notificationRepo, notificationSvc, notificationConsumer
 
