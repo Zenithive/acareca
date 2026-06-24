@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/contact"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/invoice/section"
+	"github.com/iamarpitzala/acareca/internal/modules/clinic/item"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
 	"github.com/samber/lo"
 )
@@ -135,9 +136,77 @@ func (r *RqUpdateInvoice) ApplyToInvoice(inv *Invoice) *Invoice {
 	}
 
 	if r.Sections != nil {
+		existingSectionMap := make(map[uuid.UUID]*section.Section)
+		for i := range inv.Sections {
+			existingSectionMap[inv.Sections[i].ID] = &inv.Sections[i]
+		}
+
+		requestSectionIDs := make(map[uuid.UUID]bool)
 		sections := make([]section.Section, 0, len(r.Sections))
 		for _, rqSec := range r.Sections {
-			sections = append(sections, *rqSec.ToSection())
+			sec := rqSec.ToSection()
+
+			if existingSec, ok := existingSectionMap[sec.ID]; ok {
+				if sec.InvoiceSection == "" {
+					sec.InvoiceSection = existingSec.InvoiceSection
+				}
+				if sec.InvoiceID == nil {
+					sec.InvoiceID = existingSec.InvoiceID
+				}
+				if len(rqSec.Entries) == 0 {
+					sec.Entries = existingSec.Entries
+				} else {
+					existingEntryMap := make(map[uuid.UUID]*item.Item)
+					for _, e := range existingSec.Entries {
+						existingEntryMap[e.ID] = e
+					}
+
+					for idx, entry := range sec.Entries {
+						if existingEntry, ok := existingEntryMap[entry.ID]; ok && entry.ID != uuid.Nil {
+							rqEntry := rqSec.Entries[idx]
+							if entry.Name == "" {
+								entry.Name = existingEntry.Name
+							}
+							if entry.Description == nil && existingEntry.Description != nil {
+								entry.Description = existingEntry.Description
+							}
+							if entry.EntryType == nil && existingEntry.EntryType != nil {
+								entry.EntryType = existingEntry.EntryType
+							}
+							if entry.BASCode == nil && existingEntry.BASCode != nil {
+								entry.BASCode = existingEntry.BASCode
+							}
+							if entry.FieldKey == nil && existingEntry.FieldKey != nil {
+								entry.FieldKey = existingEntry.FieldKey
+							}
+							if entry.Amount == 0 && existingEntry.Amount != 0 {
+								entry.Amount = existingEntry.Amount
+							}
+							if entry.SortOrder == 0 && existingEntry.SortOrder != 0 {
+								entry.SortOrder = existingEntry.SortOrder
+							}
+							if entry.Expression == nil && existingEntry.Expression != nil {
+								entry.Expression = existingEntry.Expression
+							}
+							if rqEntry.IsFinal == nil && existingEntry.IsFinal {
+								entry.IsFinal = existingEntry.IsFinal
+							}
+							if entry.InvoiceSectionID == nil && existingEntry.InvoiceSectionID != nil {
+								entry.InvoiceSectionID = existingEntry.InvoiceSectionID
+							}
+						}
+					}
+				}
+			}
+
+			requestSectionIDs[sec.ID] = true
+			sections = append(sections, *sec)
+		}
+
+		for _, existingSec := range inv.Sections {
+			if !requestSectionIDs[existingSec.ID] {
+				sections = append(sections, existingSec)
+			}
 		}
 		inv.Sections = sections
 	}

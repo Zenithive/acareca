@@ -106,7 +106,9 @@ func (r *RqUpdateEntry) ApplyToItem(item *Item) *Item {
 	if r.IsFinal != nil {
 		item.IsFinal = *r.IsFinal
 	}
-	item.FieldKey = r.FieldKey
+	if r.FieldKey != nil {
+		item.FieldKey = r.FieldKey
+	}
 	return item
 }
 
