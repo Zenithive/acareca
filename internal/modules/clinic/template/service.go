@@ -524,7 +524,7 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 		if i == 0 && sec.DocumentNumber != "" {
 			invoiceNumber = sec.DocumentNumber
 		}
-		if sec.SectionType == "REMITTANCE_INVOICE" || sec.SectionType == "REMITTANCE_ADVICE" {
+		if sec.SectionType == "REMITTANCE_INVOICE" {
 			if sec.PaymentMethod != nil {
 				meta.paymentMethod = *sec.PaymentMethod
 			}
@@ -608,7 +608,7 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 				c.patientFeeItems = append(c.patientFeeItems, itemMap)
 			}
 
-		case sectionTypeUpper == "SFA_INVOICE" || sectionTypeUpper == "TAX_INVOICE":
+		case sectionTypeUpper == "SFA_INVOICE":
 			itemGst := 0.0
 			itemSubtotal := it.Amount
 			if basStr == "G1" {
@@ -629,7 +629,7 @@ func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta,
 			c.taxTotal += itemGst
 			c.grandTotal += it.Amount
 
-		case sectionTypeUpper == "REMITTANCE_INVOICE" || sectionTypeUpper == "REMITTANCE_ADVICE":
+		case sectionTypeUpper == "REMITTANCE_INVOICE":
 			itemMap["is_bold"] = it.IsFinal
 			if isCredit {
 				itemMap["is_negative"] = true
