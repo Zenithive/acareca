@@ -2956,8 +2956,6 @@ definitions:
         - NO_TAX
       templateId:
         type: string
-      templateId:
-        type: string
     required:
     - documentNumber
     - sectionType
@@ -3006,8 +3004,6 @@ definitions:
         - NO_TAX
       templateId:
         type: string
-      templateId:
-        type: string
     type: object
   section.RsSection:
     properties:
@@ -3039,8 +3035,6 @@ definitions:
         $ref: '#/definitions/section.SectionType'
       taxMethod:
         $ref: '#/definitions/section.TaxMethod'
-      templateId:
-        type: string
       templateId:
         type: string
       updatedAt:
@@ -3227,6 +3221,8 @@ definitions:
     type: object
   template.InvoiceData:
     properties:
+      accent_color:
+        type: string
       amount_in_words:
         type: string
       attachments:
@@ -3239,7 +3235,22 @@ definitions:
         $ref: '#/definitions/template.PartyInfo'
       billing_period:
         type: string
+      body_font_family:
+        type: string
       clinic_name:
+        type: string
+      custom_fee_rate:
+        type: string
+      custom_fee_rate_display:
+        description: Tax Invoice fee rate display (e.g. "38.5%")
+        type: string
+      custom_payment_account:
+        type: string
+      custom_payment_account_name:
+        type: string
+      custom_payment_bsb:
+        type: string
+      custom_payment_method:
         type: string
       due_date_display:
         type: string
@@ -3249,7 +3260,11 @@ definitions:
         type: number
       has_attachments:
         type: boolean
+      header_font_family:
+        type: string
       invoice_frequency:
+        type: string
+      invoice_number:
         type: string
       issue_date_display:
         type: string
@@ -3265,13 +3280,57 @@ definitions:
         type: string
       notes:
         type: string
+      patient_fee_items:
+        description: Calculation Sheet Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      payment_date_display:
+        type: string
+      payment_method_label:
+        type: string
+      primary_color:
+        description: Exported styling fields targetable by structural assignments
+        type: string
+      remittance_items:
+        description: Remittance Advice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      service_fee_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      settlement_items:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
       show_logo:
         type: boolean
       show_logo_image:
         type: boolean
       show_tax:
         type: boolean
+      subtotal:
+        type: number
       table_style_class:
+        type: string
+      tax_invoice_items:
+        description: Tax Invoice Collections
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      tax_total:
+        type: number
+      template_settings:
+        additionalProperties: true
+        type: object
+      terms_text:
         type: string
       totals_amounts_caption:
         type: string
@@ -3302,6 +3361,8 @@ definitions:
       email:
         type: string
       name:
+        type: string
+      payment_method:
         type: string
       phone:
         type: string
@@ -3348,7 +3409,6 @@ definitions:
       logo:
         type: string
       mapping_id:
-        description: 'Nullable: links overrides back to custom contexts'
         type: string
       primary_color:
         type: string
@@ -10496,12 +10556,6 @@ paths:
       - application/json
       description: Takes raw arbitrary runtime invoice context and passes it to headless
         rendering layers instantly
-  /templates/{id}/preview-pdf:
-    post:
-      consumes:
-      - application/json
-      description: Takes raw arbitrary runtime invoice context and passes it to headless
-        rendering layers instantly
       parameters:
       - description: Template UUID ID
         in: path
@@ -10511,32 +10565,17 @@ paths:
       - description: Dynamic structural template values variables
         in: body
         name: request
-      - description: Dynamic structural template values variables
-        in: body
-        name: request
         required: true
-        schema:
-          $ref: '#/definitions/template.InvoiceData'
         schema:
           $ref: '#/definitions/template.InvoiceData'
       produces:
       - application/pdf
-      - application/pdf
       responses:
         "200":
           description: application/pdf Binary context stream
-          description: application/pdf Binary context stream
           schema:
-            type: file
             type: file
         "400":
-          description: Context assignment mapping values parsing discrepancies
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Target document base unavailable
           description: Context assignment mapping values parsing discrepancies
           schema:
             additionalProperties:
@@ -10557,14 +10596,10 @@ paths:
       security:
       - BearerToken: []
       summary: Preview PDF Generation
-      summary: Preview PDF Generation
       tags:
       - Templates
   /templates/{id}/settings:
-  /templates/{id}/settings:
     get:
-      description: Queries UI visual presets (e.g., brand colors, fonts, margins)
-        tracked down to structural design blocks
       description: Queries UI visual presets (e.g., brand colors, fonts, margins)
         tracked down to structural design blocks
       parameters:
@@ -10575,16 +10610,12 @@ paths:
         type: string
       produces:
       - application/json
-      - application/json
       responses:
         "200":
           description: Style settings specifications map
-          description: Style settings specifications map
           schema:
             $ref: '#/definitions/template.RsSetting'
-            $ref: '#/definitions/template.RsSetting'
         "400":
-          description: Invalid profile lookup request values
           description: Invalid profile lookup request values
           schema:
             additionalProperties:
@@ -10599,15 +10630,11 @@ paths:
       security:
       - BearerToken: []
       summary: Get Default Template Settings
-      summary: Get Default Template Settings
       tags:
       - Templates
     put:
-    put:
       consumes:
       - application/json
-      description: Overrides layout details, font schemas, branding assets, or invoice
-        structural rules dynamically
       description: Overrides layout details, font schemas, branding assets, or invoice
         structural rules dynamically
       parameters:
@@ -10616,26 +10643,20 @@ paths:
         name: id
         required: true
         type: string
-      - description: Updated Layout Target Settings
       - description: Updated Layout Target Settings
         in: body
         name: request
         required: true
         schema:
           $ref: '#/definitions/template.RqUpdateSetting'
-          $ref: '#/definitions/template.RqUpdateSetting'
       produces:
-      - application/json
       - application/json
       responses:
         "200":
           description: Settings modified context mapping properties updated cleanly
-          description: Settings modified context mapping properties updated cleanly
           schema:
             $ref: '#/definitions/template.RsSetting'
-            $ref: '#/definitions/template.RsSetting'
         "400":
-          description: Validation failure errors
           description: Validation failure errors
           schema:
             additionalProperties:
@@ -10650,14 +10671,10 @@ paths:
       security:
       - BearerToken: []
       summary: Update Template Settings
-      summary: Update Template Settings
       tags:
       - Templates
   /templates/invoice-settings:
-  /templates/invoice-settings:
     get:
-      description: Queries UI visual presets prioritizing custom invoice overrides,
-        falling back to global defaults automatically
       description: Queries UI visual presets prioritizing custom invoice overrides,
         falling back to global defaults automatically
       parameters:
@@ -10682,7 +10699,6 @@ paths:
             type: object
         "400":
           description: Invalid parameters profile lookup request values
-          description: Invalid parameters profile lookup request values
           schema:
             additionalProperties:
               type: string
@@ -10696,22 +10712,15 @@ paths:
       security:
       - BearerToken: []
       summary: Get Invoice-Specific Template Settings
-      summary: Get Invoice-Specific Template Settings
       tags:
       - Templates
   /templates/invoices/{invoice_id}/download:
     get:
       description: Queries static database invoice documents, evaluates values natively
         against dynamic parameters, and streams a file binary response
-  /templates/invoices/{invoice_id}/download:
-    get:
-      description: Queries static database invoice documents, evaluates values natively
-        against dynamic parameters, and streams a file binary response
       parameters:
       - description: Target Invoice Entity Context Index UUID
-      - description: Target Invoice Entity Context Index UUID
         in: path
-        name: invoice_id
         name: invoice_id
         required: true
         type: string
@@ -10722,22 +10731,12 @@ paths:
         type: string
       produces:
       - application/pdf
-      - application/pdf
       responses:
         "200":
           description: Target invoice document byte stream file object matches
-          description: Target invoice document byte stream file object matches
           schema:
-            type: file
             type: file
         "400":
-          description: Target routing value errors or profile validation flaws
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Target entities unavailable
           description: Target routing value errors or profile validation flaws
           schema:
             additionalProperties:
@@ -10757,7 +10756,6 @@ paths:
             type: object
       security:
       - BearerToken: []
-      summary: Download Compiled Invoice PDF
       summary: Download Compiled Invoice PDF
       tags:
       - Templates
