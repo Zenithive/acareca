@@ -270,10 +270,12 @@ type InvoiceData struct {
 	HeaderFontFamily string `json:"header_font_family"`
 
 	// Calculation Sheet Collections
-	PatientFeeItems []map[string]interface{} `json:"patient_fee_items"`
-	ServiceFeeItems []map[string]interface{} `json:"service_fee_items"`
-	SettlementItems []map[string]interface{} `json:"settlement_items"`
-	CustomFeeRate   string                   `json:"custom_fee_rate"`
+	PatientFeeItems         []map[string]interface{} `json:"patient_fee_items"`
+	ServiceFeeItems         []map[string]interface{} `json:"service_fee_items"`
+	SettlementItems         []map[string]interface{} `json:"settlement_items"`
+	ServiceFeeRateIntro     map[string]interface{}   `json:"service_fee_rate_intro"`
+	ServiceDescriptionItems []string                 `json:"service_description_items"`
+	CustomFeeRate           string                   `json:"custom_fee_rate"`
 
 	// Tax Invoice Collections
 	TaxInvoiceItems []map[string]interface{} `json:"tax_invoice_items"`

@@ -31,9 +31,40 @@ func Render(html, css string, data map[string]any) (string, error) {
 </html>`, renderedCSS, renderedHTML), nil
 }
 
-// formatCurrency helper — registered once, used by both templates
+func toFloat64(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
+}
+
 func init() {
 	raymond.RegisterHelper("format_currency", func(amount float64) string {
 		return fmt.Sprintf("$%.2f", amount)
+	})
+
+	raymond.RegisterHelper("format_table_amount", func(row any) string {
+		m, ok := row.(map[string]any)
+		if !ok {
+			if m2, ok2 := row.(map[string]interface{}); ok2 {
+				m = m2
+			} else {
+				return ""
+			}
+		}
+		amount := toFloat64(m["amount"])
+		formatted := fmt.Sprintf("$%.2f", amount)
+		if neg, _ := m["is_negative"].(bool); neg {
+			return fmt.Sprintf("(%s)", formatted)
+		}
+		return formatted
 	})
 }
