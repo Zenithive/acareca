@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aymerick/raymond"
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/shared/crypto"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -412,12 +413,14 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		}
 	}
 
+	// Transform database models via your data adapter
 	data := InvoiceToData(inv)
 	ApplyPDFCollections(&data, inv.Items, sections, inv.InvoiceNumber)
 	if data.PaymentDateDisplay == "" {
 		data.PaymentDateDisplay = data.IssueDateDisplay
 	}
 
+	// Establish default visual styles if custom settings don't exist
 	primaryColor := "#1f4e5f"
 	accentColor := "#1f4e5f"
 	bodyFontFamily := "Arial"
@@ -451,7 +454,6 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			isLogo = true
 			data.ShowLogo = true
 			if st.Logo != nil && st.Logo.ToRsDocument().FileKey != "" {
-				data.ShowLogoImage = true
 				data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
 			}
 		}
@@ -469,155 +471,71 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		"terms_text":         termsText,
 	}
 
-	pdf, err := s.renderTemplatesPDF(ctx, templateId, data)
+	// Marshall full data properties to native Handlebars mapping dictionary
+	dataMap, err := invoiceDataToMap(data)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to map invoice data properties: %w", err)
+	}
+
+	// Retrieve pre-built blueprint views and layouts
+	globalTemplates := DefaultTemplates()
+	cssTemplate := sharedCSS()
+
+	// Enforce strict multi-page sheet structural sequence rules
+	strictPageSequence := []string{
+		"Calculation Statement",
+		"Tax Invoice",
+		"Remittance Advice",
+	}
+
+	var orderedHTMLBlocks []string
+	for _, expectedPageName := range strictPageSequence {
+		var matchedHTML string
+		for _, t := range globalTemplates {
+			if strings.EqualFold(strings.TrimSpace(t.Name), expectedPageName) {
+				matchedHTML = t.Html
+				break
+			}
+		}
+
+		if matchedHTML == "" {
+			return nil, "", fmt.Errorf("chromepdf: required layout view missing from central collection: %s", expectedPageName)
+		}
+		orderedHTMLBlocks = append(orderedHTMLBlocks, matchedHTML)
+	}
+
+	unifiedHTMLTemplate := strings.Join(orderedHTMLBlocks, "\n")
+
+	// Render stylesheets and components via Handlebars (Raymond engine)
+	renderedCSS, err := raymond.Render(cssTemplate, dataMap)
+	if err != nil {
+		return nil, "", fmt.Errorf("chromepdf: exception compiling custom styles: %w", err)
+	}
+
+	renderedHTML, err := raymond.Render(unifiedHTMLTemplate, dataMap)
+	if err != nil {
+		return nil, "", fmt.Errorf("chromepdf: exception compiling structural body blocks: %w", err)
+	}
+
+	// Encapsulate inside a standardized browser markup document
+	completeDocumentDOM := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<style>%s</style>
+</head>
+<body>
+	%s
+</body>
+</html>`, renderedCSS, renderedHTML)
+
+	// Call background browser executor to output the print-ready asset binary
+	pdf, err := chromepdf.Generate(ctx, completeDocumentDOM)
+	if err != nil {
+		return nil, "", fmt.Errorf("chromepdf: browser context pipeline generation failed: %w", err)
 	}
 
 	return pdf, fmt.Sprintf("INVOICE_%s", data.InvoiceNumber), nil
-}
-
-// buildInvoiceCollections assigns items purely according to DB SectionType metadata matching the template rows
-func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta, fallbackInvoiceNumber string) (invoiceCollections, string, invoicePaymentMeta) {
-	var c invoiceCollections
-	c.customFeeRate = "0.0"
-	var meta invoicePaymentMeta
-	invoiceNumber := fallbackInvoiceNumber
-
-	for _, sec := range sections {
-		secTypeUpper := strings.TrimSpace(strings.ToUpper(sec.SectionType))
-		if secTypeUpper == "SFA_INVOICE" && sec.DocumentNumber != "" {
-			invoiceNumber = sec.DocumentNumber
-		}
-		if secTypeUpper == "REMITTANCE_INVOICE" || secTypeUpper == "REMITTANCE_ADVICE" {
-			if sec.PaymentMethod != nil {
-				meta.paymentMethod = *sec.PaymentMethod
-			}
-			if sec.AccountName != nil {
-				meta.accountName = *sec.AccountName
-			}
-			if sec.Bsb != nil {
-				meta.bsb = *sec.Bsb
-			}
-			if sec.AccountNumber != nil {
-				meta.accountNumber = *sec.AccountNumber
-			}
-			if sec.PaymentDate != nil {
-				meta.paymentDate = *sec.PaymentDate
-			}
-		}
-	}
-
-	// Extract global configurations first
-	for _, it := range items {
-		var fk string
-		if it.FieldKey != nil {
-			fk = *it.FieldKey
-		}
-		if strings.TrimSpace(strings.ToUpper(fk)) == "FEE_RATE" {
-			if it.Amount > 0.0 && it.Amount <= 1.0 {
-				c.customFeeRate = fmt.Sprintf("%.1f", it.Amount*100)
-			} else {
-				c.customFeeRate = fmt.Sprintf("%.1f", it.Amount)
-			}
-			break
-		}
-	}
-
-	// Section-by-section population logic mirroring the layout requirements
-	for _, it := range items {
-		basStr := ""
-		if it.BASCode != nil {
-			basStr = *it.BASCode
-		}
-
-		var fk string
-		if it.FieldKey != nil {
-			fk = *it.FieldKey
-		}
-
-		keyUpper := strings.TrimSpace(strings.ToUpper(fk))
-		secTypeUpper := strings.TrimSpace(strings.ToUpper(it.SectionType))
-		isDebit := strings.TrimSpace(strings.ToUpper(it.EntryType)) == "DEBIT"
-
-		if keyUpper == "FEE_RATE" {
-
-			feeRateDisplay := fmt.Sprintf("%.1f", it.Amount)
-
-			if it.Amount <= 1 {
-				feeRateDisplay = fmt.Sprintf("%.1f", it.Amount*100)
-			}
-
-			c.customFeeRate = feeRateDisplay
-
-			c.serviceFeeRateIntro = map[string]interface{}{
-				"label":            it.Name,
-				"fee_rate_display": feeRateDisplay,
-				"amount_display":   it.Amount,
-			}
-
-			continue
-		}
-
-		if keyUpper == "SERVICE_DESCRIPTION" {
-
-			if strings.TrimSpace(it.Description) != "" {
-				c.serviceDescriptionItems =
-					append(c.serviceDescriptionItems, it.Description)
-			}
-
-			continue
-		}
-
-		row := map[string]interface{}{
-			"label":       it.Name,
-			"description": it.Description,
-			"amount":      it.Amount,
-			"bas_code":    basStr,
-			"entry_type":  it.EntryType,
-			"row_class":   "",
-			"value_class": "",
-			"is_bold":     it.IsFinal,
-			"is_negative": false,
-		}
-
-		if it.IsFinal {
-			row["row_class"] = "row-total"
-			row["is_bold"] = true
-		}
-
-		switch secTypeUpper {
-		case "CALCULATION_STATEMENT":
-			// Assign rows purely to the targeted sections
-			if keyUpper == "G1" || basStr == "G1" || strings.Contains(strings.ToUpper(it.Name), "INCOME") {
-				c.patientFeeItems = append(c.patientFeeItems, row)
-			} else if keyUpper == "1A" || basStr == "1A" || strings.Contains(strings.ToUpper(it.Name), "EXPENSE") || keyUpper == "G11" {
-				c.serviceFeeItems = append(c.serviceFeeItems, row)
-			} else {
-				row["row_class"] = "row-final-balance"
-				c.settlementItems = append(c.settlementItems, row)
-			}
-
-		case "SFA_INVOICE", "TAX_INVOICE":
-			if it.IsFinal || keyUpper == "TOTAL" {
-				c.grandTotal = it.Amount
-				c.subtotal = it.Amount / 1.1
-				c.taxTotal = it.Amount - c.subtotal
-			}
-			c.serviceFeeItems = append(c.serviceFeeItems, row)
-
-		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
-			if isDebit || strings.Contains(strings.ToUpper(it.Name), "EXPENSE") || strings.Contains(strings.ToUpper(it.Name), "FEE") {
-				row["is_negative"] = true
-			}
-			if it.IsFinal {
-				row["row_class"] = "row-final-balance"
-			}
-			c.remittanceItems = append(c.remittanceItems, row)
-		}
-	}
-
-	return c, invoiceNumber, meta
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {

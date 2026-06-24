@@ -2,12 +2,24 @@ package template
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
 
 // ApplyPDFCollections maps invoice line items into InvoiceData fields used by Handlebars templates.
-func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []InvoiceSectionMeta, fallbackInvoiceNumber string) {
-	collections, invoiceNumber, paymentMeta := buildInvoiceCollections(items, sections, fallbackInvoiceNumber)
+func ApplyPDFCollections(
+	data *InvoiceData,
+	items []InvoiceItem,
+	sections []InvoiceSectionMeta,
+	fallbackInvoiceNumber string,
+) {
+	collections, invoiceNumber, paymentMeta :=
+		buildInvoiceCollections(
+			items,
+			sections,
+			fallbackInvoiceNumber,
+		)
 
 	if invoiceNumber != "" {
 		data.InvoiceNumber = invoiceNumber
@@ -17,32 +29,45 @@ func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []Invo
 	data.ServiceFeeItems = collections.serviceFeeItems
 	data.SettlementItems = collections.settlementItems
 	data.RemittanceItems = collections.remittanceItems
+
+	data.ServiceFeeRateIntro = collections.serviceFeeRateIntro
+	data.ServiceDescriptionItems = collections.serviceDescriptionItems
+
 	data.Subtotal = collections.subtotal
 	data.TaxTotal = collections.taxTotal
 	data.GrandTotal = collections.grandTotal
+
 	data.CustomFeeRate = collections.customFeeRate
+
 	if collections.customFeeRate != "" {
-		data.CustomFeeRateDisplay = collections.customFeeRate + "%"
+		data.CustomFeeRateDisplay =
+			collections.customFeeRate + "%"
 	}
 
-	if len(collections.serviceFeeRateIntro) > 0 {
-		data.ServiceFeeRateIntro = collections.serviceFeeRateIntro
-	}
-	data.ServiceDescriptionItems = collections.serviceDescriptionItems
+	data.CustomPaymentMethod =
+		paymentMeta.paymentMethod
 
-	data.CustomPaymentMethod = paymentMeta.paymentMethod
-	data.PaymentMethodLabel = paymentMeta.paymentMethod
-	data.CustomPaymentAccountName = paymentMeta.accountName
-	data.CustomPaymentBsb = paymentMeta.bsb
-	data.CustomPaymentAccount = paymentMeta.accountNumber
+	data.PaymentMethodLabel =
+		paymentMeta.paymentMethod
+
+	data.CustomPaymentAccountName =
+		paymentMeta.accountName
+
+	data.CustomPaymentBsb =
+		paymentMeta.bsb
+
+	data.CustomPaymentAccount =
+		paymentMeta.accountNumber
 
 	if paymentMeta.paymentDate != "" {
-		if parsedTime, err := time.Parse("2006-01-02 15:04:05.999999-07", paymentMeta.paymentDate); err == nil {
-			data.PaymentDateDisplay = parsedTime.Format("02 January 2006")
-		} else if parsedTime, err := time.Parse("2006-01-02", paymentMeta.paymentDate); err == nil {
-			data.PaymentDateDisplay = parsedTime.Format("02 January 2006")
-		} else {
-			data.PaymentDateDisplay = paymentMeta.paymentDate
+
+		if parsed, err := time.Parse(
+			"2006-01-02",
+			paymentMeta.paymentDate,
+		); err == nil {
+
+			data.PaymentDateDisplay =
+				parsed.Format("02 January 2006")
 		}
 	}
 }
@@ -130,4 +155,181 @@ func orEmptySlice(items []map[string]interface{}) []map[string]interface{} {
 		return []map[string]interface{}{}
 	}
 	return items
+}
+
+func buildInvoiceCollections(items []InvoiceItem, sections []InvoiceSectionMeta, fallbackInvoiceNumber string) (invoiceCollections, string, invoicePaymentMeta) {
+	var c invoiceCollections
+	var payment invoicePaymentMeta
+
+	invoiceNumber := fallbackInvoiceNumber
+
+	// Extract dynamic account values from sections metadata directly
+	for _, sec := range sections {
+		switch strings.ToUpper(sec.SectionType) {
+		case "SFA_INVOICE":
+			if sec.DocumentNumber != "" {
+				invoiceNumber = sec.DocumentNumber
+			}
+		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
+			if sec.PaymentMethod != nil {
+				payment.paymentMethod = *sec.PaymentMethod
+			}
+			if sec.AccountName != nil {
+				payment.accountName = *sec.AccountName
+			}
+			if sec.Bsb != nil {
+				payment.bsb = *sec.Bsb
+			}
+			if sec.AccountNumber != nil {
+				payment.accountNumber = *sec.AccountNumber
+			}
+			if sec.PaymentDate != nil {
+				payment.paymentDate = *sec.PaymentDate
+			}
+		}
+	}
+
+	var incomeTotal float64
+	var deductionTotal float64
+
+	// PASS 1 - Parse and clean Fee Rate attributes dynamically
+	for _, item := range items {
+		if item.FieldKey == nil {
+			continue
+		}
+
+		if strings.EqualFold(*item.FieldKey, "FEE_RATE") {
+			feeRate := item.Amount
+			if feeRate <= 1 {
+				feeRate *= 100
+			}
+			c.customFeeRate = fmt.Sprintf("%.1f", feeRate)
+
+			// Setup structural variables for dynamic injection into Handlebars Context
+			c.serviceFeeRateIntro = map[string]interface{}{
+				"label":            "Services rendered to you for the period, including:",
+				"fee_rate_display": c.customFeeRate + "%",
+				"amount_display":   "",
+			}
+
+			if item.Description != "" {
+				lines := strings.Split(item.Description, "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line == "" || strings.Contains(strings.ToLower(line), "here's a list of services") {
+						continue
+					}
+					c.serviceDescriptionItems = append(c.serviceDescriptionItems, line)
+				}
+			}
+		}
+	}
+
+	// PASS 2 - Build data arrays mapping sequentially across layout scopes
+	for _, item := range items {
+		sectionType := strings.ToUpper(item.SectionType)
+
+		switch sectionType {
+		case "CALCULATION_STATEMENT":
+			if strings.EqualFold(item.EntryType, "CREDIT") {
+				incomeTotal += item.Amount
+				c.patientFeeItems = append(c.patientFeeItems, map[string]interface{}{
+					"label":    item.Name,
+					"amount":   item.Amount,
+					"bas_code": "G1",
+				})
+			}
+
+			if strings.EqualFold(item.EntryType, "DEBIT") {
+				deductionTotal += item.Amount
+				c.patientFeeItems = append(c.patientFeeItems, map[string]interface{}{
+					"label":       "Less : " + item.Name,
+					"amount":      item.Amount,
+					"bas_code":    "1A",
+					"value_class": "txt-blue-val",
+				})
+			}
+
+		case "SFA_INVOICE", "TAX_INVOICE":
+			if item.FieldKey != nil && strings.EqualFold(*item.FieldKey, "FEE_RATE") {
+				continue
+			}
+
+			row := map[string]interface{}{
+				"label":     item.Name,
+				"amount":    item.Amount,
+				"bas_code":  "",
+				"is_bold":   item.IsFinal,
+				"row_class": "",
+			}
+
+			if item.BASCode != nil {
+				row["bas_code"] = *item.BASCode
+			}
+
+			if item.IsFinal {
+				row["row_class"] = "row-total"
+				c.grandTotal = item.Amount
+				c.subtotal = item.Amount / 1.1
+				c.taxTotal = item.Amount - c.subtotal
+			}
+
+			c.serviceFeeItems = append(c.serviceFeeItems, row)
+
+		case "REMITTANCE_INVOICE", "REMITTANCE_ADVICE":
+			isDebit := strings.EqualFold(item.EntryType, "DEBIT")
+			amtVal := item.Amount
+
+			row := map[string]interface{}{
+				"label":       item.Name,
+				"amount":      amtVal,
+				"is_negative": isDebit || amtVal < 0,
+			}
+
+			if item.IsFinal {
+				row["row_class"] = "row-final-balance"
+			}
+
+			c.remittanceItems = append(c.remittanceItems, row)
+		}
+	}
+
+	// 1. Append Patient Fees aggregated row calculation mapping to [G1 - 1A]
+	patientNet := incomeTotal - deductionTotal
+	c.patientFeeItems = append(c.patientFeeItems, map[string]interface{}{
+		"label":     "Total",
+		"amount":    patientNet,
+		"bas_code":  "G11",
+		"row_class": "bg-sky-row",
+		"is_bold":   true,
+	})
+
+	// 2. Clear balance definition avoiding double-subtractions
+	netBalance := incomeTotal - deductionTotal - c.grandTotal
+
+	c.settlementItems = []map[string]interface{}{
+		{
+			"label":  "Total Income",
+			"amount": incomeTotal,
+		},
+		{
+			"label":       "Less : Total Expenses",
+			"amount":      deductionTotal,
+			"is_negative": true,
+		},
+		{
+			"label":       "Total Service & Facility Fee (incl. GST)",
+			"amount":      c.grandTotal,
+			"is_negative": true,
+			"row_class":   "bg-sky-row",
+		},
+		{
+			"label":     "Net balance",
+			"amount":    netBalance,
+			"row_class": "row-final-balance",
+			"is_bold":   true,
+		},
+	}
+
+	return c, invoiceNumber, payment
 }

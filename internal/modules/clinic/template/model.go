@@ -302,20 +302,18 @@ type invoiceCollections struct {
 	serviceFeeRateIntro     map[string]interface{}
 	serviceDescriptionItems []string
 
-	subtotal   float64
-	taxTotal   float64
-	grandTotal float64
-
+	subtotal      float64
+	taxTotal      float64
+	grandTotal    float64
 	customFeeRate string
 }
 
 type invoicePaymentMeta struct {
-	paymentMethod    string
-	accountName      string
-	bsb              string
-	accountNumber    string
-	paymentDate      string
-	paymentReference string
+	paymentMethod string
+	accountName   string
+	bsb           string
+	accountNumber string
+	paymentDate   string
 }
 
 type PartyInfo struct {
