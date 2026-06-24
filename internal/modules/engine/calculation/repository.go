@@ -22,7 +22,6 @@ func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
 
-// ListCoaEntries returns grouped COA rows with aggregated amounts and section types
 func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorID uuid.UUID, role string) ([]*RsCoaEntry, error) {
 	var permissionClause string
 	if strings.EqualFold(role, util.RoleAccountant) {
@@ -66,6 +65,7 @@ func (r *repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
         INNER JOIN tbl_form_entry_value fev
 			ON fev.entry_id = v.entry_id
 				AND fev.deleted_at IS NULL
+				AND fev.updated_at IS NULL
 				AND fev.form_field_id = v.form_field_id
         WHERE ff.section_type IN ('COST', 'OTHER_COST', 'COLLECTION') ` + permissionClause
 

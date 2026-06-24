@@ -588,6 +588,7 @@ func (r *Repository) ListCoaEntries(ctx context.Context, f common.Filter, actorI
     INNER JOIN tbl_form_entry_value fev
 		ON fev.entry_id = v.entry_id
 			AND fev.deleted_at IS NULL
+			AND fev.updated_at IS NULL
 			AND (
 				(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
 				OR
@@ -679,6 +680,7 @@ func (r *Repository) CountCoaEntries(ctx context.Context, f common.Filter, actor
     INNER JOIN tbl_form_entry_value fev
 		ON fev.entry_id = v.entry_id
 			AND fev.deleted_at IS NULL
+			AND fev.updated_at IS NULL
 			AND (
 			(v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
 			OR
@@ -781,6 +783,7 @@ func (r *Repository) ListCoaEntryDetails(ctx context.Context, coaName string, f 
        INNER JOIN tbl_form_entry_value fev
         ON fev.entry_id = v.entry_id
             AND fev.deleted_at IS NULL
+            AND fev.updated_at IS NULL
             AND (
             (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
             OR
@@ -945,6 +948,7 @@ func (r *Repository) CountCoaEntryDetails(ctx context.Context, coaName string, f
         INNER JOIN tbl_form_entry_value fev
         ON fev.entry_id = v.entry_id
             AND fev.deleted_at IS NULL
+            AND fev.updated_at IS NULL
             AND (
             (v.form_field_id IS NOT NULL AND fev.form_field_id = v.form_field_id)
             OR
