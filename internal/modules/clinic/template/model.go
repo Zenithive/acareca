@@ -287,6 +287,33 @@ type InvoiceData struct {
 	CustomPaymentBsb         string                   `json:"custom_payment_bsb"`
 	CustomPaymentAccount     string                   `json:"custom_payment_account"`
 	PaymentDateDisplay       string                   `json:"payment_date_display"`
+	// Tax Invoice fee rate display (e.g. "38.5%")
+	CustomFeeRateDisplay string `json:"custom_fee_rate_display"`
+}
+
+type invoiceCollections struct {
+	patientFeeItems []map[string]interface{}
+	serviceFeeItems []map[string]interface{}
+	settlementItems []map[string]interface{}
+	remittanceItems []map[string]interface{}
+
+	serviceFeeRateIntro     map[string]interface{}
+	serviceDescriptionItems []string
+
+	subtotal   float64
+	taxTotal   float64
+	grandTotal float64
+
+	customFeeRate string
+}
+
+type invoicePaymentMeta struct {
+	paymentMethod    string
+	accountName      string
+	bsb              string
+	accountNumber    string
+	paymentDate      string
+	paymentReference string
 }
 
 type PartyInfo struct {
@@ -419,11 +446,6 @@ func InvoiceToData(inv *InvoiceResponse) InvoiceData {
 		HasAttachments:       false,
 		Attachments:          []Attachment{},
 	}
-}
-
-// invoiceToData acts as a private alias so template/service.go doesn't fail compilation
-func invoiceToData(inv *InvoiceResponse) InvoiceData {
-	return InvoiceToData(inv)
 }
 
 type InvoiceRow struct {
