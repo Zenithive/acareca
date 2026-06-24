@@ -343,7 +343,7 @@ func DefaultTemplates() []RqGlobalTemplate {
                 Services rendered to you for the period, including:
                 <span style="float: right; font-weight: bold; white-space: nowrap; margin-left: 8px;">
                   Fee rate&nbsp;
-                  <span class="txt-blue-val">{{custom_fee_rate}}%</span>
+                  <span class="txt-blue-val">{{custom_fee_rate}}%%</span>
                 </span>
               </td>
               <td style="width: 20%%; padding: 0;"></td>
@@ -407,7 +407,8 @@ func DefaultTemplates() []RqGlobalTemplate {
         <td style="width: 65%%; border-bottom: none; padding-top: 5px; padding-bottom: 4px; color: var(--text-dark);">
           Services rendered to you for the period, including:
           <span style="font-weight: bold; white-space: nowrap; margin-left: 8px;">
-            Fee rate&nbsp;<span class="txt-blue-val">{{custom_fee_rate_display}}</span>
+            Fee rate&nbsp;
+            <span class="txt-blue-val">{{custom_fee_rate}}</span>
           </span>
         </td>
         <td class="num" style="width: 20%%; border-bottom: none; padding-top: 5px; padding-bottom: 4px; text-align: right;">-</td>
