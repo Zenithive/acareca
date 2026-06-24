@@ -77,11 +77,13 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 	}
 
 	itemRepo := item.NewRepository(s.db)
+	allEntries := make([]*item.Item, 0)
 	for i := range inv.Sections {
-		if len(inv.Sections[i].Entries) > 0 {
-			if err := itemRepo.EvaluateFormulas(ctx, inv.Sections[i].Entries); err != nil {
-				return fmt.Errorf("formula evaluation failed for section %d: %w", i, err)
-			}
+		allEntries = append(allEntries, inv.Sections[i].Entries...)
+	}
+	if len(allEntries) > 0 {
+		if err := itemRepo.EvaluateFormulas(ctx, allEntries); err != nil {
+			return fmt.Errorf("formula evaluation failed: %w", err)
 		}
 	}
 
