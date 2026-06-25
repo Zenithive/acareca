@@ -34,7 +34,10 @@ type handler struct {
 }
 
 func NewHandler(svc Service) IHandler {
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		panic(err)
+	}
 	return &handler{svc: svc, cfg: *cfg}
 }
 
@@ -251,9 +254,6 @@ func (h *handler) GoogleCallback(c *gin.Context) {
 	}
 
 	frontendURL := h.cfg.FrontendURL
-	if h.cfg.Env == "local" {
-		frontendURL = h.cfg.LocalUrl
-	}
 
 	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&refresh_token=%s",
 		frontendURL, token.AccessToken, token.RefreshToken)

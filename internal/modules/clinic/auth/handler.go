@@ -29,7 +29,10 @@ type handler struct {
 }
 
 func NewHandler(svc Service) IHandler {
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		panic(err)
+	}
 	return &handler{svc: svc, cfg: *cfg}
 }
 
@@ -46,7 +49,7 @@ func NewHandler(svc Service) IHandler {
 // @Failure 500 {object} response.RsError
 // @Router /clinic/register [post]
 func (h *handler) Register(c *gin.Context) {
-	var req RqRegisterClinic
+	var req RqRegister
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -78,7 +81,7 @@ func (h *handler) Register(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /clinic/login [post]
 func (h *handler) Login(c *gin.Context) {
-	var req RqLoginClinic
+	var req RqLogin
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -116,7 +119,7 @@ func (h *handler) Logout(c *gin.Context) {
 		return
 	}
 
-	var req RqLogoutClinic
+	var req RqLogout
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -237,13 +240,15 @@ func (h *handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	var req RqUpdateClinic
+	var req RqUpdate
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	clinic, err := h.svc.UpdateProfile(c.Request.Context(), clinicID, &req)
+	req.Id = clinicID
+
+	clinic, err := h.svc.UpdateProfile(c.Request.Context(), &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

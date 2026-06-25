@@ -22,18 +22,20 @@ type Repository interface {
 	UpdatePassword(ctx context.Context, clinicID uuid.UUID, hashedPassword string) error
 
 	// Clinic Addresses
-	CreateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error)
-	ListAddressesByClinicID(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error)
-	UpdateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error)
+	CreateAddress(ctx context.Context, addr *Address, tx *sqlx.Tx) (*Address, error)
+	ListAddressesByClinicID(ctx context.Context, clinicID uuid.UUID) ([]Address, error)
+	UpdateAddress(ctx context.Context, addr *Address, tx *sqlx.Tx) (*Address, error)
 	DeleteAddressByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
 	CountActiveAddresses(ctx context.Context, clinicID uuid.UUID, tx *sqlx.Tx) (int, error)
+	GetAddressByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) (*Address, error)
 
 	// Clinic Contacts
-	CreateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error)
-	ListContactsByClinicID(ctx context.Context, clinicID uuid.UUID) ([]ClinicContact, error)
-	UpdateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error)
+	CreateContact(ctx context.Context, contact *Contact, tx *sqlx.Tx) (*Contact, error)
+	ListContactsByClinicID(ctx context.Context, clinicID uuid.UUID) ([]Contact, error)
+	UpdateContact(ctx context.Context, contact *Contact, tx *sqlx.Tx) (*Contact, error)
 	DeleteContactByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error
 	CountActiveContacts(ctx context.Context, clinicID uuid.UUID, tx *sqlx.Tx) (int, error)
+	GetContactByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) (*Contact, error)
 
 	// Session
 	CreateSession(ctx context.Context, s *Session) (*Session, error)
@@ -51,7 +53,7 @@ type Repository interface {
 	CompletePasswordReset(ctx context.Context, tokenHash string, newPasswordHash string) error
 
 	// Document
-	GetDocumentByID(ctx context.Context, documentID string) (*file.Document, error)
+	GetDocumentByID(ctx context.Context, documentID *uuid.UUID) (*file.Document, error)
 }
 
 type repository struct {
@@ -61,10 +63,6 @@ type repository struct {
 func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
-
-// =========================================================================
-// CLINIC PROFILE
-// =========================================================================
 
 func (r *repository) CreateClinic(ctx context.Context, clinic *Clinic, tx *sqlx.Tx) (*Clinic, error) {
 	const query = `
@@ -125,17 +123,13 @@ func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*Clinic, error
 	return &dest, nil
 }
 
-// =========================================================================
-// CLINIC ADDRESSES
-// =========================================================================
-
-func (r *repository) CreateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error) {
+func (r *repository) CreateAddress(ctx context.Context, addr *Address, tx *sqlx.Tx) (*Address, error) {
 	const query = `
 		INSERT INTO tbl_invoice_clinic_address (clinic_id, address, city, state, postcode, is_primary)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 	`
-	var dest ClinicAddress
+	var dest Address
 	var err error
 
 	if tx != nil {
@@ -154,31 +148,27 @@ func (r *repository) CreateAddress(ctx context.Context, addr *ClinicAddress, tx 
 	return &dest, nil
 }
 
-func (r *repository) ListAddressesByClinicID(ctx context.Context, clinicID uuid.UUID) ([]ClinicAddress, error) {
+func (r *repository) ListAddressesByClinicID(ctx context.Context, clinicID uuid.UUID) ([]Address, error) {
 	const query = `
 		SELECT id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 		FROM tbl_invoice_clinic_address
 		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
-	dest := make([]ClinicAddress, 0)
+	dest := make([]Address, 0)
 	if err := r.db.SelectContext(ctx, &dest, query, clinicID); err != nil {
 		return nil, fmt.Errorf("repository error resolving clinic address array dataset: %w", err)
 	}
 	return dest, nil
 }
 
-// =========================================================================
-// CLINIC CONTACTS
-// =========================================================================
-
-func (r *repository) CreateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error) {
+func (r *repository) CreateContact(ctx context.Context, contact *Contact, tx *sqlx.Tx) (*Contact, error) {
 	const query = `
 		INSERT INTO tbl_invoice_clinic_contacts (clinic_id, contact_type, value, label, is_primary)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 	`
-	var dest ClinicContact
+	var dest Contact
 	var err error
 
 	if tx != nil {
@@ -197,28 +187,28 @@ func (r *repository) CreateContact(ctx context.Context, contact *ClinicContact, 
 	return &dest, nil
 }
 
-func (r *repository) ListContactsByClinicID(ctx context.Context, clinicID uuid.UUID) ([]ClinicContact, error) {
+func (r *repository) ListContactsByClinicID(ctx context.Context, clinicID uuid.UUID) ([]Contact, error) {
 	const query = `
 		SELECT id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 		FROM tbl_invoice_clinic_contacts
 		WHERE clinic_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, created_at ASC
 	`
-	dest := make([]ClinicContact, 0)
+	dest := make([]Contact, 0)
 	if err := r.db.SelectContext(ctx, &dest, query, clinicID); err != nil {
 		return nil, fmt.Errorf("repository error resolving clinic contact routing list: %w", err)
 	}
 	return dest, nil
 }
 
-func (r *repository) UpdateAddress(ctx context.Context, addr *ClinicAddress, tx *sqlx.Tx) (*ClinicAddress, error) {
+func (r *repository) UpdateAddress(ctx context.Context, addr *Address, tx *sqlx.Tx) (*Address, error) {
 	const query = `
 		UPDATE tbl_invoice_clinic_address
 		SET address = $2, city = $3, state = $4, postcode = $5, is_primary = $6, updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id, clinic_id, address, city, state, postcode, is_primary, created_at, updated_at
 	`
-	var dest ClinicAddress
+	var dest Address
 	var err error
 	if tx != nil {
 		err = tx.QueryRowxContext(ctx, query, addr.ID, addr.Address, addr.City, addr.State, addr.Postcode, addr.IsPrimary).StructScan(&dest)
@@ -254,14 +244,14 @@ func (r *repository) CountActiveAddresses(ctx context.Context, clinicID uuid.UUI
 	return count, err
 }
 
-func (r *repository) UpdateContact(ctx context.Context, contact *ClinicContact, tx *sqlx.Tx) (*ClinicContact, error) {
+func (r *repository) UpdateContact(ctx context.Context, contact *Contact, tx *sqlx.Tx) (*Contact, error) {
 	const query = `
 		UPDATE tbl_invoice_clinic_contacts
 		SET contact_type = $2, value = $3, label = $4, is_primary = $5, updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id, clinic_id, contact_type, value, label, is_primary, created_at, updated_at
 	`
-	var dest ClinicContact
+	var dest Contact
 	var err error
 	if tx != nil {
 		err = tx.QueryRowxContext(ctx, query, contact.ID, contact.ContactType, contact.Value, contact.Label, contact.IsPrimary).StructScan(&dest)
@@ -297,9 +287,6 @@ func (r *repository) CountActiveContacts(ctx context.Context, clinicID uuid.UUID
 	return count, err
 }
 
-// =========================================================================
-// SESSION
-// =========================================================================
 func (r *repository) CreateSession(ctx context.Context, s *Session) (*Session, error) {
 	query := `
 		INSERT INTO tbl_clinic_session (id, clinic_id, refresh_token, user_agent, ip_address, expires_at)
@@ -340,9 +327,6 @@ func (r *repository) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// =========================================================================
-// VERIFICATION TOKEN
-// =========================================================================
 func (r *repository) CreateVerificationToken(ctx context.Context, token *VerificationToken, tx *sqlx.Tx) error {
 	query := `
         INSERT INTO tbl_clinic_verification_token (id, clinic_id, role, status, expires_at)
@@ -479,12 +463,7 @@ func (r *repository) CompletePasswordReset(ctx context.Context, tokenHash string
 	return nil
 }
 
-func (r *repository) GetDocumentByID(ctx context.Context, documentID string) (*file.Document, error) {
-	docUUID, err := uuid.Parse(documentID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid document ID: %w", err)
-	}
-
+func (r *repository) GetDocumentByID(ctx context.Context, documentID *uuid.UUID) (*file.Document, error) {
 	query := `
 		SELECT id, owner_id, owner_role, object_key, bucket, original_name, extension,
 		       mime_type, size_bytes, checksum, status, is_public, uploaded_at,
@@ -494,11 +473,47 @@ func (r *repository) GetDocumentByID(ctx context.Context, documentID string) (*f
 	`
 
 	var doc file.Document
-	if err := r.db.GetContext(ctx, &doc, query, docUUID); err != nil {
+	if err := r.db.GetContext(ctx, &doc, query, documentID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // Document not found, return nil without error
+			return nil, nil
 		}
 		return nil, fmt.Errorf("get document by id: %w", err)
 	}
 	return &doc, nil
+}
+
+func (r *repository) GetAddressByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) (*Address, error) {
+	query := `
+		SELECT id,clinic_id,address,city,state,postcode,is_primary,created_at,updated_at 
+		FROM tbl_invoice_clinic_address 
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	var address Address
+	if err := tx.GetContext(ctx, &address, query, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get address by id: %w", err)
+	}
+
+	return &address, nil
+}
+
+func (r *repository) GetContactByID(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) (*Contact, error) {
+	query := `
+		SELECT id,clinic_id,contact_type,"value",label,is_primary,created_at,updated_at 
+		FROM tbl_invoice_clinic_contacts 
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	var contact Contact
+	if err := tx.GetContext(ctx, &contact, query, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get contact by id: %w", err)
+	}
+
+	return &contact, nil
 }

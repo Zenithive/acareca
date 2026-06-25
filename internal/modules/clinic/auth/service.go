@@ -29,13 +29,15 @@ var (
 )
 
 type Service interface {
-	Register(ctx context.Context, req *RqRegisterClinic) (*RsClinicDetail, error)
-	Login(ctx context.Context, req *RqLoginClinic) (*RsToken, error)
+	Register(ctx context.Context, req *RqRegister) (*RsClinic, error)
+	Login(ctx context.Context, req *RqLogin) (*RsToken, error)
 	Logout(ctx context.Context, clinicID uuid.UUID, refreshToken string) error
-	GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinicDetail, error)
+
+	GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic, error)
 	VerifyEmail(ctx context.Context, tokenStr string) error
 	ChangePassword(ctx context.Context, clinicID uuid.UUID, req *RqChangePassword) error
-	UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *RqUpdateClinic) (*RsClinicDetail, error)
+	UpdateProfile(ctx context.Context, req *RqUpdate) (*RsClinic, error)
+
 	DeleteClinic(ctx context.Context, clinicID uuid.UUID) error
 	ForgotPassword(ctx context.Context, req *RqForgotPassword) error
 	ResetPassword(ctx context.Context, req *RqResetPassword) error
@@ -61,14 +63,12 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, auditSvc audit
 	}
 }
 
-func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClinicDetail, error) {
-	// Verify if email is taken across this module table
+func (s *service) Register(ctx context.Context, req *RqRegister) (*RsClinic, error) {
 	existing, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil && existing != nil {
 		return nil, ErrEmailTaken
 	}
 
-	// Hash raw password payload using Argon2id/Bcrypt wrapper
 	if req.Password == nil || *req.Password == "" {
 		return nil, errors.New("password is required")
 	}
@@ -77,75 +77,60 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		return nil, fmt.Errorf("failed to process credentials: %w", err)
 	}
 
-	// Assemble base structures
-	clinicModel := &Clinic{
-		ClinicName:  req.ClinicName,
-		Description: req.Description,
-		Email:       req.Email,
-		Password:    &hashedPassword,
-		Role:        req.Role,
-		DocumentID:  req.DocumentID,
-		ABN:         req.ABN,
-		ACN:         req.ACN,
-		Verified:    false, // Explicitly set to false until email is verified
-	}
+	clinic := req.MapToDB(hashedPassword)
 
-	var createdClinic *Clinic
-	var createdAddresses []ClinicAddress
-	var createdContacts []ClinicContact
+	var clinicDB *Clinic
 	var tokenID uuid.UUID
+	var addresses []Address
+	var contacts []Contact
+	var document *file.Document
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var txErr error
-		createdClinic, txErr = s.repo.CreateClinic(ctx, clinicModel, tx)
+		clinicDB, txErr = s.repo.CreateClinic(ctx, &clinic, tx)
 		if txErr != nil {
 			return txErr
 		}
 
-		// Store associated addresses
 		for _, addr := range req.Addresses {
-			dbAddr := &ClinicAddress{
-				ClinicID:  createdClinic.ID,
-				Address:   addr.Address,
-				City:      addr.City,
-				State:     addr.State,
-				Postcode:  addr.Postcode,
-				IsPrimary: addr.IsPrimary,
-			}
-			savedAddr, txErr := s.repo.CreateAddress(ctx, dbAddr, tx)
+			AddrDB := addr.MapToDB(clinicDB.ID)
+			_, txErr := s.repo.CreateAddress(ctx, &AddrDB, tx)
 			if txErr != nil {
 				return fmt.Errorf("failed to write clinic location breakdown line: %w", txErr)
 			}
-			createdAddresses = append(createdAddresses, *savedAddr)
+
+			addresses = append(addresses, AddrDB)
 		}
 
-		// Store associated contacts
 		for _, cont := range req.Contacts {
-			dbCont := &ClinicContact{
-				ClinicID:    createdClinic.ID,
-				ContactType: cont.ContactType,
-				Value:       cont.Value,
-				Label:       cont.Label,
-				IsPrimary:   cont.IsPrimary,
-			}
-			savedCont, txErr := s.repo.CreateContact(ctx, dbCont, tx)
+			contactDB := cont.MapToDB(clinicDB.ID)
+			_, txErr := s.repo.CreateContact(ctx, &contactDB, tx)
 			if txErr != nil {
 				return fmt.Errorf("failed to write clinic identity routing point: %w", txErr)
 			}
-			createdContacts = append(createdContacts, *savedCont)
+
+			contacts = append(contacts, contactDB)
 		}
 
 		tokenID = uuid.New()
 		vToken := &VerificationToken{
 			ID:        tokenID,
-			ClinicID:  createdClinic.ID,
-			Role:      createdClinic.Role,
+			ClinicID:  clinicDB.ID,
+			Role:      clinicDB.Role,
 			Status:    TokenStatusPending,
-			ExpiresAt: time.Now().Add(24 * time.Hour), // 24 hours expiry
+			ExpiresAt: time.Now().Add(24 * time.Hour),
 		}
 
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
+		}
+
+		if clinicDB.DocumentID != nil {
+			document, err = s.repo.GetDocumentByID(ctx, clinicDB.DocumentID)
+			if err != nil {
+				fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *clinicDB.DocumentID, err)
+				return err
+			}
 		}
 		return nil
 	})
@@ -158,40 +143,39 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 	if err == nil {
 		verificationLink := fmt.Sprintf("%s/clinic/verify-email?token=%s", baseUrl, tokenID)
 		go func() {
-			if err := s.mailer.SendVerificationEmail(createdClinic.Email, createdClinic.ClinicName, verificationLink); err != nil {
+			if err := s.mailer.SendVerificationEmail(clinicDB.Email, clinicDB.ClinicName, verificationLink); err != nil {
 				fmt.Printf("[CLINIC ERROR] Failed to send verification email: %v\n", err)
 				s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "clinic.send_verification_email",
-					err, createdClinic.ID.String(), createdClinic.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
+					err, clinicDB.ID.String(), clinicDB.ID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
 				)
 			}
 		}()
 	}
 
-	clinicIDStr := createdClinic.ID.String()
+	clinicIDStr := clinicDB.ID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
-		PracticeID: &clinicIDStr,
-		UserID:     &clinicIDStr, // Clinic id
+		PracticeID: nil,
+		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicRegistered,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
 	})
 
-	var document *file.Document
-	if createdClinic.DocumentID != nil && *createdClinic.DocumentID != "" {
-		document, err = s.repo.GetDocumentByID(ctx, *createdClinic.DocumentID)
-		if err != nil {
-			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *createdClinic.DocumentID, err)
-		}
+	var rsDocument *file.RsDocument
+	if document != nil {
+		rsDocument = document.ToRsDocument()
 	}
 
-	return toRsClinicDetail(createdClinic, createdAddresses, createdContacts, document), nil
+	rsClinic := clinicDB.MapToRs(addresses, contacts, rsDocument)
+
+	return &rsClinic, nil
 }
 
-func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, error) {
+func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 	clinic, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		_ = util.CompareHash(req.Password, "$2a$10$dummyhashfortimingnormalization000000000000000000000000")
+		_ = util.CompareHash(req.Password, s.cfg.Hash)
 		return nil, ErrInvalidPassword
 	}
 
@@ -226,7 +210,6 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 		return err
 	}
 
-	// Security check: Don't let User A log out User B's session
 	if sess.ClinicID != clinicID {
 		s.auditSvc.LogSystemIssue(ctx, auditctx.ActionSystemError, "session.unauthorized_logout",
 			errors.New("unauthorized session access attempt"),
@@ -239,7 +222,6 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 		return err
 	}
 
-	// Audit log: user logged out
 	sessIDStr := sess.ID.String()
 	clinicIDStr := sess.ClinicID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
@@ -267,7 +249,7 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 	return nil
 }
 
-func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinicDetail, error) {
+func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic, error) {
 	clinic, err := s.repo.FindByID(ctx, clinicID)
 	if err != nil {
 		return nil, ErrNotFound
@@ -284,14 +266,21 @@ func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic
 	}
 
 	var document *file.Document
-	if clinic.DocumentID != nil && *clinic.DocumentID != "" {
-		document, err = s.repo.GetDocumentByID(ctx, *clinic.DocumentID)
+	if clinic.DocumentID != nil {
+		document, err = s.repo.GetDocumentByID(ctx, clinic.DocumentID)
 		if err != nil {
 			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *clinic.DocumentID, err)
 		}
 	}
 
-	return toRsClinicDetail(clinic, addresses, contacts, document), nil
+	var rsDocument *file.RsDocument
+	if document != nil {
+		rsDocument = document.ToRsDocument()
+	}
+
+	rsClinic := clinic.MapToRs(addresses, contacts, rsDocument)
+
+	return &rsClinic, nil
 }
 
 func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
@@ -337,63 +326,6 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	return nil
 }
 
-// ==========================================
-// HELPERS
-// ==========================================
-
-func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact, doc *file.Document) *RsClinicDetail {
-	rsAddrs := make([]RsClinicAddress, 0, len(addrs))
-	for _, a := range addrs {
-		rsAddrs = append(rsAddrs, RsClinicAddress{
-			ID:        a.ID,
-			Address:   a.Address,
-			City:      a.City,
-			State:     a.State,
-			Postcode:  a.Postcode,
-			IsPrimary: a.IsPrimary,
-		})
-	}
-
-	rsConts := make([]RsClinicContact, 0, len(conts))
-	for _, ct := range conts {
-		rsConts = append(rsConts, RsClinicContact{
-			ID:          ct.ID,
-			ContactType: ct.ContactType,
-			Value:       ct.Value,
-			Label:       ct.Label,
-			IsPrimary:   ct.IsPrimary,
-		})
-	}
-
-	var rsDocument *file.RsDocument
-	if doc != nil {
-		rsDocument = &file.RsDocument{
-			ID:           doc.ID,
-			OriginalName: doc.OriginalName,
-			FileKey:      doc.ObjectKey,
-			UploadedAt:   doc.UploadedAt,
-			CreatedAt:    doc.CreatedAt,
-		}
-	}
-
-	return &RsClinicDetail{
-		ID:          c.ID,
-		ClinicName:  c.ClinicName,
-		Email:       c.Email,
-		Role:        c.Role,
-		Verified:    c.Verified,
-		Description: c.Description,
-		DocumentID:  c.DocumentID,
-		Document:    rsDocument,
-		ABN:         c.ABN,
-		ACN:         c.ACN,
-		Addresses:   rsAddrs,
-		Contacts:    rsConts,
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
-	}
-}
-
 func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID string) (*RsToken, error) {
 	roleString := util.RoleClinic // Defult to Role CLINIC
 	if clinic.Role != nil {
@@ -405,7 +337,7 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
+	refreshToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -491,45 +423,10 @@ func (s *service) ChangePassword(ctx context.Context, clinicID uuid.UUID, req *R
 	return nil
 }
 
-func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *RqUpdateClinic) (*RsClinicDetail, error) {
-	clinic, err := s.repo.FindByID(ctx, clinicID)
+func (s *service) UpdateProfile(ctx context.Context, req *RqUpdate) (*RsClinic, error) {
+	clinic, err := s.repo.FindByID(ctx, req.Id)
 	if err != nil {
 		return nil, err
-	}
-
-	if req.ClinicName != nil {
-		clinic.ClinicName = *req.ClinicName
-	}
-	if req.Description != nil {
-		clinic.Description = req.Description
-	}
-	if req.DocumentID != nil {
-		clinic.DocumentID = req.DocumentID
-	}
-	if req.ABN != nil {
-		clinic.ABN = req.ABN
-	}
-	if req.ACN != nil {
-		clinic.ACN = req.ACN
-	}
-
-	// Pre-validate address changeset before opening a transaction
-	if req.Addresses != nil {
-		cs := req.Addresses
-		// Enforce: at most 5 active addresses total after changes
-		// Enforce: exactly 1 primary across all surviving + created addresses
-		// Enforce: cannot delete all addresses
-		if err := validateAddressChangeset(cs); err != nil {
-			return nil, err
-		}
-	}
-
-	// Pre-validate contact changeset
-	if req.Contacts != nil {
-		cs := req.Contacts
-		if err := validateContactChangeset(cs); err != nil {
-			return nil, err
-		}
 	}
 
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
@@ -542,60 +439,40 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 
 		if req.Addresses != nil {
 			cs := req.Addresses
-
-			// Delete first so counts are accurate
-			for _, idStr := range cs.Delete {
-				addrID, parseErr := uuid.Parse(idStr)
-				if parseErr != nil {
-					return fmt.Errorf("invalid address id %q: %w", idStr, parseErr)
-				}
+			for _, addrID := range cs.Delete {
 				if txErr = s.repo.DeleteAddressByID(ctx, addrID, tx); txErr != nil {
-					return fmt.Errorf("delete address %s: %w", idStr, txErr)
+					return fmt.Errorf("delete address %s: %w", addrID, txErr)
 				}
 			}
 
-			// Count remaining active addresses
-			remaining, txErr := s.repo.CountActiveAddresses(ctx, clinicID, tx)
+			remaining, txErr := s.repo.CountActiveAddresses(ctx, clinic.ID, tx)
 			if txErr != nil {
 				return txErr
 			}
 
-			// Guard: must always have at least 1 address
 			if remaining == 0 && len(cs.Create) == 0 {
 				return errors.New("clinic must have at least one address")
 			}
 
-			// Guard: max 5 addresses
 			if remaining+len(cs.Create) > 5 {
 				return fmt.Errorf("clinic cannot have more than 5 addresses (currently %d active, adding %d)", remaining, len(cs.Create))
 			}
 
 			for _, u := range cs.Update {
-				addrID, parseErr := uuid.Parse(u.ID)
-				if parseErr != nil {
-					return fmt.Errorf("invalid address id %q: %w", u.ID, parseErr)
+				addr, err := s.repo.GetAddressByID(ctx, u.ID, tx)
+				if err != nil {
+					return err
 				}
-				if _, txErr = s.repo.UpdateAddress(ctx, &ClinicAddress{
-					ID:        addrID,
-					Address:   u.Address,
-					City:      u.City,
-					State:     u.State,
-					Postcode:  u.Postcode,
-					IsPrimary: u.IsPrimary,
-				}, tx); txErr != nil {
+
+				ad := u.MapToDB(*addr)
+				if _, txErr = s.repo.UpdateAddress(ctx, &ad, tx); txErr != nil {
 					return fmt.Errorf("update address %s: %w", u.ID, txErr)
 				}
 			}
 
 			for _, a := range cs.Create {
-				if _, txErr = s.repo.CreateAddress(ctx, &ClinicAddress{
-					ClinicID:  clinicID,
-					Address:   a.Address,
-					City:      a.City,
-					State:     a.State,
-					Postcode:  a.Postcode,
-					IsPrimary: a.IsPrimary,
-				}, tx); txErr != nil {
+				add := a.MapToDB(clinic.ID)
+				if _, txErr = s.repo.CreateAddress(ctx, &add, tx); txErr != nil {
 					return fmt.Errorf("create address: %w", txErr)
 				}
 			}
@@ -604,17 +481,13 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 		if req.Contacts != nil {
 			cs := req.Contacts
 
-			for _, idStr := range cs.Delete {
-				contID, parseErr := uuid.Parse(idStr)
-				if parseErr != nil {
-					return fmt.Errorf("invalid contact id %q: %w", idStr, parseErr)
-				}
-				if txErr = s.repo.DeleteContactByID(ctx, contID, tx); txErr != nil {
-					return fmt.Errorf("delete contact %s: %w", idStr, txErr)
+			for _, id := range cs.Delete {
+				if txErr = s.repo.DeleteContactByID(ctx, id, tx); txErr != nil {
+					return fmt.Errorf("delete contact %s: %w", id, txErr)
 				}
 			}
 
-			remaining, txErr := s.repo.CountActiveContacts(ctx, clinicID, tx)
+			remaining, txErr := s.repo.CountActiveContacts(ctx, clinic.ID, tx)
 			if txErr != nil {
 				return txErr
 			}
@@ -628,29 +501,20 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 			}
 
 			for _, u := range cs.Update {
-				contID, parseErr := uuid.Parse(u.ID)
-				if parseErr != nil {
-					return fmt.Errorf("invalid contact id %q: %w", u.ID, parseErr)
+				contacts, err := s.repo.GetContactByID(ctx, u.ID, tx)
+				if err != nil {
+					return err
 				}
-				if _, txErr = s.repo.UpdateContact(ctx, &ClinicContact{
-					ID:          contID,
-					ContactType: u.ContactType,
-					Value:       u.Value,
-					Label:       u.Label,
-					IsPrimary:   u.IsPrimary,
-				}, tx); txErr != nil {
+
+				ctl := u.MapToDB(*contacts)
+				if _, txErr = s.repo.UpdateContact(ctx, &ctl, tx); txErr != nil {
 					return fmt.Errorf("update contact %s: %w", u.ID, txErr)
 				}
 			}
 
-			for _, c := range cs.Create {
-				if _, txErr = s.repo.CreateContact(ctx, &ClinicContact{
-					ClinicID:    clinicID,
-					ContactType: c.ContactType,
-					Value:       c.Value,
-					Label:       c.Label,
-					IsPrimary:   c.IsPrimary,
-				}, tx); txErr != nil {
+			for _, ct := range cs.Create {
+				ctl := ct.MapToDB(clinic.ID)
+				if _, txErr = s.repo.CreateContact(ctx, &ctl, tx); txErr != nil {
 					return fmt.Errorf("create contact: %w", txErr)
 				}
 			}
@@ -662,23 +526,28 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 		return nil, err
 	}
 
-	// Re-fetch the final state
-	updatedClinic, err := s.repo.FindByID(ctx, clinicID)
+	updatedClinic, err := s.repo.FindByID(ctx, clinic.ID)
 	if err != nil {
 		return nil, err
 	}
-	addresses, _ := s.repo.ListAddressesByClinicID(ctx, clinicID)
-	contacts, _ := s.repo.ListContactsByClinicID(ctx, clinicID)
+	addresses, err := s.repo.ListAddressesByClinicID(ctx, clinic.ID)
+	if err != nil {
+		return nil, err
+	}
+	contacts, err := s.repo.ListContactsByClinicID(ctx, clinic.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	var document *file.Document
-	if updatedClinic.DocumentID != nil && *updatedClinic.DocumentID != "" {
-		document, err = s.repo.GetDocumentByID(ctx, *updatedClinic.DocumentID)
+	if updatedClinic.DocumentID != nil {
+		document, err = s.repo.GetDocumentByID(ctx, updatedClinic.DocumentID)
 		if err != nil {
 			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *updatedClinic.DocumentID, err)
 		}
 	}
 
-	clinicIDStr := clinicID.String()
+	clinicIDStr := clinic.ID.String()
 	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
@@ -688,46 +557,14 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 		EntityID:   &clinicIDStr,
 	})
 
-	return toRsClinicDetail(updatedClinic, addresses, contacts, document), nil
-}
+	var rsDocument *file.RsDocument
+	if document != nil {
+		rsDocument = document.ToRsDocument()
+	}
 
-// validateAddressChangeset checks primary-field rules before the transaction.
-func validateAddressChangeset(cs *RqAddressChangeset) error {
-	primaryCount := 0
-	for _, a := range cs.Create {
-		if a.IsPrimary {
-			primaryCount++
-		}
-	}
-	for _, a := range cs.Update {
-		if a.IsPrimary {
-			primaryCount++
-		}
-	}
-	// Only enforce primary uniqueness when the caller is explicitly setting primaries
-	if primaryCount > 1 {
-		return errors.New("only one address can be marked as primary")
-	}
-	return nil
-}
+	rsClinic := clinic.MapToRs(addresses, contacts, rsDocument)
 
-// validateContactChangeset checks primary-field rules before the transaction.
-func validateContactChangeset(cs *RqContactChangeset) error {
-	primaryCount := 0
-	for _, c := range cs.Create {
-		if c.IsPrimary {
-			primaryCount++
-		}
-	}
-	for _, c := range cs.Update {
-		if c.IsPrimary {
-			primaryCount++
-		}
-	}
-	if primaryCount > 1 {
-		return errors.New("only one contact can be marked as primary")
-	}
-	return nil
+	return &rsClinic, nil
 }
 
 func (s *service) DeleteClinic(ctx context.Context, clinicID uuid.UUID) error {
@@ -751,8 +588,7 @@ func (s *service) DeleteClinic(ctx context.Context, clinicID uuid.UUID) error {
 func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) error {
 	clinic, err := s.repo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		// Return nil to avoid user enumeration
-		return nil
+		return err
 	}
 
 	rawToken := uuid.New().String()
