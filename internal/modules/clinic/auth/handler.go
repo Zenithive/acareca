@@ -29,7 +29,10 @@ type handler struct {
 }
 
 func NewHandler(svc Service) IHandler {
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		panic(err)
+	}
 	return &handler{svc: svc, cfg: *cfg}
 }
 
@@ -39,14 +42,14 @@ func NewHandler(svc Service) IHandler {
 // @Tags invoice-clinic
 // @Accept json
 // @Produce json
-// @Param request body RqRegisterClinic true "Clinic Registration Data"
+// @Param request body RqRegister true "Clinic Registration Data"
 // @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /clinic/register [post]
 func (h *handler) Register(c *gin.Context) {
-	var req RqRegisterClinic
+	var req RqRegister
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -71,14 +74,14 @@ func (h *handler) Register(c *gin.Context) {
 // @Tags invoice-clinic
 // @Accept json
 // @Produce json
-// @Param request body RqLoginClinic true "Clinic Login Credentials"
+// @Param request body RqLogin true "Clinic Login Credentials"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 411 {object} response.RsError
 // @Failure 500 {object} response.RsError
 // @Router /clinic/login [post]
 func (h *handler) Login(c *gin.Context) {
-	var req RqLoginClinic
+	var req RqLogin
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -104,7 +107,7 @@ func (h *handler) Login(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerToken
-// @Param request body RqLogoutClinic true "Clinic Session Logout Payload"
+// @Param request body RqLogout true "Clinic Session Logout Payload"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -116,7 +119,7 @@ func (h *handler) Logout(c *gin.Context) {
 		return
 	}
 
-	var req RqLogoutClinic
+	var req RqLogout
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
@@ -225,8 +228,8 @@ func (h *handler) ChangePassword(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerToken
-// @Param request body RqUpdateClinic true "Update Data"
-// @Success 200 {object} RsClinicDetail
+// @Param request body RqUpdate true "Update Data"
+// @Success 200 {object} RsClinic
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError
@@ -237,13 +240,15 @@ func (h *handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	var req RqUpdateClinic
+	var req RqUpdate
 	if err := util.BindAndValidate(c, &req); err != nil {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
 
-	clinic, err := h.svc.UpdateProfile(c.Request.Context(), clinicID, &req)
+	req.Id = clinicID
+
+	clinic, err := h.svc.UpdateProfile(c.Request.Context(), &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
@@ -298,7 +303,7 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, nil, "If an account exists, a reset link has been sent.")
+	response.JSON(c, http.StatusOK, nil, "A password reset link has been sent to your email address.")
 }
 
 // ResetPassword godoc

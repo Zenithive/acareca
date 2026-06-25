@@ -15,7 +15,6 @@ type Config struct {
 	DBSSLMode          string
 	ServerPort         string
 	JWTSecret          string
-	JWTRefreshSecret   string
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURL  string
@@ -23,11 +22,11 @@ type Config struct {
 	Env                string
 	DevUrl             string
 	ProdUrl            string
-	LocalUrl           string
 	AllowedOrigins     string
 	StripeSecretKey    string
 	FrontendURL        string
 	SenderEmail        string
+	Hash               string
 
 	// File Upload Configuration
 	FileUploadMaxSize         int64
@@ -49,12 +48,23 @@ type Config struct {
 	TemplateEncryptionKey string
 }
 
+// getEnv returns the value of the env var if set and non-empty, otherwise fallback.
 func getEnv(key, fallback string) string {
 	val, ok := os.LookupEnv(key)
 	if !ok || val == "" {
 		return fallback
 	}
 	return val
+}
+
+// getEnvRequired returns the value of the env var if set and non-empty,
+// otherwise returns an error. Use for config values with no safe default.
+func getEnvRequired(key string) (string, error) {
+	val, ok := os.LookupEnv(key)
+	if !ok || val == "" {
+		return "", fmt.Errorf("can't find env key %s", key)
+	}
+	return val, nil
 }
 
 func getEnvInt64(key string, fallback int64) int64 {
@@ -70,7 +80,22 @@ func getEnvInt64(key string, fallback int64) int64 {
 	return intVal
 }
 
-func NewConfig() *Config {
+func NewConfig() (*Config, error) {
+	jwtSecret, err := getEnvRequired("JWT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+
+	StripeSecretKey, err := getEnvRequired("STRIPE_SECRET_KEY")
+	if err != nil {
+		return nil, err
+	}
+
+	templateEncryptionKey, err := getEnvRequired("TEMPLATE_ENCRYPTION_KEY")
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		DBHost:             getEnv("DB_HOST", "localhost"),
 		DBPort:             getEnv("DB_PORT", "5432"),
@@ -79,8 +104,7 @@ func NewConfig() *Config {
 		DBName:             getEnv("DB_NAME", "acareca"),
 		DBSSLMode:          getEnv("DB_SSLMODE", "disable"),
 		ServerPort:         getEnv("SERVER_PORT", "8080"),
-		JWTSecret:          getEnv("JWT_SECRET", "change-me"),
-		JWTRefreshSecret:   getEnv("JWT_REFRESH_SECRET", "change-me-refresh"),
+		JWTSecret:          jwtSecret,
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/oauth"),
@@ -88,17 +112,17 @@ func NewConfig() *Config {
 		Env:                getEnv("ENV", "local"),
 		DevUrl:             getEnv("DEV_API_URL", "https://acareca-bam8.onrender.com"),
 		ProdUrl:            getEnv("PROD_API_URL", "https://aca-reca-frontend-production.up.railway.app"),
-		LocalUrl:           getEnv("LOCAL_API_URl", "http://localhost:5173"),
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", ""),
-		StripeSecretKey:    getEnv("STRIPE_SECRET_KEY", "ETC"),
+		StripeSecretKey:    StripeSecretKey,
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
 		SenderEmail:        getEnv("SENDER_EMAIL", ""),
+		Hash:               getEnv("HASH", ""),
 
 		// File Upload Configuration
 		FileUploadMaxSize:         getEnvInt64("FILE_UPLOAD_MAX_SIZE", 10485760), // 10MB default
 		FileUploadAllowedTypes:    getEnv("FILE_UPLOAD_ALLOWED_TYPES", "image/jpeg,image/png,image/gif,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"),
 		FileUploadStorageProvider: getEnv("FILE_UPLOAD_STORAGE_PROVIDER", "local"),
-		// FileUploadLocalPath:       getEnv("FILE_UPLOAD_LOCAL_PATH", "./uploads"),
+		FileUploadLocalPath:       getEnv("FILE_UPLOAD_LOCAL_PATH", "./uploads"),
 
 		// R2 Configuration
 		R2AccountID:       getEnv("R2_ACCOUNT_ID", ""),
@@ -111,8 +135,8 @@ func NewConfig() *Config {
 		// NATS Configuration
 		NATSUrl: getEnv("NATS_URL", "nats://localhost:4222"),
 
-		TemplateEncryptionKey: getEnv("TEMPLATE_ENCRYPTION_KEY", "default_32_bytes_secret_key_abc"),
-	}
+		TemplateEncryptionKey: templateEncryptionKey,
+	}, nil
 }
 
 func (c *Config) GetBaseURL() (string, error) {
@@ -124,6 +148,6 @@ func (c *Config) GetBaseURL() (string, error) {
 	case "dev":
 		return c.DevUrl, nil
 	default:
-		return c.LocalUrl, nil
+		return "", nil
 	}
 }
