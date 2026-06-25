@@ -755,7 +755,7 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
+	refreshToken, err := util.SignToken(user.ID.String(), entityID, user.Role, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

@@ -337,7 +337,7 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 		return nil, err
 	}
 
-	refreshToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, 7*24*time.Hour, s.cfg.JWTRefreshSecret)
+	refreshToken, err := util.SignToken(clinic.ID.String(), clinicID, roleString, 7*24*time.Hour, s.cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

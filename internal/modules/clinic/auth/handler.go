@@ -29,7 +29,10 @@ type handler struct {
 }
 
 func NewHandler(svc Service) IHandler {
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		panic(err)
+	}
 	return &handler{svc: svc, cfg: *cfg}
 }
 

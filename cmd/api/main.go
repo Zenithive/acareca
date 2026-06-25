@@ -40,7 +40,10 @@ func main() {
 		log.Println("No .env file found, using system environment variables")
 	}
 
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	if os.Getenv("GIN_MODE") == "release" {
