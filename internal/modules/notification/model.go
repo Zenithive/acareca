@@ -7,93 +7,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-)
-
-type Status string
-
-const (
-	StatusUnread    Status = "UNREAD"
-	StatusRead      Status = "READ"
-	StatusDismissed Status = "DISMISSED"
-)
-
-type DeliveryStatus string
-
-const (
-	DeliveryPending   DeliveryStatus = "PENDING"
-	DeliveryDelivered DeliveryStatus = "DELIVERED"
-	DeliveryFailed    DeliveryStatus = "FAILED"
-)
-
-type EventType string
-
-const (
-	EventInviteSent     EventType = "invite.sent"
-	EventInviteAccepted EventType = "invite.accepted"
-	EventInviteDeclined EventType = "invite.declined"
-
-	EventClinicUpdated      EventType = "clinic.updated"
-	EventFormSubmitted      EventType = "form.submitted"
-	EventFormUpdated        EventType = "form.updated"
-	EventTransactionCreated EventType = "transaction.created"
-	EventTransactionUpdated EventType = "transaction.status_changed"
-	EventDocumentUploaded   EventType = "document.uploaded"
-
-	EventAuditLogCreated EventType = "audit_log.created"
-	EventSystemError     EventType = "system.error"
-	EventSystemWarning   EventType = "system.warning"
-)
-
-type EntityType string
-
-const (
-	EntityClinic      EntityType = "clinic"
-	EntityForm        EntityType = "form"
-	EntityTransaction EntityType = "transaction"
-	EntityDocument    EntityType = "document"
-	EntityInvite      EntityType = "invite"
-	EntityAuditLog    EntityType = "audit_log"
-	EntitySystem      EntityType = "system"
-)
-
-type Channel string
-
-const (
-	ChannelInApp Channel = "in_app"
-	ChannelPush  Channel = "push"
-	ChannelEmail Channel = "email"
-)
-
-func (c Channel) IsValid() bool {
-	switch c {
-	case ChannelInApp, ChannelPush, ChannelEmail:
-		return true
-	default:
-		return false
-	}
-}
-
-type ActorType string
-
-const (
-	ActorPractitioner ActorType = "PRACTITIONER"
-	ActorAccountant   ActorType = "ACCOUNTANT"
-	ActorAdmin        ActorType = "ADMIN"
-	ActorSystem       ActorType = "SYSTEM"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type RqNotification struct {
 	ID            uuid.UUID       `json:"id"`
 	RecipientID   uuid.UUID       `json:"recipient_id"`
-	RecipientType ActorType       `json:"recipient_type"`
+	RecipientType util.ActorType  `json:"recipient_type"`
 	SenderID      *uuid.UUID      `json:"sender_id"`
-	SenderType    *ActorType      `json:"sender_type"`
-	EventType     EventType       `json:"event_type"`
-	EntityType    EntityType      `json:"entity_type"`
+	SenderType    *util.ActorType `json:"sender_type"`
+	EventType     util.EventType  `json:"event_type"`
+	EntityType    util.EntityType `json:"entity_type"`
 	EntityID      uuid.UUID       `json:"entity_id"`
-	Status        Status          `json:"status"`
+	Status        util.Status     `json:"status"`
 	Payload       json.RawMessage `json:"payload"`
-	Channels      []Channel       `json:"channels"`
+	Channels      []util.Channel  `json:"channels"`
 	CreatedAt     time.Time       `json:"created_at"`
 	ReadedAt      *time.Time      `json:"readed_at"`
 }
@@ -101,35 +29,36 @@ type RqNotification struct {
 type Notification struct {
 	ID            uuid.UUID       `db:"id"`
 	RecipientID   uuid.UUID       `db:"recipient_id"`
-	RecipientType ActorType       `db:"recipient_type"`
+	RecipientType util.ActorType  `db:"recipient_type"`
 	SenderID      *uuid.UUID      `db:"sender_id"`
-	SenderType    *ActorType      `db:"sender_type"`
-	EventType     EventType       `db:"event_type"`
-	EntityType    EntityType      `db:"entity_type"`
+	SenderType    *util.ActorType `db:"sender_type"`
+	EventType     util.EventType  `db:"event_type"`
+	EntityType    util.EntityType `db:"entity_type"`
 	EntityID      uuid.UUID       `db:"entity_id"`
-	Status        Status          `db:"status"`
+	Status        util.Status     `db:"status"`
 	Payload       json.RawMessage `db:"payload" swaggertype:"object"`
 	CreatedAt     time.Time       `db:"created_at"`
 	ReadedAt      *time.Time      `db:"readed_at"`
 }
 
 type Delivery struct {
-	ID             uuid.UUID      `db:"id"`
-	NotificationID uuid.UUID      `db:"notification_id"`
-	Channel        Channel        `db:"channel"`
-	Status         DeliveryStatus `db:"status"`
-	RetryCount     int            `db:"retry_count"`
-	LastAttemptAt  *time.Time     `db:"last_attempted_at"`
-	DeliveredAt    *time.Time     `db:"delivered_at"`
-	ErrorMessage   *string        `db:"error_message"`
+	ID             uuid.UUID           `db:"id"`
+	NotificationID uuid.UUID           `db:"notification_id"`
+	Channel        util.Channel        `db:"channel"`
+	Status         util.DeliveryStatus `db:"status"`
+	RetryCount     int                 `db:"retry_count"`
+	LastAttemptAt  *time.Time          `db:"last_attempted_at"`
+	DeliveredAt    *time.Time          `db:"delivered_at"`
+	ErrorMessage   *string             `db:"error_message"`
 }
 
 type FailedDelivery struct {
 	NotificationID uuid.UUID       `db:"notification_id"`
 	RecipientID    uuid.UUID       `db:"recipient_id"`
+	RecepientType  util.ActorType  `db:"recipient_type"`
 	RetryCount     int             `db:"retry_count"`
-	EventType      EventType       `db:"event_type"`
-	EntityType     EntityType      `db:"entity_type"`
+	EventType      util.EventType  `db:"event_type"`
+	EntityType     util.EntityType `db:"entity_type"`
 	EntityID       uuid.UUID       `db:"entity_id"`
 	Payload        json.RawMessage `db:"payload"`
 	CreatedAt      time.Time       `db:"created_at"`
@@ -138,7 +67,7 @@ type FailedDelivery struct {
 type NotificationPayload struct {
 	Title      string                  `json:"title"`
 	Body       json.RawMessage         `json:"body"`
-	Channel    *Channel                `json:"channel,omitempty"`
+	Channel    *util.Channel           `json:"channel,omitempty"`
 	SenderName *string                 `json:"sender_name,omitempty"`
 	EntityName *string                 `json:"entity_name,omitempty"`
 	ExtraData  *map[string]interface{} `json:"extra_data,omitempty"`
@@ -232,6 +161,7 @@ type RqBulkDismiss struct {
 	IDs []uuid.UUID `json:"ids" validate:"required,min=1"`
 }
 
+// Event subjects
 const (
 	SubjectNotificationInApp = "notification.in_app"
 	SubjectNotificationEmail = "notification.email"
@@ -244,16 +174,17 @@ const (
 	ConsumerNotificationPush  = "notification_push_consumer"
 )
 
+// NotificationEvent represents a notification event to be published
 type NotificationEvent struct {
 	ID            uuid.UUID       `json:"id"`
 	RecipientID   uuid.UUID       `json:"recipient_id"`
-	RecipientType ActorType       `json:"recipient_type"`
+	RecipientType util.ActorType  `json:"recipient_type"`
 	SenderID      *uuid.UUID      `json:"sender_id"`
-	SenderType    *ActorType      `json:"sender_type"`
-	EventType     EventType       `json:"event_type"`
-	EntityType    EntityType      `json:"entity_type"`
+	SenderType    *util.ActorType `json:"sender_type"`
+	EventType     util.EventType  `json:"event_type"`
+	EntityType    util.EntityType `json:"entity_type"`
 	EntityID      uuid.UUID       `json:"entity_id"`
 	Payload       json.RawMessage `json:"payload"`
-	Channels      []Channel       `json:"channels"`
+	Channels      []util.Channel  `json:"channels"`
 	CreatedAt     time.Time       `json:"created_at"`
 }

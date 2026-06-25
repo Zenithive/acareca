@@ -21,6 +21,7 @@ SELECT fe.clinic_id,
     COALESCE(fev.net_amount, 0) AS net_amount,
     COALESCE(fev.gross_amount, 0) AS gross_amount,
     fev.description,
+    fev.id AS form_entry_value_id,
     cfv.form_id AS form_id,             
     coa.account_tax_id AS tax_id,
     CASE

@@ -270,11 +270,15 @@ func (r *repository) GetReport(ctx context.Context, practitionerIDs []uuid.UUID,
 
 func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UUID, f *PLReportFilter) (*PLSummaryRow, error) {
 	query := `
-		SELECT 
-			COALESCE(SUM(net_profit_net), 0)   AS net_profit_net,
-			COALESCE(SUM(gross_profit_net), 0) AS gross_profit_net
-		FROM vw_pl_summary_monthly
-		WHERE practitioner_id IN (?)
+		WITH filtered_items AS (
+			SELECT
+				practitioner_id,
+				account_type,
+				pl_section,
+				SUM(net_amount) AS total_net,
+				SUM(signed_net_amount) AS sg_net_amount
+			FROM vw_pl_line_items
+			WHERE practitioner_id IN (?)
 	`
 	args := []interface{}{practitionerIDs}
 
@@ -285,14 +289,23 @@ func (r *repository) GetPLSummary(ctx context.Context, practitionerIDs []uuid.UU
 	}
 
 	if f.DateFrom != nil && *f.DateFrom != "" {
-		query += " AND period_month >= DATE_TRUNC('month', ?::DATE)"
+		query += " AND date::DATE >= ?::DATE"
 		args = append(args, *f.DateFrom)
 	}
 
 	if f.DateUntil != nil && *f.DateUntil != "" {
-		query += " AND period_month <= DATE_TRUNC('month', ?::DATE)"
+		query += " AND date::DATE <= ?::DATE"
 		args = append(args, *f.DateUntil)
 	}
+
+	query += `
+			GROUP BY practitioner_id, account_type, pl_section
+		)
+		SELECT
+			COALESCE(SUM(total_net) FILTER (WHERE account_type = 'Revenue'), 0) - COALESCE(SUM(total_net) FILTER (WHERE pl_section = '2. Cost of Sales'), 0) AS gross_profit_net,
+			COALESCE(SUM(sg_net_amount), 0) AS net_profit_net
+		FROM filtered_items
+	`
 
 	fullQuery, fullArgs, err := sqlx.In(query, args...)
 	if err != nil {

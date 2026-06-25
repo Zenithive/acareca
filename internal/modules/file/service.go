@@ -4,18 +4,34 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
+	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/upload"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
 )
+
+// UserInfo represents user information needed for notifications
+type UserInfo struct {
+	FirstName string
+	LastName  string
+}
+
+// AuthService defines the interface for auth operations needed by file service
+type AuthService interface {
+	GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType util.ActorType) (*UserInfo, error)
+}
 
 type Service interface {
 	GetDocument(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*RsDocument, error)
@@ -26,24 +42,30 @@ type Service interface {
 }
 
 type service struct {
-	repo      Repository
-	storage   upload.StorageProvider
-	validator *upload.FileValidator
-	cfg       *config.Config
-	db        *sqlx.DB
-	auditSvc  audit.Service
-	bucket    string
+	repo            Repository
+	storage         upload.StorageProvider
+	validator       *upload.FileValidator
+	cfg             *config.Config
+	db              *sqlx.DB
+	auditSvc        audit.Service
+	bucket          string
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         AuthService
 }
 
-func NewService(repo Repository, storage upload.StorageProvider, validator *upload.FileValidator, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service) Service {
+func NewService(repo Repository, storage upload.StorageProvider, validator *upload.FileValidator, cfg *config.Config, db *sqlx.DB, auditSvc audit.Service, invitationRepo invitation.Repository, authSvc AuthService, notificationSvc notification.Service, adminRepo admin.Repository) Service {
 	return &service{
-		repo:      repo,
-		storage:   storage,
-		validator: validator,
-		cfg:       cfg,
-		db:        db,
-		auditSvc:  auditSvc,
-		bucket:    cfg.R2BucketName,
+		repo:            repo,
+		storage:         storage,
+		validator:       validator,
+		cfg:             cfg,
+		db:              db,
+		auditSvc:        auditSvc,
+		bucket:          cfg.R2BucketName,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
+		invitationRepo:  invitationRepo,
+		authSvc:         authSvc,
 	}
 }
 
@@ -148,6 +170,16 @@ func (s *service) DeleteDocument(ctx context.Context, id uuid.UUID, userID uuid.
 	}()
 
 	s.logFileDelete(ctx, doc, userID)
+
+	// Send notification for document deletion only if accountant
+	actorType := util.ActorPractitioner
+	if doc.OwnerRole == util.RoleAccountant {
+		actorType = util.ActorAccountant
+		if err := s.notifyDocument(ctx, doc.ID, userID, actorType, util.EventDocumentUploaded, doc.OriginalName); err != nil {
+			log.Printf("[WARN] failed to send document deletion notification: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -214,6 +246,15 @@ func (s *service) GeneratePresignedUploadURL(ctx context.Context, req *RqGenerat
 
 	s.logFileUpload(ctx, created, ownerID)
 
+	// Send notification for document upload only if accountant
+	actorType := util.ActorPractitioner
+	if ownerRole == util.RoleAccountant {
+		actorType = util.ActorAccountant
+		if err := s.notifyDocument(ctx, created.ID, ownerID, actorType, util.EventDocumentUploaded, created.OriginalName); err != nil {
+			log.Printf("[WARN] failed to send document upload notification: %v", err)
+		}
+	}
+
 	_, err = s.cfg.GetBaseURL()
 	if err != nil {
 		return nil, fmt.Errorf("get base URL: %w", err)
@@ -242,11 +283,10 @@ func (s *service) canAccessDocument(doc *Document, userID uuid.UUID) bool {
 // Audit logging helpers
 
 func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.UUID) {
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionFileUploaded,
 		Module:     auditctx.ModuleFile,
@@ -257,17 +297,14 @@ func (s *service) logFileUpload(ctx context.Context, doc *Document, userID uuid.
 			"size":      doc.SizeBytes,
 			"mime_type": doc.MimeType,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 }
 
 func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.UUID, beforeState map[string]interface{}) {
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionFileUpdated,
 		Module:      auditctx.ModuleFile,
@@ -278,17 +315,14 @@ func (s *service) logFileUpdate(ctx context.Context, doc *Document, userID uuid.
 			"filename":  doc.OriginalName,
 			"is_public": doc.IsPublic,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 }
 
 func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.UUID) {
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	docIDStr := doc.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionFileDeleted,
 		Module:     auditctx.ModuleFile,
@@ -298,7 +332,101 @@ func (s *service) logFileDelete(ctx context.Context, doc *Document, userID uuid.
 			"filename":   doc.OriginalName,
 			"object_key": doc.ObjectKey,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
+}
+
+// notifyDocument sends notifications to linked users about document operations
+func (s *service) notifyDocument(ctx context.Context, docID uuid.UUID, actorID uuid.UUID, actorType util.ActorType, eventType util.EventType, filename string) error {
+	if s.notificationPub == nil {
+		log.Printf("[WARN] notification publisher is nil, skipping document notification")
+		return nil
+	}
+
+	if s.authSvc == nil {
+		log.Printf("[WARN] auth service is nil, skipping document notification")
+		return nil
+	}
+
+	// Get sender information
+	user, err := s.authSvc.GetUserByID(ctx, actorID, actorType)
+	if err != nil {
+		log.Printf("[WARN] failed to get user for notification: %v", err)
+		return nil
+	}
+	senderName := user.FirstName + " " + user.LastName
+
+	// Build recipients list
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// If the sender is a practitioner, notify all their linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, actorID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", actorID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// If the sender is an accountant, notify all linked practitioners
+		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, actorID)
+		if err != nil {
+			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", actorID, err)
+			return nil
+		}
+
+		// Notify each linked practitioner
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		log.Printf("[WARN] unsupported actor type for document notification: %s", actorType)
+		return nil
+	}
+
+	// If no recipients, don't send notification
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for document notification")
+		return nil
+	}
+
+	// Send notifications with preferences using the publisher
+	err = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   actorID,
+		SenderType: actorType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityDocument,
+		EntityID:   docID,
+		EntityKey:  "document_id",
+		Title:      "Document Uploaded",
+		Body:       fmt.Sprintf("Document uploaded: %s by %s", filename, senderName),
+		ExtraData:  map[string]interface{}{"filename": filename},
+	})
+
+	if err != nil {
+		log.Printf("[WARN] failed to send document notification: %v", err)
+	}
+
+	return nil
 }

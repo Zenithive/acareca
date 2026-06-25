@@ -50,6 +50,7 @@ type dbSubscriptionRow struct {
 	PractitionerSubscription
 	SName        string  `db:"s_name"`
 	SDescription *string `db:"s_description"`
+	SIsVisible   bool    `db:"s_is_visible"`
 }
 
 func (r *repository) Create(ctx context.Context, s *PractitionerSubscription, tx *sqlx.Tx) (*PractitionerSubscription, error) {
@@ -105,10 +106,10 @@ func (r *repository) ListHistoryByPractitionerID(ctx context.Context, practition
 	base := `
         SELECT 
             ps.id, ps.practitioner_id, ps.subscription_id, ps.start_date, ps.end_date, ps.status, ps.stripe_subscription_id, ps.stripe_invoice_id, ps.created_at, ps.updated_at,
-            s.name AS s_name, s.description AS s_description
+            s.name AS s_name, s.description AS s_description, s.is_visible AS s_is_visible
         FROM tbl_practitioner_subscription ps
         INNER JOIN tbl_subscription s ON ps.subscription_id = s.id
-        WHERE ps.practitioner_id = ? AND ps.deleted_at IS NULL
+        WHERE ps.practitioner_id = ? AND ps.deleted_at IS NULL AND s.is_visible = true
     `
 	query, filterArgs := common.BuildQuery(base, f, subscriptionColumns, subscriptionSearchCols, false)
 	args := append([]interface{}{practitionerID}, filterArgs...)
@@ -172,7 +173,7 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 	query := `
 		SELECT 
 			ps.id, ps.practitioner_id, ps.subscription_id, ps.start_date, ps.end_date, ps.status, ps.stripe_subscription_id, ps.stripe_invoice_id, ps.created_at, ps.updated_at,
-			s.name AS s_name, s.description AS s_description
+			s.name AS s_name, s.description AS s_description, s.is_visible AS s_is_visible
 		FROM tbl_practitioner_subscription ps
 		INNER JOIN tbl_subscription s ON ps.subscription_id = s.id
 		WHERE ps.practitioner_id = $1 
@@ -181,6 +182,7 @@ func (r *repository) GetActiveSubscription(ctx context.Context, practitionerID u
 		  AND ps.end_date >= NOW()
 		  AND ps.deleted_at IS NULL
 		  AND s.deleted_at IS NULL
+		  AND s.is_visible = true
 		ORDER BY ps.created_at DESC
 		LIMIT 1
 	`
@@ -263,6 +265,7 @@ func (r *repository) mapToActiveSubscription(row *dbSubscriptionRow) *RsActiveSu
 			ID:          row.SubscriptionID,
 			Name:        row.SName,
 			Description: row.SDescription,
+			IsVisible:   row.SIsVisible,
 		},
 	}
 }

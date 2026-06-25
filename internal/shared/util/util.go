@@ -317,3 +317,84 @@ func ParseUUIDs(ids []string) ([]uuid.UUID, error) {
 	}
 	return result, nil
 }
+
+var (
+	ErrNotFound           = errors.New("not found")
+	ErrInvalidTransition  = errors.New("invalid status transition")
+	ErrMaxRetriesExceeded = errors.New("max retry count exceeded")
+)
+
+func HandleTransitionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		response.Error(c, http.StatusNotFound, err)
+	case errors.Is(err, ErrInvalidTransition):
+		response.Error(c, http.StatusConflict, err)
+	case errors.Is(err, ErrMaxRetriesExceeded):
+		response.Error(c, http.StatusUnprocessableEntity, err)
+	default:
+		response.Error(c, http.StatusInternalServerError, err)
+	}
+}
+
+func ParseFlexibleDate(dateStr string) (time.Time, error) {
+	if dateStr == "" {
+		return time.Time{}, errors.New("date cannot be empty")
+	}
+
+	// Trim spaces
+	dateStr = strings.TrimSpace(dateStr)
+
+	// Try different date formats
+	formats := []string{
+		"02 Jan 2006",               // "26 Apr 2026"
+		"2 Jan 2006",                // Single digit day
+		"02-01-2006",                // DD-MM-YYYY
+		"2006-01-02",                // YYYY-MM-DD (ISO format)
+		"01/02/2006",                // MM/DD/YYYY
+		"02/01/2006",                // DD/MM/YYYY
+		"January 2, 2006",           // Full month name
+		time.RFC3339,                // RFC3339
+		"2006-01-02T15:04:05Z07:00", // ISO 8601
+	}
+
+	var lastErr error
+	for _, format := range formats {
+		t, err := time.Parse(format, dateStr)
+		if err == nil {
+			return t, nil
+		}
+		lastErr = err
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
+}
+
+func MapEventTypeToNotificationEventType(eventType EventType) []NotificationEventType {
+	switch eventType {
+	case EventTransactionCreated, EventTransactionUpdated:
+		return []NotificationEventType{EventNewTransaction}
+	case EventTransactionReportExport, EventPLReportGenerated, EventPLReportExport, EventBASReportGenerated, EventBASReportExport, EventBalanceSheetGenerated, EventBalanceSheetExport, EventActivityStatementGenerated, EventActivityStatementExport:
+		// Reports should notify both accountants and practitioners
+		return []NotificationEventType{EventAccountantActivityAlert, EventPractitionerActivityAlert}
+	case EventClinicUpdated, EventFormSubmitted, EventFormUpdated, EventDocumentUploaded, EventInviteSent, EventInviteAccepted, EventInviteDeclined:
+		// Administrative activities - accountants only
+		return []NotificationEventType{EventAccountantActivityAlert}
+	case EventPractitionerTransactionCreated:
+		return []NotificationEventType{EventPractitionerActivityAlert}
+	case EventSystemError:
+		return []NotificationEventType{EventSystemErrorAlert}
+	case EventSystemWarning:
+		return []NotificationEventType{EventSystemWarningAlert}
+	case EventBillingPaymentSuccess, EventBillingPaymentFailed:
+		return []NotificationEventType{EventBillingAlert}
+	case EventSubscriptionCreated, EventSubscriptionUpdated, EventSubscriptionDeleted:
+		return []NotificationEventType{EventSubscriptionAlert}
+	case EventUserRegistered, EventPractitionerCreated:
+		return []NotificationEventType{EventUserRegistrationAlert}
+	case EventAuditLogCreated:
+		return []NotificationEventType{EventSystemActivityAlert}
+	default:
+		return []NotificationEventType{EventSystemActivityAlert}
+	}
+}

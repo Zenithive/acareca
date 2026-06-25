@@ -32,6 +32,15 @@ func (r *repository) GetBalanceSheet(ctx context.Context, practitionerIDs []uuid
 		args = append(args, *f.EndDate)
 		idx++
 	}
+	if f.UserID != nil && *f.UserID != "" {
+		userID, err := uuid.Parse(*f.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user_id: %w", err)
+		}
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", idx))
+		args = append(args, userID)
+		idx++
+	}
 
 	innerQuery := fmt.Sprintf("%s WHERE %s", base, strings.Join(conditions, " AND "))
 

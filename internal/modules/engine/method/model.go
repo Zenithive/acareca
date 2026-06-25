@@ -1,5 +1,14 @@
 package method
 
+const (
+	// GSTRate is the standard GST rate in Australia (10%)
+	GSTRate = 0.10
+	// GSTDivisor is used for inclusive tax calculations (amount / 11 = GST component)
+	GSTDivisor = 11.0
+	// GSTMultiplier is used for inclusive tax calculations (1 + GST rate)
+	GSTMultiplier = 1.1
+)
+
 type TaxTreatment string
 
 const (

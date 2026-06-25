@@ -2,7 +2,6 @@ package practitioner
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	invitationPkg "github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	userSubscription "github.com/iamarpitzala/acareca/internal/modules/business/subscription"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
@@ -33,7 +33,6 @@ type IService interface {
 	UpdatePractitionerProfile(ctx context.Context, userID uuid.UUID, req *RqUpdatePractitioner) error
 	GetLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID) (*string, error)
 	UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, fyID uuid.UUID, lockDate *string) error
-	VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error
 }
 
 type service struct {
@@ -45,6 +44,7 @@ type service struct {
 	invitationModel  *ModelInvitationRepo
 	auditSvc         audit.Service
 	fyrepo           fy.Repository
+	notificationSvc  notification.Service
 }
 
 func NewService(db *sqlx.DB, repo Repository, subscription subscription.Service, userSubscription userSubscription.Service, coaRepo coa.Repository, auditSvc audit.Service, fyrepo fy.Repository, invitationRepo ...interface{}) IService {
@@ -199,7 +199,6 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 		}
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	beforeState, err := s.repo.GetFinancialSettings(ctx, practitionerID, fyID)
 	if err != nil {
 		return fmt.Errorf("get before state: %w", err)
@@ -215,39 +214,14 @@ func (s *service) UpdateLockDate(ctx context.Context, practitionerID uuid.UUID, 
 	}
 
 	fyIDStr := fyID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionLockDateUpdated,
 		Module:      auditctx.ModuleBusiness,
 		EntityType:  lo.ToPtr(auditctx.EntityFinancialSettings),
 		EntityID:    &fyIDStr,
 		BeforeState: beforeState,
 		AfterState:  afterState,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
-
-	return nil
-}
-
-func (s *service) VerifyAccountantAccessToPractitioner(ctx context.Context, accountantID uuid.UUID, practitionerID uuid.UUID) error {
-	if s.invitationModel == nil {
-		return errors.New("invitation repository not available")
-	}
-
-	perms, err := s.invitationModel.InternalRepo.GetPermissionsByPractitionerAndAccountant(ctx, practitionerID, accountantID)
-	if err != nil || perms == nil {
-		if err != nil {
-			return fmt.Errorf("failed to get permissions: %w", err)
-		}
-		return errors.New("accountant does not have access to this practitioner")
-	}
-
-	lockDatePerms, exists := (*perms)[invitationPkg.PermLockDates]
-	if !exists || !lockDatePerms.Read {
-		return errors.New("accountant does not have read permission for lock dates")
-	}
 
 	return nil
 }

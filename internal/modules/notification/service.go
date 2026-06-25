@@ -6,34 +6,43 @@ import (
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
+	"github.com/jmoiron/sqlx"
 )
 
 type Service interface {
 	Publish(ctx context.Context, rq RqNotification) error
+	PublishEvent(ctx context.Context, subject string, event interface{}) error
 	List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error)
 	MarkRead(ctx context.Context, id uuid.UUID, recipientID uuid.UUID) error
 	MarkAllRead(ctx context.Context, recipientID uuid.UUID) error
 	MarkDismissed(ctx context.Context, ids []uuid.UUID, recipientID uuid.UUID) error
-	GetPreferences(ctx context.Context, userID uuid.UUID) ([]NotificationPreference, error)
-	UpdatePreference(ctx context.Context, userID, entityID uuid.UUID, role string, rq RqUpdatePreference) error
-	PreferenceSetting(ctx context.Context, userID uuid.UUID, entityID uuid.UUID, entityType string) error
+	GetPreferences(ctx context.Context, userID uuid.UUID) ([]preference.Preference, error)
 }
 
 type service struct {
-	repo      Repository
-	publisher *Publisher
+	repo     Repository
+	events   sharedEvents.IEvent
+	DB       *sqlx.DB
+	PrefRepo preference.Repository
 }
 
-func NewService(repo Repository, events sharedEvents.IEvent) Service {
+func NewService(repo Repository, events sharedEvents.IEvent, db *sqlx.DB, prefRepo preference.Repository) Service {
 	return &service{
-		repo:      repo,
-		publisher: NewPublisher(events),
+		repo:     repo,
+		events:   events,
+		DB:       db,
+		PrefRepo: prefRepo,
 	}
 }
 
 func (s *service) Publish(ctx context.Context, rq RqNotification) error {
+	if s.events == nil {
+		return fmt.Errorf("events system not configured")
+	}
+
 	event := NotificationEvent{
 		ID:            rq.ID,
 		RecipientID:   rq.RecipientID,
@@ -48,7 +57,24 @@ func (s *service) Publish(ctx context.Context, rq RqNotification) error {
 		CreatedAt:     rq.CreatedAt,
 	}
 
-	return s.publisher.PublishNotification(ctx, event)
+	if err := s.events.Publish(ctx, SubjectNotificationInApp, event); err != nil {
+		return fmt.Errorf("failed to publish notification event: %w", err)
+	}
+
+	return nil
+}
+
+// PublishEvent publishes an event to the specified subject
+func (s *service) PublishEvent(ctx context.Context, subject string, event interface{}) error {
+	if s.events == nil {
+		return fmt.Errorf("events system not configured")
+	}
+
+	if err := s.events.Publish(ctx, subject, event); err != nil {
+		return fmt.Errorf("failed to publish event to %s: %w", subject, err)
+	}
+
+	return nil
 }
 
 func (s *service) List(ctx context.Context, recipientID uuid.UUID, filter FilterNotification) (*util.RsList, error) {

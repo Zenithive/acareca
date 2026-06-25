@@ -4,6 +4,9 @@ go 1.26
 
 require (
 	github.com/aws/aws-sdk-go v1.55.8
+	github.com/aymerick/raymond v2.0.2+incompatible
+	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
+	github.com/chromedp/chromedp v0.15.1
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.1

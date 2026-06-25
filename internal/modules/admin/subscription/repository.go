@@ -39,13 +39,13 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (r *repository) Create(ctx context.Context, s *Subscription) (*Subscription, error) {
 	query := `
-		INSERT INTO tbl_subscription (name, description, price, duration_days, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
+		INSERT INTO tbl_subscription (name, description, price, duration_days, is_active, is_visible, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, name, description, price, duration_days, is_active, is_visible, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 	`
 	var out Subscription
 	if err := r.db.QueryRowxContext(ctx, query,
-		s.Name, s.Description, s.Price, s.DurationDays, s.IsActive, s.CreatedAt, s.UpdatedAt,
+		s.Name, s.Description, s.Price, s.DurationDays, s.IsActive, s.IsVisible, s.CreatedAt, s.UpdatedAt,
 	).StructScan(&out); err != nil {
 		return nil, fmt.Errorf("create subscription: %w", err)
 	}
@@ -54,7 +54,7 @@ func (r *repository) Create(ctx context.Context, s *Subscription) (*Subscription
 
 func (r *repository) GetByID(ctx context.Context, id int) (*Subscription, error) {
 	query := `
-		SELECT id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, duration_days, is_active, is_visible, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -70,7 +70,7 @@ func (r *repository) GetByID(ctx context.Context, id int) (*Subscription, error)
 
 func (r *repository) FindByName(ctx context.Context, name string) (*Subscription, error) {
 	query := `
-		SELECT id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, duration_days, is_active, is_visible, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE name = $1 AND deleted_at IS NULL
 	`
@@ -95,7 +95,7 @@ var subscriptionSearchColumns = []string{"name", "description"}
 
 func (r *repository) List(ctx context.Context, f common.Filter) ([]*Subscription, error) {
 	base := `
-		SELECT id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, duration_days, is_active, is_visible, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 		FROM tbl_subscription
 		WHERE deleted_at IS NULL
 	`
@@ -113,13 +113,13 @@ func (r *repository) List(ctx context.Context, f common.Filter) ([]*Subscription
 func (r *repository) Update(ctx context.Context, s *Subscription) (*Subscription, error) {
 	query := `
 		UPDATE tbl_subscription
-		SET name = $2, description = $3, price = $4, duration_days = $5, is_active = $6, updated_at = $7
+		SET name = $2, description = $3, price = $4, duration_days = $5, is_active = $6, is_visible = $7, updated_at = $8
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, name, description, price, duration_days, is_active, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
+		RETURNING id, name, description, price, duration_days, is_active, is_visible, stripe_product_id, stripe_price_id, created_at, updated_at, deleted_at
 	`
 	var out Subscription
 	if err := r.db.QueryRowxContext(ctx, query,
-		s.ID, s.Name, s.Description, s.Price, s.DurationDays, s.IsActive, s.UpdatedAt,
+		s.ID, s.Name, s.Description, s.Price, s.DurationDays, s.IsActive, s.IsVisible, s.UpdatedAt,
 	).StructScan(&out); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound

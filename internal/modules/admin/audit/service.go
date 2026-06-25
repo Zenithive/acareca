@@ -9,15 +9,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 )
 
 type Service interface {
 	Log(ctx context.Context, entry *LogEntry) error
-	LogAsync(entry *LogEntry)
+	LogAsync(ctx context.Context, entry *LogEntry)
 	LogSystemIssue(ctx context.Context, level, action string, issueErr error, actorID, entityID, entityType, module string)
+	LogWithNotification(ctx context.Context, entry *LogEntry, notifyAdmins bool) error
 	Query(ctx context.Context, f *Filter) (*util.RsList, error)
 	GetByID(ctx context.Context, id string) (*RsAuditLog, error)
 	Shutdown()
@@ -25,17 +28,26 @@ type Service interface {
 
 type service struct {
 	repo                Repository
-	logChan             chan *LogEntry
+	logChan             chan *logJob
 	done                chan struct{}
 	notificationService notification.Service
+	notificationPub     *sharednotification.Publisher
+	adminRepo           admin.Repository
 }
 
-func NewService(repo Repository, notificationService notification.Service) Service {
+type logJob struct {
+	ctx   context.Context
+	entry *LogEntry
+}
+
+func NewService(repo Repository, notificationService notification.Service, adminRepo admin.Repository) Service {
 	s := &service{
 		repo:                repo,
-		logChan:             make(chan *LogEntry, 1000),
+		logChan:             make(chan *logJob, 1000),
 		done:                make(chan struct{}),
 		notificationService: notificationService,
+		notificationPub:     sharednotification.NewPublisher(notification.NewServiceAdapter(notificationService), nil),
+		adminRepo:           adminRepo,
 	}
 
 	// Start async worker
@@ -44,37 +56,70 @@ func NewService(repo Repository, notificationService notification.Service) Servi
 	return s
 }
 
-// Log synchronously writes an audit log entry
 func (s *service) Log(ctx context.Context, entry *LogEntry) error {
+	s.enrichEntry(ctx, entry)
 	return s.repo.Insert(ctx, entry)
 }
 
-// LogAsync queues an audit log entry for async processing
-// This prevents audit logging from blocking main operations
-func (s *service) LogAsync(entry *LogEntry) {
+func (s *service) LogAsync(ctx context.Context, entry *LogEntry) {
+	s.enrichEntry(ctx, entry)
 	select {
-	case s.logChan <- entry:
-		// Successfully queued
+	case s.logChan <- &logJob{ctx: context.Background(), entry: entry}:
 	default:
-		// Channel full, log error but don't block
 		log.Printf("WARN: audit log channel full, dropping entry: %s.%s", entry.Module, entry.Action)
 	}
 }
 
-// asyncWorker processes audit log entries from the queue
+func (s *service) LogWithNotification(ctx context.Context, entry *LogEntry, notifyAdmins bool) error {
+	s.enrichEntry(ctx, entry)
+	if err := s.repo.Insert(ctx, entry); err != nil {
+		return err
+	}
+	if notifyAdmins && s.notificationPub != nil {
+		go s.publishAuditLogNotification(entry)
+	}
+	return nil
+}
+
+func (s *service) enrichEntry(ctx context.Context, entry *LogEntry) {
+	meta := auditctx.GetMetadata(ctx)
+
+	// DEBUG: Log context metadata
+	log.Printf("[DEBUG-ENRICH] Action: %s | Context UserID: %v | Context PracticeID: %v",
+		entry.Action,
+		meta.UserID,
+		meta.PracticeID,
+	)
+
+	if entry.PracticeID == nil {
+		entry.PracticeID = meta.PracticeID
+	}
+	if entry.UserID == nil {
+		entry.UserID = meta.UserID
+	}
+	if entry.IPAddress == nil {
+		entry.IPAddress = meta.IPAddress
+	}
+	if entry.UserAgent == nil {
+		entry.UserAgent = meta.UserAgent
+	}
+
+	// DEBUG: Log enriched entry
+	log.Printf("[DEBUG-ENRICHED] Action: %s | Entry UserID: %v | Entry PracticeID: %v",
+		entry.Action,
+		entry.UserID,
+		entry.PracticeID,
+	)
+}
+
 func (s *service) asyncWorker() {
-	for entry := range s.logChan {
-		ctx := context.Background()
-		if err := s.repo.Insert(ctx, entry); err != nil {
-			// Log error but continue processing
-			log.Printf("ERROR: failed to insert audit log: %v (action: %s.%s)", err, entry.Module, entry.Action)
+	for job := range s.logChan {
+		if err := s.repo.Insert(job.ctx, job.entry); err != nil {
+			log.Printf("ERROR: failed to insert audit log: %v (action: %s.%s)", err, job.entry.Module, job.entry.Action)
 			continue
 		}
-
-		// Trigger notification to admins asynchronously (in a separate goroutine)
-		// This ensures the audit log is saved even if notification sending fails
 		if s.notificationService != nil {
-			go s.publishAuditLogNotification(entry)
+			go s.publishAuditLogNotification(job.entry)
 		}
 	}
 	close(s.done)
@@ -104,11 +149,11 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 	detail := buildSystemIssueMessage(action, actorName, entityLabel, issueErr)
 
 	// Determine notification event type
-	var eventType notification.EventType
+	var eventType util.EventType
 	if level == auditctx.ActionSystemError {
-		eventType = notification.EventSystemError
+		eventType = util.EventSystemError
 	} else {
-		eventType = notification.EventSystemWarning
+		eventType = util.EventSystemWarning
 	}
 
 	// Deduplication Check (Prevent spamming admins with the same error)
@@ -135,9 +180,9 @@ func (s *service) LogSystemIssue(ctx context.Context, level, action string, issu
 
 	// Notify Admins
 	if s.notificationService != nil {
-		eventType := notification.EventSystemWarning
+		eventType := util.EventSystemWarning
 		if level == auditctx.ActionSystemError {
-			eventType = notification.EventSystemError
+			eventType = util.EventSystemError
 		}
 		// Send the clean 'detail' string as the notification body
 		go s.publishSystemIssueNotification(level, action, detail, parsedEntityID, eventType)
@@ -160,70 +205,103 @@ func buildSystemIssueMessage(action, actorName, entityName string, err error) st
 		actorName, action, entityName, err)
 }
 
+// buildAdminRecipients builds a list of admin recipients, optionally excluding an acting user
+func (s *service) buildAdminRecipients(ctx context.Context, excludeUserID *uuid.UUID) []sharednotification.RecipientWithPreferences {
+	recipients := make([]sharednotification.RecipientWithPreferences, 0)
+
+	if s.adminRepo == nil {
+		return recipients
+	}
+
+	admins, err := s.adminRepo.GetAllAdmins(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get admin users: %v", err)
+		return recipients
+	}
+
+	log.Printf("[DEBUG-RECIPIENTS] Building admin recipients - Total admins: %d, Exclude UserID: %v", len(admins), excludeUserID)
+
+	for _, admin := range admins {
+		// Skip if this admin is the one to be excluded
+		if excludeUserID != nil && admin.User.ID == *excludeUserID {
+			log.Printf("[INFO] Skipping excluded admin: %s (UserID: %s)", admin.User.Email, admin.User.ID.String())
+			continue
+		}
+
+		recipients = append(recipients, sharednotification.RecipientWithPreferences{
+			RecipientID:   admin.ID,
+			RecipientType: util.ActorAdmin,
+			UserID:        admin.User.ID,
+		})
+	}
+
+	log.Printf("[DEBUG-RECIPIENTS] Final recipient count: %d", len(recipients))
+	return recipients
+}
+
+// publishToAdmins publishes a notification to admin users with preference checking
+func (s *service) publishToAdmins(ctx context.Context, req sharednotification.PublishRequest) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	if len(req.Recipients) == 0 {
+		log.Printf("[INFO] No admin recipients for notification - EventType: %s", req.EventType)
+		return nil
+	}
+
+	return s.notificationPub.Publish(ctx, req)
+}
+
 // publishSystemIssueNotification fans out system error/warning notifications to all admins.
-func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType notification.EventType) {
+func (s *service) publishSystemIssueNotification(level, action, detail string, entityID uuid.UUID, eventType util.EventType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	adminIDs, err := s.repo.GetAdminIDs(ctx)
-	if err != nil || len(adminIDs) == 0 {
-		return
-	}
 
 	title := "System Warning"
 	if level == auditctx.ActionSystemError {
 		title = "System Error"
 	}
 
-	body, _ := json.Marshal(detail)
-	extraData := map[string]interface{}{"action": action}
-	notifPayload := notification.BuildNotificationPayload(title, body, nil, nil, &extraData)
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		log.Printf("ERROR: [SystemIssue] marshal payload: %v", err)
-		return
-	}
+	// Build admin recipients (no exclusion for system notifications)
+	recipients := s.buildAdminRecipients(ctx, nil)
 
-	senderType := notification.ActorSystem
-	for _, adminID := range adminIDs {
-		req := notification.RqNotification{
-			ID:            uuid.New(),
-			RecipientID:   adminID,
-			RecipientType: notification.ActorAdmin,
-			SenderType:    &senderType,
-			EventType:     eventType,
-			EntityType:    notification.EntitySystem,
-			EntityID:      entityID,
-			Status:        notification.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []notification.Channel{notification.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
-		go func(r notification.RqNotification) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := s.notificationService.Publish(pCtx, r); err != nil {
-				log.Printf("ERROR: [SystemIssue] publish to admin %s: %v", r.RecipientID, err)
-			}
-		}(req)
-	}
+	// Publish notification with preference checking
+	_ = s.publishToAdmins(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   uuid.Nil,
+		SenderType: util.ActorSystem,
+		SenderName: "System",
+		EventType:  eventType,
+		EntityType: util.EntitySystem,
+		EntityID:   entityID,
+		EntityKey:  "system_id",
+		Title:      title,
+		Body:       detail,
+		ExtraData:  map[string]interface{}{"action": action},
+	})
 }
 
 // This runs in its own goroutine to avoid blocking the audit worker
 // publishAuditLogNotification sends notifications to all admin users about a new audit log
 func (s *service) publishAuditLogNotification(entry *LogEntry) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var err error
-	// Fetch Admins
-	adminIDs, err := s.repo.GetAdminIDs(ctx)
-	if err != nil || len(adminIDs) == 0 {
+	if shouldSkipNotification(entry) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// DEBUG: Log entry details to check if UserID is present
+	log.Printf("[DEBUG-AUDIT] Action: %s | UserID: %v | PracticeID: %v",
+		entry.Action,
+		entry.UserID,
+		entry.PracticeID,
+	)
+
+	var err error
 	// Get User Name
-	userName := "User"
+	userName := "System"
 
 	// Define invitation-specific actions
 	isInvitationAction := entry.Action == "accountant.invite_accepted" ||
@@ -298,11 +376,15 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"invite.permission_updated":   "updated permissions for accountant",
 
 		// Billing & Subscriptions (Success)
-		"subscription.created":          "created a new subscription plan",
-		"subscription.updated":          "updated subscription plan",
-		"subscription.deleted":          "deleted subscription plan",
-		"billing.payment_success":       "successfully processed payment for",
-		"billing.activation_successful": "successfully activated subscription for",
+		"subscription.created":                   "created a new subscription plan",
+		"subscription.updated":                   "updated subscription plan",
+		"subscription.deleted":                   "deleted subscription plan",
+		auditctx.ActionBillingPaymentSuccess:     "successfully processed payment for",
+		auditctx.ActionBillingActivationSuccess:  "successfully activated subscription for",
+		auditctx.ActionBillingPaymentFailed:      "payment failed for",
+		auditctx.ActionBillingActivationFailed:   "failed to activate subscription for",
+		auditctx.ActionBillingWebhookSigInvalid:  "received invalid billing webhook signature",
+		auditctx.ActionBillingStatusUpdateFailed: "failed to update subscription status for",
 
 		// Report Generate and Export
 		"bas_report.exported":         "exported BAS Report",
@@ -319,7 +401,9 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 	}
 
 	var message string
+
 	title := "System Activity Alert"
+
 	// Specialized logic for Lock Date messages
 	if entry.Action == auditctx.ActionLockDateUpdated {
 		getLockDate := func(state interface{}) *string {
@@ -380,25 +464,9 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 		"entity_id": entry.EntityID,
 	}
 
-	// Simplification: Direct JSON message for the body
-	msgJson, _ := json.Marshal(message)
-
-	notifPayload := notification.BuildNotificationPayload(
-		title,
-		msgJson,
-		nil,
-		nil,
-		&extraData,
-	)
-
-	payloadBytes, err := json.Marshal(notifPayload)
-	if err != nil {
-		log.Printf("ERROR: [Audit-Notification] Marshal failed: %v", err)
-		return
-	}
-
-	// Send to each admin
-	senderType := notification.ActorSystem
+	// Send to each admin (excluding the acting admin)
+	senderType := util.ActorSystem
+	senderID := uuid.Nil
 	var entityID uuid.UUID
 	if entry.EntityID != nil {
 		parsed, err := uuid.Parse(*entry.EntityID)
@@ -406,28 +474,53 @@ func (s *service) publishAuditLogNotification(entry *LogEntry) {
 			entityID = parsed
 		}
 	}
-	for _, adminID := range adminIDs {
-		req := notification.RqNotification{
-			ID:            uuid.New(),
-			RecipientID:   adminID,
-			RecipientType: notification.ActorAdmin,
-			SenderType:    &senderType,
-			EventType:     notification.EventAuditLogCreated,
-			EntityType:    notification.EntityAuditLog,
-			EntityID:      entityID,
-			Status:        notification.StatusUnread,
-			Payload:       payloadBytes,
-			Channels:      []notification.Channel{notification.ChannelInApp},
-			CreatedAt:     time.Now(),
-		}
+	eventType := resolveAdminEventType(entry.Action)
 
-		go func(r notification.RqNotification) {
-			pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer pCancel()
-			if err := s.notificationService.Publish(pCtx, r); err != nil {
-				log.Printf("ERROR: [Audit-Notification] Publish failed for admin %s: %v", r.RecipientID, err)
-			}
-		}(req)
+	// Get the acting user's ID to filter them out
+	var excludeUserID *uuid.UUID
+	if entry.UserID != nil {
+		if parsed, parseErr := uuid.Parse(*entry.UserID); parseErr == nil {
+			excludeUserID = &parsed
+		}
+	}
+
+	// Build admin recipients, excluding the acting admin
+	recipients := s.buildAdminRecipients(ctx, excludeUserID)
+
+	// Publish notification with preference checking
+	_ = s.publishToAdmins(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   senderID,
+		SenderType: senderType,
+		SenderName: "System",
+		EventType:  eventType,
+		EntityType: util.EntityAuditLog,
+		EntityID:   entityID,
+		EntityKey:  "audit_log_id",
+		Title:      title,
+		Body:       message,
+		ExtraData:  extraData,
+	})
+}
+
+// resolveAdminEventType maps an audit action string to the appropriate admin EventType
+// so that admin notification preferences can be controlled at a granular level.
+func resolveAdminEventType(action string) util.EventType {
+	switch action {
+	case auditctx.ActionBillingPaymentSuccess, auditctx.ActionBillingActivationSuccess:
+		return util.EventBillingPaymentSuccess
+	case auditctx.ActionBillingPaymentFailed:
+		return util.EventBillingPaymentFailed
+	case auditctx.ActionSubscriptionCreated:
+		return util.EventSubscriptionCreated
+	case auditctx.ActionSubscriptionUpdated:
+		return util.EventSubscriptionUpdated
+	case auditctx.ActionSubscriptionDeleted:
+		return util.EventSubscriptionDeleted
+	case auditctx.ActionUserRegistered, auditctx.ActionPractitionerCreated:
+		return util.EventPractitionerCreated
+	default:
+		return util.EventAuditLogCreated
 	}
 }
 
@@ -471,4 +564,25 @@ func (s *service) GetByID(ctx context.Context, id string) (*RsAuditLog, error) {
 		return nil, err
 	}
 	return toRsAuditLog(l), nil
+}
+
+// shouldSkipNotification determines if an audit log should skip the admin notification step
+func shouldSkipNotification(entry *LogEntry) bool {
+	if entry.Module == auditctx.ModuleBilling {
+		return true
+	}
+
+	switch entry.Action {
+	case auditctx.ActionSubscriptionCreated,
+		auditctx.ActionSubscriptionUpdated,
+		auditctx.ActionSubscriptionDeleted,
+		auditctx.ActionBillingPaymentSuccess,
+		auditctx.ActionBillingActivationSuccess,
+		auditctx.ActionBillingPaymentFailed,
+		auditctx.ActionBillingActivationFailed,
+		auditctx.ActionBillingStatusUpdateFailed:
+		return true
+	default:
+		return false
+	}
 }

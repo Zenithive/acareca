@@ -17,6 +17,7 @@ type PLReportFilter struct {
 	TaxTypeID      *string `form:"tax_type_id"`
 	FormID         *string `form:"form_id"`
 	PractitionerID string  `form:"practitioner_id"`
+	Comparisons    *int    `form:"comparisons"` // "0" (None), "1", "2", "3", "4" (Years to compare back)
 }
 
 type PLReportRow struct {
