@@ -110,7 +110,9 @@ FROM
             description,
             date
         FROM tbl_form_entry_value
-        ORDER BY entry_id, form_field_id, COALESCE(updated_at, created_at) DESC
+        WHERE updated_at IS NULL
+            AND deleted_at IS NULL
+        ORDER BY entry_id, form_field_id, created_at DESC
     ) fev ON fev.entry_id = fe.id
     JOIN tbl_form_field ff ON ff.id = fev.form_field_id
     JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id
@@ -385,6 +387,7 @@ FROM tbl_form_entry fe
             description
         FROM tbl_form_entry_value
         WHERE updated_at IS NULL
+            AND deleted_at IS NULL
         ORDER BY entry_id,
             COALESCE(form_field_id::text, coa_id::text),
             created_at DESC
@@ -476,6 +479,7 @@ JOIN (
         id, entry_id, form_field_id, net_amount, gst_amount, gross_amount
     FROM tbl_form_entry_value
     WHERE updated_at IS NULL
+        AND deleted_at IS NULL
     ORDER BY entry_id, form_field_id, created_at DESC
 ) fev ON fev.entry_id = fe.id
 JOIN tbl_form_field          ff   ON ff.id   = fev.form_field_id
@@ -675,6 +679,7 @@ FROM tbl_form_entry fe
             business_percentage
         FROM tbl_form_entry_value
         WHERE updated_at IS NULL
+            AND deleted_at IS NULL
         ORDER BY entry_id,
             COALESCE(form_field_id::text, coa_id::text),
             created_at DESC
