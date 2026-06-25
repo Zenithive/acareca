@@ -110,8 +110,9 @@ FROM
             description,
             date
         FROM tbl_form_entry_value
-        WHERE deleted_at IS NULL
-        ORDER BY entry_id, form_field_id, COALESCE(updated_at, created_at) DESC
+        WHERE updated_at IS NULL
+            AND deleted_at IS NULL
+        ORDER BY entry_id, form_field_id, created_at DESC
     ) fev ON fev.entry_id = fe.id
     JOIN tbl_form_field ff ON ff.id = fev.form_field_id
     JOIN tbl_chart_of_accounts coa ON coa.id = ff.coa_id
