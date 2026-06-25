@@ -1054,9 +1054,9 @@ func (r *Repository) GetDocumentsByEntryID(ctx context.Context, entryID uuid.UUI
 
 // InsertBalancingEntryValue inserts a system-generated balancing row (form_field_id = NULL).
 func (r *Repository) InsertBalancingEntryValue(ctx context.Context, tx *sqlx.Tx, ev *FormEntryValue) error {
-	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.CoaID, ev.NetAmount, ev.GstAmount, ev.GrossAmount)
+	query := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, coa_id, net_amount, gst_amount, gross_amount, business_percentage)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 100.00))`
+	_, err := tx.ExecContext(ctx, query, ev.ID, ev.EntryID, ev.FormFieldID, ev.CoaID, ev.NetAmount, ev.GstAmount, ev.GrossAmount, ev.BusinessPercentage)
 	if err != nil {
 		return fmt.Errorf("insert balancing entry value: %w", err)
 	}
