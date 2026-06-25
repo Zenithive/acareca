@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/file"
@@ -48,6 +49,8 @@ type Repository interface {
 	DeleteClinicAddress(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
 	DeleteClinicContact(ctx context.Context, tx *sqlx.Tx, id uuid.UUID, clinicID uuid.UUID) error
 	GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) (*file.Document, error)
+	DeleteClinicContacts(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
+	DeleteFormsByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error
 }
 
 type repository struct {
@@ -623,4 +626,72 @@ func (r *repository) GetDocumentByClinicID(ctx context.Context, tx *sqlx.Tx, cli
 		return nil, fmt.Errorf("get document by clinic id tx: %w", err)
 	}
 	return &doc, nil
+}
+
+func (r *repository) DeleteClinicContacts(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error {
+	// Note: Changed from single ID target to clear ALL matching clinic entries at once
+	query := `UPDATE tbl_clinic_contact_person SET deleted_at = NOW() WHERE clinic_id = $1 AND deleted_at IS NULL`
+	_, err := tx.ExecContext(ctx, query, clinicID)
+	return err
+}
+
+// Cascading Delete for all forms belonging directly to this clinic
+func (r *repository) DeleteFormsByClinicID(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID) error {
+	now := time.Now()
+
+	// Delete Form Entry Values via deep join path
+	valQuery := `
+		UPDATE tbl_form_entry_value 
+		SET deleted_at = $1 
+		WHERE entry_id IN (
+			SELECT id FROM tbl_form_entry 
+			WHERE form_version_id IN (
+				SELECT id FROM tbl_custom_form_version 
+				WHERE form_id IN (SELECT id FROM tbl_form WHERE clinic_id = $2)
+			)
+		)`
+	if _, err := tx.ExecContext(ctx, valQuery, now, clinicID); err != nil {
+		return fmt.Errorf("cascade delete entry values: %w", err)
+	}
+
+	// Delete Form Entries
+	entryQuery := `
+		UPDATE tbl_form_entry 
+		SET deleted_at = $1 
+		WHERE form_version_id IN (
+			SELECT id FROM tbl_custom_form_version 
+			WHERE form_id IN (SELECT id FROM tbl_form WHERE clinic_id = $2)
+		)`
+	if _, err := tx.ExecContext(ctx, entryQuery, now, clinicID); err != nil {
+		return fmt.Errorf("cascade delete entries: %w", err)
+	}
+
+	// Delete Form Fields
+	fieldQuery := `
+		UPDATE tbl_form_field 
+		SET deleted_at = $1 
+		WHERE form_version_id IN (
+			SELECT id FROM tbl_custom_form_version 
+			WHERE form_id IN (SELECT id FROM tbl_form WHERE clinic_id = $2)
+		)`
+	if _, err := tx.ExecContext(ctx, fieldQuery, now, clinicID); err != nil {
+		return fmt.Errorf("cascade delete fields: %w", err)
+	}
+
+	// Delete Form Versions
+	versionQuery := `
+		UPDATE tbl_custom_form_version 
+		SET deleted_at = $1 
+		WHERE form_id IN (SELECT id FROM tbl_form WHERE clinic_id = $2)`
+	if _, err := tx.ExecContext(ctx, versionQuery, now, clinicID); err != nil {
+		return fmt.Errorf("cascade delete versions: %w", err)
+	}
+
+	// Delete the Core Forms themselves
+	formQuery := `UPDATE tbl_form SET deleted_at = $1, updated_at = $1 WHERE clinic_id = $2 AND deleted_at IS NULL`
+	if _, err := tx.ExecContext(ctx, formQuery, now, clinicID); err != nil {
+		return fmt.Errorf("cascade delete forms: %w", err)
+	}
+
+	return nil
 }

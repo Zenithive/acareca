@@ -94,18 +94,13 @@ func (s *service) CreateSubscription(ctx context.Context, req *RqCreateSubscript
 	}
 
 	// Audit log: subscription created
-	meta := auditctx.GetMetadata(ctx)
 	idStr := intToStr(created.ID)
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionSubscriptionCreated,
 		Module:     auditctx.ModuleAdmin,
 		EntityType: lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:   &idStr,
 		AfterState: created,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return created.ToRs(), nil
@@ -233,19 +228,14 @@ func (s *service) UpdateSubscription(ctx context.Context, id int, req *RqUpdateS
 	}
 
 	// Audit log: subscription updated
-	meta := auditctx.GetMetadata(ctx)
 	idStr := intToStr(updated.ID)
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionSubscriptionUpdated,
 		Module:      auditctx.ModuleAdmin,
 		EntityType:  lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updated,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return updated.ToRs(), nil
@@ -266,6 +256,9 @@ func applyUpdate(s *Subscription, req *RqUpdateSubscription) {
 	}
 	if req.IsActive != nil {
 		s.IsActive = *req.IsActive
+	}
+	if req.IsVisible != nil {
+		s.IsVisible = *req.IsVisible
 	}
 	s.UpdatedAt = time.Now()
 }
@@ -295,18 +288,13 @@ func (s *service) DeleteSubscription(ctx context.Context, id int) error {
 	}
 
 	// Audit log: subscription deleted
-	meta := auditctx.GetMetadata(ctx)
 	idStr := intToStr(id)
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionSubscriptionDeleted,
 		Module:      auditctx.ModuleAdmin,
 		EntityType:  lo.ToPtr(auditctx.EntitySubscription),
 		EntityID:    &idStr,
 		BeforeState: existing,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return nil

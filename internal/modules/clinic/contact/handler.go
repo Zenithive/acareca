@@ -30,7 +30,7 @@ func NewHandler(svc IService) IHandler {
 
 // Create implements [IHandler].
 // @Summary Create a new contact for a clinic
-// @Tags clinic
+// @Tags clinic-contact
 // @Accept json
 // @Produce json
 // @Param request body RqContact true "Contact Data"
@@ -58,7 +58,7 @@ func (h *handler) Create(c *gin.Context) {
 
 // Delete implements [IHandler].
 // @Summary Delete a contact by ID
-// @Tags clinic
+// @Tags clinic-contact
 // @Accept json
 // @Produce json
 // @Param id path string true "Contact ID"
@@ -83,7 +83,7 @@ func (h *handler) Delete(c *gin.Context) {
 
 // Get implements [IHandler].
 // @Summary Get a contact by ID
-// @Tags clinic
+// @Tags clinic-contact
 // @Accept json
 // @Produce json
 // @Param id path string true "Contact ID"
@@ -110,7 +110,7 @@ func (h *handler) Get(c *gin.Context) {
 
 // List implements [IHandler].
 // @Summary List all contacts for a clinic
-// @Tags clinic
+// @Tags clinic-contact
 // @Accept json
 // @Produce json
 // @Success 200 {object} util.RsList
@@ -121,7 +121,7 @@ func (h *handler) Get(c *gin.Context) {
 func (h *handler) List(c *gin.Context) {
 	clinicId, ok := util.GetEntityID(c)
 	if !ok {
-		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!!"))
+		response.Error(c, http.StatusBadRequest, errors.New("clinic not found!"))
 		return
 	}
 
@@ -140,7 +140,7 @@ func (h *handler) List(c *gin.Context) {
 
 // Update implements [IHandler].
 // @Summary Update a contact by ID
-// @Tags clinic
+// @Tags clinic-contact
 // @Accept json
 // @Produce json
 // @Param id path string true "Contact ID"
@@ -177,7 +177,7 @@ func (h *handler) Update(c *gin.Context) {
 
 // DeleteAddressByID implements [IHandler].
 // @Summary Delete a contact address by ID
-// @Tags clinic
+// @Tags clinic-contact
 // @Accept json
 // @Produce json
 // @Param id path string true "Contact Address ID"

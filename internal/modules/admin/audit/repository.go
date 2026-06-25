@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/common"
+	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -17,13 +17,12 @@ type Repository interface {
 	List(ctx context.Context, f common.Filter) ([]*AuditLog, error)
 	GetByID(ctx context.Context, id string) (*AuditLog, error)
 	Count(ctx context.Context, f common.Filter) (int, error)
-	GetAdminIDs(ctx context.Context) ([]uuid.UUID, error)
 	GetUserIDByPractitionerID(ctx context.Context, practitionerID string) (string, error)
 	GetUserName(ctx context.Context, id string) (string, error)
 	GetEntityName(ctx context.Context, table string, id string) (*string, error)
 	ResolveActorName(ctx context.Context, id string) string
 	ResolveEntityLabel(ctx context.Context, entityType, id string) string
-	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error)
+	HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType util.EventType) (bool, error)
 	GetInvitationEmail(ctx context.Context, invitationID string) (string, error)
 	GetAccountantNameForSharedEvents(ctx context.Context, id string) (string, error)
 }
@@ -180,7 +179,7 @@ func (r *repository) GetEntityName(ctx context.Context, table string, id string)
 }
 
 // HasActiveSystemNotification checks for an existing UNREAD system notification for entityID + eventType in tbl_notification.
-func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType notification.EventType) (bool, error) {
+func (r *repository) HasActiveSystemNotification(ctx context.Context, entityID uuid.UUID, eventType util.EventType) (bool, error) {
 	var count int
 	const q = `
 		SELECT COUNT(*) FROM tbl_notification

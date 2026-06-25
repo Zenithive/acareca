@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 )
 
 // For email verification token operations
@@ -200,6 +201,7 @@ type RsClinicDetail struct {
 	Role        *string           `json:"role"`
 	Verified    bool              `json:"verified"`
 	DocumentID  *string           `json:"document_id,omitempty"`
+	Document    *file.RsDocument  `json:"document,omitempty"`
 	ABN         *string           `json:"abn,omitempty"`
 	ACN         *string           `json:"acn,omitempty"`
 	Addresses   []RsClinicAddress `json:"addresses"`

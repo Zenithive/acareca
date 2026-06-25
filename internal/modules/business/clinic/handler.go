@@ -3,11 +3,9 @@ package clinic
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
 	"github.com/iamarpitzala/acareca/internal/shared/response"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
@@ -71,7 +69,7 @@ func handleServiceError(c *gin.Context, err error) bool {
 // @Failure 500 {object} response.RsError
 // @Router /clinic [post]
 func (h *handler) Create(c *gin.Context) {
-	actorID, ok := util.GetPractitionerID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -82,17 +80,7 @@ func (h *handler) Create(c *gin.Context) {
 		return
 	}
 
-	targetPractitionerID := actorID
-	meta := auditctx.GetMetadata(c.Request.Context())
-	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
-		if req.PractitionerID == uuid.Nil {
-			response.Error(c, http.StatusBadRequest, errors.New("practitioner_id is required in body for accountants"))
-			return
-		}
-		targetPractitionerID = req.PractitionerID
-	}
-
-	clinic, err := h.svc.CreateClinic(c.Request.Context(), targetPractitionerID, &req)
+	clinic, err := h.svc.CreateClinic(c.Request.Context(), *actorID, role, &req)
 	if handleServiceError(c, err) {
 		return
 	}
@@ -119,7 +107,7 @@ func (h *handler) Create(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /clinic [get]
 func (h *handler) List(c *gin.Context) {
-	actorID, ok := util.GetPractitionerID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -130,20 +118,19 @@ func (h *handler) List(c *gin.Context) {
 		return
 	}
 
-	meta := auditctx.GetMetadata(c.Request.Context())
-
 	var (
 		clinics interface{}
 		err     error
 	)
-	if meta.UserType != nil && *meta.UserType == util.RoleAccountant {
-		actorID, ok = util.GetAccountantID(c)
-		if !ok {
-			return
-		}
-		clinics, err = h.svc.ListClinicsForAccountant(c.Request.Context(), actorID, filter)
-	} else {
-		clinics, err = h.svc.ListClinic(c.Request.Context(), actorID, filter)
+
+	switch role {
+	case util.RoleAccountant:
+		clinics, err = h.svc.ListClinicsForAccountant(c.Request.Context(), *actorID, filter)
+	case util.RolePractitioner:
+		clinics, err = h.svc.ListClinic(c.Request.Context(), *actorID, filter)
+	default:
+		response.Error(c, http.StatusForbidden, errors.New("invalid role"))
+		return
 	}
 
 	if err != nil {
@@ -167,23 +154,18 @@ func (h *handler) List(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /clinic/{id} [get]
 func (h *handler) GetByID(c *gin.Context) {
-	id, ok := parseClinicID(c)
+	actorID, _, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
 
-	var actorID uuid.UUID
-	if strings.EqualFold(c.GetString("role"), util.RoleAccountant) {
-		actorID, ok = util.GetAccountantID(c)
-	} else {
-		actorID, ok = util.GetPractitionerID(c)
-	}
+	id, ok := parseClinicID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, errors.New("profile not found"))
 		return
 	}
 
-	clinic, err := h.svc.GetClinicByID(c.Request.Context(), actorID, id)
+	clinic, err := h.svc.GetClinicByID(c.Request.Context(), *actorID, id)
 	if handleServiceError(c, err) {
 		return
 	}
@@ -206,7 +188,7 @@ func (h *handler) GetByID(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Router /clinic/{id} [put]
 func (h *handler) Update(c *gin.Context) {
-	actorID, ok := util.GetUserID(c)
+	actorID, role, ok := util.GetRoleBasedID(c)
 	if !ok {
 		return
 	}
@@ -222,7 +204,7 @@ func (h *handler) Update(c *gin.Context) {
 		return
 	}
 
-	clinic, err := h.svc.UpdateClinic(c.Request.Context(), actorID, id, &req)
+	clinic, err := h.svc.UpdateClinic(c.Request.Context(), *actorID, role, id, &req)
 	if handleServiceError(c, err) {
 		return
 	}

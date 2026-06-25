@@ -38,6 +38,7 @@ func NewHandler(svc Service, invitationSvc invitation.Service) Handler {
 // @Produce      json
 // @Param        start_date query string false "Start Date (YYYY-MM-DD)"
 // @Param        end_date   query string false "End Date (YYYY-MM-DD)"
+// @Param        user_id    query string false "Submitted-by User UUID"
 // @Success      200 {object} RsBalanceSheet
 // @Failure      400 {object} response.RsError "Bad Request"
 // @Failure      401 {object} response.RsError "Unauthorized"
@@ -73,8 +74,11 @@ func (h *handler) GetBalanceSheet(c *gin.Context) {
 // @Tags         Balance Sheet
 // @Produce      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/html
 // @Param        practitioner_id  query  string   false  "Practitioner UUID (Required for Accountants to filter)"
+// @Param        user_id          query  string   false  "Submitted-by User UUID"
 // @Param        start_date       query  string   false  "Start Date (YYYY-MM-DD)"
 // @Param        end_date         query  string   false  "End Date (YYYY-MM-DD)"
+// @Param        financial_year_id query     string  false  "Anchor Financial Year snapshot UUID"
+// @Param        comparisons       query     int     false  "Number of historical years to compare back (0 to 4)"
 // @Param        export_type 	  query  string   true   "Export Type: pdf | excel"
 // @Success      200              {file}   binary  "Balance_Sheet_2026-04-30.xlsx"
 // @Failure      400              {object} response.RsError "Bad Request"
@@ -99,10 +103,43 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		return
 	}
 
-	reportData, err := h.svc.GetBalanceSheet(c.Request.Context(), &f, *actorID, role, userID)
+	baselineData, err := h.svc.GetBalanceSheet(c.Request.Context(), &f, *actorID, role, userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
+	}
+
+	allYearsReportData := []*RsBalanceSheet{baselineData}
+
+	numComparisons := 0
+	if f.Comparisons != nil {
+		numComparisons = *f.Comparisons
+		if numComparisons > 4 {
+			numComparisons = 4
+		}
+		if numComparisons < 0 {
+			numComparisons = 0
+		}
+	}
+
+	if numComparisons > 1 && f.EndDate != nil && *f.EndDate != "" {
+		baseTime, err := time.Parse("2006-01-02", *f.EndDate)
+		if err == nil {
+			for i := 1; i <= numComparisons-1; i++ {
+				pastEndDate := baseTime.AddDate(-i, 0, 0).Format("2006-01-02")
+
+				historicalFilter := BSFilter{
+					PractitionerID: f.PractitionerID,
+					UserID:         f.UserID,
+					EndDate:        &pastEndDate,
+				}
+
+				pastYearData, err := h.svc.GetBalanceSheet(c.Request.Context(), &historicalFilter, *actorID, role, userID)
+				if err == nil && pastYearData != nil {
+					allYearsReportData = append(allYearsReportData, pastYearData)
+				}
+			}
+		}
 	}
 
 	var notifIDs []uuid.UUID
@@ -121,7 +158,7 @@ func (h *handler) ExportBalanceSheet(c *gin.Context) {
 		pracIDStr = *f.PractitionerID
 	}
 
-	exportedFileResp, err := h.svc.ExportBalanceSheet(c.Request.Context(), reportData, exportType, *actorID, role, userID, notifIDs, pracIDStr)
+	exportedFileResp, err := h.svc.ExportBalanceSheet(c.Request.Context(), allYearsReportData, exportType, *actorID, role, userID, notifIDs, pracIDStr)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return

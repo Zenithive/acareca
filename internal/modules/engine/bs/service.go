@@ -5,19 +5,23 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/auth"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/equity"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	bsexport "github.com/iamarpitzala/acareca/internal/shared/export/bs"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -27,7 +31,7 @@ import (
 
 type Service interface {
 	GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*RsBalanceSheet, error)
-	ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error)
+	ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error)
 }
 
 type service struct {
@@ -35,24 +39,28 @@ type service struct {
 	equitySvc       equity.Service
 	db              *sqlx.DB
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	authRepo        auth.Repository
 	invitationSvc   invitation.Service
 	accountantRepo  accountant.Repository
 	practitionerSvc practitioner.IService
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         auth.Service
 }
 
-func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, eventsSvc events.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService) Service {
+func NewService(repo Repository, equitySvc equity.Service, db *sqlx.DB, auditSvc audit.Service, authRepo auth.Repository, invitationSvc invitation.Service, accountantRepo accountant.Repository, practitionerSvc practitioner.IService, invitationRepo invitation.Repository, authSvc auth.Service, notificationSvc notification.Service, adminRepo admin.Repository) Service {
 	return &service{
 		repo:            repo,
 		equitySvc:       equitySvc,
 		db:              db,
 		auditSvc:        auditSvc,
-		eventsSvc:       eventsSvc,
 		authRepo:        authRepo,
 		invitationSvc:   invitationSvc,
 		accountantRepo:  accountantRepo,
 		practitionerSvc: practitionerSvc,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
+		invitationRepo:  invitationRepo,
+		authSvc:         authSvc,
 	}
 }
 
@@ -144,8 +152,10 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			totalLiabilities += row.Balance
 
 		case "Equity":
-			if row.AccountCode != 880 && row.AccountCode != 881 &&
-				row.AccountCode != 960 && row.AccountCode != 970 {
+			// 🚀 COA FIX: Filter using your new COA template system codes
+			if row.AccountCode != 900 && row.AccountCode != 910 &&
+				row.AccountCode != 920 && row.AccountCode != 960 &&
+				row.AccountCode != 970 && row.AccountCode != 980 {
 				acc := otherEquityMap[key]
 				acc.Code, acc.Name, acc.CoaId = row.AccountCode, row.AccountName, row.CoaID
 				acc.Balance += row.Balance
@@ -193,32 +203,33 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			})
 		}
 	}
-	addEquityItem(970, "Owner Share Capital", totalOwnerEquity.ShareCapital)
-	addEquityItem(881, "Owner Funds Introduced", totalOwnerEquity.FundsIntroduced)
-	addEquityItem(880, "Owner Drawings", -totalOwnerEquity.Drawings)
+	addEquityItem(970, "Owner A Share Capital", totalOwnerEquity.ShareCapital)
+	addEquityItem(920, "Owner A Funds Introduced", totalOwnerEquity.FundsIntroduced)
+	addEquityItem(900, "Owner A Drawings", -totalOwnerEquity.Drawings)
 	addEquityItem(960, "Retained Earnings", totalOwnerEquity.RetainedEarnings)
 
 	netAssets := totalAssets - totalLiabilities
 	totalEquity := totalOwnerEquity.TotalEquity + totalOtherEquity
+	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
 	displayEnd := formatDateForDisplay(endDate)
 
 	result := &RsBalanceSheet{
-		EndDate:           displayEnd,
-		Assets:            assets,
-		TotalAssets:       totalAssets,
-		Liabilities:       liabilities,
-		TotalLiabilities:  totalLiabilities,
-		NetAssets:         netAssets,
-		Equity:            equitySect,
-		CurrentYearProfit: totalOwnerEquity.CurrentYearProfit,
-		TotalEquity:       math.Round(totalEquity*100) / 100,
+		EndDate:                   displayEnd,
+		Assets:                    assets,
+		TotalAssets:               totalAssets,
+		Liabilities:               liabilities,
+		TotalLiabilities:          totalLiabilities,
+		NetAssets:                 math.Round(netAssets*100) / 100,
+		Equity:                    equitySect,
+		CurrentYearProfit:         totalOwnerEquity.CurrentYearProfit,
+		TotalEquity:               math.Round(totalEquity*100) / 100,
+		TotalLiabilitiesAndEquity: math.Round(totalLiabilitiesAndEquity*100) / 100,
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	actorIDStr := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionBalanceSheetGenerated,
@@ -229,43 +240,24 @@ func (s *service) GetBalanceSheet(ctx context.Context, f *BSFilter, actorID uuid
 			"report_type": "Balance Sheet",
 			"end_date":    endDate,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
-	if role == util.RoleAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-			var dateDescription string
-			if endDate != "" {
-				dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(endDate))
-			}
-
-			description := fmt.Sprintf("Accountant %s generated Balance Sheet %s", fullName, dateDescription)
-			for _, pID := range targetPracIDs {
-				_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "balance_sheet.generated",
-					EntityType:     "REPORT",
-					Description:    description,
-					Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "end_date": endDate},
-					CreatedAt:      time.Now(),
-				})
-			}
-		}
+	// Send notification for report generation
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetGenerated, "Balance Sheet", targetPracIDs); err != nil {
+		log.Printf("[WARN] failed to send balance sheet generation notification: %v", err)
 	}
 
 	return result, nil
 }
 
-func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error) {
+func (s *service) ExportBalanceSheet(ctx context.Context, data []*RsBalanceSheet, exportType string, actorID uuid.UUID, role string, userID uuid.UUID, notifIDs []uuid.UUID, filterPractitionerID string) (*ExportBalanceSheetResponse, error) {
+	// If no data was passed, prevent panic
+	if len(data) == 0 {
+		return nil, errors.New("no balance sheet data provided for export")
+	}
+
+	baselineData := data[0]
+
 	var fullName string
 	user, err := s.authRepo.FindByID(ctx, userID)
 	if err == nil {
@@ -317,9 +309,10 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 			}
 		}
 	}
+
 	var dateText string
-	if data.EndDate != "" {
-		dateText = fmt.Sprintf("As of %s", data.EndDate)
+	if baselineData.EndDate != "" {
+		dateText = fmt.Sprintf("As of %s", baselineData.EndDate)
 	}
 
 	config := export.ExportConfig{
@@ -331,86 +324,71 @@ func (s *service) ExportBalanceSheet(ctx context.Context, data *RsBalanceSheet, 
 		GeneratedTime:  time.Now().Format("02/01/2006, 3:04:05 pm"),
 	}
 
-	exportData := &bsexport.RsBalanceSheet{
-		EndDate:                   data.EndDate,
-		Assets:                    make([]bsexport.RsAccount, len(data.Assets)),
-		TotalAssets:               data.TotalAssets,
-		Liabilities:               make([]bsexport.RsAccount, len(data.Liabilities)),
-		TotalLiabilities:          data.TotalLiabilities,
-		Equity:                    make([]bsexport.RsAccount, len(data.Equity)),
-		CurrentYearProfit:         data.CurrentYearProfit,
-		TotalEquity:               data.TotalEquity,
-		TotalLiabilitiesAndEquity: data.TotalLiabilities + data.TotalEquity,
+	exportDataList := make([]*bsexport.RsBalanceSheet, len(data))
+
+	for yearIdx, yearData := range data {
+		exportData := &bsexport.RsBalanceSheet{
+			EndDate:                   yearData.EndDate,
+			Assets:                    make([]bsexport.RsAccount, len(yearData.Assets)),
+			TotalAssets:               yearData.TotalAssets,
+			Liabilities:               make([]bsexport.RsAccount, len(yearData.Liabilities)),
+			TotalLiabilities:          yearData.TotalLiabilities,
+			Equity:                    make([]bsexport.RsAccount, len(yearData.Equity)),
+			CurrentYearProfit:         yearData.CurrentYearProfit,
+			TotalEquity:               yearData.TotalEquity,
+			TotalLiabilitiesAndEquity: yearData.TotalLiabilities + yearData.TotalEquity,
+		}
+
+		for i, acc := range yearData.Assets {
+			exportData.Assets[i] = bsexport.RsAccount{
+				CoaId:   acc.CoaId,
+				Code:    acc.Code,
+				Name:    acc.Name,
+				Balance: acc.Balance,
+			}
+		}
+		for i, acc := range yearData.Liabilities {
+			exportData.Liabilities[i] = bsexport.RsAccount{
+				CoaId:   acc.CoaId,
+				Code:    acc.Code,
+				Name:    acc.Name,
+				Balance: acc.Balance,
+			}
+		}
+		for i, acc := range yearData.Equity {
+			exportData.Equity[i] = bsexport.RsAccount{
+				CoaId:   acc.CoaId,
+				Code:    acc.Code,
+				Name:    acc.Name,
+				Balance: acc.Balance,
+			}
+		}
+
+		exportDataList[yearIdx] = exportData
 	}
 
-	for i, acc := range data.Assets {
-		exportData.Assets[i] = bsexport.RsAccount{
-			CoaId:   acc.CoaId,
-			Code:    acc.Code,
-			Name:    acc.Name,
-			Balance: acc.Balance,
-		}
-	}
-	for i, acc := range data.Liabilities {
-		exportData.Liabilities[i] = bsexport.RsAccount{
-			CoaId:   acc.CoaId,
-			Code:    acc.Code,
-			Name:    acc.Name,
-			Balance: acc.Balance,
-		}
-	}
-	for i, acc := range data.Equity {
-		exportData.Equity[i] = bsexport.RsAccount{
-			CoaId:   acc.CoaId,
-			Code:    acc.Code,
-			Name:    acc.Name,
-			Balance: acc.Balance,
-		}
-	}
-
-	f, err := bsexport.GenerateExcelReport(exportData, config)
+	f, err := bsexport.GenerateExcelReport(exportDataList, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate balance sheet excel: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
+	// Send notification
+	if err := s.notifyReportExport(ctx, actorID, util.ActorType(role), util.EventBalanceSheetExport, "Balance Sheet", notifIDs); err != nil {
+		log.Printf("[WARN] failed to send balance sheet notification: %v", err)
+	}
+
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionBalanceSheetExported,
 		Module:     auditctx.ModuleReport,
 		EntityType: lo.ToPtr(auditctx.EntityBalanceSheet),
 		EntityID:   &parsedActorID,
 		UserID:     &userIDStr,
-		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
+		AfterState: map[string]interface{}{"report_type": "Balance Sheet", "export_type": exportType, "end_date": baselineData.EndDate},
 	})
 
-	if role == util.RoleAccountant && len(notifIDs) > 0 {
-		var dateDescription string
-		if data.EndDate != "" {
-			dateDescription = fmt.Sprintf("as of %s", formatDateForDisplay(data.EndDate))
-		}
-
-		description := fmt.Sprintf("Accountant %s exported Balance Sheet (%s) %s", fullName, exportType, dateDescription)
-		for _, pID := range notifIDs {
-			_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-				ID:             uuid.New(),
-				PractitionerID: pID,
-				AccountantID:   actorID,
-				ActorID:        userID,
-				ActorName:      &fullName,
-				ActorType:      role,
-				EventType:      "balance_sheet.exported",
-				EntityType:     "REPORT",
-				Description:    description,
-				Metadata:       events.JSONBMap{"report_type": "Balance Sheet", "export_type": exportType, "end_date": data.EndDate},
-				CreatedAt:      time.Now(),
-			})
-		}
-	}
 	f.UpdateLinkedValue()
 
 	return &ExportBalanceSheetResponse{Result: f}, nil
@@ -447,4 +425,104 @@ func formatDateForDisplay(dateStr string) string {
 		return dateStr
 	}
 	return t.Format("02-01-2006")
+}
+
+// notifyReportExport sends notifications to linked users about report export
+// targetPractitionerIDs: optional list of specific practitioners for whom the report was generated
+// If nil or empty when actor is accountant, notifies all linked practitioners
+func (s *service) notifyReportExport(ctx context.Context, entityID uuid.UUID, actorType util.ActorType, eventType util.EventType, reportName string, targetPractitionerIDs []uuid.UUID) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	user, err := s.authSvc.GetUserByID(ctx, entityID, actorType)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	senderName := user.FirstName + " " + user.LastName
+	senderType := actorType
+
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// Notify linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", entityID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// Notify only specific practitioners if targetPractitionerIDs is provided
+		var practitionerIDs []uuid.UUID
+
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil
+			}
+		}
+
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		return fmt.Errorf("unsupported actor type: %s", actorType)
+	}
+
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for report notification")
+		return nil
+	}
+	var action string
+
+	switch eventType {
+	case util.EventPLReportGenerated:
+		action = "Generated"
+	case util.EventPLReportExport:
+		action = "Exported"
+	default:
+		action = "Updated"
+	}
+
+	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   entityID,
+		SenderType: senderType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityReport,
+		EntityID:   entityID,
+		EntityKey:  "report_id",
+		Title:      fmt.Sprintf("%s %s", reportName, action),
+		Body:       fmt.Sprintf("%s %s by %s", reportName, strings.ToLower(action), senderName),
+		ExtraData:  map[string]interface{}{"report_name": reportName},
+	})
 }

@@ -6,6 +6,7 @@ import (
 
 type BSRow struct {
 	PractitionerID      uuid.UUID `db:"practitioner_id"`
+	UserID              uuid.UUID `db:"user_id"`
 	ClinicID            uuid.UUID `db:"clinic_id"`
 	AccountType         string    `db:"account_type"`
 	AccountCode         int16     `db:"account_code"`
@@ -17,20 +18,24 @@ type BSRow struct {
 }
 
 type BSFilter struct {
-	PractitionerID *string `form:"practitioner_id"`
-	EndDate        *string `form:"end_date"`
+	PractitionerID  *string `form:"practitioner_id"`
+	UserID          *string `form:"user_id"`
+	EndDate         *string `form:"end_date"`
+	FinancialYearID *string `form:"financial_year_id"`
+	Comparisons     *int    `form:"comparisons"` // "0" (None), "1", "2", "3", "4" (Years to compare back)
 }
 
 type RsBalanceSheet struct {
-	EndDate           string      `json:"end_date,omitempty"`
-	Assets            []RsAccount `json:"assets"`
-	TotalAssets       float64     `json:"total_assets"`
-	Liabilities       []RsAccount `json:"liabilities"`
-	TotalLiabilities  float64     `json:"total_liabilities"`
-	NetAssets         float64     `json:"net_assets"`
-	Equity            []RsAccount `json:"equity"`
-	CurrentYearProfit float64     `json:"current_year_profit"`
-	TotalEquity       float64     `json:"total_equity"`
+	EndDate                   string      `json:"end_date,omitempty"`
+	Assets                    []RsAccount `json:"assets"`
+	TotalAssets               float64     `json:"total_assets"`
+	Liabilities               []RsAccount `json:"liabilities"`
+	TotalLiabilities          float64     `json:"total_liabilities"`
+	NetAssets                 float64     `json:"net_assets"`
+	Equity                    []RsAccount `json:"equity"`
+	CurrentYearProfit         float64     `json:"current_year_profit"`
+	TotalEquity               float64     `json:"total_equity"`
+	TotalLiabilitiesAndEquity float64     `json:"total_liabilities_and_equity"`
 }
 
 type RsAccount struct {

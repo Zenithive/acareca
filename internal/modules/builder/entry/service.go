@@ -2,9 +2,12 @@ package entry
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
+	"math"
 	"strings"
 	"time"
 
@@ -15,39 +18,43 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/method"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/export"
 	entryexport "github.com/iamarpitzala/acareca/internal/shared/export/entry"
 	"github.com/iamarpitzala/acareca/internal/shared/limits"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
 )
 
 type IService interface {
-	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error)
+	Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
-	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error)
+	Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error
 	List(ctx context.Context, formVersionID uuid.UUID, filter Filter, actorID uuid.UUID, role string) (*util.RsList, error)
 	GetByVersionID(ctx context.Context, id uuid.UUID) (*RsFormEntry, error)
 	ListTransactions(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
 	// COA-grouped endpoints
 	ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error)
 	ListCoaEntryDetails(ctx context.Context, coaID string, filter TransactionFilter, actorID uuid.UUID, role string) (*util.RsList, error)
-	ExportTransactionReport(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error)
+	ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID, selectedColumns []string) (interface{}, string, error)
 	ExportTransactionData(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string) (*RsExportData, error)
 }
 
 type Service struct {
+	db              *sqlx.DB
 	repo            IRepository
 	fieldRepo       field.IRepository
 	methodSvc       method.IService
@@ -55,7 +62,6 @@ type Service struct {
 	detailSvc       detail.IService
 	versionSvc      version.IService
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	accountantRepo  accountant.Repository
 	authRepo        auth.Repository
 	clinicRepo      clinic.Repository
@@ -63,22 +69,52 @@ type Service struct {
 	formulaSvc      formula.IService
 	fieldSvc        field.IService
 	invitationSvc   invitation.Service
+	invitationRepo  invitation.Repository
 	detailRepo      detail.IRepository
 	financialRepo   fy.Repository
 	practitionerSvc practitioner.IService
 	coaRepo         coa.Repository
+	notificationSvc notification.Service
+	notificationPub *sharednotification.Publisher
+	adminRepo       admin.Repository
+	authSvc         auth.Service
 }
 
-func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, eventsSvc events.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository) IService {
-	return &Service{repo: repo, fieldRepo: fieldRepo, methodSvc: methodSvc, limitsSvc: limits.NewService(db), detailSvc: detailSvc, versionSvc: versionSvc, auditSvc: auditSvc, formulaSvc: formulaSvc, eventsSvc: eventsSvc, accountantRepo: accRepo, authRepo: authRepo, clinicRepo: clinicRepo, formClinic: clinicSvc, fieldSvc: fieldSvc, invitationSvc: invitationSvc, detailRepo: detailRepo, financialRepo: financialRepo, practitionerSvc: practitionerSvc, coaRepo: coaRepo}
+func NewService(db *sqlx.DB, repo IRepository, fieldRepo field.IRepository, methodSvc method.IService, detailSvc detail.IService, versionSvc version.IService, auditSvc audit.Service, accRepo accountant.Repository, authRepo auth.Repository, clinicRepo clinic.Repository, clinicSvc clinic.Service, formulaSvc formula.IService, fieldSvc field.IService, invitationSvc invitation.Service, invitationRepo invitation.Repository, detailRepo detail.IRepository, financialRepo fy.Repository, practitionerSvc practitioner.IService, coaRepo coa.Repository, notificationSvc notification.Service, adminRepo admin.Repository, authSvc auth.Service) IService {
+	return &Service{
+		db:              db,
+		repo:            repo,
+		fieldRepo:       fieldRepo,
+		methodSvc:       methodSvc,
+		limitsSvc:       limits.NewService(db),
+		detailSvc:       detailSvc,
+		versionSvc:      versionSvc,
+		auditSvc:        auditSvc,
+		formulaSvc:      formulaSvc,
+		accountantRepo:  accRepo,
+		authRepo:        authRepo,
+		clinicRepo:      clinicRepo,
+		formClinic:      clinicSvc,
+		fieldSvc:        fieldSvc,
+		invitationSvc:   invitationSvc,
+		invitationRepo:  invitationRepo,
+		detailRepo:      detailRepo,
+		financialRepo:   financialRepo,
+		practitionerSvc: practitionerSvc,
+		coaRepo:         coaRepo,
+		notificationSvc: notificationSvc,
+		notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo),
+		adminRepo:       adminRepo,
+		authSvc:         authSvc,
+	}
 }
 
-func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID) (*RsFormEntry, error) {
-	meta := auditctx.GetMetadata(ctx)
+func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 
 	var result *RsFormEntry
+	var realOwnerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 
 		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, req.ClinicID)
 		if err != nil {
@@ -88,7 +124,7 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 			return fmt.Errorf("clinic not found: %s", req.ClinicID)
 		}
 
-		realOwnerID := clinic.PractitionerID
+		realOwnerID = clinic.PractitionerID
 
 		if err := s.limitsSvc.Check(ctx, realOwnerID, limits.KeyTransactionCreate); err != nil {
 			return err
@@ -155,18 +191,6 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, e.ID, result)
 
-		metaMap := events.JSONBMap{
-			"entry_id":        result.ID.String(),
-			"form_version_id": formVersionID.String(),
-			"clinic_id":       req.ClinicID.String(),
-			"status":          result.Status,
-		}
-
-		s.recordSharedEvent(ctx, tx, req.ClinicID, formVersionID, auditctx.ActionEntryCreated, result.ID,
-			"Accountant %s created a new entry for form: %s",
-			metaMap,
-		)
-
 		return nil
 	})
 
@@ -175,17 +199,17 @@ func (s *Service) Create(ctx context.Context, formVersionID uuid.UUID, req *RqFo
 	}
 
 	idStr := result.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionEntryCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:   &idStr,
 		AfterState: result,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
+
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionCreated, "Transaction Created", []uuid.UUID{realOwnerID}); err != nil {
+		log.Printf("failed to send transaction notification event: %v", err.Error())
+	}
 
 	return result, nil
 }
@@ -194,7 +218,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	var e *FormEntry
 	var values []*FormEntryValue
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var err error
 
 		e, values, err = s.repo.GetByID(ctx, tx, id)
@@ -216,11 +240,12 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*RsFormEntry, erro
 	return rs, nil
 }
 
-func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID) (*RsFormEntry, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEntry, submittedBy *uuid.UUID, entityID uuid.UUID, role string) (*RsFormEntry, error) {
 	var result *RsFormEntry
-	var beforeState interface{}
+	var beforeState any
+	var practitionerID uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		var innerErr error
 
 		existing, values, innerErr := s.repo.GetByID(ctx, tx, id)
@@ -231,6 +256,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			return fmt.Errorf("form entry not found: %s", id)
 		}
 
+		practitionerID = existing.PractitionerID
 		beforeState = existing.ToRs(values)
 
 		dateToCheck := existing.Date
@@ -283,9 +309,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 			if err := s.handleDocumentLinks(ctx, tx, id, req.Documents); err != nil {
 				return err
 			}
-			if err := s.handleDocumentUnlinks(ctx, tx, id, req.Documents); err != nil {
-				return err
-			}
 		}
 
 		updated, vals, innerErr := s.repo.GetByID(ctx, tx, id)
@@ -300,18 +323,6 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		s.enrichResponseMetadata(ctx, result)
 		s.attachDocuments(ctx, id, result)
 
-		metaMap := events.JSONBMap{
-			"entry_id":        result.ID.String(),
-			"form_version_id": existing.FormVersionID.String(),
-			"clinic_id":       existing.ClinicID.String(),
-			"status":          result.Status,
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryUpdated, id,
-			"Accountant %s updated entry for form: %s",
-			metaMap,
-		)
-
 		return nil
 	})
 
@@ -319,26 +330,25 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req *RqUpdateFormEnt
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	idStr := id.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionEntryUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  result,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	if err = s.notifyTransaction(ctx, entityID, util.ActorType(role), util.EventTransactionUpdated, "Transaction Updated", []uuid.UUID{practitionerID}); err != nil {
+		log.Printf("failed to send transaction notification event: %v", err.Error())
+	}
 
 	return result, nil
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	return util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		existing, values, err := s.repo.GetByID(ctx, tx, id)
 		if err != nil {
 			return err
@@ -352,32 +362,64 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 
-		metaMap := events.JSONBMap{
-			"entry_id":  existing.ID.String(),
-			"clinic_id": existing.ClinicID.String(),
-		}
-
-		s.recordSharedEvent(ctx, tx, existing.ClinicID, existing.FormVersionID, auditctx.ActionEntryDeleted, id,
-			"Accountant %s deleted an entry for form: %s",
-			metaMap,
-		)
-
 		if err := s.repo.Delete(ctx, tx, id); err != nil {
 			return err
 		}
 
-		meta := auditctx.GetMetadata(ctx)
 		idStr := id.String()
-		s.auditSvc.LogAsync(&audit.LogEntry{
-			PracticeID:  meta.PracticeID,
-			UserID:      meta.UserID,
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 			Action:      auditctx.ActionEntryDeleted,
 			Module:      auditctx.ModuleForms,
 			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
 			EntityID:    &idStr,
 			BeforeState: beforeState,
-			IPAddress:   meta.IPAddress,
-			UserAgent:   meta.UserAgent,
+		})
+
+		return nil
+	})
+}
+
+func (s *Service) DeleteSingleEntryValue(ctx context.Context, id uuid.UUID, valueID uuid.UUID) error {
+	return util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		existing, values, err := s.repo.GetByValueID(ctx, tx, id, valueID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		beforeState := existing.ToRs(values)
+
+		if err := s.validateLockDate(ctx, tx, existing.ClinicID, existing.Date, &existing.CreatedAt); err != nil {
+			return err
+		}
+
+		if err := s.repo.DeleteSingleEntryValue(ctx, tx, valueID); err != nil {
+			return err
+		}
+
+		// Check if all remaining entry values are deleted; if so, cascade delete the parent entry
+		var remainingCount int
+		countQuery := `SELECT COUNT(*) FROM tbl_form_entry_value WHERE entry_id = $1 AND deleted_at IS NULL`
+		if err := tx.QueryRowContext(ctx, countQuery, id).Scan(&remainingCount); err != nil {
+			return fmt.Errorf("check remaining entry values: %w", err)
+		}
+		if remainingCount == 0 {
+			// All values are deleted, soft-delete the parent entry
+			deleteQuery := `UPDATE tbl_form_entry SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`
+			if _, err := tx.ExecContext(ctx, deleteQuery, id); err != nil {
+				return fmt.Errorf("cascade delete form entry: %w", err)
+			}
+		}
+
+		valueIDStr := valueID.String()
+		s.auditSvc.LogAsync(ctx, &audit.LogEntry{
+			Action:      auditctx.ActionEntryDeleted,
+			Module:      auditctx.ModuleForms,
+			EntityType:  lo.ToPtr(auditctx.EntityFormFieldEntry),
+			EntityID:    &valueIDStr,
+			BeforeState: beforeState,
 		})
 
 		return nil
@@ -432,11 +474,14 @@ func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter
 }
 
 func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []RqEntryValue) ([]*FormEntryValue, error) {
+	// =========================================================================
+	// PASS 1: VALIDATION, TAX CALCULATIONS, AND FORMULA EXECUTION
+	// =========================================================================
 	out := make([]*FormEntryValue, 0, len(rq))
-
 	keyValues := make(map[string]float64, len(rq))
 	taxTypeByKey := make(map[string]string, len(rq))
 
+	// Process direct COA entries
 	for _, v := range rq {
 		if err := v.Validate(); err != nil {
 			return nil, err
@@ -453,15 +498,18 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				inputAmount = *v.NetAmount
 			}
 
+			inputAmount = s.roundValue(inputAmount)
+
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: nil,
-				CoaID:       &coaID,
-				NetAmount:   &inputAmount,
-				GstAmount:   nil,
-				GrossAmount: &inputAmount,
-				Description: v.Description,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        nil,
+				CoaID:              &coaID,
+				NetAmount:          &inputAmount,
+				GstAmount:          nil,
+				GrossAmount:        &inputAmount,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
 			})
 			continue
 		}
@@ -502,29 +550,38 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		if f.TaxType == nil && v.GstAmount != nil && *v.GstAmount > 0 {
 			gstAmount = v.GstAmount
 			grossTotal = inputAmount
-			netBase = inputAmount - *v.GstAmount
+			netBase = s.roundValue(inputAmount - *v.GstAmount)
+			roundedGross := s.roundValue(grossTotal)
 
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				NetAmount:   &netBase,
-				GstAmount:   gstAmount,
-				GrossAmount: &grossTotal,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &fieldID,
+				CoaID:              f.CoaID,
+				NetAmount:          &netBase,
+				GstAmount:          gstAmount,
+				GrossAmount:        &roundedGross,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
 			})
 			continue
 		}
 
 		if f.TaxType == nil {
+			netBase = s.roundValue(netBase)
+			grossTotal = s.roundValue(grossTotal)
 			keyValues[f.FieldKey] = netBase
 			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				NetAmount:   &netBase,
-				GstAmount:   nil,
-				GrossAmount: &grossTotal,
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &fieldID,
+				CoaID:              f.CoaID,
+				NetAmount:          &netBase,
+				GstAmount:          nil,
+				GrossAmount:        &grossTotal,
+				Description:        v.Description,
+				BusinessPercentage: v.BusinessPercentage,
 			})
 			continue
 		}
@@ -537,9 +594,10 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			if err != nil {
 				return nil, err
 			}
-			gstAmount = &result.GstAmount
-			netBase = result.Amount
-			grossTotal = result.TotalAmount
+			roundedGst := s.roundValue(result.GstAmount)
+			gstAmount = &roundedGst
+			netBase = s.roundValue(result.Amount)
+			grossTotal = s.roundValue(result.TotalAmount)
 
 		case method.TaxTreatmentExclusive:
 			result, err := s.methodSvc.Calculate(ctx, taxType, &method.Input{Amount: inputAmount})
@@ -547,32 +605,32 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 				return nil, err
 			}
 			gstAmount = &result.GstAmount
-			netBase = inputAmount
-			grossTotal = result.TotalAmount
+			netBase = s.roundValue(inputAmount)
+			grossTotal = s.roundValue(result.TotalAmount)
 
 		case method.TaxTreatmentManual:
 			gstAmount = v.GstAmount
 
 			if v.GrossAmount != nil {
-				grossTotal = *v.GrossAmount
+				grossTotal = s.roundValue(*v.GrossAmount)
 				if v.GstAmount != nil {
-					netBase = *v.GrossAmount - *v.GstAmount
+					netBase = s.roundValue(*v.GrossAmount - *v.GstAmount)
 				} else {
-					netBase = *v.GrossAmount
+					netBase = s.roundValue(*v.GrossAmount)
 				}
 			} else {
-				grossTotal = inputAmount
+				grossTotal = s.roundValue(inputAmount)
 				if v.GstAmount != nil {
-					netBase = inputAmount - *v.GstAmount
+					netBase = s.roundValue(inputAmount - *v.GstAmount)
 				} else {
-					netBase = inputAmount
+					netBase = s.roundValue(inputAmount)
 				}
 			}
 
 		case method.TaxTreatmentZero:
 			gstAmount = nil
-			netBase = inputAmount
-			grossTotal = inputAmount
+			netBase = s.roundValue(inputAmount)
+			grossTotal = s.roundValue(inputAmount)
 
 		default:
 			return nil, fmt.Errorf("unsupported tax treatment: %s", taxType)
@@ -587,15 +645,19 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 		keyValues[f.FieldKey] = valueForFormula
 		taxTypeByKey[f.FieldKey] = string(taxType)
 		out = append(out, &FormEntryValue{
-			ID:          uuid.New(),
-			EntryID:     entryID,
-			FormFieldID: &fieldID,
-			NetAmount:   &netBase,
-			GstAmount:   gstAmount,
-			GrossAmount: &grossTotal,
+			ID:                 uuid.New(),
+			EntryID:            entryID,
+			FormFieldID:        &fieldID,
+			CoaID:              f.CoaID,
+			NetAmount:          &netBase,
+			GstAmount:          gstAmount,
+			GrossAmount:        &grossTotal,
+			Description:        v.Description,
+			BusinessPercentage: v.BusinessPercentage,
 		})
 	}
 
+	// Execute formulas if available
 	var firstField *field.FormField
 	if s.formulaSvc != nil && len(rq) > 0 {
 		var firstFieldID uuid.UUID
@@ -614,207 +676,256 @@ func (s *Service) CalculateValues(ctx context.Context, entryID uuid.UUID, rq []R
 			}
 		}
 
-		if firstField == nil {
-			return out, nil
-		}
-
-		allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
-		if err != nil {
-			return nil, err
-		}
-
-		fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
-		for _, af := range allFields {
-			fieldByID[af.ID] = af
-		}
-
-		sectionTotals := make(map[string]float64)
-		for _, entryVal := range out {
-			if entryVal.FormFieldID == nil {
-				continue
-			}
-
-			f, ok := fieldByID[*entryVal.FormFieldID]
-			if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
-				sectionKey := "SECTION:" + *f.SectionType
-				sectionTotals[sectionKey] += *entryVal.NetAmount
-			}
-		}
-
-		maps.Copy(keyValues, sectionTotals)
-
-		for _, f := range allFields {
-			if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
-				taxTypeByKey[f.FieldKey] = *f.TaxType
-			}
-		}
-
-		manualGSTByKey := make(map[string]float64)
-		for _, v := range rq {
-			if v.GstAmount == nil || v.FormFieldID == nil || *v.FormFieldID == "" {
-				continue
-			}
-			fieldID, err := uuid.Parse(*v.FormFieldID)
+		if firstField != nil {
+			allFields, err := s.fieldRepo.ListByFormVersionID(ctx, firstField.FormVersionID)
 			if err != nil {
-				continue
-			}
-			f, ok := fieldByID[fieldID]
-			if !ok || !f.IsComputed {
-				continue
-			}
-			if f.TaxType != nil && *f.TaxType == "MANUAL" {
-				manualGSTByKey[f.FieldKey] = *v.GstAmount
-			}
-		}
-
-		computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
-		if err != nil {
-			return nil, fmt.Errorf("evaluate formulas: %w", err)
-		}
-
-		alreadyAdded := make(map[uuid.UUID]bool, len(out))
-		for _, v := range out {
-			if v.FormFieldID != nil {
-				alreadyAdded[*v.FormFieldID] = true
-			}
-		}
-
-		for fieldID, val := range computed {
-			f, ok := fieldByID[fieldID]
-			if !ok {
-				continue
-			}
-			if alreadyAdded[fieldID] {
-				continue
+				return nil, err
 			}
 
-			netBase := val
-			grossTotal := val
-			var gstAmount *float64
+			fieldByID := make(map[uuid.UUID]*field.FormField, len(allFields))
+			for _, af := range allFields {
+				fieldByID[af.ID] = af
+			}
 
-			if f.TaxType != nil {
-				taxType := method.TaxTreatment(*f.TaxType)
+			sectionTotals := make(map[string]float64)
+			for _, entryVal := range out {
+				if entryVal.FormFieldID == nil {
+					continue
+				}
 
-				switch taxType {
-				case method.TaxTreatmentInclusive:
-					gst := val * 0.10
-					gstAmount = &gst
-					netBase = val
-					grossTotal = val + gst
-				case method.TaxTreatmentExclusive:
-					gst := val * 0.10
-					gstAmount = &gst
-					netBase = val
-					grossTotal = val + gst
-				case method.TaxTreatmentManual:
-					var entryGST *float64
-					for _, v := range rq {
-						if v.FormFieldID == nil || *v.FormFieldID == "" {
-							continue
-						}
-						entryFieldID, err := uuid.Parse(*v.FormFieldID)
-						if err != nil {
-							continue
-						}
-						if entryFieldID == fieldID && v.GstAmount != nil {
-							entryGST = v.GstAmount
-							break
-						}
-					}
-
-					grossTotal = val
-					if entryGST == nil {
-						gst := 0.0
-						gstAmount = &gst
-						netBase = val
-					} else {
-						gstAmount = entryGST
-						netBase = val - *entryGST
-					}
-				case method.TaxTreatmentZero:
-					gstAmount = nil
-					netBase = val
-					grossTotal = val
+				f, ok := fieldByID[*entryVal.FormFieldID]
+				if ok && f.SectionType != nil && *f.SectionType != "" && entryVal.NetAmount != nil {
+					sectionKey := "SECTION:" + *f.SectionType
+					sectionTotals[sectionKey] += *entryVal.NetAmount
 				}
 			}
 
-			out = append(out, &FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &fieldID,
-				NetAmount:   &netBase,
-				GstAmount:   gstAmount,
-				GrossAmount: &grossTotal,
-			})
+			maps.Copy(keyValues, sectionTotals)
+
+			for _, f := range allFields {
+				if f.IsComputed && f.TaxType != nil && *f.TaxType != "" {
+					taxTypeByKey[f.FieldKey] = *f.TaxType
+				}
+			}
+
+			manualGSTByKey := make(map[string]float64)
+			for _, v := range rq {
+				if v.GstAmount == nil || v.FormFieldID == nil || *v.FormFieldID == "" {
+					continue
+				}
+				fieldID, err := uuid.Parse(*v.FormFieldID)
+				if err != nil {
+					continue
+				}
+				f, ok := fieldByID[fieldID]
+				if !ok || !f.IsComputed {
+					continue
+				}
+				if f.TaxType != nil && *f.TaxType == "MANUAL" {
+					manualGSTByKey[f.FieldKey] = *v.GstAmount
+				}
+			}
+
+			computed, err := s.formulaSvc.EvalFormulas(ctx, firstField.FormVersionID, keyValues, taxTypeByKey, manualGSTByKey)
+			if err != nil {
+				return nil, fmt.Errorf("evaluate formulas: %w", err)
+			}
+
+			alreadyAdded := make(map[uuid.UUID]bool, len(out))
+			for _, v := range out {
+				if v.FormFieldID != nil {
+					alreadyAdded[*v.FormFieldID] = true
+				}
+			}
+
+			for fieldID, val := range computed {
+				f, ok := fieldByID[fieldID]
+				if !ok {
+					continue
+				}
+				if alreadyAdded[fieldID] {
+					continue
+				}
+
+				netBase := s.roundValue(val)
+				grossTotal := s.roundValue(val)
+				var gstAmount *float64
+
+				if f.TaxType != nil {
+					taxType := method.TaxTreatment(*f.TaxType)
+
+					switch taxType {
+					case method.TaxTreatmentInclusive:
+						gst := s.roundValue(val * 0.10)
+						gstAmount = &gst
+						netBase = s.roundValue(val)
+						grossTotal = s.roundValue(val + gst)
+					case method.TaxTreatmentExclusive:
+						gst := s.roundValue(val * 0.10)
+						gstAmount = &gst
+						netBase = s.roundValue(val)
+						grossTotal = s.roundValue(val + gst)
+					case method.TaxTreatmentManual:
+						var entryGST *float64
+						for _, v := range rq {
+							if v.FormFieldID == nil || *v.FormFieldID == "" {
+								continue
+							}
+							entryFieldID, err := uuid.Parse(*v.FormFieldID)
+							if err != nil {
+								continue
+							}
+							if entryFieldID == fieldID && v.GstAmount != nil {
+								entryGST = v.GstAmount
+								break
+							}
+						}
+
+						grossTotal = s.roundValue(val)
+						if entryGST == nil {
+							gst := 0.0
+							gstAmount = &gst
+							netBase = s.roundValue(val)
+						} else {
+							gstAmount = entryGST
+							netBase = s.roundValue(val - *entryGST)
+						}
+					case method.TaxTreatmentZero:
+						gstAmount = nil
+						netBase = s.roundValue(val)
+						grossTotal = s.roundValue(val)
+					}
+				}
+
+				out = append(out, &FormEntryValue{
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        &fieldID,
+					CoaID:              f.CoaID,
+					NetAmount:          &netBase,
+					GstAmount:          gstAmount,
+					GrossAmount:        &grossTotal,
+					BusinessPercentage: nil,
+				})
+			}
 		}
 	}
 
 	// =========================================================================
-	// AUTOMATED DOUBLE-ENTRY BALANCING SYSTEM (ALL EDGE CASES)
+	// PASS 2: DOUBLE-ENTRY LEDGER IMPACT CALCULATION & AUTOMATIC BALANCING
 	// =========================================================================
+	// Rule: amounts are stored with their natural sign (positive = normal balance).
+	// Assets/Expenses are debit-normal  → contribute +amount to the balance equation.
+	// Liability/Equity/Revenue/Income are credit-normal → contribute -amount.
+	// A balanced entry sums to zero. If not, inject a COA-980 (Current Year Earnings) offset row.
+
 	if len(out) > 0 {
-		var totalLedgerImpact float64
+		var rawDebits float64
+		var rawCredits float64
 		var practitionerID *uuid.UUID
+		var earningsCoaID *uuid.UUID
 
-		// 1. Traverse lines to calculate aggregate algebraic weight
+		// Pass 2a: Calculate baseline balances from explicit user input lines
 		for _, ev := range out {
-			if ev.NetAmount == nil || *ev.NetAmount == 0 {
-				continue
-			}
-
-			var targetCoaID *uuid.UUID
 			if ev.CoaID != nil {
-				targetCoaID = ev.CoaID
-			} else if ev.FormFieldID != nil && firstField != nil {
-				// Fallback to fetch CoaID mapped on the template field
-				f, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
-				if err == nil && f != nil {
-					targetCoaID = f.CoaID
-				}
-			}
-
-			if targetCoaID != nil {
-				// Use the existing GetByIDInternal method from your COA repository interface
-				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *targetCoaID)
-				if err == nil && chartAccount != nil {
-					if practitionerID == nil {
-						practitionerID = &chartAccount.PractitionerID
-					}
-
-					// Dynamic sign management rule based on natural account structures
-					switch strings.Title(strings.ToLower(chartAccount.AccountTypeName)) {
-					case "Asset", "Expense":
-						totalLedgerImpact += *ev.NetAmount
-					case "Liability", "Equity", "Revenue", "Income":
-						totalLedgerImpact -= *ev.NetAmount
+				chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+				if err == nil && chartAccount != nil && practitionerID == nil {
+					practitionerID = &chartAccount.PractitionerID
+					earningsAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 980, *practitionerID, nil)
+					if err == nil && earningsAccount != nil {
+						id := earningsAccount.ID
+						earningsCoaID = &id
 					}
 				}
 			}
 		}
 
-		// 2. If debits and credits don't balance out to zero, fix the drift
-		if totalLedgerImpact != 0 && practitionerID != nil {
-			// Find Operating Bank Account (Code 600) for this practitioner to absorb the offset
-			bankAccount, err := s.coaRepo.GetChartByCodeAndPractitionerID(ctx, 600, *practitionerID, nil)
-			if err == nil && bankAccount != nil {
+		cleanOut := make([]*FormEntryValue, 0, len(out))
+		var formulaAllocationsTo980 float64
 
-				// Balancing value is the inversion of the net drift
-				counterBalancingAmount := -totalLedgerImpact
+		for _, ev := range out {
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID == nil {
+				if ev.Description != nil && *ev.Description == "Current Year Earnings Allocation" {
+					continue
+				}
+			}
+			cleanOut = append(cleanOut, ev)
+
+			if ev.CoaID != nil && earningsCoaID != nil && *ev.CoaID == *earningsCoaID && ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil && (fieldMeta.IsFormula || fieldMeta.IsComputed) && ev.NetAmount != nil {
+					formulaAllocationsTo980 += math.Abs(*ev.NetAmount)
+				}
+			}
+		}
+		out = cleanOut
+
+		for _, ev := range out {
+			if ev.NetAmount == nil || *ev.NetAmount == 0 || ev.CoaID == nil {
+				continue
+			}
+
+			if ev.FormFieldID != nil {
+				fieldMeta, err := s.fieldRepo.GetByID(ctx, *ev.FormFieldID)
+				if err == nil && fieldMeta != nil {
+					// If it's a formula field or designated summary, skip its entry from ledger totals
+					if fieldMeta.IsFormula || fieldMeta.IsComputed {
+						continue
+					}
+				}
+			}
+
+			chartAccount, err := s.coaRepo.GetByIDInternal(ctx, *ev.CoaID)
+			if err == nil && chartAccount != nil {
+				accountType := strings.ToLower(chartAccount.AccountTypeName)
+				isDebitNormal := strings.Contains(accountType, "asset") ||
+					strings.Contains(accountType, "expense") ||
+					strings.Contains(accountType, "direct cost") ||
+					strings.Contains(accountType, "bank")
+
+				val := math.Abs(*ev.NetAmount)
+				if isDebitNormal {
+					rawDebits += val
+				} else {
+					rawCredits += val
+				}
+			}
+		}
+
+		rawDebits = s.roundValue(rawDebits)
+		rawCredits = s.roundValue(rawCredits)
+
+		trueNetProfit := s.roundValue(rawCredits - rawDebits)
+
+		// Pass 2b: Inject a balancing entry if they don't match
+		if practitionerID != nil && earningsCoaID != nil {
+			balancingAmount := s.roundValue(trueNetProfit - formulaAllocationsTo980)
+
+			if math.Abs(balancingAmount) > 0.01 {
+				desc := "Current Year Earnings Allocation"
 
 				out = append(out, &FormEntryValue{
-					ID:          uuid.New(),
-					EntryID:     entryID,
-					FormFieldID: nil, // Internal systemic adjustment record
-					CoaID:       &bankAccount.ID,
-					NetAmount:   &counterBalancingAmount,
-					GstAmount:   nil,
-					GrossAmount: &counterBalancingAmount,
+					ID:                 uuid.New(),
+					EntryID:            entryID,
+					FormFieldID:        nil,
+					CoaID:              earningsCoaID,
+					NetAmount:          &balancingAmount,
+					GstAmount:          nil,
+					GrossAmount:        &balancingAmount,
+					BusinessPercentage: nil,
+					Description:        &desc,
 				})
 			}
 		}
 	}
 
 	return out, nil
+}
+
+// roundValue applies institutional-grade rounding to eliminate floating-point precision leakage
+// This ensures all monetary amounts are precise to 2 decimal places
+func (s *Service) roundValue(val float64) float64 {
+	return math.Round(val*100) / 100
 }
 
 // attachFieldMetadata enriches each value in the response with field_key, label, and is_computed.
@@ -932,74 +1043,12 @@ func roundEntry(v float64) float64 {
 	return float64(int(shifted)) / 100
 }
 
-// Helper to record shared events
-func (s *Service) recordSharedEvent(ctx context.Context, tx *sqlx.Tx, clinicID uuid.UUID, formVersionID uuid.UUID, action string, entryID uuid.UUID, descriptionTemplate string, metadata events.JSONBMap) {
-	meta := auditctx.GetMetadata(ctx)
-
-	// Only act if the user is an Accountant
-	if meta.UserType == nil || !strings.EqualFold(*meta.UserType, util.RoleAccountant) || meta.UserID == nil {
-		return
-	}
-
-	actorUserID, err := uuid.Parse(*meta.UserID)
-	if err != nil {
-		return
-	}
-
-	formName := "Form"
-	ver, err := s.versionSvc.GetByID(ctx, formVersionID)
-	if err == nil && ver != nil {
-		form, err := s.detailRepo.GetByID(ctx, ver.FormId)
-		if err == nil && form != nil {
-			formName = form.Name
-		}
-	}
-
-	clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicID)
-	if err != nil || clinic == nil {
-		return
-	}
-
-	var accountantID uuid.UUID
-	var fullName string
-
-	accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-	if err == nil && accProfile != nil {
-		accountantID = accProfile.ID
-	} else {
-		accountantID = actorUserID
-	}
-
-	user, err := s.authRepo.FindByID(ctx, actorUserID)
-	if err == nil && user != nil {
-		fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-	}
-
-	// Record Event
-	_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-		ID:             uuid.New(),
-		PractitionerID: clinic.PractitionerID,
-		AccountantID:   accountantID,
-		ActorID:        actorUserID,
-		ActorName:      &fullName,
-		ActorType:      util.RoleAccountant,
-		EventType:      action,
-		EntityType:     "FORM",
-		EntityID:       entryID,
-		Description:    fmt.Sprintf(descriptionTemplate, fullName, formName),
-		Metadata:       metadata,
-		CreatedAt:      time.Now(),
-	})
-}
-
 func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, actorID uuid.UUID, role string, userID uuid.UUID) (*util.RsList, error) {
-	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	var userIDStr string
 	userIDStr = userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsGenerated,
@@ -1009,39 +1058,22 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 		AfterState: map[string]interface{}{
 			"report_type": "Transaction Report",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
-	// Record the Shared Event
-	if role == util.RoleAccountant {
-		var fullName string
-		user, err := s.authRepo.FindByID(ctx, userID)
-		if err == nil {
-			fullName = fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-		}
+	f := filter.ToCommonFilter()
 
-		var pID uuid.UUID
-		if filter.PractitionerID != nil {
-			pID = *filter.PractitionerID
-		}
-
-		_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-			ID:             uuid.New(),
-			PractitionerID: pID,
-			AccountantID:   actorID,
-			ActorID:        userID,
-			ActorName:      &fullName,
-			ActorType:      role,
-			EventType:      "transaction_report.generated",
-			EntityType:     "REPORT",
-			Description:    fmt.Sprintf("Accountant %s generated Transaction Report", fullName),
-			Metadata:       events.JSONBMap{"report_type": "Transaction Report"},
-			CreatedAt:      time.Now(),
-		})
+	incomingPageIndex := 0
+	if f.Offset != nil {
+		incomingPageIndex = *f.Offset
 	}
 
-	f := filter.ToCommonFilter()
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	calculatedDbOffset := incomingPageIndex * pageSize
+	f.Offset = &calculatedDbOffset
 
 	items, err := s.repo.ListCoaEntries(ctx, f, actorID, role)
 	if err != nil {
@@ -1053,7 +1085,7 @@ func (s *Service) ListCoaEntries(ctx context.Context, filter TransactionFilter, 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, incomingPageIndex, pageSize)
 	return &rs, nil
 }
 
@@ -1070,6 +1102,19 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 
 	f := filter.ToCommonFilter()
 
+	pageIndex := 0
+	if f.Offset != nil {
+		pageIndex = *f.Offset
+	}
+
+	pageSize := 10
+	if f.Limit != nil && *f.Limit > 0 {
+		pageSize = *f.Limit
+	}
+
+	dbOffset := pageIndex * pageSize
+	f.Offset = &dbOffset
+
 	items, err := s.repo.ListCoaEntryDetails(ctx, coaName, f, actorID, role)
 	if err != nil {
 		return nil, err
@@ -1080,17 +1125,21 @@ func (s *Service) ListCoaEntryDetails(ctx context.Context, coaID string, filter 
 	}
 
 	var rs util.RsList
-	rs.MapToList(items, total, *f.Offset, *f.Limit)
+	rs.MapToList(items, total, pageIndex, pageSize)
 	return &rs, nil
 }
 
-func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID) (interface{}, string, error) {
+func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilter, actorID uuid.UUID, role string, exportType string, userID uuid.UUID, PracIDs []uuid.UUID, selectedColumns []string) (interface{}, string, error) {
 	var result interface{}
 	var contentType string
 	var fullName string
-	var targetNotifIDs []uuid.UUID
 
-	err := util.RunInTransaction(ctx, s.repo.(*Repository).db, func(ctx context.Context, tx *sqlx.Tx) error {
+	// Fallback
+	if len(selectedColumns) == 0 {
+		selectedColumns = []string{"date", "supplier_name", "description", "clinic", "expenses", "net_amount", "gst_amount", "gross_amount", "gst_type", "business_percentage", "note"}
+	}
+
+	err := util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		groups, err := s.repo.ListCoaEntries(ctx, f.ToCommonFilter(), actorID, role)
 		if err != nil {
 			return err
@@ -1172,7 +1221,6 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			period = fmt.Sprintf("As of %s", formatDateHelper(*f.EndDate))
 		}
 
-		// Handle Excel Export
 		if strings.ToLower(exportType) == "excel" {
 			config := export.ExportConfig{
 				EntityName:     entityName,
@@ -1187,24 +1235,37 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 			for i, g := range groups {
 				exportDetails := make([]*entryexport.CoaDetail, len(g.Details))
 				for j, d := range g.Details {
-					var createdAtTime time.Time
-					if d.CreatedAt != "" {
-						parsedTime, err := time.Parse("2006-01-02", d.CreatedAt)
+
+					var realizedDate time.Time
+					sourceDateStr := ""
+					if d.Date != nil {
+						sourceDateStr = *d.Date
+					} else if d.CreatedAt != "" {
+						sourceDateStr = d.CreatedAt
+					}
+
+					if sourceDateStr != "" {
+						if len(sourceDateStr) >= 10 {
+							sourceDateStr = sourceDateStr[:10]
+						}
+						parsed, err := time.Parse("2006-01-02", sourceDateStr)
 						if err == nil {
-							createdAtTime = parsedTime
+							realizedDate = parsed
 						}
 					}
 
 					exportDetails[j] = &entryexport.CoaDetail{
-						FormFieldName: d.FormFieldName,
-						TaxTypeName:   d.TaxTypeName,
-						FormName:      *d.FormName,
-						ClinicName:    *d.ClinicName,
-						NetAmount:     d.NetAmount,
-						GstAmount:     d.GstAmount,
-						GrossAmount:   d.GrossAmount,
-						CreatedAt:     createdAtTime,
-						IsExpense:     d.IsExpense,
+						FormFieldName:      d.FormFieldName,
+						TaxTypeName:        d.TaxTypeName,
+						FormName:           lo.FromPtrOr(d.FormName, "-"),
+						ClinicName:         lo.FromPtrOr(d.ClinicName, "-"),
+						NetAmount:          d.NetAmount,
+						GstAmount:          d.GstAmount,
+						GrossAmount:        d.GrossAmount,
+						CreatedAt:          realizedDate,
+						IsExpense:          d.IsExpense,
+						BusinessPercentage: d.BusinessPercentage,
+						Notes:              d.Notes,
 					}
 				}
 				exportGroups[i] = &entryexport.CoaGroup{
@@ -1216,47 +1277,12 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 				}
 			}
 
-			buf, err := entryexport.GenerateExcelReport(exportGroups, config, formatDateHelper)
+			buf, err := entryexport.GenerateExcelReport(exportGroups, config, formatDateHelper, selectedColumns)
 			if err != nil {
 				return fmt.Errorf("failed to generate excel: %w", err)
 			}
 			result = buf
 			contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-		}
-
-		// Resolve target practitioners for Notifications
-		targetNotifIDs = PracIDs
-
-		// If clinic_id is provided, look up the owner
-		if f.ClinicID != nil {
-			clinicUUID, err := uuid.Parse(*f.ClinicID)
-			if err == nil {
-				clinic, err := s.clinicRepo.GetClinicByID(ctx, tx, clinicUUID)
-				if err == nil && clinic != nil {
-					targetNotifIDs = []uuid.UUID{clinic.PractitionerID}
-				}
-			}
-		}
-
-		if role == util.RoleAccountant {
-			for _, pID := range targetNotifIDs {
-				err := s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: pID,
-					AccountantID:   actorID,
-					ActorID:        userID,
-					ActorName:      &fullName,
-					ActorType:      role,
-					EventType:      "transaction_report.exported",
-					EntityType:     "REPORT",
-					Description:    fmt.Sprintf("Accountant %s exported Transaction Report", fullName),
-					Metadata:       events.JSONBMap{"report_type": "Transaction Report", "export_type": exportType},
-					CreatedAt:      time.Now(),
-				})
-				if err != nil {
-					return fmt.Errorf("failed to log shared transaction export event: %w", err)
-				}
-			}
 		}
 
 		return nil
@@ -1266,12 +1292,10 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		return nil, "", err
 	}
 
-	// --- AUDIT LOG ---
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
 	parsedActorID := actorID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: nil,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActitionTransactionsExported,
@@ -1279,11 +1303,10 @@ func (s *Service) ExportTransactionReport(ctx context.Context, f TransactionFilt
 		EntityType: lo.ToPtr(auditctx.EntityTransactions),
 		EntityID:   &parsedActorID,
 		AfterState: map[string]interface{}{
-			"report_type": "Transaction Report",
-			"export_type": exportType,
+			"report_type":      "Transaction Report",
+			"export_type":      exportType,
+			"selected_columns": selectedColumns,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return result, contentType, nil
@@ -1396,17 +1419,101 @@ func (s *Service) handleDocumentLinks(ctx context.Context, tx *sqlx.Tx, entryID 
 	return nil
 }
 
-// handleDocumentUnlinks processes and unlinks documents from an entry
-func (s *Service) handleDocumentUnlinks(ctx context.Context, tx *sqlx.Tx, entryID uuid.UUID, docs *RqDocument) error {
-	if docs == nil || len(docs.Delete) == 0 {
+func (s *Service) notifyTransaction(ctx context.Context, entityID uuid.UUID, recipientType util.ActorType, eventType util.EventType, title string, targetPractitionerIDs []uuid.UUID) error {
+	if s.notificationPub == nil {
+		return fmt.Errorf("notification publisher is nil")
+	}
+
+	user, err := s.authSvc.GetUserByID(ctx, entityID, recipientType)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	senderName := user.FirstName + " " + user.LastName
+	senderType := recipientType
+
+	// Build recipients list
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch recipientType {
+	case util.ActorPractitioner:
+		// If the sender is a practitioner, notify their linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, entityID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", entityID, err)
+			return nil // Don't fail transaction if notification fails
+		}
+
+		for _, acc := range accountants {
+			// Check if accountant has notification access permission
+			permissions, err := s.invitationSvc.GetPermissionsForAccountant(ctx, acc.AccountantID, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get permissions for accountant %s: %v", acc.AccountantID, err)
+				continue
+			}
+
+			// Only notify accountants with reports view/download permission
+			if permissions != nil && permissions.Has(invitation.PermReportsViewDownload, false) {
+				recipients = append(recipients, sharednotification.RecipientWithPreferences{
+					RecipientID:   acc.AccountantID,
+					RecipientType: util.ActorAccountant,
+					UserID:        acc.UserID,
+				})
+			}
+		}
+
+	case util.ActorAccountant:
+		// If the sender is an accountant, notify only specific practitioners if provided
+		var practitionerIDs []uuid.UUID
+
+		if len(targetPractitionerIDs) > 0 {
+			// Use the specific practitioners for whom the transaction/report was generated
+			practitionerIDs = targetPractitionerIDs
+		} else {
+			// Fallback: notify all linked practitioners
+			var err error
+			practitionerIDs, err = s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, entityID)
+			if err != nil {
+				log.Printf("[WARN] failed to get practitioners for accountant %s: %v", entityID, err)
+				return nil // Don't fail transaction if notification fails
+			}
+		}
+
+		// Notify each practitioner
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		return fmt.Errorf("unsupported recipient type: %s", recipientType)
+	}
+	// If no recipients, don't send notification
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for transaction notification")
 		return nil
 	}
-	docIDs, err := util.ParseUUIDs(docs.Delete)
-	if err != nil {
-		return fmt.Errorf("invalid document id: %w", err)
-	}
-	if err := s.repo.UnlinkDocuments(ctx, tx, entryID, docIDs); err != nil {
-		return fmt.Errorf("unlink documents: %w", err)
-	}
-	return nil
+
+	// Send notifications with preferences using the new publisher
+	return s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   entityID,
+		SenderType: senderType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityTransaction,
+		EntityID:   entityID,
+		EntityKey:  "transaction_id",
+		Title:      title,
+		Body:       fmt.Sprintf("%s by %s", title, senderName),
+	})
 }

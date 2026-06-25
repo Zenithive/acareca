@@ -70,6 +70,46 @@ type LogEntry struct {
 	UserAgent   *string
 }
 
+// NewEntry creates a LogEntry with the required fields.
+// Call the With* methods to attach optional state.
+//
+// Example:
+//
+//	audit.NewEntry(auditctx.ActionClinicCreated, auditctx.ModuleBusiness, auditctx.EntityClinic, id).
+//	    WithAfter(result)
+func NewEntry(action, module, entityType, entityID string) *LogEntry {
+	return &LogEntry{
+		Action:     action,
+		Module:     module,
+		EntityType: &entityType,
+		EntityID:   &entityID,
+	}
+}
+
+// WithPractice sets the practice (tenant) ID.
+func (e *LogEntry) WithPractice(id string) *LogEntry {
+	e.PracticeID = &id
+	return e
+}
+
+// WithUser sets the acting user ID.
+func (e *LogEntry) WithUser(id string) *LogEntry {
+	e.UserID = &id
+	return e
+}
+
+// WithBefore sets the before-state for update/delete operations.
+func (e *LogEntry) WithBefore(state interface{}) *LogEntry {
+	e.BeforeState = state
+	return e
+}
+
+// WithAfter sets the after-state for create/update operations.
+func (e *LogEntry) WithAfter(state interface{}) *LogEntry {
+	e.AfterState = state
+	return e
+}
+
 type Filter struct {
 	PracticeID *string    `form:"practice_id"`
 	UserID     *string    `form:"user_id"`

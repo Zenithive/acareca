@@ -2830,7 +2830,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/verify": {
+        "/auth/verify-email": {
             "get": {
                 "description": "Validates the UUID token sent via email and marks the user as verified",
                 "produces": [
@@ -2907,13 +2907,19 @@ const docTemplate = `{
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/bs.RsBalanceSheet"
+                            "$ref": "#/definitions/internal_modules_engine_bs.RsBalanceSheet"
                         }
                     },
                     "400": {
@@ -2968,6 +2974,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Submitted-by User UUID",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Start Date (YYYY-MM-DD)",
                         "name": "start_date",
                         "in": "query"
@@ -2976,6 +2988,18 @@ const docTemplate = `{
                         "type": "string",
                         "description": "End Date (YYYY-MM-DD)",
                         "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Anchor Financial Year snapshot UUID",
+                        "name": "financial_year_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of historical years to compare back (0 to 4)",
+                        "name": "comparisons",
                         "in": "query"
                     },
                     {
@@ -3234,7 +3258,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/bas.RsBASPreparation"
+                            "$ref": "#/definitions/internal_modules_engine_bas.RsBASPreparation"
                         }
                     },
                     "400": {
@@ -3565,7 +3589,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/bas.RsBASReport"
+                            "$ref": "#/definitions/internal_modules_engine_bas.RsBASReport"
                         }
                     },
                     "400": {
@@ -4052,7 +4076,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Delete clinic account",
                 "responses": {
@@ -4228,7 +4252,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Change clinic password",
                 "parameters": [
@@ -4284,7 +4308,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "List all contacts for a clinic",
                 "responses": {
@@ -4321,7 +4345,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Create a new contact for a clinic",
                 "parameters": [
@@ -4383,7 +4407,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Delete a contact address by ID",
                 "parameters": [
@@ -4431,7 +4455,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Get a contact by ID",
                 "parameters": [
@@ -4489,7 +4513,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Update a contact by ID",
                 "parameters": [
@@ -4544,7 +4568,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "clinic"
+                    "clinic-contact"
                 ],
                 "summary": "Delete a contact by ID",
                 "parameters": [
@@ -4588,7 +4612,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Initiate clinic password reset",
                 "parameters": [
@@ -4700,6 +4724,69 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/clinic/invoice/email-templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Fetch current invoice template context settings or system defaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.RsBase"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/invoice.RsInvoiceMailTemplate"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Save modified template layout overrides for the active clinic identity context",
+                "parameters": [
+                    {
+                        "description": "Custom structural templates body configurations",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/invoice.RqSaveMailTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
                         }
                     }
                 }
@@ -4866,6 +4953,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/clinic/invoice/{id}/resend": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoice"
+                ],
+                "summary": "Manually re-fire a generated paid invoice statement notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invoice UUID string format token",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
         "/clinic/login": {
             "post": {
                 "description": "authenticates an invoice clinic profile and issues access tokens",
@@ -4876,7 +5011,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Login an invoice clinic",
                 "parameters": [
@@ -4933,7 +5068,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Logout current invoice clinic session",
                 "parameters": [
@@ -4987,7 +5122,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Get current invoice clinic profile",
                 "responses": {
@@ -5025,7 +5160,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Update clinic profile",
                 "parameters": [
@@ -5077,7 +5212,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Register a new invoice clinic",
                 "parameters": [
@@ -5129,7 +5264,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Reset clinic password using token",
                 "parameters": [
@@ -5172,7 +5307,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "invoice"
+                    "invoice-clinic"
                 ],
                 "summary": "Verify clinic email address",
                 "parameters": [
@@ -5759,7 +5894,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/coa.RqCreateChartOfAccountOfAccount"
+                            "$ref": "#/definitions/coa.RqCreateChartOfAccount"
                         }
                     }
                 ],
@@ -6009,7 +6144,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/coa.RqUpdateCharOfAccountOfAccount"
+                            "$ref": "#/definitions/coa.RqUpdateChartOfAccount"
                         }
                     }
                 ],
@@ -6129,6 +6264,258 @@ const docTemplate = `{
                 }
             }
         },
+        "/coa/templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Gathers a generalized collection indexing active charts mapped to system rules.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "List Account Templates",
+                "responses": {
+                    "200": {
+                        "description": "An array matching structural index configuration items",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/coa.RsAccountTemplate"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal scanning array processing sequence broken",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Overwrites and updates a target chart structure mapped inside the active repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Update Account Template",
+                "parameters": [
+                    {
+                        "description": "Mutation values specifications struct bundle wrapper",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqUpdateAccountTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Structural transformation or payload validation parameter failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Underlying relational mapping updating failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Creates a new chart of account blueprint record within the DB storage pool.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Create Account Template",
+                "parameters": [
+                    {
+                        "description": "Account baseline specifications structure payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/coa.RqAccountTemplate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input request body error context parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal system storage engine baseline failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/coa/templates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries and returns a single account template baseline context view record.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Get Account Template By ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Valid string parsed UUID pattern match filter",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Matching records successfully unpacked and transformed from storage",
+                        "schema": {
+                            "$ref": "#/definitions/coa.RsAccountTemplate"
+                        }
+                    },
+                    "400": {
+                        "description": "Path variables missing precise conversion requirements",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The requested configuration item does not exist inside the target index",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Removes a global chart blueprint record and removes/decouples matching active records across downstream practitioners.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chart of Accounts"
+                ],
+                "summary": "Delete Account Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target account template string parsed UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The template configuration was successfully removed and cascade transformations executed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Path parameters missing matching conversion standards or authorization missing",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Cascading database deletions or records severance operation processing failure",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/entry/coa-entries": {
             "get": {
                 "security": [
@@ -6148,7 +6535,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "Zero-based page index",
-                        "name": "page",
+                        "name": "offset",
                         "in": "query"
                     },
                     {
@@ -6283,6 +6670,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Search by account, field, or clinic name",
                         "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of visible columns to include. Options: date, supplier_name, description, clinic, expenses, net_amount, gst_amount, gross_amount, gst_type, business_percentage, note",
+                        "name": "selected_columns",
                         "in": "query"
                     }
                 ],
@@ -6585,6 +6978,52 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            }
+        },
+        "/entry/value/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Remove a specific entry from the system",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entry"
+                ],
+                "summary": "Delete a form entry value",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entry Value ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -7537,62 +7976,6 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "patch": {
-                "security": [
-                    {
-                        "BearerToken": []
-                    }
-                ],
-                "description": "Update an existing expense form",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "form/expense"
-                ],
-                "summary": "Update expense",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Form ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Expense update request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/form.RqUpdateExpense"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    }
-                }
             }
         },
         "/form/{id}": {
@@ -8397,12 +8780,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -8417,7 +8794,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "description": "Updates or creates a preference for a specific event type.",
+                "description": "Updates or creates preferences. event_type is always required. If channels is empty, the specified event types are deleted. If channels is provided, preferences are upserted.",
                 "tags": [
                     "notification"
                 ],
@@ -8429,7 +8806,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/notification.RqUpdatePreference"
+                            "$ref": "#/definitions/preference.RqUpdatePreference"
                         }
                     }
                 ],
@@ -8452,8 +8829,34 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.RsError"
                         }
                     },
-                    "404": {
-                        "description": "Not Found",
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Deletes all notification preferences for the authenticated user on their current entity.",
+                "tags": [
+                    "notification"
+                ],
+                "summary": "Delete all notification preferences",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.RsBase"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/response.RsError"
                         }
@@ -8821,6 +9224,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by form UUID",
                         "name": "form_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of comparative periods to include (0-4)",
+                        "name": "comparisons",
                         "in": "query"
                     },
                     {
@@ -10191,40 +10600,43 @@ const docTemplate = `{
                 }
             }
         },
-        "/template": {
+        "/templates": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Gathers paginated index parameters tracking active engine documents",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Get an template by ID",
+                "summary": "List Global Templates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by document types (comma-separated: Calculation Statement, Tax Invoice, Remittance Advice)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Collection index values mapped to the configuration array",
                         "schema": {
                             "$ref": "#/definitions/util.RsList"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10235,6 +10647,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+                "description": "Generates a new global HTML/CSS template standard layout block",
                 "consumes": [
                     "application/json"
                 ],
@@ -10242,63 +10655,232 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Create a new template for a clinic",
+                "summary": "Create Global Template",
                 "parameters": [
                     {
-                        "description": "Template Data",
+                        "description": "Global Template Schema Payload",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/template.RqTemplate"
+                            "$ref": "#/definitions/template.RqGlobalTemplate"
                         }
                     }
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Global template created successfully",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request JSON payload",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/template/{id}": {
+        "/templates/invoice-settings": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Queries UI visual presets prioritizing custom invoice overrides, falling back to global defaults automatically",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Get an template by ID",
+                "summary": "Get Invoice-Specific Template Settings",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Invoice UUID ID Context",
+                        "name": "invoiceId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID (can be repeated for multiple templates)",
+                        "name": "templateId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resolved style settings specifications map keyed by template ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters profile lookup request values",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/invoices/{invoice_id}/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Queries static database invoice documents, evaluates values natively against dynamic parameters, and streams a file binary response",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Download Compiled Invoice PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target Invoice Entity Context Index UUID",
+                        "name": "invoice_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID (can be repeated for multiple templates)",
+                        "name": "templateId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Target invoice document byte stream file object matches",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Target routing value errors or profile validation flaws",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Target entities unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/sync-defaults": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Forces state evaluations to verify, sync, or seed layout definitions directly to internal storage",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Synchronize Global Default Layouts",
+                "responses": {
+                    "200": {
+                        "description": "Initialization completion message mappings",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Returns the decoupled layout configuration values for a designated template ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Get Global Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -10306,27 +10888,36 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Success payload containing raw blueprint configurations",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid configuration criteria identifier",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Target document or template context completely absent",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10337,6 +10928,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+                "description": "Modifies the foundational attributes, HTML blueprints, or styling tags of an existing configuration profile",
                 "consumes": [
                     "application/json"
                 ],
@@ -10344,35 +10936,50 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Update an template by ID",
+                "summary": "Update Global Template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Updated Configuration Payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.RqGlobalTemplate"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Template updated successfully!",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsTemplate"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid Request parameters",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10383,68 +10990,137 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "description": "Removes or flags a template definition from active usage routing context pools",
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Delete an template by ID",
+                "summary": "Delete Global Template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.RsBase"
-                        }
+                    "24": {
+                        "description": "Template deleted successfully"
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid dynamic parameters",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/template/{id}/setting": {
+        "/templates/{id}/preview-pdf": {
+            "post": {
+                "security": [
+                    {
+                        "BearerToken": []
+                    }
+                ],
+                "description": "Takes raw arbitrary runtime invoice context and passes it to headless rendering layers instantly",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Preview PDF Generation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template UUID ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dynamic structural template values variables",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.InvoiceData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "application/pdf Binary context stream",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Context assignment mapping values parsing discrepancies",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Target document base unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/templates/{id}/settings": {
             "get": {
                 "security": [
                     {
                         "BearerToken": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Queries UI visual presets (e.g., brand colors, fonts, margins) tracked down to structural design blocks",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Get an template settings by ID",
+                "summary": "Get Default Template Settings",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -10452,21 +11128,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Style settings specifications map",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsSetting"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid profile lookup request values",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -10477,6 +11159,7 @@ const docTemplate = `{
                         "BearerToken": []
                     }
                 ],
+                "description": "Overrides layout details, font schemas, branding assets, or invoice structural rules dynamically",
                 "consumes": [
                     "application/json"
                 ],
@@ -10484,35 +11167,50 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "template"
+                    "Templates"
                 ],
-                "summary": "Update an template setting by ID",
+                "summary": "Update Template Settings",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Template ID",
+                        "description": "Template UUID ID",
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Updated Layout Target Settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/template.RqUpdateSetting"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Settings modified context mapping properties updated cleanly",
                         "schema": {
-                            "$ref": "#/definitions/response.RsBase"
+                            "$ref": "#/definitions/template.RsSetting"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Validation failure errors",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/response.RsError"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -11806,6 +12504,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "document": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
                 "document_id": {
                     "type": "string"
                 },
@@ -11900,84 +12601,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/bas.BASValue"
-                    }
-                }
-            }
-        },
-        "bas.BASAmount": {
-            "type": "object",
-            "properties": {
-                "gross": {
-                    "type": "number"
-                },
-                "gst": {
-                    "type": "number"
-                },
-                "net": {
-                    "type": "number"
-                }
-            }
-        },
-        "bas.BASColumn": {
-            "type": "object",
-            "properties": {
-                "net_gst_payable": {
-                    "type": "number"
-                },
-                "quarter": {
-                    "$ref": "#/definitions/bas.BASQuarterInfo"
-                },
-                "sections": {
-                    "type": "object",
-                    "properties": {
-                        "expenses": {
-                            "$ref": "#/definitions/bas.BASSection"
-                        },
-                        "income": {
-                            "$ref": "#/definitions/bas.BASSection"
-                        }
-                    }
-                }
-            }
-        },
-        "bas.BASLineItem": {
-            "type": "object",
-            "properties": {
-                "amounts": {
-                    "$ref": "#/definitions/bas.BASAmount"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "bas.BASQuarterInfo": {
-            "type": "object",
-            "properties": {
-                "displayRange": {
-                    "type": "string"
-                },
-                "endDate": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "startDate": {
-                    "type": "string"
-                }
-            }
-        },
-        "bas.BASSection": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bas.BASLineItem"
                     }
                 }
             }
@@ -12098,37 +12721,6 @@ const docTemplate = `{
                 }
             }
         },
-        "bas.RsBASPreparation": {
-            "type": "object",
-            "properties": {
-                "columns": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bas.BASColumn"
-                    }
-                },
-                "grand_total": {
-                    "$ref": "#/definitions/bas.BASColumn"
-                }
-            }
-        },
-        "bas.RsBASReport": {
-            "type": "object",
-            "properties": {
-                "1A": {
-                    "type": "number"
-                },
-                "1B": {
-                    "type": "number"
-                },
-                "G1": {
-                    "type": "number"
-                },
-                "G11": {
-                    "type": "number"
-                }
-            }
-        },
         "bas.RsBASSummary": {
             "type": "object",
             "properties": {
@@ -12157,64 +12749,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "total_sales_net": {
-                    "type": "number"
-                }
-            }
-        },
-        "bs.RsAccount": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "number"
-                },
-                "coa_id": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "bs.RsBalanceSheet": {
-            "type": "object",
-            "properties": {
-                "assets": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bs.RsAccount"
-                    }
-                },
-                "current_year_profit": {
-                    "type": "number"
-                },
-                "end_date": {
-                    "type": "string"
-                },
-                "equity": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bs.RsAccount"
-                    }
-                },
-                "liabilities": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/bs.RsAccount"
-                    }
-                },
-                "total_assets": {
-                    "type": "number"
-                },
-                "total_equity": {
-                    "type": "number"
-                },
-                "total_liabilities": {
-                    "type": "number"
-                },
-                "total_liabilities_and_equity": {
                     "type": "number"
                 }
             }
@@ -12939,34 +13473,40 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.AccountClassification": {
-            "type": "string",
-            "enum": [
-                "Current Asset",
-                "Non-Current Asset",
-                "Contra-Asset",
-                "Current Liability",
-                "Non-Current Liability",
-                "Equity",
-                "Contra-Equity",
-                "Operating Revenue",
-                "Other Revenue",
-                "Direct Costs",
-                "Operating Expense"
+        "coa.RqAccountTemplate": {
+            "type": "object",
+            "required": [
+                "account_tax_id",
+                "account_type_id",
+                "code",
+                "name"
             ],
-            "x-enum-varnames": [
-                "ClassificationCurrentAsset",
-                "ClassificationNonCurrentAsset",
-                "ClassificationContraAsset",
-                "ClassificationCurrentLiability",
-                "ClassificationNonCurrentLiability",
-                "ClassificationEquity",
-                "ClassificationContraEquity",
-                "ClassificationOperatingRevenue",
-                "ClassificationOtherRevenue",
-                "ClassificationDirectCosts",
-                "ClassificationOperatingExpense"
-            ]
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
         },
         "coa.RqCheckCodeUnique": {
             "type": "object",
@@ -12987,7 +13527,7 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.RqCreateChartOfAccountOfAccount": {
+        "coa.RqCreateChartOfAccount": {
             "type": "object",
             "required": [
                 "account_tax_id",
@@ -13004,16 +13544,22 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1
                 },
-                "classification": {
-                    "$ref": "#/definitions/coa.AccountClassification"
-                },
                 "code": {
                     "type": "integer",
                     "maximum": 9999,
                     "minimum": 100
                 },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
                 "is_system": {
                     "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string",
@@ -13024,7 +13570,39 @@ const docTemplate = `{
                 }
             }
         },
-        "coa.RqUpdateCharOfAccountOfAccount": {
+        "coa.RqUpdateAccountTemplate": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "coa.RqUpdateChartOfAccount": {
             "type": "object",
             "properties": {
                 "account_tax_id": {
@@ -13040,11 +13618,58 @@ const docTemplate = `{
                     "maximum": 9999,
                     "minimum": 100
                 },
+                "key": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255
                 },
                 "practitioner_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "coa.RsAccountTemplate": {
+            "type": "object",
+            "properties": {
+                "account_tax_id": {
+                    "type": "integer"
+                },
+                "account_type_id": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_capital": {
+                    "type": "boolean"
+                },
+                "is_cos": {
+                    "type": "boolean"
+                },
+                "is_system": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -13270,6 +13895,11 @@ const docTemplate = `{
                     "type": "number",
                     "minimum": 0
                 },
+                "business_percentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0
+                },
                 "coa_id": {
                     "type": "string"
                 },
@@ -13351,6 +13981,9 @@ const docTemplate = `{
                     "description": "Amount is used when there is no GST (net == gross).",
                     "type": "number"
                 },
+                "business_percentage": {
+                    "type": "number"
+                },
                 "coa_id": {
                     "type": "string"
                 },
@@ -13378,6 +14011,9 @@ const docTemplate = `{
                 "net_amount": {
                     "description": "NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.",
                     "type": "number"
+                },
+                "notes": {
+                    "type": "string"
                 }
             }
         },
@@ -13658,57 +14294,6 @@ const docTemplate = `{
                 }
             }
         },
-        "form.ExpenseItemUpdate": {
-            "type": "object",
-            "required": [
-                "id"
-            ],
-            "properties": {
-                "amount": {
-                    "type": "number"
-                },
-                "business_use": {
-                    "type": "number",
-                    "maximum": 100,
-                    "minimum": 0
-                },
-                "coa_id": {
-                    "type": "string"
-                },
-                "date": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "documents": {
-                    "type": "object",
-                    "properties": {
-                        "create": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        },
-                        "delete": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "tax_type": {
-                    "type": "string"
-                }
-            }
-        },
         "form.RqCreateFormWithFields": {
             "type": "object",
             "required": [
@@ -13811,35 +14396,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/field.RqUpdateFormField"
-                    }
-                }
-            }
-        },
-        "form.RqUpdateExpense": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "create": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/form.ExpenseItem"
-                    }
-                },
-                "delete": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "name": {
-                    "type": "string"
-                },
-                "update": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/form.ExpenseItemUpdate"
                     }
                 }
             }
@@ -14154,6 +14710,176 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_engine_bas.BASAmount": {
+            "type": "object",
+            "properties": {
+                "gross": {
+                    "type": "number"
+                },
+                "gst": {
+                    "type": "number"
+                },
+                "net": {
+                    "type": "number"
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASColumn": {
+            "type": "object",
+            "properties": {
+                "net_gst_payable": {
+                    "type": "number"
+                },
+                "quarter": {
+                    "$ref": "#/definitions/internal_modules_engine_bas.BASQuarterInfo"
+                },
+                "sections": {
+                    "type": "object",
+                    "properties": {
+                        "expenses": {
+                            "$ref": "#/definitions/internal_modules_engine_bas.BASSection"
+                        },
+                        "income": {
+                            "$ref": "#/definitions/internal_modules_engine_bas.BASSection"
+                        }
+                    }
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASLineItem": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/internal_modules_engine_bas.BASAmount"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASQuarterInfo": {
+            "type": "object",
+            "properties": {
+                "displayRange": {
+                    "type": "string"
+                },
+                "endDate": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_engine_bas.BASSection": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bas.BASLineItem"
+                    }
+                }
+            }
+        },
+        "internal_modules_engine_bas.RsBASPreparation": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bas.BASColumn"
+                    }
+                },
+                "grand_total": {
+                    "$ref": "#/definitions/internal_modules_engine_bas.BASColumn"
+                }
+            }
+        },
+        "internal_modules_engine_bas.RsBASReport": {
+            "type": "object",
+            "properties": {
+                "1A": {
+                    "type": "number"
+                },
+                "1B": {
+                    "type": "number"
+                },
+                "G1": {
+                    "type": "number"
+                },
+                "G11": {
+                    "type": "number"
+                }
+            }
+        },
+        "internal_modules_engine_bs.RsAccount": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "number"
+                },
+                "coa_id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_engine_bs.RsBalanceSheet": {
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bs.RsAccount"
+                    }
+                },
+                "current_year_profit": {
+                    "type": "number"
+                },
+                "end_date": {
+                    "type": "string"
+                },
+                "equity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bs.RsAccount"
+                    }
+                },
+                "liabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_engine_bs.RsAccount"
+                    }
+                },
+                "net_assets": {
+                    "type": "number"
+                },
+                "total_assets": {
+                    "type": "number"
+                },
+                "total_equity": {
+                    "type": "number"
+                },
+                "total_liabilities": {
+                    "type": "number"
+                },
+                "total_liabilities_and_equity": {
+                    "type": "number"
+                }
+            }
+        },
         "invitation.AccessLevel": {
             "type": "object",
             "properties": {
@@ -14226,60 +14952,112 @@ const docTemplate = `{
         "invoice.RqInvoice": {
             "type": "object",
             "required": [
-                "contact_id",
-                "invoice_number",
-                "issue_date",
-                "items",
-                "name",
-                "template_id"
+                "billingPeriodFrom",
+                "billingPeriodTo",
+                "contactId",
+                "issueDate",
+                "name"
             ],
             "properties": {
-                "clinic_id": {
+                "billingPeriodFrom": {
                     "type": "string"
                 },
-                "contact_id": {
+                "billingPeriodTo": {
                     "type": "string"
                 },
-                "due_date": {
+                "clinicId": {
                     "type": "string"
                 },
-                "invoice_number": {
+                "contactId": {
                     "type": "string"
                 },
-                "issue_date": {
+                "dueDate": {
                     "type": "string"
                 },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RqItem"
-                    }
+                "invoiceFrequency": {
+                    "type": "string",
+                    "enum": [
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY",
+                        "YEARLY"
+                    ]
+                },
+                "issueDate": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
-                "payment_method": {
-                    "type": "string",
-                    "enum": [
-                        "CASH",
-                        "CARD",
-                        "ONLINE"
-                    ]
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/section.RqSection"
+                    }
                 },
-                "reference": {
-                    "type": "string"
+                "settings": {
+                    "$ref": "#/definitions/invoice.RqInvoiceSetting"
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "invoice.RqInvoiceSetting": {
+            "type": "object",
+            "properties": {
+                "accentColor": {
+                    "type": "string"
                 },
-                "tax_method": {
-                    "type": "string",
-                    "enum": [
-                        "EXCLUSIVE",
-                        "INCLUSIVE"
-                    ]
+                "bodyFontFamily": {
+                    "type": "string"
                 },
-                "template_id": {
+                "footerId": {
+                    "type": "string"
+                },
+                "headerFontFamily": {
+                    "type": "string"
+                },
+                "isLogo": {
+                    "type": "boolean"
+                },
+                "isTax": {
+                    "type": "boolean"
+                },
+                "isWatermark": {
+                    "type": "boolean"
+                },
+                "letterheadId": {
+                    "type": "string"
+                },
+                "logoId": {
+                    "type": "string"
+                },
+                "primaryColor": {
+                    "type": "string"
+                },
+                "tableStyle": {
+                    "type": "string"
+                },
+                "termsText": {
+                    "type": "string"
+                },
+                "watermarkText": {
+                    "type": "string"
+                }
+            }
+        },
+        "invoice.RqSaveMailTemplate": {
+            "type": "object",
+            "required": [
+                "mail_body",
+                "mail_subject"
+            ],
+            "properties": {
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
                     "type": "string"
                 }
             }
@@ -14287,52 +15065,58 @@ const docTemplate = `{
         "invoice.RqUpdateInvoice": {
             "type": "object",
             "properties": {
-                "contact_id": {
+                "attachmentBase64": {
                     "type": "string"
                 },
-                "due_date": {
+                "billingPeriodFrom": {
+                    "type": "string"
+                },
+                "billingPeriodTo": {
+                    "type": "string"
+                },
+                "clinicId": {
+                    "type": "string"
+                },
+                "contactId": {
+                    "type": "string"
+                },
+                "deleteSections": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dueDate": {
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "invoice_number": {
-                    "type": "string"
+                "invoiceFrequency": {
+                    "type": "string",
+                    "enum": [
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY",
+                        "YEARLY"
+                    ]
                 },
-                "issue_date": {
+                "issueDate": {
                     "type": "string"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RqUpdateItem"
-                    }
                 },
                 "name": {
                     "type": "string"
                 },
-                "payment_method": {
-                    "type": "string",
-                    "enum": [
-                        "CASH",
-                        "CARD",
-                        "ONLINE"
-                    ]
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/section.RqUpdateSection"
+                    }
                 },
-                "reference": {
-                    "type": "string"
+                "settings": {
+                    "$ref": "#/definitions/invoice.RqInvoiceSetting"
                 },
                 "status": {
-                    "type": "string"
-                },
-                "tax_method": {
-                    "type": "string",
-                    "enum": [
-                        "EXCLUSIVE",
-                        "INCLUSIVE"
-                    ]
-                },
-                "template_id": {
                     "type": "string"
                 }
             }
@@ -14340,191 +15124,203 @@ const docTemplate = `{
         "invoice.RsInvoice": {
             "type": "object",
             "properties": {
-                "clinic_id": {
+                "billingPeriodFrom": {
                     "type": "string"
                 },
-                "contact_id": {
+                "billingPeriodTo": {
                     "type": "string"
                 },
-                "contact_to": {
+                "clinicId": {
+                    "type": "string"
+                },
+                "contactId": {
+                    "type": "string"
+                },
+                "contactTo": {
                     "$ref": "#/definitions/contact.RsContact"
                 },
-                "created_at": {
+                "createdAt": {
                     "type": "string"
                 },
-                "due_date": {
+                "dueDate": {
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "invoice_number": {
+                "invoiceFrequency": {
                     "type": "string"
                 },
-                "issue_date": {
+                "issueDate": {
                     "type": "string"
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/item.RsItem"
-                    }
                 },
                 "name": {
                     "type": "string"
                 },
-                "payment_method": {
-                    "type": "string"
-                },
-                "reference": {
-                    "type": "string"
-                },
-                "sent_to": {
-                    "$ref": "#/definitions/contact.RsContact"
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/section.RsSection"
+                    }
                 },
                 "status": {
                     "type": "string"
                 },
-                "tax_method": {
-                    "type": "string"
-                },
-                "template_id": {
-                    "type": "string"
-                },
-                "updated_at": {
+                "updatedAt": {
                     "type": "string"
                 }
             }
         },
-        "item.RqItem": {
+        "invoice.RsInvoiceMailTemplate": {
+            "type": "object",
+            "properties": {
+                "is_custom": {
+                    "type": "boolean"
+                },
+                "mail_body": {
+                    "type": "string"
+                },
+                "mail_subject": {
+                    "type": "string"
+                }
+            }
+        },
+        "item.BasCode": {
+            "type": "string",
+            "enum": [
+                "G1",
+                "1A",
+                "G3",
+                "G11",
+                "1B"
+            ],
+            "x-enum-varnames": [
+                "CodeG1",
+                "Code1A",
+                "CodeG3",
+                "CodeG11",
+                "Code1B"
+            ]
+        },
+        "item.EntryType": {
+            "type": "string",
+            "enum": [
+                "DEBIT",
+                "CREDIT"
+            ],
+            "x-enum-varnames": [
+                "DEBIT",
+                "CREDIT"
+            ]
+        },
+        "item.RqEntry": {
             "type": "object",
             "required": [
                 "name",
-                "quantity",
-                "total_amount",
-                "unit_price"
+                "sortOrder"
             ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "basCode": {
+                    "$ref": "#/definitions/item.BasCode"
+                },
                 "description": {
                     "type": "string"
                 },
-                "discount": {
-                    "type": "number",
-                    "minimum": 0
+                "entryType": {
+                    "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
+                    "type": "string"
+                },
+                "invoiceSectionId": {
+                    "type": "string"
+                },
+                "isFinal": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
+                "sortOrder": {
                     "type": "integer"
-                },
-                "tax_amount": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "tax_rate": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "total_amount": {
-                    "type": "number"
-                },
-                "unit_price": {
-                    "type": "number"
                 }
             }
         },
-        "item.RqUpdateItem": {
+        "item.RqUpdateEntry": {
             "type": "object",
-            "required": [
-                "id"
-            ],
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "basCode": {
+                    "$ref": "#/definitions/item.BasCode"
+                },
                 "description": {
                     "type": "string"
                 },
-                "discount": {
-                    "type": "number",
-                    "minimum": 0
+                "entryType": {
+                    "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
+                "invoiceSectionId": {
+                    "type": "string"
+                },
+                "isFinal": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
+                "sortOrder": {
                     "type": "integer"
-                },
-                "tax_amount": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "tax_rate": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "total_amount": {
-                    "type": "number"
-                },
-                "unit_price": {
-                    "type": "number"
                 }
             }
         },
-        "item.RsItem": {
+        "item.RsEntry": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "basCode": {
+                    "$ref": "#/definitions/item.BasCode"
+                },
                 "description": {
                     "type": "string"
                 },
-                "discount": {
-                    "type": "number"
+                "entryType": {
+                    "$ref": "#/definitions/item.EntryType"
+                },
+                "expression": {},
+                "fieldKey": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "invoice_id": {
+                "invoiceSectionId": {
                     "type": "string"
+                },
+                "isFinal": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
                 },
-                "quantity": {
+                "sortOrder": {
                     "type": "integer"
-                },
-                "tax_amount": {
-                    "type": "number"
-                },
-                "tax_rate": {
-                    "type": "number"
-                },
-                "total_amount": {
-                    "type": "number"
-                },
-                "unit_price": {
-                    "type": "number"
                 }
             }
-        },
-        "notification.NotificationChannels": {
-            "type": "object",
-            "additionalProperties": {
-                "type": "boolean"
-            }
-        },
-        "notification.NotificationEventType": {
-            "type": "string",
-            "enum": [
-                "new.transaction",
-                "accountant.activity.alert",
-                "system.activity.alert"
-            ],
-            "x-enum-varnames": [
-                "EventNewTransaction",
-                "EventAccountantActivityAlert",
-                "EventSystemActivityAlert"
-            ]
         },
         "notification.RqBulkDismiss": {
             "type": "object",
@@ -14537,24 +15333,6 @@ const docTemplate = `{
                     "minItems": 1,
                     "items": {
                         "type": "string"
-                    }
-                }
-            }
-        },
-        "notification.RqUpdatePreference": {
-            "type": "object",
-            "required": [
-                "channels",
-                "event_type"
-            ],
-            "properties": {
-                "channels": {
-                    "$ref": "#/definitions/notification.NotificationChannels"
-                },
-                "event_type": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/notification.NotificationEventType"
                     }
                 }
             }
@@ -14746,6 +15524,26 @@ const docTemplate = `{
                 }
             }
         },
+        "preference.RqUpdatePreference": {
+            "type": "object",
+            "required": [
+                "channels"
+            ],
+            "properties": {
+                "channels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/util.Channel"
+                    }
+                },
+                "event_type": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/util.NotificationEventType"
+                    }
+                }
+            }
+        },
         "response.RsBase": {
             "type": "object",
             "properties": {
@@ -14774,6 +15572,222 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "section.RqSection": {
+            "type": "object",
+            "required": [
+                "documentNumber",
+                "sectionType"
+            ],
+            "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqEntry"
+                    }
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
+                "sectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "taxMethod": {
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.TaxMethod"
+                        }
+                    ]
+                },
+                "templateId": {
+                    "type": "string"
+                }
+            }
+        },
+        "section.RqUpdateSection": {
+            "type": "object",
+            "properties": {
+                "SectionType": {
+                    "enum": [
+                        "CALCULATION_STATEMENT",
+                        "SFA_INVOICE",
+                        "REMITTANCE_INVOICE"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.SectionType"
+                        }
+                    ]
+                },
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
+                "deleteEntries": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RqUpdateEntry"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
+                "taxMethod": {
+                    "enum": [
+                        "INCLUSIVE",
+                        "EXCLUSIVE",
+                        "NO_TAX"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/section.TaxMethod"
+                        }
+                    ]
+                },
+                "templateId": {
+                    "type": "string"
+                }
+            }
+        },
+        "section.RsSection": {
+            "type": "object",
+            "properties": {
+                "accountName": {
+                    "type": "string"
+                },
+                "accountNumber": {
+                    "type": "string"
+                },
+                "bsb": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "documentNumber": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/item.RsEntry"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoiceId": {
+                    "type": "string"
+                },
+                "paymentDate": {
+                    "type": "string"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "paymentReference": {
+                    "type": "string"
+                },
+                "sectionType": {
+                    "$ref": "#/definitions/section.SectionType"
+                },
+                "taxMethod": {
+                    "$ref": "#/definitions/section.TaxMethod"
+                },
+                "templateId": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "section.SectionType": {
+            "type": "string",
+            "enum": [
+                "CALCULATION_STATEMENT",
+                "SFA_INVOICE",
+                "REMITTANCE_INVOICE"
+            ],
+            "x-enum-varnames": [
+                "CALCULATIONSTATEMENT",
+                "SFAINVOICE",
+                "REMITTANCEINVOICE"
+            ]
+        },
+        "section.TaxMethod": {
+            "type": "string",
+            "enum": [
+                "NO_TAX",
+                "INCLUSIVE",
+                "EXCLUSIVE"
+            ],
+            "x-enum-varnames": [
+                "NoTax",
+                "Inclusive",
+                "Exclusive"
+            ]
         },
         "setting.RqCreatePractitioner": {
             "type": "object",
@@ -14836,6 +15850,9 @@ const docTemplate = `{
                     "minimum": 1
                 },
                 "is_active": {
+                    "type": "boolean"
+                },
+                "is_visible": {
                     "type": "boolean"
                 },
                 "name": {
@@ -14916,6 +15933,9 @@ const docTemplate = `{
                 "is_active": {
                     "type": "boolean"
                 },
+                "is_visible": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255
@@ -14982,26 +16002,253 @@ const docTemplate = `{
                 "PAST_DUE",
                 "CANCELLED",
                 "PAUSED",
-                "EXPIRED"
+                "EXPIRED",
+                "INACTIVE"
             ],
             "x-enum-varnames": [
                 "StatusActive",
                 "StatusPastDue",
                 "StatusCancelled",
                 "StatusPaused",
-                "StatusExpired"
+                "StatusExpired",
+                "StatusInactive"
             ]
         },
-        "template.RqTemplate": {
+        "template.Attachment": {
             "type": "object",
             "properties": {
-                "clinic_id": {
+                "file_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.InvoiceData": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
                     "type": "string"
                 },
-                "css": {
+                "amount_in_words": {
                     "type": "string"
+                },
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/template.Attachment"
+                    }
+                },
+                "bill_from": {
+                    "$ref": "#/definitions/template.PartyInfo"
+                },
+                "bill_to": {
+                    "$ref": "#/definitions/template.PartyInfo"
+                },
+                "billing_period": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "clinic_name": {
+                    "type": "string"
+                },
+                "custom_fee_rate": {
+                    "type": "string"
+                },
+                "custom_fee_rate_display": {
+                    "description": "Tax Invoice fee rate display (e.g. \"38.5%\")",
+                    "type": "string"
+                },
+                "custom_payment_account": {
+                    "type": "string"
+                },
+                "custom_payment_account_name": {
+                    "type": "string"
+                },
+                "custom_payment_bsb": {
+                    "type": "string"
+                },
+                "custom_payment_method": {
+                    "type": "string"
+                },
+                "due_date_display": {
+                    "type": "string"
+                },
+                "footer_html": {
+                    "type": "string"
+                },
+                "grand_total": {
+                    "type": "number"
+                },
+                "has_attachments": {
+                    "type": "boolean"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "invoice_frequency": {
+                    "type": "string"
+                },
+                "invoice_number": {
+                    "type": "string"
+                },
+                "issue_date_display": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/template.LineItem"
+                    }
+                },
+                "letterhead_html": {
+                    "type": "string"
+                },
+                "logo_initial": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "patient_fee_items": {
+                    "description": "Calculation Sheet Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "payment_date_display": {
+                    "type": "string"
+                },
+                "payment_method_label": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "description": "Exported styling fields targetable by structural assignments",
+                    "type": "string"
+                },
+                "remittance_items": {
+                    "description": "Remittance Advice Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "service_fee_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "settlement_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "show_logo": {
+                    "type": "boolean"
+                },
+                "show_logo_image": {
+                    "type": "boolean"
+                },
+                "show_tax": {
+                    "type": "boolean"
+                },
+                "subtotal": {
+                    "type": "number"
+                },
+                "table_style_class": {
+                    "type": "string"
+                },
+                "tax_invoice_items": {
+                    "description": "Tax Invoice Collections",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "tax_total": {
+                    "type": "number"
+                },
+                "template_settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "terms_text": {
+                    "type": "string"
+                },
+                "totals_amounts_caption": {
+                    "type": "string"
+                },
+                "totals_grand_label": {
+                    "type": "string"
+                },
+                "watermark_enabled": {
+                    "type": "boolean"
+                },
+                "watermark_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.LineItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
                 },
                 "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "running_total": {
+                    "type": "number"
+                }
+            }
+        },
+        "template.PartyInfo": {
+            "type": "object",
+            "properties": {
+                "abn": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "payment_method": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.RqGlobalTemplate": {
+            "type": "object",
+            "required": [
+                "css",
+                "html",
+                "name"
+            ],
+            "properties": {
+                "css": {
                     "type": "string"
                 },
                 "html": {
@@ -15014,9 +16261,212 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "template.RqUpdateSetting": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "footer": {
+                    "type": "string"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_logo": {
+                    "type": "boolean"
+                },
+                "is_tax": {
+                    "type": "boolean"
+                },
+                "is_water_mark": {
+                    "type": "boolean"
+                },
+                "letter_head": {
+                    "type": "string"
+                },
+                "logo": {
+                    "type": "string"
+                },
+                "mapping_id": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "type": "string"
+                },
+                "table_style": {
+                    "type": "string"
+                },
+                "template_id": {
+                    "type": "string"
+                },
+                "term_text": {
+                    "type": "string"
+                },
+                "water_mark_text": {
                     "type": "string"
                 }
             }
+        },
+        "template.RsSetting": {
+            "type": "object",
+            "properties": {
+                "accent_color": {
+                    "type": "string"
+                },
+                "body_font_family": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "footer": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
+                "header_font_family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_logo": {
+                    "type": "boolean"
+                },
+                "is_tax": {
+                    "type": "boolean"
+                },
+                "is_water_mark": {
+                    "type": "boolean"
+                },
+                "letter_head": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
+                "logo": {
+                    "$ref": "#/definitions/file.RsDocument"
+                },
+                "mapping_id": {
+                    "type": "string"
+                },
+                "primary_color": {
+                    "type": "string"
+                },
+                "table_style": {
+                    "type": "string"
+                },
+                "template_id": {
+                    "type": "string"
+                },
+                "term_text": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "water_mark_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "template.RsTemplate": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "css": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "html": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "util.Channel": {
+            "type": "string",
+            "enum": [
+                "in_app",
+                "push",
+                "email"
+            ],
+            "x-enum-varnames": [
+                "ChannelInApp",
+                "ChannelPush",
+                "ChannelEmail"
+            ]
+        },
+        "util.NotificationEventType": {
+            "type": "string",
+            "enum": [
+                "new.transaction",
+                "accountant.activity.alert",
+                "practitioner.activity.alert",
+                "system.activity.alert",
+                "system.error.alert",
+                "system.warning.alert",
+                "billing.alert",
+                "subscription.alert",
+                "user.registration.alert"
+            ],
+            "x-enum-comments": {
+                "EventBillingAlert": "payment success/failure",
+                "EventSubscriptionAlert": "subscription created/updated/deleted",
+                "EventSystemActivityAlert": "general audit log activity",
+                "EventSystemErrorAlert": "system.error only (critical)",
+                "EventSystemWarningAlert": "system.warning only",
+                "EventUserRegistrationAlert": "new practitioner registered"
+            },
+            "x-enum-descriptions": [
+                "",
+                "",
+                "",
+                "general audit log activity",
+                "system.error only (critical)",
+                "system.warning only",
+                "payment success/failure",
+                "subscription created/updated/deleted",
+                "new practitioner registered"
+            ],
+            "x-enum-varnames": [
+                "EventNewTransaction",
+                "EventAccountantActivityAlert",
+                "EventPractitionerActivityAlert",
+                "EventSystemActivityAlert",
+                "EventSystemErrorAlert",
+                "EventSystemWarningAlert",
+                "EventBillingAlert",
+                "EventSubscriptionAlert",
+                "EventUserRegistrationAlert"
+            ]
         },
         "util.RsList": {
             "type": "object",

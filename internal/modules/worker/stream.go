@@ -1,4 +1,4 @@
-package notification
+package worker
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	sharedEvents "github.com/iamarpitzala/acareca/internal/shared/events"
 )
 
@@ -21,7 +22,7 @@ type UserStream struct {
 	userID   uuid.UUID
 	ctx      context.Context
 	cancel   context.CancelFunc
-	handler  func(NotificationEvent)
+	handler  func(notification.NotificationEvent)
 	active   bool
 	msgCount int32
 }
@@ -48,7 +49,7 @@ func (sm *StreamManager) AttachUserStream(userID uuid.UUID, handler func(interfa
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	wrappedHandler := func(event NotificationEvent) {
+	wrappedHandler := func(event notification.NotificationEvent) {
 		handler(event)
 	}
 
@@ -83,7 +84,7 @@ func (sm *StreamManager) DetachUserStream(userID uuid.UUID) {
 	log.Printf("Detached notification stream for user %s (processed %d messages)", userID, msgCount)
 }
 
-func (sm *StreamManager) DeliverToUser(userID uuid.UUID, event NotificationEvent) bool {
+func (sm *StreamManager) DeliverToUser(userID uuid.UUID, event notification.NotificationEvent) bool {
 	sm.mu.RLock()
 	stream, ok := sm.streams[userID]
 	sm.mu.RUnlock()

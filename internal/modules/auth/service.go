@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
 	filemod "github.com/iamarpitzala/acareca/internal/modules/file"
-	"github.com/iamarpitzala/acareca/internal/modules/notification"
+	"github.com/iamarpitzala/acareca/internal/modules/notification/preference"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -53,6 +54,8 @@ type Service interface {
 	DeleteUser(ctx context.Context, userID uuid.UUID) error
 	ForgotPassword(ctx context.Context, req *RqForgotPassword) error
 	ResetPassword(ctx context.Context, req *RqResetPassword) error
+
+	GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType util.ActorType) (*User, error)
 }
 
 type service struct {
@@ -69,10 +72,10 @@ type service struct {
 	adminSvc         admin.IService
 	inviteRepo       invitation.Repository
 	fileRepo         filemod.Repository
-	NotificationSvc  notification.Service
+	PreferenceSvc    preference.IService
 }
 
-func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, notificationSvc notification.Service) Service {
+func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSvc practitioner.IService, auditSvc audit.Service, invitationSvc invitation.Service, practitionerRepo practitioner.Repository, accountantSvc accountant.IService, adminSvc admin.IService, inviteRepo invitation.Repository, fileRepo filemod.Repository, preferenceSvc preference.IService) Service {
 	oauthCfg := &oauth2.Config{
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
@@ -97,7 +100,7 @@ func NewService(repo Repository, cfg *config.Config, db *sqlx.DB, practitionerSv
 		adminSvc:         adminSvc,
 		inviteRepo:       inviteRepo,
 		fileRepo:         fileRepo,
-		NotificationSvc:  notificationSvc,
+		PreferenceSvc:    preferenceSvc,
 	}
 }
 
@@ -132,7 +135,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 	var created *User
 	var entityID uuid.UUID
-	var p *practitioner.RsPractitioner
 	var a *accountant.RsAccountant
 	var tokenID uuid.UUID
 
@@ -148,7 +150,7 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 
 		switch created.Role {
 		case util.RolePractitioner:
-			p, txErr = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
+			p, txErr2 := s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{
 				UserID:     created.ID.String(),
 				EntityType: req.EntityType,
 				EntityName: req.EntityName,
@@ -157,9 +159,10 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 				Address:    req.Address,
 				Profession: req.Profession,
 			}, tx)
-			if txErr == nil {
-				entityID = p.ID
+			if txErr2 != nil {
+				return fmt.Errorf("create practitioner: %w", txErr2)
 			}
+			entityID = p.ID
 		case util.RoleAccountant:
 			a, txErr = s.accountantSvc.CreateAccountant(ctx, &accountant.RqCreateAccountant{
 				UserID:     created.ID.String(),
@@ -211,25 +214,16 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 			s.logSystemError(context.Background(), "auth.send_verification_email", err, created.ID.String(), entityID.String())
 			return
 		}
-		link := fmt.Sprintf("%s/verify-email?token=%s", baseUrl, tokenID)
+		link := fmt.Sprintf("%s/auth/verify-email?token=%s", baseUrl, tokenID)
 		if err := s.mailer.SendVerificationEmail(created.Email, created.FirstName, link); err != nil {
 			fmt.Printf("[AUTH ERROR] Failed to send verification email: %v\n", err)
 			s.logSystemError(context.Background(), "auth.send_verification_email", err, created.ID.String(), entityID.String())
 		}
 	}()
 
-	err = s.NotificationSvc.PreferenceSetting(ctx, created.ID, entityID, created.Role)
-	if err != nil {
-		fmt.Printf("[AUTH ERROR] Failed to set notification preferences: %v\n", err)
-		s.auditSvc.LogSystemIssue(context.Background(), auditctx.ActionSystemError, "auth.set_notification_preferences",
-			err, created.ID.String(), entityID.String(), auditctx.EntityUser, auditctx.ModuleAuth,
-		)
-	}
-
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := created.ID.String()
 	entityIDStr := entityID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &entityIDStr,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserRegistered,
@@ -237,8 +231,6 @@ func (s *service) Register(ctx context.Context, req *RqUser) (*RsUser, error) {
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
 		AfterState: sanitizeUser(created),
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return created.ToRsUser(), nil
@@ -269,26 +261,35 @@ func (s *service) Login(ctx context.Context, req *RqLogin) (*RsToken, error) {
 			return nil, errors.New("account not verified. Please check your email to verify your account")
 		}
 	}
-
 	entityID, err := s.resolveEntityID(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserLoggedIn,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntitySession),
 		AfterState: map[string]interface{}{"email": user.Email},
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
-	return s.issueTokens(ctx, user, entityID)
+	rs, err := s.issueTokens(ctx, user, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("issue tokens: %w", err)
+	}
+	if user.Role == util.RoleAdmin {
+		err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+			if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, user.ID, uuid.MustParse(entityID), user.Role); err != nil {
+				log.Printf("failed to set notification preferences for user %s: %v", user.ID, err)
+			}
+			return nil
+		})
+
+	}
+	return rs, err
 }
 
 func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken string) error {
@@ -308,23 +309,18 @@ func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken str
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	userIDStr := sess.UserID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionUserLoggedOut,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntitySession),
 		EntityID:   &sessIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionSessionRevoked,
 		Module:     auditctx.ModuleAuth,
@@ -335,8 +331,6 @@ func (s *service) Logout(ctx context.Context, userID uuid.UUID, refreshToken str
 			"user_id":    userIDStr,
 			"revoked_at": time.Now(),
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return nil
@@ -360,6 +354,8 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 
 	user, findErr := s.repo.FindByEmail(ctx, googleUser.Email)
 	isNewUser := false
+
+	var authProvider *AuthProvider
 
 	if err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		if findErr != nil {
@@ -392,44 +388,40 @@ func (s *service) GoogleCallback(ctx context.Context, code string) (*RsToken, er
 			ap.RefreshToken = &refreshTokenStr
 		}
 
-		if _, err := s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
+		if authProvider, err = s.repo.UpsertAuthProvider(ctx, ap, tx); err != nil {
 			return err
 		}
 
-		if isNewUser {
-			if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
-				return err
-			}
-		}
+		// if isNewUser {
+		// 	if _, err = s.practitionerSvc.CreatePractitioner(ctx, &practitioner.RqCreatePractitioner{UserID: user.ID.String()}, tx); err != nil {
+		// 		return err
+		// 	}
+		// }
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("google oauth transaction: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
 	action := auditctx.ActionUserLoggedIn
 	if isNewUser {
 		action = auditctx.ActionUserRegistered
 	}
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     action,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
 		AfterState: map[string]interface{}{"email": user.Email, "provider": "google"},
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
-	practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
-	if err != nil {
-		return nil, err
-	}
+	// practitionerID, err := s.practitionerSvc.GetPractitionerByUserID(ctx, user.ID.String())
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return s.issueTokens(ctx, user, practitionerID.ID.String())
+	return s.issueTokens(ctx, user, authProvider.UserID.String())
 }
 
 func (s *service) fetchGoogleUserInfo(ctx context.Context, token *oauth2.Token) (*GoogleUserInfo, error) {
@@ -470,16 +462,25 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	if time.Now().After(token.ExpiresAt) {
 		return errors.New("verification link has expired")
 	}
+	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
+		user_id, err := s.repo.MarkUserVerified(ctx, token, tx)
+		if err != nil {
+			return err
+		}
+		id, _ := uuid.Parse(user_id)
 
-	if err := s.repo.MarkUserVerified(ctx, token); err != nil {
-		return err
+		if err := s.PreferenceSvc.PreferenceSetting(ctx, tx, id, token.EntityID, *token.Role); err != nil {
+			return fmt.Errorf("failed to set notification preferences: %w", err)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return errors.New("failed to verified" + err.Error())
 	}
-
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := token.EntityID.String()
 	tokenIDStr := token.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionEmailVerified,
 		Module:      auditctx.ModuleAuth,
@@ -487,8 +488,6 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		EntityID:    &tokenIDStr,
 		BeforeState: map[string]interface{}{"status": token.Status},
 		AfterState:  map[string]interface{}{"status": "USED"},
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 	return nil
 }
@@ -513,16 +512,13 @@ func (s *service) ChangePassword(ctx context.Context, pracID uuid.UUID, req *RqC
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := user.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionPasswordChanged,
 		Module:     auditctx.ModuleAuth,
 		EntityType: lo.ToPtr(auditctx.EntityUser),
 		EntityID:   &userIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return nil
@@ -643,10 +639,8 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		}
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := updated.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionUserUpdated,
 		Module:      auditctx.ModuleAuth,
@@ -654,8 +648,6 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, req *RqUp
 		EntityID:    &userIDStr,
 		BeforeState: beforeState,
 		AfterState:  sanitizeUser(updated),
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return s.GetProfile(ctx, userID)
@@ -677,18 +669,14 @@ func (s *service) DeleteUser(ctx context.Context, userID uuid.UUID) error {
 		fmt.Printf("INFO: No practitioner profile deleted for user %s: %v\n", userID, err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := userID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:      &userIDStr,
 		Action:      auditctx.ActionUserDeleted,
 		Module:      auditctx.ModuleAuth,
 		EntityType:  lo.ToPtr(auditctx.EntityUser),
 		EntityID:    &userIDStr,
 		BeforeState: beforeState,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return nil
@@ -793,10 +781,9 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 		return nil, err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	userIDStr := user.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &entityID,
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionSessionCreated,
@@ -807,8 +794,6 @@ func (s *service) issueTokens(ctx context.Context, user *User, entityID string) 
 			"session_id": sessIDStr,
 			"expires_at": sess.ExpiresAt,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return &RsToken{
@@ -859,5 +844,19 @@ func sanitizeUser(u *User) map[string]interface{} {
 		"first_name": u.FirstName,
 		"last_name":  u.LastName,
 		"phone":      u.Phone,
+	}
+}
+
+// GetUserByID implements [Service].
+func (s *service) GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType util.ActorType) (*User, error) {
+	switch EntityType {
+	case util.ActorPractitioner:
+		return s.repo.FindByPractitionerID(ctx, entityID)
+	case util.ActorAccountant:
+		return s.repo.FindByAccountantID(ctx, entityID)
+	case util.ActorAdmin:
+		return s.repo.FindByAdminID(ctx, entityID)
+	default:
+		return nil, fmt.Errorf("unknown entity type: %s", EntityType)
 	}
 }

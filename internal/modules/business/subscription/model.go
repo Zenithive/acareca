@@ -15,6 +15,7 @@ const (
 	StatusCancelled Status = "CANCELLED"
 	StatusPaused    Status = "PAUSED"
 	StatusExpired   Status = "EXPIRED"
+	StatusInactive  Status = "INACTIVE"
 )
 
 type PractitionerSubscription struct {
@@ -46,6 +47,7 @@ type SubscriptionInfo struct {
 	ID          int     `json:"id"`
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
+	IsVisible   bool    `json:"is_visible"`
 }
 
 type RsActiveSubscription struct {

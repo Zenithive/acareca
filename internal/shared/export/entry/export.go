@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/iamarpitzala/acareca/internal/shared/export"
@@ -11,7 +12,6 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// CoaGroup represents a Chart of Accounts grouping
 type CoaGroup struct {
 	CoaID            string       `json:"coa_id"`
 	CoaName          string       `json:"coa_name"`
@@ -20,171 +20,229 @@ type CoaGroup struct {
 	Details          []*CoaDetail `json:"details"`
 }
 
-// CoaDetail represents a transaction detail within a COA group
 type CoaDetail struct {
-	FormFieldName string    `json:"form_field_name"`
-	TaxTypeName   *string   `json:"tax_type_name"`
-	FormName      string    `json:"form_name"`
-	ClinicName    string    `json:"clinic_name"`
-	NetAmount     *float64  `json:"net_amount"`
-	GstAmount     *float64  `json:"gst_amount"`
-	GrossAmount   *float64  `json:"gross_amount"`
-	CreatedAt     time.Time `json:"created_at"`
-	IsExpense     bool      `json:"is_expense"`
+	FormFieldName      string    `json:"form_field_name"`
+	TaxTypeName        *string   `json:"tax_type_name"`
+	FormName           string    `json:"form_name"`
+	ClinicName         string    `json:"clinic_name"`
+	NetAmount          *float64  `json:"net_amount"`
+	GstAmount          *float64  `json:"gst_amount"`
+	GrossAmount        *float64  `json:"gross_amount"`
+	CreatedAt          time.Time `json:"created_at"`
+	IsExpense          bool      `json:"is_expense"`
+	BusinessPercentage *float64  `json:"business_percentage"`
+	Notes              *string   `json:"notes"`
 }
 
-// GenerateExcelReport generates an Excel file for transaction report
-func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatDateFn func(string) string) (*bytes.Buffer, error) {
+type ColumnDefinition struct {
+	Header string
+	Key    string
+	Width  float64
+}
+
+func GenerateExcelReport(groups []*CoaGroup, config export.ExportConfig, formatDateFn func(string) string, selectedKeys []string) (*bytes.Buffer, error) {
+	catalog := map[string]ColumnDefinition{
+		"date":                {Header: "Date", Key: "date", Width: 15},
+		"supplier_name":       {Header: "Supplier Name", Key: "supplier_name", Width: 30},
+		"description":         {Header: "Description / Label", Key: "description", Width: 30},
+		"clinic":              {Header: "Clinic", Key: "clinic", Width: 30},
+		"expenses":            {Header: "Expenses", Key: "expenses", Width: 15},
+		"net_amount":          {Header: "Net Amount", Key: "net_amount", Width: 16},
+		"gst_amount":          {Header: "GST Amount", Key: "gst_amount", Width: 16},
+		"gross_amount":        {Header: "Gross Amount", Key: "gross_amount", Width: 16},
+		"gst_type":            {Header: "GST Type", Key: "gst_type", Width: 16},
+		"business_percentage": {Header: "Business Percentage", Key: "business_percentage", Width: 20},
+		"note":                {Header: "Note", Key: "note", Width: 30},
+	}
+
+	var enabledCols []ColumnDefinition
+	for _, key := range selectedKeys {
+		subKeys := []string{key}
+		if strings.Contains(key, ",") {
+			subKeys = strings.Split(key, ",")
+		}
+
+		for _, subKey := range subKeys {
+			cleanKey := strings.TrimSpace(strings.ToLower(subKey))
+			if cleanKey == "notes" {
+				cleanKey = "note"
+			}
+			if col, exists := catalog[cleanKey]; exists {
+				enabledCols = append(enabledCols, col)
+			}
+		}
+	}
+
+	if len(enabledCols) == 0 {
+		enabledCols = []ColumnDefinition{
+			catalog["date"], catalog["supplier_name"], catalog["description"],
+			catalog["clinic"], catalog["expenses"], catalog["net_amount"],
+			catalog["gst_amount"], catalog["gross_amount"], catalog["gst_type"],
+			catalog["business_percentage"], catalog["note"],
+		}
+	}
+
 	xl := excelize.NewFile()
 	defer xl.Close()
 	sheet := "Transactions"
 	xl.SetSheetName("Sheet1", sheet)
 
-	// Define the width of the report (Columns A through I)
-	lastCol := "I"
+	lastColLetter, _ := excelize.ColumnNumberToName(len(enabledCols))
+	if lastColLetter == "" {
+		lastColLetter = "K"
+	}
 
-	// Create custom style for transaction report headers
 	styleHeaderBlue, _ := xl.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true, Size: 14, Color: "FFFFFF"},
+		Font:      &excelize.Font{Bold: true, Size: 14, Color: "FFFFFF", Family: "Segoe UI"},
 		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"1F4E78"}, Pattern: 1},
 	})
-
 	headerStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Color: "FFFFFF"},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#4EA7B3"}, Pattern: 1},
+		Font: &excelize.Font{Bold: true, Size: 10, Color: "FFFFFF", Family: "Segoe UI"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"1F4E78"}, Pattern: 1},
 	})
 	groupHeaderStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#DAEEF3"}, Pattern: 1},
+		Font: &excelize.Font{Bold: true, Size: 10, Family: "Segoe UI", Color: "1F4E78"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"DAEEF3"}, Pattern: 1},
 	})
-
 	normalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
-		CustomNumFmt: lo.ToPtr("$#,##0.00"),
+		Font:         &excelize.Font{Size: 10, Family: "Segoe UI"},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;($#,##0.00);$0.00"),
 	})
-
-	// Bold style for the bottom total row
+	percentStyle, _ := xl.NewStyle(&excelize.Style{
+		Font:         &excelize.Font{Size: 10, Family: "Segoe UI"},
+		CustomNumFmt: lo.ToPtr("0.00%"),
+	})
 	totalRowStyle, _ := xl.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#E1E1E1"}, Pattern: 1},
+		Font: &excelize.Font{Bold: true, Size: 10, Family: "Segoe UI"},
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"F2F2F2"}, Pattern: 1},
 	})
 	totalCurrencyStyle, _ := xl.NewStyle(&excelize.Style{
-		Font:         &excelize.Font{Bold: true},
-		Fill:         excelize.Fill{Type: "pattern", Color: []string{"#F2F2F2"}, Pattern: 1},
-		CustomNumFmt: lo.ToPtr("$#,##0.00"),
+		Font:         &excelize.Font{Bold: true, Size: 10, Family: "Segoe UI", Color: "1F4E78"},
+		Fill:         excelize.Fill{Type: "pattern", Color: []string{"F2F2F2"}, Pattern: 1},
+		CustomNumFmt: lo.ToPtr("$#,##0.00;($#,##0.00);$0.00"),
 	})
 
-	// Helpers to handle Pointers and Nils
-	getFloat := func(f *float64) float64 {
-		return export.GetFloatValue(f)
-	}
-	getString := func(s *string) string {
-		return export.GetStringValue(s)
-	}
+	getFloat := func(f *float64) float64 { return export.GetFloatValue(f) }
+	getString := func(s *string) string { return export.GetStringValue(s) }
 
-	// --- 1. RENDER METADATA ---
-	// Row 1: Title
-	xl.MergeCell(sheet, "A1", lastCol+"1")
+	xl.MergeCell(sheet, "A1", lastColLetter+"1")
 	xl.SetCellValue(sheet, "A1", "Transaction Report")
 	xl.SetCellStyle(sheet, "A1", "A1", styleHeaderBlue)
 
 	setRichMeta := func(row int, label, value string) {
 		cell := fmt.Sprintf("A%d", row)
-		xl.MergeCell(sheet, cell, lastCol+strconv.Itoa(row))
+		xl.MergeCell(sheet, cell, lastColLetter+strconv.Itoa(row))
 		xl.SetCellRichText(sheet, cell, []excelize.RichTextRun{
-			{Text: label, Font: &excelize.Font{Bold: true, Family: "Calibri", Size: 10}},
-			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Calibri", Size: 10}},
+			{Text: label, Font: &excelize.Font{Bold: true, Family: "Segoe UI", Size: 10, Color: "595959"}},
+			{Text: " " + value, Font: &excelize.Font{Bold: false, Family: "Segoe UI", Size: 10, Color: "262626"}},
 		})
 	}
 
 	metaRow := 2
-
-	// Exported By (Always show)
 	setRichMeta(metaRow, "Exported by:", config.EntityName)
 	metaRow++
 
-	// ABN (Skip if empty)
 	if config.EntityABN != "" {
 		setRichMeta(metaRow, "ABN:", config.EntityABN)
 		metaRow++
 	}
-
-	// Period (Skip if nil/empty)
 	if config.Period != "" {
 		setRichMeta(metaRow, "Period:", config.Period)
 		metaRow++
 	}
-
-	// Generated time
-	if config.GeneratedTime == "" {
-		config.GeneratedTime = time.Now().Format("02/01/2006, 3:04:05 pm")
-	}
 	setRichMeta(metaRow, "Generated:", config.GeneratedTime)
 	metaRow++
 
-	// 2. Set Headers
-	headerRow := metaRow + 1
-	headers := []string{"Date", "Account / Field", "Tax Type", "Form", "Clinic", "Net Amount", "GST Amount", "Gross Amount", "Type"}
-	for i, h := range headers {
-		cell, _ := excelize.CoordinatesToCellName(i+1, headerRow)
-		xl.SetCellValue(sheet, cell, h)
+	xl.MergeCell(sheet, fmt.Sprintf("A%d", metaRow), fmt.Sprintf("%s%d", lastColLetter, metaRow))
+	metaRow++
+
+	headerRow := metaRow
+	for idx, col := range enabledCols {
+		cell, _ := excelize.CoordinatesToCellName(idx+1, headerRow)
+		xl.SetCellValue(sheet, cell, col.Header)
 	}
-	xl.SetCellStyle(sheet, fmt.Sprintf("A%d", headerRow), fmt.Sprintf("I%d", headerRow), headerStyle)
+	xl.SetCellStyle(sheet, "A"+strconv.Itoa(headerRow), lastColLetter+strconv.Itoa(headerRow), headerStyle)
 
 	currRow := headerRow + 1
 	for _, g := range groups {
-		// --- 3. GROUP HEADER ---
 		xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), g.CoaName)
-		xl.MergeCell(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow))
-		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow), groupHeaderStyle)
+		xl.MergeCell(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("%s%d", lastColLetter, currRow))
+		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("%s%d", lastColLetter, currRow), groupHeaderStyle)
 		currRow++
 
-		// --- 4. INDIVIDUAL TRANSACTIONS ---
 		for _, d := range g.Details {
-			xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), formatDateFn(d.CreatedAt.Format("2006-01-02")))
-			xl.SetCellValue(sheet, fmt.Sprintf("B%d", currRow), "  "+d.FormFieldName)
-			xl.SetCellValue(sheet, fmt.Sprintf("C%d", currRow), getString(d.TaxTypeName))
-			xl.SetCellValue(sheet, fmt.Sprintf("D%d", currRow), d.FormName)
-			xl.SetCellValue(sheet, fmt.Sprintf("E%d", currRow), d.ClinicName)
+			for cIdx, col := range enabledCols {
+				cell, _ := excelize.CoordinatesToCellName(cIdx+1, currRow)
 
-			xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), getFloat(d.NetAmount))
-			xl.SetCellValue(sheet, fmt.Sprintf("G%d", currRow), getFloat(d.GstAmount))
-			xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), getFloat(d.GrossAmount))
-
-			// Apply currency formatting to F, G, H columns
-			xl.SetCellStyle(sheet, fmt.Sprintf("F%d", currRow), fmt.Sprintf("H%d", currRow), normalCurrencyStyle)
-
-			entryType := "Entry"
-			if d.IsExpense {
-				entryType = "Expense"
+				switch col.Key {
+				case "date":
+					xl.SetCellValue(sheet, cell, formatDateFn(d.CreatedAt.Format("2006-01-02")))
+				case "supplier_name":
+					xl.SetCellValue(sheet, cell, d.FormName)
+				case "description":
+					xl.SetCellValue(sheet, cell, "  "+d.FormFieldName)
+				case "clinic":
+					xl.SetCellValue(sheet, cell, d.ClinicName)
+				case "expenses":
+					if d.IsExpense {
+						xl.SetCellValue(sheet, cell, "Yes")
+					} else {
+						xl.SetCellValue(sheet, cell, "No")
+					}
+				case "net_amount":
+					xl.SetCellValue(sheet, cell, getFloat(d.NetAmount))
+					xl.SetCellStyle(sheet, cell, cell, normalCurrencyStyle)
+				case "gst_amount":
+					xl.SetCellValue(sheet, cell, getFloat(d.GstAmount))
+					xl.SetCellStyle(sheet, cell, cell, normalCurrencyStyle)
+				case "gross_amount":
+					xl.SetCellValue(sheet, cell, getFloat(d.GrossAmount))
+					xl.SetCellStyle(sheet, cell, cell, normalCurrencyStyle)
+				case "gst_type":
+					xl.SetCellValue(sheet, cell, getString(d.TaxTypeName))
+				case "business_percentage":
+					pct := lo.FromPtrOr(d.BusinessPercentage, 100.0)
+					xl.SetCellValue(sheet, cell, pct/100.0)
+					xl.SetCellStyle(sheet, cell, cell, percentStyle)
+				case "note":
+					xl.SetCellValue(sheet, cell, lo.FromPtrOr(d.Notes, ""))
+				}
 			}
-			xl.SetCellValue(sheet, fmt.Sprintf("I%d", currRow), entryType)
 			currRow++
 		}
 
-		// --- 5. TOTAL ROW ---
-		xl.SetCellValue(sheet, fmt.Sprintf("A%d", currRow), "Total "+g.CoaName)
-		xl.SetCellValue(sheet, fmt.Sprintf("F%d", currRow), g.TotalNetAmount)
-		xl.SetCellValue(sheet, fmt.Sprintf("H%d", currRow), g.TotalGrossAmount)
+		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("%s%d", lastColLetter, currRow), totalRowStyle)
 
-		xl.SetCellStyle(sheet, fmt.Sprintf("A%d", currRow), fmt.Sprintf("I%d", currRow), totalRowStyle)
-		xl.SetCellStyle(sheet, fmt.Sprintf("F%d", currRow), fmt.Sprintf("F%d", currRow), totalCurrencyStyle)
-		xl.SetCellStyle(sheet, fmt.Sprintf("H%d", currRow), fmt.Sprintf("H%d", currRow), totalCurrencyStyle)
+		for cIdx, col := range enabledCols {
+			cell, _ := excelize.CoordinatesToCellName(cIdx+1, currRow)
+			if cIdx == 0 {
+				xl.SetCellValue(sheet, cell, "Total "+g.CoaName)
+			}
 
-		currRow += 2 // Gap between groups
+			switch col.Key {
+			case "net_amount":
+				xl.SetCellValue(sheet, cell, g.TotalNetAmount)
+				xl.SetCellStyle(sheet, cell, cell, totalCurrencyStyle)
+			case "gst_amount":
+				xl.SetCellValue(sheet, cell, g.TotalGrossAmount-g.TotalNetAmount)
+				xl.SetCellStyle(sheet, cell, cell, totalCurrencyStyle)
+			case "gross_amount":
+				xl.SetCellValue(sheet, cell, g.TotalGrossAmount)
+				xl.SetCellStyle(sheet, cell, cell, totalCurrencyStyle)
+			}
+		}
+		currRow += 2
 	}
 
-	// Add AutoFilter to the header row (A to I)
-	if err := xl.AutoFilter(sheet, fmt.Sprintf("A%d:I%d", headerRow, headerRow), nil); err != nil {
+	if err := xl.AutoFilter(sheet, fmt.Sprintf("A%d:%s%d", headerRow, lastColLetter, headerRow), nil); err != nil {
 		return nil, err
 	}
 
-	// Column Widths
-	xl.SetColWidth(sheet, "A", "A", 15) // Date
-	xl.SetColWidth(sheet, "B", "B", 35) // Account
-	xl.SetColWidth(sheet, "C", "E", 20) // Tax, Form, Clinic
-	xl.SetColWidth(sheet, "F", "H", 15) // Amounts
-	xl.SetColWidth(sheet, "I", "I", 12) // Type
+	for idx, col := range enabledCols {
+		colLetter, _ := excelize.ColumnNumberToName(idx + 1)
+		xl.SetColWidth(sheet, colLetter, colLetter, col.Width)
+	}
 
 	return xl.WriteToBuffer()
 }

@@ -14,13 +14,14 @@ const (
 )
 
 type RqEntryValue struct {
-	FormFieldID *string  `json:"form_field_id" validate:"omitempty,uuid"`
-	CoaID       *string  `json:"coa_id" validate:"omitempty,uuid"`
-	Amount      float64  `json:"amount" validate:"omitempty,min=0"`
-	NetAmount   *float64 `json:"net_amount,omitempty"`
-	GstAmount   *float64 `json:"gst_amount,omitempty"`
-	GrossAmount *float64 `json:"gross_amount,omitempty"`
-	Description *string  `json:"description,omitempty"`
+	FormFieldID        *string  `json:"form_field_id" validate:"omitempty,uuid"`
+	CoaID              *string  `json:"coa_id" validate:"omitempty,uuid"`
+	Amount             float64  `json:"amount" validate:"omitempty,min=0"`
+	NetAmount          *float64 `json:"net_amount,omitempty"`
+	GstAmount          *float64 `json:"gst_amount,omitempty"`
+	GrossAmount        *float64 `json:"gross_amount,omitempty"`
+	Description        *string  `json:"description,omitempty"`
+	BusinessPercentage *float64 `json:"business_percentage,omitempty" validate:"omitempty,min=0,max=100"`
 }
 
 // Validate ensures either form_field_id OR coa_id is provided (not both, not neither)
@@ -71,17 +72,18 @@ type FormEntry struct {
 }
 
 type FormEntryValue struct {
-	ID          uuid.UUID  `db:"id"`
-	EntryID     uuid.UUID  `db:"entry_id"`
-	FormFieldID *uuid.UUID `db:"form_field_id"`
-	CoaID       *uuid.UUID `db:"coa_id"`
-	NetAmount   *float64   `db:"net_amount"`
-	GstAmount   *float64   `db:"gst_amount"`
-	GrossAmount *float64   `db:"gross_amount"`
-	Description *string    `db:"description"`
-	Date        *string    `db:"date"`
-	CreatedAt   string     `db:"created_at"`
-	UpdatedAt   *string    `db:"updated_at"`
+	ID                 uuid.UUID  `db:"id"`
+	EntryID            uuid.UUID  `db:"entry_id"`
+	FormFieldID        *uuid.UUID `db:"form_field_id"`
+	CoaID              *uuid.UUID `db:"coa_id"`
+	NetAmount          *float64   `db:"net_amount"`
+	GstAmount          *float64   `db:"gst_amount"`
+	GrossAmount        *float64   `db:"gross_amount"`
+	Description        *string    `db:"description"`
+	Date               *string    `db:"date"`
+	BusinessPercentage *float64   `db:"business_percentage"`
+	CreatedAt          string     `db:"created_at"`
+	UpdatedAt          *string    `db:"updated_at"`
 }
 
 func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
@@ -101,9 +103,10 @@ func (d *FormEntry) ToRs(values []*FormEntryValue) *RsFormEntry {
 	rs.Values = make([]RsEntryValue, 0, len(values))
 	for _, v := range values {
 		ev := RsEntryValue{
-			FormFieldID: v.FormFieldID,
-			CoaID:       v.CoaID,
-			Description: v.Description,
+			FormFieldID:        v.FormFieldID,
+			CoaID:              v.CoaID,
+			BusinessPercentage: v.BusinessPercentage,
+			Notes:              v.Description,
 		}
 		if v.GstAmount != nil {
 			ev.NetAmount = v.NetAmount
@@ -154,9 +157,11 @@ type RsEntryValue struct {
 	// Amount is used when there is no GST (net == gross).
 	Amount *float64 `json:"amount,omitempty"`
 	// NetAmount, GstAmount, GrossAmount are used when a GST breakdown exists.
-	NetAmount   *float64 `json:"net_amount,omitempty"`
-	GstAmount   *float64 `json:"gst_amount,omitempty"`
-	GrossAmount *float64 `json:"gross_amount,omitempty"`
+	NetAmount          *float64 `json:"net_amount,omitempty"`
+	GstAmount          *float64 `json:"gst_amount,omitempty"`
+	GrossAmount        *float64 `json:"gross_amount,omitempty"`
+	BusinessPercentage *float64 `json:"business_percentage,omitempty"`
+	Notes              *string  `json:"notes,omitempty"`
 }
 
 type Filter struct {
@@ -165,37 +170,40 @@ type Filter struct {
 }
 
 type RsTransactionRow struct {
-	ID            uuid.UUID `json:"id"`
-	EntryID       uuid.UUID `json:"entry_id"`
-	FormFieldID   uuid.UUID `json:"form_field_id"`
-	FormFieldName string    `json:"form_field_name"`
-	CoaID         uuid.UUID `json:"coa_id"`
-	CoaName       string    `json:"coa_name"`
-	TaxTypeID     *int16    `json:"tax_type_id"`
-	TaxTypeName   *string   `json:"tax_type_name"`
-	FormID        uuid.UUID `json:"form_id"`
-	FormName      string    `json:"form_name"`
-	ClinicID      uuid.UUID `json:"clinic_id"`
-	ClinicName    string    `json:"clinic_name"`
-	NetAmount     *float64  `json:"net_amount"`
-	GstAmount     *float64  `json:"gst_amount"`
-	GrossAmount   *float64  `json:"gross_amount"`
-	CreatedAt     string    `json:"created_at"`
-	UpdatedAt     *string   `json:"updated_at,omitempty"`
-	Date          *string   `json:"date,omitempty"`
-	IsExpense     bool      `json:"is_expense"`
+	ID                 uuid.UUID `json:"id"`
+	EntryID            uuid.UUID `json:"entry_id"`
+	FormFieldID        uuid.UUID `json:"form_field_id"`
+	FormFieldName      string    `json:"form_field_name"`
+	CoaID              uuid.UUID `json:"coa_id"`
+	CoaName            string    `json:"coa_name"`
+	TaxTypeID          *int16    `json:"tax_type_id"`
+	TaxTypeName        *string   `json:"tax_type_name"`
+	FormID             uuid.UUID `json:"form_id"`
+	FormName           string    `json:"form_name"`
+	ClinicID           uuid.UUID `json:"clinic_id"`
+	ClinicName         string    `json:"clinic_name"`
+	NetAmount          *float64  `json:"net_amount"`
+	GstAmount          *float64  `json:"gst_amount"`
+	GrossAmount        *float64  `json:"gross_amount"`
+	BusinessPercentage *float64  `json:"business_percentage"`
+	Notes              *string   `json:"notes"`
+	CreatedAt          string    `json:"created_at"`
+	UpdatedAt          *string   `json:"updated_at,omitempty"`
+	Date               *string   `json:"date,omitempty"`
+	IsExpense          bool      `json:"is_expense"`
 }
 
 type TransactionFilter struct {
-	ClinicID  *string `form:"clinic_id"`
-	FormID    *string `form:"form_id"`
-	CoaID     *string `form:"coa_id"`
-	TaxTypeID *int16  `form:"tax_type_id"`
-	StartDate *string `form:"start_date"`
-	EndDate   *string `form:"end_date"`
-	VersionID *string `form:"version_id"`
-	Status    *string `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
-	Role      string  `form:"-"`
+	ClinicID        *string  `form:"clinic_id"`
+	FormID          *string  `form:"form_id"`
+	CoaID           *string  `form:"coa_id"`
+	TaxTypeID       *int16   `form:"tax_type_id"`
+	StartDate       *string  `form:"start_date"`
+	EndDate         *string  `form:"end_date"`
+	VersionID       *string  `form:"version_id"`
+	Status          *string  `form:"status" validate:"omitempty,oneof=DRAFT SUBMITTED"`
+	Role            string   `form:"-"`
+	SelectedColumns []string `json:"selected_columns"`
 	common.Filter
 }
 
@@ -261,25 +269,27 @@ func (f *Filter) MapToFilter() common.Filter {
 }
 
 type transactionFlatRow struct {
-	ID            uuid.UUID `db:"id"`
-	EntryID       uuid.UUID `db:"entry_id"`
-	FormFieldID   uuid.UUID `db:"form_field_id"`
-	FormFieldName string    `db:"form_field_name"`
-	CoaID         uuid.UUID `db:"coa_id"`
-	CoaName       string    `db:"coa_name"`
-	TaxTypeID     *int16    `db:"tax_type_id"`
-	TaxTypeName   *string   `db:"tax_type_name"`
-	FormID        uuid.UUID `db:"form_id"`
-	FormName      string    `db:"form_name"`
-	ClinicID      uuid.UUID `db:"clinic_id"`
-	ClinicName    string    `db:"clinic_name"`
-	NetAmount     *float64  `db:"net_amount"`
-	GstAmount     *float64  `db:"gst_amount"`
-	GrossAmount   *float64  `db:"gross_amount"`
-	CreatedAt     string    `db:"created_at"`
-	UpdatedAt     *string   `db:"updated_at"`
-	Date          *string   `db:"date"`
-	IsExpense     bool      `db:"is_expense"`
+	ID                 uuid.UUID `db:"id"`
+	EntryID            uuid.UUID `db:"entry_id"`
+	FormFieldID        uuid.UUID `db:"form_field_id"`
+	FormFieldName      string    `db:"form_field_name"`
+	CoaID              uuid.UUID `db:"coa_id"`
+	CoaName            string    `db:"coa_name"`
+	TaxTypeID          *int16    `db:"tax_type_id"`
+	TaxTypeName        *string   `db:"tax_type_name"`
+	FormID             uuid.UUID `db:"form_id"`
+	FormName           string    `db:"form_name"`
+	ClinicID           uuid.UUID `db:"clinic_id"`
+	ClinicName         string    `db:"clinic_name"`
+	NetAmount          *float64  `db:"net_amount"`
+	GstAmount          *float64  `db:"gst_amount"`
+	GrossAmount        *float64  `db:"gross_amount"`
+	BusinessPercentage *float64  `db:"business_percentage"`
+	CreatedAt          string    `db:"created_at"`
+	UpdatedAt          *string   `db:"updated_at"`
+	Date               *string   `db:"date"`
+	IsExpense          bool      `db:"is_expense"`
+	Description        *string   `db:"description"`
 }
 
 type RsFieldSummary struct {
@@ -306,31 +316,41 @@ type RsCoaEntry struct {
 }
 
 type RsCoaEntryDetail struct {
-	ID            string   `json:"id"`
-	EntryID       string   `json:"entry_id"`
-	FormFieldID   string   `json:"form_field_id"`
-	CoaID         string   `json:"coa_id"`
-	TaxTypeID     *int16   `json:"tax_type_id"`
-	FormID        string   `json:"form_id"`
-	ClinicID      *string  `json:"clinic_id,omitempty"`
-	VersionID     string   `json:"version_id"`
-	FormFieldName string   `json:"form_field_name"`
-	CoaName       string   `json:"coa_name"`
-	TaxTypeName   *string  `json:"tax_type_name"`
-	FormName      *string  `json:"form_name,omitempty"`
-	ClinicName    *string  `json:"clinic_name,omitempty"`
-	SupplierName  *string  `json:"supplier_name,omitempty"`
-	IsExpense     bool     `json:"is_expense"`
-	NetAmount     *float64 `json:"net_amount"`
-	GstAmount     *float64 `json:"gst_amount"`
-	GrossAmount   *float64 `json:"gross_amount"`
-	CreatedAt     string   `json:"created_at"`
-	UpdatedAt     *string  `json:"updated_at,omitempty"`
-	Date          *string  `json:"date,omitempty"`
+	ID                 string   `json:"id"`
+	FormEntryValueID   *string  `json:"form_entry_value_id,omitempty"`
+	EntryID            string   `json:"entry_id"`
+	FormFieldID        string   `json:"form_field_id"`
+	CoaID              string   `json:"coa_id"`
+	TaxTypeID          *int16   `json:"tax_type_id"`
+	FormID             string   `json:"form_id"`
+	ClinicID           *string  `json:"clinic_id,omitempty"`
+	VersionID          string   `json:"version_id"`
+	FormFieldName      string   `json:"form_field_name"`
+	CoaName            string   `json:"coa_name"`
+	TaxTypeName        *string  `json:"tax_type_name"`
+	FormName           *string  `json:"form_name,omitempty"`
+	ClinicName         *string  `json:"clinic_name,omitempty"`
+	SupplierName       *string  `json:"supplier_name,omitempty"`
+	IsExpense          bool     `json:"is_expense"`
+	TransactionType    string   `json:"transaction_type"`
+	NetAmount          *float64 `json:"net_amount"`
+	GstAmount          *float64 `json:"gst_amount"`
+	GrossAmount        *float64 `json:"gross_amount"`
+	BusinessPercentage *float64 `json:"business_percentage"`
+	CreatedAt          string   `json:"created_at"`
+	UpdatedAt          *string  `json:"updated_at,omitempty"`
+	Date               *string  `json:"date,omitempty"`
+	Notes              *string  `json:"notes,omitempty"`
 }
 
 type RsExportData struct {
 	Items []*RsCoaExportItem `json:"items"`
+}
+
+// EntryValueWithAccountType is used internally for rebalancing calculations.
+type EntryValueWithAccountType struct {
+	FormEntryValue
+	AccountTypeName *string `db:"account_type_name"`
 }
 
 type RsCoaExportItem struct {

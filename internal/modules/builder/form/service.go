@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -16,52 +17,31 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/builder/field"
 	"github.com/iamarpitzala/acareca/internal/modules/builder/version"
 	"github.com/iamarpitzala/acareca/internal/modules/business/accountant"
+	"github.com/iamarpitzala/acareca/internal/modules/business/admin"
 	"github.com/iamarpitzala/acareca/internal/modules/business/clinic"
 	"github.com/iamarpitzala/acareca/internal/modules/business/coa"
 	"github.com/iamarpitzala/acareca/internal/modules/business/fy"
 	"github.com/iamarpitzala/acareca/internal/modules/business/invitation"
 	"github.com/iamarpitzala/acareca/internal/modules/business/practitioner"
-	"github.com/iamarpitzala/acareca/internal/modules/business/shared/events"
 	"github.com/iamarpitzala/acareca/internal/modules/engine/formula"
+	"github.com/iamarpitzala/acareca/internal/modules/notification"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
+	sharednotification "github.com/iamarpitzala/acareca/internal/shared/notification"
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
 )
 
-// parseFlexibleDate handles multiple date formats
+// AuthUserInfo represents user information needed for notifications
+type AuthUserInfo struct {
+	ID        uuid.UUID
+	FirstName string
+	LastName  string
+}
 
-func parseFlexibleDate(dateStr string) (time.Time, error) {
-	if dateStr == "" {
-		return time.Time{}, errors.New("date cannot be empty")
-	}
-
-	// Trim spaces
-	dateStr = strings.TrimSpace(dateStr)
-
-	// Try different date formats
-	formats := []string{
-		"02 Jan 2006",               // "26 Apr 2026"
-		"2 Jan 2006",                // Single digit day
-		"02-01-2006",                // DD-MM-YYYY
-		"2006-01-02",                // YYYY-MM-DD (ISO format)
-		"01/02/2006",                // MM/DD/YYYY
-		"02/01/2006",                // DD/MM/YYYY
-		"January 2, 2006",           // Full month name
-		time.RFC3339,                // RFC3339
-		"2006-01-02T15:04:05Z07:00", // ISO 8601
-	}
-
-	var lastErr error
-	for _, format := range formats {
-		t, err := time.Parse(format, dateStr)
-		if err == nil {
-			return t, nil
-		}
-		lastErr = err
-	}
-
-	return time.Time{}, fmt.Errorf("unable to parse date %q with any known format: %w", dateStr, lastErr)
+// AuthService defines the interface for auth operations needed by form service
+type AuthService interface {
+	GetUserByID(ctx context.Context, entityID uuid.UUID, EntityType util.ActorType) (*AuthUserInfo, error)
 }
 
 type IService interface {
@@ -87,23 +67,25 @@ type service struct {
 	entryRepo       entry.IRepository
 	coaSvc          coa.Service
 	auditSvc        audit.Service
-	eventsSvc       events.Service
 	accountantRepo  accountant.Repository
 	authRepo        auth.Repository
 	formClinic      clinic.Service
 	invitationSvc   invitation.Service
 	practitionerSvc practitioner.IService
 	financialRepo   fy.Repository
+	notificationPub *sharednotification.Publisher
+	invitationRepo  invitation.Repository
+	authSvc         AuthService
+	adminRepo       admin.Repository
 }
 
-func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, eventsSvc events.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository) IService {
-	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, eventsSvc: eventsSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo}
+func NewService(db *sqlx.DB, detailSvc detail.IService, versionSvc version.IService, fieldSvc field.IService, formulaSvc formula.IService, entryRepo entry.IRepository, coaSvc coa.Service, auditSvc audit.Service, accountantRepo accountant.Repository, authRepo auth.Repository, clinicSvc clinic.Service, invitationSvc invitation.Service, practitionerSvc practitioner.IService, financialRepo fy.Repository, notificationSvc notification.Service, invitationRepo invitation.Repository, authSvc AuthService, adminRepo admin.Repository) IService {
+	return &service{db: db, detailSvc: detailSvc, versionSvc: versionSvc, fieldSvc: fieldSvc, formulaSvc: formulaSvc, entryRepo: entryRepo, coaSvc: coaSvc, auditSvc: auditSvc, accountantRepo: accountantRepo, authRepo: authRepo, formClinic: clinicSvc, invitationSvc: invitationSvc, practitionerSvc: practitionerSvc, financialRepo: financialRepo, notificationPub: sharednotification.NewPublisher(notification.NewServiceAdapter(notificationSvc), adminRepo), invitationRepo: invitationRepo, authSvc: authSvc, adminRepo: adminRepo}
 }
 
 func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithFields, ownerID uuid.UUID) (*detail.RsFormDetail, *RsFormWithFieldsSyncResult, error) {
 	meta := auditctx.GetMetadata(ctx)
 
-	// 1. Resolve the REAL owner at the start of THIS function
 	clinic, err := s.formClinic.GetClinicByIDInternal(ctx, d.ClinicID)
 	if err != nil {
 		return nil, nil, err
@@ -157,7 +139,6 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 			}
 		}
 		if activeVersionID == uuid.Nil {
-			// If we just created the form, we expect a version. If not found, fail the TX.
 			return fmt.Errorf("active version not found for form %s", created.ID)
 		}
 
@@ -183,61 +164,38 @@ func (s *service) CreateWithFields(ctx context.Context, d *RqCreateFormWithField
 		}
 		return nil
 	})
-	// If transaction failed, exit before touching 'created'
 	if err != nil {
 		return nil, nil, err
 	}
-	// --- EVERYTHING BELOW ONLY RUNS ON SUCCESS ---
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-
-		actorUserID, err := uuid.Parse(*meta.UserID)
-		if err != nil {
-
-		} else {
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
-
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err == nil {
-				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-				// Record the Event
-				err = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: realOwnerID,
-					AccountantID:   finalAccountantID,
-					ActorID:        actorUserID,
-					ActorName:      &fullName,
-					ActorType:      "ACCOUNTANT",
-					EventType:      "form.created",
-					EntityType:     "FORM",
-					EntityID:       created.ID,
-					Description:    fmt.Sprintf("Accountant %s created a new form: %s", fullName, created.Name),
-					Metadata:       events.JSONBMap{"form_name": created.Name},
-					CreatedAt:      time.Now(),
-				})
-
-			}
-		}
-	}
 
 	idStr := created.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: created,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
+
+	// Send notification
+	if meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			eventType := util.EventFormSubmitted
+			if created.Status != "PUBLISHED" {
+				eventType = util.EventFormUpdated
+			}
+
+			if err := s.notifyForm(ctx, created.ID, actorUserID, actorType, eventType, created.Name); err != nil {
+				log.Printf("[WARN] failed to send form creation notification: %v", err)
+			}
+		}
+	}
 
 	return created, syncResult, nil
 }
@@ -339,8 +297,6 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 			deletedMap[id] = true
 		}
 
-		// Seed map with existing fields (excluding deleted ones) so formulas can reference them
-		// Note: If multiple fields have the same key, the last one wins (map behavior)
 		existingFields, err := s.fieldSvc.ListByFormVersionID(ctx, activeVersionID)
 		if err != nil {
 			return err
@@ -395,59 +351,31 @@ func (s *service) UpdateWithFields(ctx context.Context, req *RqUpdateFormWithFie
 		return nil, nil, err
 	}
 
-	// Shared Event Recording (Triggered only for successful Accountant actions)
-	if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-		actorUserID, err := uuid.Parse(*meta.UserID)
-		if err == nil {
-			var finalAccountantID uuid.UUID
-			accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-			if err == nil {
-				finalAccountantID = accProfile.ID
-			} else {
-				finalAccountantID = actorUserID
-			}
-			user, err := s.authRepo.FindByID(ctx, actorUserID)
-			if err == nil {
-				fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-				// Record the Event
-				err = s.eventsSvc.Record(ctx, events.SharedEvent{
-					ID:             uuid.New(),
-					PractitionerID: realOwnerID,
-					AccountantID:   finalAccountantID,
-					ActorID:        actorUserID,
-					ActorName:      &fullName,
-					ActorType:      "ACCOUNTANT",
-					EventType:      "form.updated",
-					EntityType:     "FORM",
-					EntityID:       updated.ID,
-					Description:    fmt.Sprintf("Accountant %s updated the form: %s", fullName, updated.Name),
-					Metadata: events.JSONBMap{
-						"form_name":     updated.Name,
-						"updated_count": syncResult.UpdatedCount,
-						"created_count": syncResult.CreatedCount,
-						"deleted_count": syncResult.DeletedCount,
-					},
-					CreatedAt: time.Now(),
-				})
-			}
-		}
-	}
-
 	// Audit Logging
 	idStr := updated.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updated,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	// Send notification
+	if meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			if err := s.notifyForm(ctx, updated.ID, actorUserID, actorType, util.EventFormUpdated, updated.Name); err != nil {
+				log.Printf("[WARN] failed to send form update notification: %v", err)
+			}
+		}
+	}
 
 	return updated, syncResult, nil
 }
@@ -585,20 +513,6 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return err
 	}
 
-	// Get clinic info and owner ID only for non-expense forms
-	var realOwnerID uuid.UUID
-	if formDetail.Method != "EXPENSE_ENTRY" {
-		clinicID := uuid.Nil
-		if formDetail.ClinicID != nil {
-			clinicID = *formDetail.ClinicID
-		}
-		clinic, err := s.formClinic.GetClinicByIDInternal(ctx, clinicID)
-		if err != nil {
-			return fmt.Errorf("failed to resolve clinic owner: %w", err)
-		}
-		realOwnerID = clinic.PractitionerID
-	}
-
 	// TRANSACTIONAL DELETION
 	err = util.RunInTransaction(ctx, s.db, func(ctx context.Context, tx *sqlx.Tx) error {
 		// Delete associated permissions for this Form
@@ -614,56 +528,32 @@ func (s *service) Delete(ctx context.Context, formID uuid.UUID) error {
 		return nil
 	})
 
-	// --- TRIGGER SHARED EVENT RECORD ---
 	meta := auditctx.GetMetadata(ctx)
-	if formDetail.Method != "EXPENSE_ENTRY" {
-		if meta.UserType != nil && strings.EqualFold(*meta.UserType, util.RoleAccountant) && meta.UserID != nil {
-			actorUserID, err := uuid.Parse(*meta.UserID)
-			if err == nil {
-				var finalAccountantID uuid.UUID
-				accProfile, err := s.accountantRepo.GetAccountantByUserID(ctx, actorUserID.String())
-				if err == nil {
-					finalAccountantID = accProfile.ID
-				} else {
-					finalAccountantID = actorUserID
-				}
 
-				user, err := s.authRepo.FindByID(ctx, actorUserID)
-				if err == nil {
-					fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-
-					// Record the Shared Event
-					_ = s.eventsSvc.Record(ctx, events.SharedEvent{
-						ID:             uuid.New(),
-						PractitionerID: realOwnerID, // The Clinic Owner
-						AccountantID:   finalAccountantID,
-						ActorID:        actorUserID,
-						ActorName:      &fullName,
-						ActorType:      "ACCOUNTANT",
-						EventType:      "form.deleted",
-						EntityType:     "FORM",
-						EntityID:       formID,
-						Description:    fmt.Sprintf("Accountant %s deleted form: %s", fullName, formDetail.Name),
-						Metadata:       events.JSONBMap{"form_name": formDetail.Name},
-						CreatedAt:      time.Now(),
-					})
-				}
-			}
-		}
-	}
 	// Audit log: form deleted
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormDeleted,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: formDetail,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	// Send notification (form deletion is communicated as EventFormUpdated)
+	if formDetail.Method != "EXPENSE_ENTRY" && meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			if err := s.notifyForm(ctx, formID, actorUserID, actorType, util.EventFormUpdated, formDetail.Name); err != nil {
+				log.Printf("[WARN] failed to send form deletion notification: %v", err)
+			}
+		}
+	}
 
 	return nil
 }
@@ -701,18 +591,34 @@ func (s *service) UpdateFormStatus(ctx context.Context, formID uuid.UUID, status
 	// Audit log: Status Updated
 	meta := auditctx.GetMetadata(ctx)
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: map[string]string{"status": existing.Status},
 		AfterState:  map[string]string{"status": status},
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
+
+	// Send notification - use EventFormSubmitted if publishing, otherwise EventFormUpdated
+	if meta.UserID != nil && meta.UserType != nil {
+		actorUserID, err := uuid.Parse(*meta.UserID)
+		if err == nil {
+			actorType := util.ActorPractitioner
+			if strings.EqualFold(*meta.UserType, util.RoleAccountant) {
+				actorType = util.ActorAccountant
+			}
+
+			eventType := util.EventFormUpdated
+			if strings.EqualFold(status, "PUBLISHED") {
+				eventType = util.EventFormSubmitted
+			}
+
+			if err := s.notifyForm(ctx, formID, actorUserID, actorType, eventType, updated.Name); err != nil {
+				log.Printf("[WARN] failed to send form status update notification: %v", err)
+			}
+		}
+	}
 
 	return updated, nil
 }
@@ -737,8 +643,30 @@ func calculateExpenseAmounts(amount, businessUse, taxRate float64, taxType strin
 	return util.Round(net, 2), util.Round(gst, 2), util.Round(gross, 2)
 }
 
+// coaSectionType maps a COA account type name to its section type string.
+// Revenue/Income COAs → "COLLECTION"; everything else → "OTHER_COST".
+func coaSectionType(accountTypeName string) string {
+	t := strings.ToLower(accountTypeName)
+	if strings.Contains(t, "revenue") || strings.Contains(t, "income") {
+		return "COLLECTION"
+	}
+	return "OTHER_COST"
+}
+
+// resolveTaxRate returns the tax rate (as a decimal) for a COA entry.
+// Returns 0.0 when no tax applies.
+func resolveTaxRate(ctx context.Context, coaSvc coa.Service, coaDetail *coa.RsChartOfAccount) float64 {
+	if coaDetail.AccountTaxID <= 0 {
+		return 0.0
+	}
+	taxDetail, err := coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
+	if err != nil || taxDetail == nil {
+		return 0.0
+	}
+	return taxDetail.Rate / 100.0
+}
+
 func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.UUID, role string) (*detail.RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
 	var OwnerID uuid.UUID
 
 	switch role {
@@ -746,7 +674,6 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		if len(rq.Items) == 0 {
 			return nil, errors.New("at least one expense item is required")
 		}
-		// We fetch the first COA to find out who the practitioner is
 		firstCoa, err := s.coaSvc.GetByIDInternal(ctx, rq.Items[0].CoaID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve expense owner (COA: %s, Actor: %s): %w",
@@ -759,7 +686,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	// Validate each item's date against FY and lock date
 	for idx, item := range rq.Items {
-		itemDate, err := parseFlexibleDate(item.Date)
+		itemDate, err := util.ParseFlexibleDate(item.Date)
 		if err != nil {
 			return nil, fmt.Errorf("item %d: invalid date format: %w", idx, err)
 		}
@@ -775,7 +702,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 		}
 
 		if lockDateStr != nil && *lockDateStr != "" {
-			lockDate, err := parseFlexibleDate(*lockDateStr)
+			lockDate, err := util.ParseFlexibleDate(*lockDateStr)
 			if err != nil {
 				return nil, fmt.Errorf("item %d: invalid lock date format: %w", idx, err)
 			}
@@ -827,37 +754,31 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 		var entryValues []*entry.FormEntryValue
 		var allDocIDs []uuid.UUID
+		coaDetails := make([]*coa.RsChartOfAccount, len(rq.Items))
 
 		for idx, item := range rq.Items {
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, OwnerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for item %d: %w", idx, err)
 			}
+			coaDetails[idx] = coaDetail
 
 			taxType := "EXCLUSIVE"
 			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
 			}
 
-			taxRate := 0.0
-
-			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
-				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
-				if err == nil && taxDetail != nil {
-					taxRate = taxDetail.Rate / 100.0 // Convert percentage to decimal
-				}
-			}
-
 			localBusinessUse := item.BusinessUse
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
 				item.Amount,
 				localBusinessUse,
-				taxRate,
+				resolveTaxRate(ctx, s.coaSvc, coaDetail),
 				taxType,
 			)
 
-			// Create form field for this expense item
-			formFields := &field.RqFormField{
+			sectionType := coaSectionType(coaDetail.AccountTypeName)
+
+			rsField, err := s.fieldSvc.Create(ctx, tx, *form.ActiveVersionID, nil, OwnerID, &field.RqFormField{
 				FieldKey:    fmt.Sprintf("E%d", idx+1),
 				Label:       item.Name,
 				CoaID:       item.CoaID.String(),
@@ -865,28 +786,25 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 				SortOrder:   idx,
 				BusinessUse: &localBusinessUse,
 				TaxType:     &taxType,
-				SectionType: "EXPENSE_ENTRY",
+				SectionType: sectionType,
 				Amount:      &item.Amount,
-			}
-
-			rsField, err := s.fieldSvc.Create(ctx, tx, *form.ActiveVersionID, nil, OwnerID, formFields)
+			})
 			if err != nil {
 				return fmt.Errorf("failed to create field for item %d: %w", idx, err)
 			}
 
 			itemDate := item.Date
-			entryValue := &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     entryID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &itemDate,
-			}
-
-			entryValues = append(entryValues, entryValue)
+			entryValues = append(entryValues, &entry.FormEntryValue{
+				ID:                 uuid.New(),
+				EntryID:            entryID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				BusinessPercentage: &localBusinessUse,
+				Date:               &itemDate,
+			})
 
 			// Collect document IDs for the current expense item
 			if len(item.DocumentIDs) > 0 {
@@ -898,7 +816,7 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 			}
 		}
 
-		// Create the entry with all values
+		// Create the entry with all values first
 		if err := s.entryRepo.Create(ctx, tx, formEntry, entryValues); err != nil {
 			return fmt.Errorf("failed to create expense entry: %w", err)
 		}
@@ -920,23 +838,18 @@ func (s *service) CreateExpense(ctx context.Context, rq RqExpense, actorId uuid.
 
 	// Audit log
 	idStr := createdForm.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
-		UserID:     meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:     auditctx.ActionFormCreated,
 		Module:     auditctx.ModuleForms,
 		EntityType: lo.ToPtr(auditctx.EntityForm),
 		EntityID:   &idStr,
 		AfterState: createdForm,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return createdForm, nil
 }
 
 func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpdateExpense, actorId uuid.UUID) (*detail.RsFormDetail, error) {
-	meta := auditctx.GetMetadata(ctx)
 
 	// Get existing form first (we need this to find the practitioner)
 	existingForm, err := s.detailSvc.GetByID(ctx, formID, uuid.Nil, "")
@@ -974,7 +887,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		if item.Date == nil || *item.Date == "" {
 			continue
 		}
-		itemDate, err := parseFlexibleDate(*item.Date)
+		itemDate, err := util.ParseFlexibleDate(*item.Date)
 		if err != nil {
 			return nil, fmt.Errorf("update item %d: invalid date format: %w", idx, err)
 		}
@@ -987,7 +900,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			return nil, fmt.Errorf("update item %d: failed to verify lock date: %w", idx, err)
 		}
 		if lockDateStr != nil && *lockDateStr != "" {
-			lockDate, err := parseFlexibleDate(*lockDateStr)
+			lockDate, err := util.ParseFlexibleDate(*lockDateStr)
 			if err != nil {
 				return nil, fmt.Errorf("update item %d: invalid lock date format: %w", idx, err)
 			}
@@ -1002,7 +915,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 		if item.Date == "" {
 			continue
 		}
-		itemDate, err := parseFlexibleDate(item.Date)
+		itemDate, err := util.ParseFlexibleDate(item.Date)
 		if err != nil {
 			return nil, fmt.Errorf("create item %d: invalid date format: %w", idx, err)
 		}
@@ -1015,7 +928,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			return nil, fmt.Errorf("create item %d: failed to verify lock date: %w", idx, err)
 		}
 		if lockDateStr != nil && *lockDateStr != "" {
-			lockDate, err := parseFlexibleDate(*lockDateStr)
+			lockDate, err := util.ParseFlexibleDate(*lockDateStr)
 			if err != nil {
 				return nil, fmt.Errorf("create item %d: invalid lock date format: %w", idx, err)
 			}
@@ -1139,31 +1052,18 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				return fmt.Errorf("failed to get COA details: %w", err)
 			}
 
-			taxRate := 0.0
 			taxType := "EXCLUSIVE"
 
-			// Use tax type from request if provided, otherwise use EXCLUSIVE as default
+			// Use tax type from request if provided, otherwise fall back to existing field value
 			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
 			} else if existingField.TaxType != nil && *existingField.TaxType != "" {
 				taxType = *existingField.TaxType
 			}
 
-			// Get tax rate if COA has tax
-			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
-				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
-				if err == nil && taxDetail != nil {
-					taxRate = taxDetail.Rate / 100.0
-				}
-			}
+			taxRate := resolveTaxRate(ctx, s.coaSvc, coaDetail)
 
-			// Calculate new amounts
-			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
-				amount,
-				businessUse,
-				taxRate,
-				taxType,
-			)
+			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(amount, businessUse, taxRate, taxType)
 
 			// Update field
 			label := existingField.Label
@@ -1195,8 +1095,7 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			}
 
 			// Update entry value - mark old as updated and insert new
-			markOldQuery := `UPDATE tbl_form_entry_value SET updated_at = now() WHERE form_field_id = $1 AND entry_id = $2 AND updated_at IS NULL`
-			if _, err := tx.ExecContext(ctx, markOldQuery, item.ID, existingEntry.ID); err != nil {
+			if err := s.entryRepo.MarkEntryValueUpdated(ctx, tx, item.ID, existingEntry.ID); err != nil {
 				return fmt.Errorf("failed to mark old entry value: %w", err)
 			}
 
@@ -1206,20 +1105,20 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 				dateToUse = existingDate
 			}
 
-			newEntryValue := &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &item.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: description,
-				Date:        dateToUse,
-			}
+			// Preserve notes if not provided in update
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
-				return fmt.Errorf("failed to insert new entry value: %w", err)
+			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &item.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        description,
+				BusinessPercentage: &businessUse,
+				Date:               dateToUse,
+			}); err != nil {
+				return fmt.Errorf("failed to insert updated entry value: %w", err)
 			}
 
 			// Document additions/removals specified on this individual updated item
@@ -1253,79 +1152,55 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 			entryDateStr = &rq.Create[0].Date
 		}
 		if entryDateStr != nil {
-			updateDateQuery := `UPDATE tbl_form_entry SET date = $1, updated_at = now() WHERE id = $2`
-			if _, err := tx.ExecContext(ctx, updateDateQuery, *entryDateStr, existingEntry.ID); err != nil {
+			if err := s.entryRepo.UpdateEntryDate(ctx, tx, existingEntry.ID, *entryDateStr); err != nil {
 				return fmt.Errorf("failed to update entry date: %w", err)
 			}
 		}
 
 		// Handle creates
 		for idx, item := range rq.Create {
-			// Get COA details
 			coaDetail, err := s.coaSvc.GetChartOfAccount(ctx, item.CoaID, practitionerID)
 			if err != nil {
 				return fmt.Errorf("failed to get COA details for new item %d: %w", idx, err)
 			}
 
-			// Determine tax type: use request value if provided, otherwise default to EXCLUSIVE
 			taxType := "EXCLUSIVE"
 			if item.TaxType != nil && *item.TaxType != "" {
 				taxType = strings.ToUpper(*item.TaxType)
 			}
 
-			taxRate := 0.0
-
-			// Get tax rate if COA has tax
-			if coaDetail.IsTaxable && coaDetail.AccountTaxID > 0 {
-				taxDetail, err := s.coaSvc.GetAccountTax(ctx, coaDetail.AccountTaxID)
-				if err == nil && taxDetail != nil {
-					taxRate = taxDetail.Rate / 100.0
-				}
-			}
-
-			// Calculate amounts
 			netAmount, gstAmount, grossAmount := calculateExpenseAmounts(
-				item.Amount,
-				item.BusinessUse,
-				taxRate,
-				taxType,
+				item.Amount, item.BusinessUse, resolveTaxRate(ctx, s.coaSvc, coaDetail), taxType,
 			)
 
-			// Create new field
-			formFields := &field.RqFormField{
+			rsField, err := s.fieldSvc.Create(ctx, tx, activeVersionID, nil, practitionerID, &field.RqFormField{
 				FieldKey:    fmt.Sprintf("N%d", idx+1),
 				Label:       item.Name,
 				CoaID:       item.CoaID.String(),
 				IsComputed:  false,
 				BusinessUse: &item.BusinessUse,
 				TaxType:     &taxType,
-				SectionType: "OTHER_COST",
+				SectionType: coaSectionType(coaDetail.AccountTypeName),
 				Amount:      &item.Amount,
-			}
-
-			rsField, err := s.fieldSvc.Create(ctx, tx, activeVersionID, nil, practitionerID, formFields)
+			})
 			if err != nil {
 				return fmt.Errorf("failed to create new field: %w", err)
 			}
 
-			// Create entry value
-			newEntryValue := &entry.FormEntryValue{
-				ID:          uuid.New(),
-				EntryID:     existingEntry.ID,
-				FormFieldID: &rsField.ID,
-				NetAmount:   &netAmount,
-				GstAmount:   &gstAmount,
-				GrossAmount: &grossAmount,
-				Description: item.Description,
-				Date:        &item.Date,
+			if err := s.entryRepo.InsertEntryValue(ctx, tx, &entry.FormEntryValue{
+				ID:                 uuid.New(),
+				EntryID:            existingEntry.ID,
+				FormFieldID:        &rsField.ID,
+				NetAmount:          &netAmount,
+				GstAmount:          &gstAmount,
+				GrossAmount:        &grossAmount,
+				Description:        item.Description,
+				BusinessPercentage: &item.BusinessUse,
+				Date:               &item.Date,
+			}); err != nil {
+				return fmt.Errorf("failed to insert new entry value for item %d: %w", idx, err)
 			}
 
-			insertQuery := `INSERT INTO tbl_form_entry_value (id, entry_id, form_field_id, net_amount, gst_amount, gross_amount, description, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-			if _, err := tx.ExecContext(ctx, insertQuery, newEntryValue.ID, newEntryValue.EntryID, newEntryValue.FormFieldID, newEntryValue.NetAmount, newEntryValue.GstAmount, newEntryValue.GrossAmount, newEntryValue.Description, newEntryValue.Date); err != nil {
-				return fmt.Errorf("failed to insert new entry value: %w", err)
-			}
-
-			// Handle attachments supplied directly within the freshly appended item elements
 			if len(item.DocumentIDs) > 0 {
 				docIDs, parseErr := util.ParseUUIDs(item.DocumentIDs)
 				if parseErr != nil {
@@ -1346,17 +1221,13 @@ func (s *service) UpdateExpense(ctx context.Context, formID uuid.UUID, rq RqUpda
 
 	// Audit log
 	idStr := formID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID:  meta.PracticeID,
-		UserID:      meta.UserID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		Action:      auditctx.ActionFormUpdated,
 		Module:      auditctx.ModuleForms,
 		EntityType:  lo.ToPtr(auditctx.EntityForm),
 		EntityID:    &idStr,
 		BeforeState: beforeState,
 		AfterState:  updatedForm,
-		IPAddress:   meta.IPAddress,
-		UserAgent:   meta.UserAgent,
 	})
 
 	return updatedForm, nil
@@ -1500,6 +1371,7 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 			GrossAmount: grossAmount,
 			Date:        itemDate,
 			Description: description,
+			Notes:       description,
 		}
 
 		response.Items = append(response.Items, item)
@@ -1526,4 +1398,101 @@ func (s *service) GetExpense(ctx context.Context, formID uuid.UUID, actorId uuid
 	}
 
 	return response, nil
+}
+
+// notifyForm sends notifications to linked users about form operations
+func (s *service) notifyForm(ctx context.Context, formID uuid.UUID, actorID uuid.UUID, actorType util.ActorType, eventType util.EventType, formName string) error {
+	if s.notificationPub == nil {
+		log.Printf("[WARN] notification publisher is nil, skipping form notification")
+		return nil
+	}
+
+	// Get sender information
+	user, err := s.authSvc.GetUserByID(ctx, actorID, actorType)
+	if err != nil {
+		log.Printf("[WARN] failed to get user for notification: %v", err)
+		return nil
+	}
+	senderName := user.FirstName + " " + user.LastName
+
+	// Build recipients list
+	recipients := []sharednotification.RecipientWithPreferences{}
+
+	switch actorType {
+	case util.ActorPractitioner:
+		// If the sender is a practitioner, notify all their linked accountants
+		accountants, err := s.invitationRepo.GetAccountantsLinkedToPractitioner(ctx, actorID)
+		if err != nil {
+			log.Printf("[WARN] failed to get linked accountants for practitioner %s: %v", actorID, err)
+			return nil
+		}
+
+		for _, acc := range accountants {
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   acc.AccountantID,
+				RecipientType: util.ActorAccountant,
+				UserID:        acc.UserID,
+			})
+		}
+
+	case util.ActorAccountant:
+		// If the sender is an accountant, notify all linked practitioners
+		practitionerIDs, err := s.invitationRepo.GetPractitionersLinkedToAccountant(ctx, actorID)
+		if err != nil {
+			log.Printf("[WARN] failed to get practitioners for accountant %s: %v", actorID, err)
+			return nil
+		}
+
+		// Notify each linked practitioner
+		for _, practitionerID := range practitionerIDs {
+			practitionerUserID, err := s.invitationRepo.GetPractitionerUserIDByID(ctx, practitionerID)
+			if err != nil {
+				log.Printf("[WARN] failed to get user ID for practitioner %s: %v", practitionerID, err)
+				continue
+			}
+
+			recipients = append(recipients, sharednotification.RecipientWithPreferences{
+				RecipientID:   practitionerID,
+				RecipientType: util.ActorPractitioner,
+				UserID:        practitionerUserID,
+			})
+		}
+
+	default:
+		log.Printf("[WARN] unsupported actor type for form notification: %s", actorType)
+		return nil
+	}
+
+	// If no recipients, don't send notification
+	if len(recipients) == 0 {
+		log.Printf("[INFO] no recipients found for form notification")
+		return nil
+	}
+
+	// Determine title based on event type
+	title := "Form Updated"
+	if eventType == util.EventFormSubmitted {
+		title = "Form Submitted"
+	}
+
+	// Send notifications with preferences using the publisher
+	err = s.notificationPub.Publish(ctx, sharednotification.PublishRequest{
+		Recipients: recipients,
+		SenderID:   actorID,
+		SenderType: actorType,
+		SenderName: senderName,
+		EventType:  eventType,
+		EntityType: util.EntityForm,
+		EntityID:   formID,
+		EntityKey:  "form_id",
+		Title:      title,
+		Body:       fmt.Sprintf("%s: %s by %s", title, formName, senderName),
+		ExtraData:  map[string]any{"form_name": formName},
+	})
+
+	if err != nil {
+		log.Printf("[WARN] failed to send form notification: %v", err)
+	}
+
+	return nil
 }

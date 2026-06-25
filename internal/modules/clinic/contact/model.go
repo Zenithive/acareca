@@ -221,6 +221,7 @@ func (c *Address) ToRsAddress() RsAddress {
 type Filter struct {
 	ClinicID *uuid.UUID `form:"clinic_id"`
 	Fname    *string    `form:"fname"`
+	Email    *string    `form:"email"`
 	common.Filter
 }
 
@@ -230,8 +231,12 @@ func (filter *Filter) MapToFilter() common.Filter {
 
 	// Name filter - partial match on full name
 	if filter.Fname != nil && *filter.Fname != "" {
-		filters["name"] = "%" + *filter.Fname + "%"
-		operators["name"] = common.OpLike
+		filters["fname"] = "%" + *filter.Fname + "%"
+		operators["fname"] = common.OpLike
+	}
+	if filter.Email != nil && *filter.Email != "" {
+		filters["email"] = "%" + *filter.Email + "%"
+		operators["email"] = common.OpLike
 	}
 
 	return common.NewFilter(filter.Search, filters, operators, filter.Limit, filter.Offset, filter.SortBy, filter.OrderBy)

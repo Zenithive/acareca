@@ -152,6 +152,7 @@ type ExpenseItemUpdate struct {
 	Amount      *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
 	Date        *string    `json:"date,omitempty"`
 	Description *string    `json:"description,omitempty"`
+	Notes       *string    `json:"notes,omitempty"`
 	TaxType     *string    `json:"tax_type,omitempty" validate:"omitempty"`
 	DocumentIDs *struct {
 		Create []string `json:"create"`
@@ -190,4 +191,5 @@ type RsExpenseItem struct {
 	GrossAmount float64   `json:"gross_amount"`
 	Date        string    `json:"date"`
 	Description *string   `json:"description,omitempty"`
+	Notes       *string   `json:"notes,omitempty"`
 }

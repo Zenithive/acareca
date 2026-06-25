@@ -404,6 +404,7 @@ func (h *handler) CreateExpense(c *gin.Context) {
 // @Failure 500 {object} response.RsError
 // @Security BearerToken
 // @Router /form/expenses/{id} [patch]
+
 func (h *handler) UpdateExpense(c *gin.Context) {
 	role := c.GetString("role")
 	var actorID uuid.UUID

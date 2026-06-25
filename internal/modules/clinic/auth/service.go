@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
 	"github.com/iamarpitzala/acareca/internal/modules/clinic/template"
+	"github.com/iamarpitzala/acareca/internal/modules/file"
 	auditctx "github.com/iamarpitzala/acareca/internal/shared/audit"
 	"github.com/iamarpitzala/acareca/internal/shared/mail"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -146,12 +147,6 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		if err := s.repo.CreateVerificationToken(ctx, vToken, tx); err != nil {
 			return fmt.Errorf("create verification token: %w", err)
 		}
-
-		_, err = s.template.BulkCreate(ctx, createdClinic.ID)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	})
 
@@ -172,20 +167,25 @@ func (s *service) Register(ctx context.Context, req *RqRegisterClinic) (*RsClini
 		}()
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := createdClinic.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr, // Clinic id
 		Action:     auditctx.ActionClinicRegistered,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
-	return toRsClinicDetail(createdClinic, createdAddresses, createdContacts), nil
+	var document *file.Document
+	if createdClinic.DocumentID != nil && *createdClinic.DocumentID != "" {
+		document, err = s.repo.GetDocumentByID(ctx, *createdClinic.DocumentID)
+		if err != nil {
+			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *createdClinic.DocumentID, err)
+		}
+	}
+
+	return toRsClinicDetail(createdClinic, createdAddresses, createdContacts, document), nil
 }
 
 func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, error) {
@@ -208,16 +208,13 @@ func (s *service) Login(ctx context.Context, req *RqLoginClinic) (*RsToken, erro
 		return nil, errors.New("email not verified. Please check your email for the verification link")
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinic.ID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicLoggedIn,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntitySession),
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return s.issueTokens(ctx, clinic, clinicIDStr)
@@ -243,23 +240,18 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 	}
 
 	// Audit log: user logged out
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	clinicIDStr := sess.ClinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicLoggedOut,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityClinicSession),
 		EntityID:   &sessIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	// Audit log:  Session revoked
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicSessionRevoked,
 		Module:     auditctx.ModuleInvoice,
@@ -270,8 +262,6 @@ func (s *service) Logout(ctx context.Context, clinicID uuid.UUID, refreshToken s
 			"clinic_id":  clinicIDStr,
 			"revoked_at": time.Now(),
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return nil
@@ -293,7 +283,15 @@ func (s *service) GetProfile(ctx context.Context, clinicID uuid.UUID) (*RsClinic
 		return nil, err
 	}
 
-	return toRsClinicDetail(clinic, addresses, contacts), nil
+	var document *file.Document
+	if clinic.DocumentID != nil && *clinic.DocumentID != "" {
+		document, err = s.repo.GetDocumentByID(ctx, *clinic.DocumentID)
+		if err != nil {
+			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *clinic.DocumentID, err)
+		}
+	}
+
+	return toRsClinicDetail(clinic, addresses, contacts, document), nil
 }
 
 func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
@@ -320,12 +318,10 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 	}
 
 	// Audit log: Email Verified
-	meta := auditctx.GetMetadata(ctx)
 	userIDStr := token.ClinicID.String()
 	tokenIDStr := token.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
-		PracticeID: meta.PracticeID,
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &userIDStr,
 		Action:     auditctx.ActionEmailVerified,
 		Module:     auditctx.ModuleAuth,
@@ -337,8 +333,6 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 		AfterState: map[string]interface{}{
 			"status": "USED",
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 	return nil
 }
@@ -347,7 +341,7 @@ func (s *service) VerifyEmail(ctx context.Context, tokenStr string) error {
 // HELPERS
 // ==========================================
 
-func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *RsClinicDetail {
+func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact, doc *file.Document) *RsClinicDetail {
 	rsAddrs := make([]RsClinicAddress, 0, len(addrs))
 	for _, a := range addrs {
 		rsAddrs = append(rsAddrs, RsClinicAddress{
@@ -371,6 +365,17 @@ func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *
 		})
 	}
 
+	var rsDocument *file.RsDocument
+	if doc != nil {
+		rsDocument = &file.RsDocument{
+			ID:           doc.ID,
+			OriginalName: doc.OriginalName,
+			FileKey:      doc.ObjectKey,
+			UploadedAt:   doc.UploadedAt,
+			CreatedAt:    doc.CreatedAt,
+		}
+	}
+
 	return &RsClinicDetail{
 		ID:          c.ID,
 		ClinicName:  c.ClinicName,
@@ -379,6 +384,7 @@ func toRsClinicDetail(c *Clinic, addrs []ClinicAddress, conts []ClinicContact) *
 		Verified:    c.Verified,
 		Description: c.Description,
 		DocumentID:  c.DocumentID,
+		Document:    rsDocument,
 		ABN:         c.ABN,
 		ACN:         c.ACN,
 		Addresses:   rsAddrs,
@@ -428,11 +434,10 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 	}
 
 	// Audit log : Session Created
-	meta := auditctx.GetMetadata(ctx)
 	sessIDStr := sess.ID.String()
 	clinicIDStr := clinic.ID.String()
 
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicID,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicSessionCreated,
@@ -443,8 +448,6 @@ func (s *service) issueTokens(ctx context.Context, clinic *Clinic, clinicID stri
 			"session_id": sessIDStr,
 			"expires_at": sess.ExpiresAt,
 		},
-		IPAddress: meta.IPAddress,
-		UserAgent: meta.UserAgent,
 	})
 
 	return &RsToken{
@@ -476,16 +479,13 @@ func (s *service) ChangePassword(ctx context.Context, clinicID uuid.UUID, req *R
 		return err
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionPasswordChanged,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return nil
@@ -670,20 +670,25 @@ func (s *service) UpdateProfile(ctx context.Context, clinicID uuid.UUID, req *Rq
 	addresses, _ := s.repo.ListAddressesByClinicID(ctx, clinicID)
 	contacts, _ := s.repo.ListContactsByClinicID(ctx, clinicID)
 
-	meta := auditctx.GetMetadata(ctx)
+	var document *file.Document
+	if updatedClinic.DocumentID != nil && *updatedClinic.DocumentID != "" {
+		document, err = s.repo.GetDocumentByID(ctx, *updatedClinic.DocumentID)
+		if err != nil {
+			fmt.Printf("[WARN] Failed to fetch document %s: %v\n", *updatedClinic.DocumentID, err)
+		}
+	}
+
 	clinicIDStr := clinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicUpdated,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
-	return toRsClinicDetail(updatedClinic, addresses, contacts), nil
+	return toRsClinicDetail(updatedClinic, addresses, contacts, document), nil
 }
 
 // validateAddressChangeset checks primary-field rules before the transaction.
@@ -730,17 +735,14 @@ func (s *service) DeleteClinic(ctx context.Context, clinicID uuid.UUID) error {
 		return fmt.Errorf("delete clinic: %w", err)
 	}
 
-	meta := auditctx.GetMetadata(ctx)
 	clinicIDStr := clinicID.String()
-	s.auditSvc.LogAsync(&audit.LogEntry{
+	s.auditSvc.LogAsync(ctx, &audit.LogEntry{
 		PracticeID: &clinicIDStr,
 		UserID:     &clinicIDStr,
 		Action:     auditctx.ActionClinicDeleted,
 		Module:     auditctx.ModuleInvoice,
 		EntityType: lo.ToPtr(auditctx.EntityInvoiceClinic),
 		EntityID:   &clinicIDStr,
-		IPAddress:  meta.IPAddress,
-		UserAgent:  meta.UserAgent,
 	})
 
 	return nil

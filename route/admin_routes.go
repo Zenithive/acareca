@@ -5,6 +5,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/modules/admin/accountant"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/analytics"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/audit"
+	adminCoa "github.com/iamarpitzala/acareca/internal/modules/admin/coa"
 	adminPractitioner "github.com/iamarpitzala/acareca/internal/modules/admin/practitioner"
 	"github.com/iamarpitzala/acareca/internal/modules/admin/subscription"
 	"github.com/iamarpitzala/acareca/internal/shared/middleware"
@@ -15,7 +16,7 @@ import (
 
 func RegisterAdminRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx.DB, auditSvc audit.Service, stripeClient sharedstripe.StripeClient) {
 	adminGroup := v1.Group("/admin")
-	adminGroup.Use(middleware.Auth(cfg), middleware.RequireRole("ADMIN"))
+	adminGroup.Use(middleware.Auth(cfg), middleware.RequireRole("ADMIN"), middleware.AuditContext())
 
 	// Subscription routes - initialize subscription-specific services
 	subscriptionGroup := adminGroup.Group("/subscription")
@@ -34,6 +35,12 @@ func RegisterAdminRoutes(v1 *gin.RouterGroup, cfg *config.Config, dbConn *sqlx.D
 	adminPractitionerSvc := adminPractitioner.NewService(adminPractitionerRepo)
 	adminPractitionerHandler := adminPractitioner.NewHandler(adminPractitionerSvc)
 	adminPractitioner.RegisterRoutes(practitionerGroup, adminPractitionerHandler)
+
+	adminCoaRepo := adminCoa.NewRepo(dbConn)
+	adminCoaSvc := adminCoa.NewService(adminCoaRepo)
+	adminCoaHandler := adminCoa.NewHandler(adminCoaSvc)
+
+	adminCoa.RegisterRoutes(adminGroup, adminCoaHandler)
 
 	// Accountant routes
 	accountantGroup := adminGroup.Group("/accountant")
