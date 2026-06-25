@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/aymerick/raymond"
@@ -383,14 +384,19 @@ func (s *Service) GeneratePDF(ctx context.Context, rq RqGeneratePDF) ([]byte, er
 	return chromepdf.Generate(ctx, fullHTML)
 }
 
-func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateId []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
-	if len(templateId) == 0 {
+func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateIds []uuid.UUID, invoiceId uuid.UUID) ([]byte, string, error) {
+
+	if len(templateIds) == 0 {
 		return nil, "", fmt.Errorf("at least one template ID is required")
 	}
 
-	if err := s.repo.ValidateTemplateAccess(ctx, templateId); err != nil {
+	if err := s.repo.ValidateTemplateAccess(ctx, templateIds); err != nil {
 		return nil, "", err
 	}
+
+	// -------------------------------------------------------
+	// Load invoice & Related Sections
+	// -------------------------------------------------------
 
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
@@ -399,10 +405,15 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	sections, err := s.repo.GetInvoiceSectionMeta(ctx, invoiceId)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to fetch invoice section metadata: %w", err)
+		return nil, "", fmt.Errorf("failed to fetch invoice sections: %w", err)
 	}
 
-	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateId)
+	st, err := s.repo.GetInvoiceSetting(
+		ctx,
+		clinicId,
+		invoiceId,
+		templateIds,
+	)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
@@ -413,129 +424,255 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		}
 	}
 
-	// Transform database models via your data adapter
+	// -------------------------------------------------------
+	// Build Invoice Data Structures via Database Ordering
+	// -------------------------------------------------------
+
 	data := InvoiceToData(inv)
-	ApplyPDFCollections(&data, inv.Items, sections, inv.InvoiceNumber)
+
+	ApplyPDFCollections(
+		&data,
+		inv.Items,
+		sections,
+		inv.InvoiceNumber,
+	)
+
 	if data.PaymentDateDisplay == "" {
 		data.PaymentDateDisplay = data.IssueDateDisplay
 	}
 
-	// Establish default visual styles if custom settings don't exist
-	primaryColor := "#1f4e5f"
-	accentColor := "#1f4e5f"
-	bodyFontFamily := "Arial"
-	headerFontFamily := "Arial"
-	watermarkText := "PAID"
-	watermarkEnabled := false
-	showTax := true
-	termsText := ""
-	isLogo := false
+	// -------------------------------------------------------
+	// Apply Template Settings (Colors, Fonts, Watermarks)
+	// -------------------------------------------------------
 
-	if st != nil {
-		primaryColor = st.PrimaryColor
-		accentColor = st.AccentColor
-		bodyFontFamily = st.BodyFontFamily
-		headerFontFamily = st.HeaderFontFamily
-		showTax = st.IsTax
+	s.applyInvoiceSettings(&data, st)
 
-		if st.TableStyle != nil {
-			data.TableStyleClass = *st.TableStyle
-		}
-		if st.IsWaterMark && st.WaterMarkText != nil {
-			watermarkEnabled = true
-			watermarkText = *st.WaterMarkText
-		}
-		if st.TermText != nil {
-			termsText = *st.TermText
-			data.Notes = termsText
-			data.TermsText = termsText
-		}
-		if st.IsLogo {
-			isLogo = true
-			data.ShowLogo = true
-			if st.Logo != nil && st.Logo.ToRsDocument().FileKey != "" {
-				data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
-			}
-		}
-	}
+	// -------------------------------------------------------
+	// Build Context Parameter Map
+	// -------------------------------------------------------
 
-	data.TemplateSettings = map[string]interface{}{
-		"primary_color":      primaryColor,
-		"accent_color":       accentColor,
-		"body_font_family":   bodyFontFamily,
-		"header_font_family": headerFontFamily,
-		"is_logo":            isLogo,
-		"is_watermark":       watermarkEnabled,
-		"watermark_text":     watermarkText,
-		"is_tax":             showTax,
-		"terms_text":         termsText,
-	}
-
-	// Marshall full data properties to native Handlebars mapping dictionary
 	dataMap, err := invoiceDataToMap(data)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to map invoice data properties: %w", err)
+		return nil, "", fmt.Errorf("failed mapping invoice data: %w", err)
 	}
 
-	// Retrieve pre-built blueprint views and layouts
-	globalTemplates := DefaultTemplates()
-	cssTemplate := sharedCSS()
+	// -------------------------------------------------------
+	// Fixed Page Sequence Array Compilation
+	// -------------------------------------------------------
 
-	// Enforce strict multi-page sheet structural sequence rules
-	strictPageSequence := []string{
-		"Calculation Statement",
-		"Tax Invoice",
-		"Remittance Advice",
+	pageOrder := map[string]int{
+		"Calculation Statement": 1,
+		"Tax Invoice":           2,
+		"Remittance Advice":     3,
 	}
 
-	var orderedHTMLBlocks []string
-	for _, expectedPageName := range strictPageSequence {
-		var matchedHTML string
-		for _, t := range globalTemplates {
-			if strings.EqualFold(strings.TrimSpace(t.Name), expectedPageName) {
-				matchedHTML = t.Html
-				break
+	type templateAsset struct {
+		Order int
+		HTML  string
+		CSS   string
+	}
+
+	var assets []templateAsset
+
+	for _, id := range templateIds {
+
+		t, err := s.repo.Get(ctx, id)
+		if err != nil {
+			return nil, "", fmt.Errorf(
+				"failed fetching template %s: %w",
+				id,
+				err,
+			)
+		}
+
+		html, err := crypto.DecryptAndDecompress(
+			t.Html,
+			s.encryptionKey,
+		)
+		if err != nil {
+			return nil, "", fmt.Errorf(
+				"failed decrypting html for template %s: %w",
+				t.Name,
+				err,
+			)
+		}
+
+		css, err := crypto.DecryptAndDecompress(
+			t.Css,
+			s.encryptionKey,
+		)
+		if err != nil {
+			return nil, "", fmt.Errorf(
+				"failed decrypting css for template %s: %w",
+				t.Name,
+				err,
+			)
+		}
+
+		order, ok := pageOrder[t.Name]
+		if !ok {
+			continue
+		}
+
+		assets = append(
+			assets,
+			templateAsset{
+				Order: order,
+				HTML:  html,
+				CSS:   css,
+			},
+		)
+	}
+
+	if len(assets) == 0 {
+		return nil, "", fmt.Errorf("no valid templates found")
+	}
+
+	sort.Slice(assets, func(i, j int) bool {
+		return assets[i].Order < assets[j].Order
+	})
+
+	// -------------------------------------------------------
+	// Render Pages with Isolated Header Reference Numbers
+	// -------------------------------------------------------
+
+	var htmlBuilder strings.Builder
+	var cssBuilder strings.Builder
+
+	for _, a := range assets {
+		if ts, ok := dataMap["template_settings"].(map[string]interface{}); ok {
+			switch a.Order {
+			case 1:
+				dataMap["invoice_number"] = ts["calculation_invoice_number"]
+			case 2:
+				dataMap["invoice_number"] = ts["tax_invoice_number"]
+			case 3:
+				dataMap["invoice_number"] = ts["remittance_invoice_number"]
 			}
 		}
 
-		if matchedHTML == "" {
-			return nil, "", fmt.Errorf("chromepdf: required layout view missing from central collection: %s", expectedPageName)
+		renderedHTML, err := raymond.Render(a.HTML, dataMap)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed rendering template page html: %w", err)
 		}
-		orderedHTMLBlocks = append(orderedHTMLBlocks, matchedHTML)
+		htmlBuilder.WriteString(renderedHTML)
+		htmlBuilder.WriteString("\n")
+
+		renderedCSS, err := raymond.Render(a.CSS, dataMap)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed rendering template page css: %w", err)
+		}
+		cssBuilder.WriteString(renderedCSS)
+		cssBuilder.WriteString("\n")
 	}
 
-	unifiedHTMLTemplate := strings.Join(orderedHTMLBlocks, "\n")
-
-	// Render stylesheets and components via Handlebars (Raymond engine)
-	renderedCSS, err := raymond.Render(cssTemplate, dataMap)
-	if err != nil {
-		return nil, "", fmt.Errorf("chromepdf: exception compiling custom styles: %w", err)
-	}
-
-	renderedHTML, err := raymond.Render(unifiedHTMLTemplate, dataMap)
-	if err != nil {
-		return nil, "", fmt.Errorf("chromepdf: exception compiling structural body blocks: %w", err)
-	}
-
-	// Encapsulate inside a standardized browser markup document
-	completeDocumentDOM := fmt.Sprintf(`<!DOCTYPE html>
+	document := fmt.Sprintf(`
+<!DOCTYPE html>
 <html>
 <head>
-	<meta charset="UTF-8">
-	<style>%s</style>
+<meta charset="UTF-8">
+<style>
+%s
+</style>
 </head>
 <body>
-	%s
+%s
 </body>
-</html>`, renderedCSS, renderedHTML)
+</html>
+`,
+		cssBuilder.String(),
+		htmlBuilder.String(),
+	)
 
-	// Call background browser executor to output the print-ready asset binary
-	pdf, err := chromepdf.Generate(ctx, completeDocumentDOM)
+	pdf, err := chromepdf.Generate(ctx, document)
 	if err != nil {
-		return nil, "", fmt.Errorf("chromepdf: browser context pipeline generation failed: %w", err)
+		return nil, "", fmt.Errorf(
+			"failed generating pdf: %w",
+			err,
+		)
 	}
 
-	return pdf, fmt.Sprintf("INVOICE_%s", data.InvoiceNumber), nil
+	return pdf,
+		fmt.Sprintf("INVOICE_%s", data.InvoiceNumber),
+		nil
+}
+
+func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
+
+	if st == nil {
+		data.TemplateSettings = map[string]interface{}{
+			"primary_color":      "#1f4e5f",
+			"accent_color":       "#1f4e5f",
+			"body_font_family":   "Arial",
+			"header_font_family": "Arial",
+			"is_logo":            false,
+			"is_watermark":       false,
+			"watermark_text":     "PAID",
+			"is_tax":             true,
+			"terms_text":         "",
+		}
+		return
+	}
+
+	data.PrimaryColor = st.PrimaryColor
+	data.AccentColor = st.AccentColor
+	data.BodyFontFamily = st.BodyFontFamily
+	data.HeaderFontFamily = st.HeaderFontFamily
+	data.ShowTax = st.IsTax
+
+	if st.TableStyle != nil {
+		data.TableStyleClass = *st.TableStyle
+	}
+
+	if st.TermText != nil {
+		data.Notes = *st.TermText
+		data.TermsText = *st.TermText
+	}
+
+	if st.IsWaterMark && st.WaterMarkText != nil {
+		data.WatermarkEnabled = true
+		data.WatermarkText = *st.WaterMarkText
+	}
+
+	if st.IsLogo {
+		data.ShowLogo = true
+
+		if st.Logo != nil &&
+			st.Logo.ToRsDocument().FileKey != "" {
+
+			data.LogoURL =
+				strings.TrimRight(
+					s.cfg.R2StoragePrefix,
+					"/",
+				) +
+					"/" +
+					st.Logo.ToRsDocument().FileKey
+		}
+	}
+
+	watermark := "PAID"
+	if st.WaterMarkText != nil {
+		watermark = *st.WaterMarkText
+	}
+
+	terms := ""
+	if st.TermText != nil {
+		terms = *st.TermText
+	}
+
+	if data.TemplateSettings == nil {
+		data.TemplateSettings = map[string]interface{}{}
+	}
+
+	data.TemplateSettings["primary_color"] = st.PrimaryColor
+	data.TemplateSettings["accent_color"] = st.AccentColor
+	data.TemplateSettings["body_font_family"] = st.BodyFontFamily
+	data.TemplateSettings["header_font_family"] = st.HeaderFontFamily
+	data.TemplateSettings["is_logo"] = st.IsLogo
+	data.TemplateSettings["is_watermark"] = st.IsWaterMark
+	data.TemplateSettings["watermark_text"] = watermark
+	data.TemplateSettings["is_tax"] = st.IsTax
+	data.TemplateSettings["terms_text"] = terms
 }
 
 func (s *Service) BulkUpdateDefaults(ctx context.Context) error {
