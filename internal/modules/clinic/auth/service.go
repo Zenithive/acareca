@@ -772,7 +772,7 @@ func (s *service) ForgotPassword(ctx context.Context, req *RqForgotPassword) err
 		return err
 	}
 
-	resetLink := fmt.Sprintf("%s/clinic/reset-password?token=%s", baseUrl, rawToken)
+	resetLink := fmt.Sprintf("%s/clinic-portal/reset-password?token=%s", baseUrl, rawToken)
 	return s.mailer.SendPasswordResetEmail(clinic.Email, clinic.ClinicName, resetLink)
 }
 

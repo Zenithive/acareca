@@ -298,7 +298,7 @@ func (h *handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusOK, nil, "If an account exists, a reset link has been sent.")
+	response.JSON(c, http.StatusOK, nil, "A password reset link has been sent to your email address.")
 }
 
 // ResetPassword godoc
