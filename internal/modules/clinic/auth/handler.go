@@ -42,7 +42,7 @@ func NewHandler(svc Service) IHandler {
 // @Tags invoice-clinic
 // @Accept json
 // @Produce json
-// @Param request body RqRegisterClinic true "Clinic Registration Data"
+// @Param request body RqRegister true "Clinic Registration Data"
 // @Success 201 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 409 {object} response.RsError
@@ -74,7 +74,7 @@ func (h *handler) Register(c *gin.Context) {
 // @Tags invoice-clinic
 // @Accept json
 // @Produce json
-// @Param request body RqLoginClinic true "Clinic Login Credentials"
+// @Param request body RqLogin true "Clinic Login Credentials"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 411 {object} response.RsError
@@ -107,7 +107,7 @@ func (h *handler) Login(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerToken
-// @Param request body RqLogoutClinic true "Clinic Session Logout Payload"
+// @Param request body RqLogout true "Clinic Session Logout Payload"
 // @Success 200 {object} response.RsBase
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
@@ -228,8 +228,8 @@ func (h *handler) ChangePassword(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerToken
-// @Param request body RqUpdateClinic true "Update Data"
-// @Success 200 {object} RsClinicDetail
+// @Param request body RqUpdate true "Update Data"
+// @Success 200 {object} RsClinic
 // @Failure 400 {object} response.RsError
 // @Failure 401 {object} response.RsError
 // @Failure 500 {object} response.RsError

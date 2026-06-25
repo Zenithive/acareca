@@ -533,23 +533,7 @@ definitions:
       total_users:
         type: integer
     type: object
-  auth.RqAddressChangeset:
-    properties:
-      create:
-        items:
-          $ref: '#/definitions/auth.RqClinicAddress'
-        type: array
-      delete:
-        description: address IDs (UUID strings)
-        items:
-          type: string
-        type: array
-      update:
-        items:
-          $ref: '#/definitions/auth.RqUpdateClinicAddress'
-        type: array
-    type: object
-  auth.RqClinicAddress:
+  auth.RqAddress:
     properties:
       address:
         type: string
@@ -562,7 +546,37 @@ definitions:
       state:
         type: string
     type: object
-  auth.RqClinicContact:
+  auth.RqBulkUpdateAddress:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/auth.RqAddress'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
+      update:
+        items:
+          $ref: '#/definitions/auth.RqUpdateAddress'
+        type: array
+    type: object
+  auth.RqBulkUpdateContact:
+    properties:
+      create:
+        items:
+          $ref: '#/definitions/auth.RqContact'
+        type: array
+      delete:
+        items:
+          type: string
+        type: array
+      update:
+        items:
+          $ref: '#/definitions/auth.RqUpdateContact'
+        type: array
+    type: object
+  auth.RqContact:
     properties:
       contact_type:
         enum:
@@ -576,57 +590,7 @@ definitions:
       value:
         type: string
     type: object
-  auth.RqContactChangeset:
-    properties:
-      create:
-        items:
-          $ref: '#/definitions/auth.RqClinicContact'
-        type: array
-      delete:
-        description: contact IDs (UUID strings)
-        items:
-          type: string
-        type: array
-      update:
-        items:
-          $ref: '#/definitions/auth.RqUpdateClinicContact'
-        type: array
-    type: object
-  auth.RqLogin:
-    properties:
-      email:
-        type: string
-      password:
-        type: string
-    required:
-    - email
-    - password
-    type: object
-  auth.RqLoginClinic:
-    properties:
-      email:
-        type: string
-      password:
-        type: string
-    required:
-    - email
-    - password
-    type: object
-  auth.RqLogout:
-    properties:
-      refresh_token:
-        type: string
-    required:
-    - refresh_token
-    type: object
-  auth.RqLogoutClinic:
-    properties:
-      refresh_token:
-        type: string
-    required:
-    - refresh_token
-    type: object
-  auth.RqRegisterClinic:
+  auth.RqRegister:
     properties:
       abn:
         type: string
@@ -634,7 +598,7 @@ definitions:
         type: string
       addresses:
         items:
-          $ref: '#/definitions/auth.RqClinicAddress'
+          $ref: '#/definitions/auth.RqAddress'
         minItems: 1
         type: array
       clinic_name:
@@ -643,7 +607,7 @@ definitions:
         type: string
       contacts:
         items:
-          $ref: '#/definitions/auth.RqClinicContact'
+          $ref: '#/definitions/auth.RqContact'
         minItems: 1
         type: array
       description:
@@ -666,26 +630,30 @@ definitions:
     - password
     - role
     type: object
-  auth.RqUpdateClinic:
+  auth.RqUpdate:
     properties:
       abn:
         type: string
       acn:
         type: string
       addresses:
-        $ref: '#/definitions/auth.RqAddressChangeset'
+        $ref: '#/definitions/auth.RqBulkUpdateAddress'
       clinic_name:
         maxLength: 255
         minLength: 2
         type: string
       contacts:
-        $ref: '#/definitions/auth.RqContactChangeset'
+        $ref: '#/definitions/auth.RqBulkUpdateContact'
       description:
         type: string
       document_id:
         type: string
+      id:
+        type: string
+      update_at:
+        type: string
     type: object
-  auth.RqUpdateClinicAddress:
+  auth.RqUpdateAddress:
     properties:
       address:
         type: string
@@ -699,10 +667,12 @@ definitions:
         type: string
       state:
         type: string
+      updated_at:
+        type: string
     required:
     - id
     type: object
-  auth.RqUpdateClinicContact:
+  auth.RqUpdateContact:
     properties:
       contact_type:
         enum:
@@ -714,6 +684,8 @@ definitions:
       is_primary:
         type: boolean
       label:
+        type: string
+      updated_at:
         type: string
       value:
         type: string
@@ -802,11 +774,13 @@ definitions:
     - last_name
     - password
     type: object
-  auth.RsClinicAddress:
+  auth.RsAddress:
     properties:
       address:
         type: string
       city:
+        type: string
+      created_at:
         type: string
       id:
         type: string
@@ -816,21 +790,10 @@ definitions:
         type: string
       state:
         type: string
-    type: object
-  auth.RsClinicContact:
-    properties:
-      contact_type:
-        type: string
-      id:
-        type: string
-      is_primary:
-        type: boolean
-      label:
-        type: string
-      value:
+      updated_at:
         type: string
     type: object
-  auth.RsClinicDetail:
+  auth.RsClinic:
     properties:
       abn:
         type: string
@@ -838,13 +801,13 @@ definitions:
         type: string
       addresses:
         items:
-          $ref: '#/definitions/auth.RsClinicAddress'
+          $ref: '#/definitions/auth.RsAddress'
         type: array
       clinic_name:
         type: string
       contacts:
         items:
-          $ref: '#/definitions/auth.RsClinicContact'
+          $ref: '#/definitions/auth.RsContact'
         type: array
       created_at:
         type: string
@@ -852,8 +815,6 @@ definitions:
         type: string
       document:
         $ref: '#/definitions/file.RsDocument'
-      document_id:
-        type: string
       email:
         type: string
       id:
@@ -864,6 +825,23 @@ definitions:
         type: string
       verified:
         type: boolean
+    type: object
+  auth.RsContact:
+    properties:
+      contact_type:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_primary:
+        type: boolean
+      label:
+        type: string
+      updated_at:
+        type: string
+      value:
+        type: string
     type: object
   auth.RsGoogleAuthURL:
     properties:
@@ -2297,6 +2275,23 @@ definitions:
     required:
     - email
     type: object
+  internal_modules_auth.RqLogin:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  internal_modules_auth.RqLogout:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
   internal_modules_auth.RqResetPassword:
     properties:
       new_password:
@@ -2331,6 +2326,23 @@ definitions:
         type: string
     required:
     - email
+    type: object
+  internal_modules_clinic_auth.RqLogin:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  internal_modules_clinic_auth.RqLogout:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
     type: object
   internal_modules_clinic_auth.RqResetPassword:
     properties:
@@ -3299,11 +3311,18 @@ definitions:
           additionalProperties: true
           type: object
         type: array
+      service_description_items:
+        items:
+          type: string
+        type: array
       service_fee_items:
         items:
           additionalProperties: true
           type: object
         type: array
+      service_fee_rate_intro:
+        additionalProperties: true
+        type: object
       settlement_items:
         items:
           additionalProperties: true
@@ -5126,7 +5145,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqLogin'
+          $ref: '#/definitions/internal_modules_auth.RqLogin'
       produces:
       - application/json
       responses:
@@ -5283,7 +5302,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqLogout'
+          $ref: '#/definitions/internal_modules_auth.RqLogout'
       produces:
       - application/json
       responses:
@@ -6906,7 +6925,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqLoginClinic'
+          $ref: '#/definitions/internal_modules_clinic_auth.RqLogin'
       produces:
       - application/json
       responses:
@@ -6941,7 +6960,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqLogoutClinic'
+          $ref: '#/definitions/internal_modules_clinic_auth.RqLogout'
       produces:
       - application/json
       responses:
@@ -6999,14 +7018,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqUpdateClinic'
+          $ref: '#/definitions/auth.RqUpdate'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.RsClinicDetail'
+            $ref: '#/definitions/auth.RsClinic'
         "400":
           description: Bad Request
           schema:
@@ -7036,7 +7055,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/auth.RqRegisterClinic'
+          $ref: '#/definitions/auth.RqRegister'
       produces:
       - application/json
       responses:
