@@ -224,3 +224,39 @@ type RsSection struct {
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        *time.Time      `json:"updatedAt"`
 }
+
+type CalculationStatement struct {
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
+}
+
+type SfaInvoice struct {
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
+}
+
+type RemittanceInvoice struct {
+	DocumentNumber   string
+	TaxMethod        *TaxMethod
+	PaymentMethod    *string
+	AccountName      *string
+	Bsb              *string
+	AccountNumber    *string
+	PaymentDate      *string
+	PaymentReference *string
+	Entries          []*item.Item
+}
