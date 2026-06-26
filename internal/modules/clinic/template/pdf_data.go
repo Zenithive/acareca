@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Helper function to convert raw expression JSON into a clean string like "G1 - 1A" or "D + E"
+// Helper function to convert raw expression JSON into a clean strings
 func parseExpressionFormula(exprStr string) string {
 	if exprStr == "" {
 		return ""
@@ -168,7 +168,6 @@ func ApplyPDFCollections(
 		isDebit := strings.EqualFold(trimEntry, "DEBIT")
 		isNegative := isDebit || item.Amount < 0
 
-		// --- BEHAVIOR-BASED STYLING & ANALYSIS LOGIC (NO STRING CHECKS) ---
 		rowClass := ""
 		valueClass := ""
 		hasFormula := item.Expression != nil && *item.Expression != ""
@@ -184,7 +183,7 @@ func ApplyPDFCollections(
 			valueClass = "txt-blue-val"
 		}
 
-		// Convert structural JSON expression string into clear formatted context: Name [ Formula ]
+		// Convert structural JSON expression string into clear formatted string: Name [ Formula ]
 		displayLabel := item.Name
 		if hasFormula {
 			if cleanFormula := parseExpressionFormula(*item.Expression); cleanFormula != "" {

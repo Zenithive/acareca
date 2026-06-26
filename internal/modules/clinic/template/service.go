@@ -394,10 +394,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", err
 	}
 
-	// -------------------------------------------------------
 	// Load invoice & Related Sections
-	// -------------------------------------------------------
-
 	inv, err := s.repo.GetInvoice(ctx, clinicId, invoiceId)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice: %w", err)
@@ -424,10 +421,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		}
 	}
 
-	// -------------------------------------------------------
-	// Build Invoice Data Structures via Database Ordering
-	// -------------------------------------------------------
-
+	// Build Invoice Data Structures
 	data := InvoiceToData(inv)
 
 	ApplyPDFCollections(
@@ -441,25 +435,16 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		data.PaymentDateDisplay = data.IssueDateDisplay
 	}
 
-	// -------------------------------------------------------
 	// Apply Template Settings (Colors, Fonts, Watermarks)
-	// -------------------------------------------------------
-
 	s.applyInvoiceSettings(&data, st)
 
-	// -------------------------------------------------------
 	// Build Context Parameter Map
-	// -------------------------------------------------------
-
 	dataMap, err := invoiceDataToMap(data)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed mapping invoice data: %w", err)
 	}
 
-	// -------------------------------------------------------
-	// Fixed Page Sequence Array Compilation
-	// -------------------------------------------------------
-
+	// Fixed Page Sequence Array
 	pageOrder := map[string]int{
 		"Calculation Statement": 1,
 		"Tax Invoice":           2,
@@ -532,10 +517,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return assets[i].Order < assets[j].Order
 	})
 
-	// -------------------------------------------------------
 	// Render Pages with Isolated Header Reference Numbers
-	// -------------------------------------------------------
-
 	var htmlBuilder strings.Builder
 	var cssBuilder strings.Builder
 
