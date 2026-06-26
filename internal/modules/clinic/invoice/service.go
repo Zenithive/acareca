@@ -19,6 +19,7 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type IService interface {
@@ -39,9 +40,10 @@ type Service struct {
 	mailer     *mail.Client
 	tplService template.IService
 	clinicSvc  clinicauth.Service
+	tplRepo    template.IRepository
 }
 
-func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service) IService {
+func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService template.IService, clinicSvc clinicauth.Service, tplRepo template.IRepository) IService {
 	return &Service{
 		db:         db,
 		repo:       repo,
@@ -49,6 +51,7 @@ func NewService(db *sqlx.DB, repo IRepository, cfg *config.Config, tplService te
 		mailer:     mail.NewClient(cfg.ResendAPIKey, cfg.SenderEmail),
 		tplService: tplService,
 		clinicSvc:  clinicSvc,
+		tplRepo:    tplRepo,
 	}
 }
 
@@ -86,7 +89,21 @@ func (s *Service) Create(ctx context.Context, invoice *RqInvoice) error {
 		}
 	}
 
-	return s.repo.Create(ctx, inv)
+	if err := s.repo.Create(ctx, inv); err != nil {
+		return err
+	}
+
+	if invoice.Settings != nil {
+		for _, sec := range inv.Sections {
+			if sec.TemplateID != uuid.Nil {
+				if err := s.syncTemplateSettings(ctx, inv.ID, inv.ClinicID, sec.TemplateID, invoice.Settings); err != nil {
+					log.Printf("[SETTINGS-WARN] Failed propagating structural setting values: %v", err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // Delete implements [IService].
@@ -157,6 +174,16 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 	err = s.repo.UpdateWithSections(ctx, updatedInvoice, sections, invoice.DeleteSections, deleteItemIDs)
 	if err != nil {
 		return err
+	}
+
+	if invoice.Settings != nil {
+		for _, sec := range sections {
+			if sec.TemplateID != uuid.Nil {
+				if err := s.syncTemplateSettings(ctx, *invoice.ID, invoice.ClinicID, sec.TemplateID, invoice.Settings); err != nil {
+					log.Printf("[SETTINGS-WARN] Failed syncing updated layout template adjustments: %v", err)
+				}
+			}
+		}
 	}
 
 	// Fetch fully loaded data row from db to get client fields securely
@@ -297,4 +324,96 @@ func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string
 	}
 
 	return base64.StdEncoding.EncodeToString(pdfBytes), nil
+}
+
+// Internal bridge mapper to parse and route structural customization configurations safely
+func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID, clinicID uuid.UUID, templateID uuid.UUID, src *RqInvoiceSetting) error {
+	parseUUID := func(str *string) *uuid.UUID {
+		if str == nil || *str == "" {
+			return nil
+		}
+		if parsed, err := uuid.Parse(*str); err == nil {
+			return &parsed
+		}
+		return nil
+	}
+
+	globalSetting, err := s.tplRepo.GetSetting(ctx, templateID)
+	if err != nil {
+		return fmt.Errorf("failed fetching central baseline blueprint: %w", err)
+	}
+
+	existingSetting, err := s.tplRepo.GetInvoiceSetting(ctx, clinicID, invoiceID, []uuid.UUID{templateID})
+	if err != nil {
+		return fmt.Errorf("failed verifying database settings mapping context: %w", err)
+	}
+
+	var targetSettingID uuid.UUID
+	var targetMappingID uuid.UUID
+	isNewOverride := true
+
+	// If a config exists AND it does not share the same ID as the fallback global setup,
+	// then it is already a dedicated custom override record for this specific instance!
+	if existingSetting != nil && (globalSetting == nil || existingSetting.Id != globalSetting.Id) {
+		isNewOverride = false
+		targetSettingID = existingSetting.Id
+		if existingSetting.MappingId != nil {
+			targetMappingID = *existingSetting.MappingId
+		}
+	}
+
+	if isNewOverride {
+		targetSettingID = uuid.New()
+		targetMappingID = uuid.New()
+	}
+
+	dbSetting := template.Setting{
+		Id:               targetSettingID,
+		TemplateId:       templateID,
+		PrimaryColor:     lo.FromPtr(src.PrimaryColor),
+		AccentColor:      lo.FromPtr(src.AccentColor),
+		BodyFontFamily:   lo.FromPtr(src.BodyFontFamily),
+		HeaderFontFamily: lo.FromPtr(src.HeaderFontFamily),
+		IsLogo:           lo.FromPtr(src.IsLogo),
+		LogoId:           parseUUID(src.LogoID),
+		LetterHeadId:     parseUUID(src.LetterheadID),
+		FooterId:         parseUUID(src.FooterID),
+		TermText:         src.TermsText,
+		IsWaterMark:      lo.FromPtr(src.IsWatermark),
+		WaterMarkText:    src.WatermarkText,
+		IsTax:            lo.FromPtr(src.IsTax),
+		TableStyle:       src.TableStyle,
+	}
+
+	dbSetting.MappingId = &targetMappingID
+
+	if isNewOverride {
+		// First create the setting layout profile baseline row
+		if err := s.tplRepo.CreateSetting(ctx, &dbSetting); err != nil {
+			return fmt.Errorf("failed allocating specific template layout profile: %w", err)
+		}
+
+		// Next create the structural mapping junction record
+		m := template.Mapping{
+			ID:         targetMappingID,
+			InvoiceID:  &invoiceID,
+			TemplateID: templateID,
+			SettingID:  targetSettingID,
+			ClinicID:   &clinicID,
+		}
+		if err := s.tplRepo.CreateMapping(ctx, &m); err != nil {
+			return fmt.Errorf("failed linking relational structural mapping context: %w", err)
+		}
+
+		// Trigger UpdateSetting so that the newly created mapping_id gets bound and updated inside tbl_template_setting
+		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, templateID); err != nil {
+			return fmt.Errorf("failed binding back mapping reference onto settings layer: %w", err)
+		}
+	} else {
+		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, templateID); err != nil {
+			return fmt.Errorf("failed overwriting specific layout configuration settings profile: %w", err)
+		}
+	}
+
+	return nil
 }
