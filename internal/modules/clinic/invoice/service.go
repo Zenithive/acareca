@@ -19,7 +19,6 @@ import (
 	"github.com/iamarpitzala/acareca/internal/shared/util"
 	"github.com/iamarpitzala/acareca/pkg/config"
 	"github.com/jmoiron/sqlx"
-	"github.com/samber/lo"
 )
 
 type IService interface {
@@ -181,10 +180,19 @@ func (s *Service) Update(ctx context.Context, invoice *RqUpdateInvoice) error {
 			dbSubject, dbBody, _ := s.repo.GetSavedClinicMailTemplate(ctx, rsInvoice.ClinicID)
 			chosenSubject, chosenBody, _ := mail.GetTemplateContext(dbSubject, dbBody)
 			var documentNumber string
-			if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
-				documentNumber = rsInvoice.Sections[0].DocumentNumber
-			} else {
-				documentNumber = rsInvoice.ID.String()[:8] // Fallback
+			for _, sec := range rsInvoice.Sections {
+				if strings.ToUpper(strings.TrimSpace(string(sec.SectionType))) == "CALCULATION_STATEMENT" && sec.DocumentNumber != "" {
+					documentNumber = sec.DocumentNumber
+					break
+				}
+			}
+			// Fallback if Calculation Statement is unpopulated
+			if documentNumber == "" {
+				if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
+					documentNumber = rsInvoice.Sections[0].DocumentNumber
+				} else {
+					documentNumber = rsInvoice.ID.String()[:8]
+				}
 			}
 			subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)
 
@@ -244,10 +252,20 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 	name := rsInvoice.ContactTo.Fname + " " + rsInvoice.ContactTo.Lname
 
 	var documentNumber string
-	if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
-		documentNumber = rsInvoice.Sections[0].DocumentNumber
-	} else {
-		documentNumber = rsInvoice.ID.String()[:8] // Fallback
+	for _, sec := range rsInvoice.Sections {
+		if strings.ToUpper(strings.TrimSpace(string(sec.SectionType))) == "CALCULATION_STATEMENT" && sec.DocumentNumber != "" {
+			documentNumber = sec.DocumentNumber
+			break
+		}
+	}
+
+	// Fallback if Calculation Statement is unpopulated
+	if documentNumber == "" {
+		if len(rsInvoice.Sections) > 0 && rsInvoice.Sections[0].DocumentNumber != "" {
+			documentNumber = rsInvoice.Sections[0].DocumentNumber
+		} else {
+			documentNumber = rsInvoice.ID.String()[:8]
+		}
 	}
 
 	subject, htmlBody := mail.RenderTemplateReplacements(chosenSubject, chosenBody, name, documentNumber)
@@ -262,287 +280,21 @@ func (s *Service) ResendInvoiceEmail(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *Service) compileInvoicePDF(ctx context.Context, inv *RsInvoice) (string, error) {
-	var billToName, billToEmail, billToPhone, billToABN, billToAddress string
-	if inv.ContactTo != nil {
-		billToName = strings.TrimSpace(inv.ContactTo.Fname + " " + inv.ContactTo.Lname)
-		billToEmail = inv.ContactTo.Email
-		billToPhone = inv.ContactTo.Phone
-		billToABN = inv.ContactTo.ABN
-		if len(inv.ContactTo.Address) > 0 {
-			addr := inv.ContactTo.Address[0]
-			for _, a := range inv.ContactTo.Address {
-				if a.IsPrimary {
-					addr = a
-					break
-				}
-			}
-			parts := []string{addr.AddressLine1}
-			if addr.AddressLine2 != nil && *addr.AddressLine2 != "" {
-				parts = append(parts, *addr.AddressLine2)
-			}
-			parts = append(parts, addr.City, addr.State, addr.PostalCode, addr.Country)
-			billToAddress = strings.Join(parts, ", ")
-		}
-	}
-
-	var clinicName, billFromName, billFromABN, billFromEmail, billFromPhone, billFromAddress string
-	if s.clinicSvc != nil {
-		clinic, err := s.clinicSvc.GetProfile(ctx, inv.ClinicID)
-		if err == nil && clinic != nil {
-			clinicName = clinic.ClinicName
-			billFromName = clinic.ClinicName
-			if clinic.ABN != nil {
-				billFromABN = *clinic.ABN
-			}
-			if len(clinic.Addresses) > 0 {
-				addr := clinic.Addresses[0]
-				for _, a := range clinic.Addresses {
-					if a.IsPrimary {
-						addr = a
-						break
-					}
-				}
-				parts := []string{}
-				if addr.Address != "" {
-					parts = append(parts, addr.Address)
-				}
-				if addr.City != "" {
-					parts = append(parts, addr.City)
-				}
-				if addr.State != "" {
-					parts = append(parts, addr.State)
-				}
-				if addr.Postcode != "" {
-					parts = append(parts, addr.Postcode)
-				}
-				billFromAddress = strings.Join(parts, ", ")
-			}
-			for _, c := range clinic.Contacts {
-				if c.ContactType == "PHONE" {
-					if billFromPhone == "" {
-						billFromPhone = c.Value
-					}
-				}
-			}
-			billFromEmail = clinic.Email
-		}
-	}
-
-	items, sectionMeta := rsInvoiceToTemplateItems(inv)
-
-	var invoiceNumber string = inv.Name
-	for _, sec := range inv.Sections {
-		if sec.DocumentNumber != "" {
-			invoiceNumber = sec.DocumentNumber
-			break
-		}
-	}
-
 	templateIDs := make([]uuid.UUID, 0, len(inv.Sections))
-	var paymentRef string
 	for _, sec := range inv.Sections {
 		if sec.TemplateID != uuid.Nil {
 			templateIDs = append(templateIDs, sec.TemplateID)
 		}
-		if sec.PaymentReference != nil && *sec.PaymentReference != "" {
-			paymentRef = *sec.PaymentReference
-		}
 	}
+
 	if len(templateIDs) == 0 {
 		return "", errors.New("invoice has no template configured")
 	}
 
-	var primaryTemplateID uuid.UUID = templateIDs[0]
-
-	var showLogo, showLogoImage bool
-	var logoURL, logoInitial, letterheadHTML, footerHTML, notes string
-	var tableStyleClass string
-
-	watermarkText := "PAID"
-	watermarkEnabled := false
-	showTax := true
-	primaryColor := "#1f4e5f"
-	accentColor := "#1f4e5f"
-	bodyFontFamily := "Arial"
-	headerFontFamily := "Arial"
-
-	tplSetting, err := s.tplService.GetSetting(ctx, primaryTemplateID)
+	pdfBytes, _, err := s.tplService.DownloadPDF(ctx, inv.ClinicID, templateIDs, inv.ID)
 	if err != nil {
-		log.Printf("[PDF-WARN] Specified Template settings not found, error: %v", err)
-		showLogo = true
-		if clinicName != "" {
-			runes := []rune(clinicName)
-			if len(runes) > 0 {
-				logoInitial = string(runes[0])
-			}
-		}
-	} else if tplSetting != nil {
-		if tplSetting.IsLogo {
-			showLogo = true
-			if tplSetting.Logo != nil && tplSetting.Logo.FileKey != "" {
-				logoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Logo.FileKey
-				showLogoImage = true
-			} else if clinicName != "" {
-				runes := []rune(clinicName)
-				if len(runes) > 0 {
-					logoInitial = string(runes[0])
-				}
-			}
-		}
-		if tplSetting.LetterHead != nil && tplSetting.LetterHead.FileKey != "" {
-			letterheadHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.LetterHead.FileKey + `" style="width:100%;" />`
-		}
-		if tplSetting.Footer != nil && tplSetting.Footer.FileKey != "" {
-			footerHTML = `<img src="` + strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + tplSetting.Footer.FileKey + `" style="width:100%;" />`
-		}
-		if tplSetting.TermText != nil {
-			notes = *tplSetting.TermText
-		}
-
-		tableStyleClass = tplSetting.TableStyle
-		watermarkEnabled = tplSetting.IsWaterMark
-		if tplSetting.WaterMarkText != nil {
-			watermarkText = *tplSetting.WaterMarkText
-		}
-		showTax = tplSetting.IsTax
-		primaryColor = tplSetting.PrimaryColor
-		accentColor = tplSetting.AccentColor
-		bodyFontFamily = tplSetting.BodyFontFamily
-		headerFontFamily = tplSetting.HeaderFontFamily
-	}
-
-	issueDateFormatted := inv.IssueDate.Format("02 January 2006")
-	dueDateFormatted := ""
-	if inv.DueDate != nil {
-		dueDateFormatted = inv.DueDate.Format("02 January 2006")
-	}
-	billingPeriodFormatted := template.FormatDateString(inv.BillingPeriodFrom) + " to " + template.FormatDateString(inv.BillingPeriodTo)
-
-	templateSettingsPayload := map[string]interface{}{
-		"is_logo":            showLogo,
-		"primary_color":      primaryColor,
-		"accent_color":       accentColor,
-		"body_font_family":   bodyFontFamily,
-		"header_font_family": headerFontFamily,
-		"is_watermark":       watermarkEnabled,
-		"watermark_text":     watermarkText,
-		"is_tax":             showTax,
-		"terms_text":         notes,
-	}
-
-	if paymentRef == "" {
-		paymentRef = invoiceNumber
-	}
-
-	pdfData := template.InvoiceData{
-		InvoiceNumber:    invoiceNumber,
-		ClinicName:       clinicName,
-		IssueDateDisplay: issueDateFormatted,
-		DueDateDisplay:   dueDateFormatted,
-		BillingPeriod:    billingPeriodFormatted,
-		InvoiceFrequency: lo.FromPtrOr(inv.InvoiceFrequency, "MONTHLY"),
-		ShowLogo:         showLogo,
-		ShowLogoImage:    showLogoImage,
-		LogoURL:          logoURL,
-		LogoInitial:      logoInitial,
-		WatermarkEnabled: watermarkEnabled,
-		WatermarkText:    watermarkText,
-		ShowTax:          showTax,
-		LetterheadHTML:   letterheadHTML,
-		FooterHTML:       footerHTML,
-		Notes:            notes,
-		TableStyleClass:  tableStyleClass,
-		TemplateSettings: templateSettingsPayload,
-		PrimaryColor:     primaryColor,
-		AccentColor:      accentColor,
-		BodyFontFamily:   bodyFontFamily,
-		HeaderFontFamily: headerFontFamily,
-		BillFrom: template.PartyInfo{
-			Name:    billFromName,
-			Address: billFromAddress,
-			ABN:     billFromABN,
-			Email:   billFromEmail,
-			Phone:   billFromPhone,
-		},
-		BillTo: template.PartyInfo{
-			Name:    billToName,
-			Address: billToAddress,
-			ABN:     billToABN,
-			Email:   billToEmail,
-			Phone:   billToPhone,
-		},
-		TotalsAmountsCaption: "All amounts in AUD · Tax inclusive (GST included)",
-		TotalsGrandLabel:     "Total (AUD)",
-		TermsText:            notes,
-	}
-
-	template.ApplyPDFCollections(&pdfData, items, sectionMeta, invoiceNumber)
-	if pdfData.PaymentDateDisplay == "" {
-		pdfData.PaymentDateDisplay = issueDateFormatted
-	}
-
-	if pdfData.TemplateSettings != nil {
-		pdfData.TemplateSettings["payment_reference_id"] = paymentRef
-	}
-
-	pdfBytes, err := s.tplService.GenerateMultiPDF(ctx, templateIDs, pdfData)
-	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed calling shared uniform download method engine: %w", err)
 	}
 
 	return base64.StdEncoding.EncodeToString(pdfBytes), nil
-}
-
-func rsInvoiceToTemplateItems(inv *RsInvoice) ([]template.InvoiceItem, []template.InvoiceSectionMeta) {
-	items := make([]template.InvoiceItem, 0)
-	sections := make([]template.InvoiceSectionMeta, 0, len(inv.Sections))
-
-	for _, sec := range inv.Sections {
-		sections = append(sections, template.InvoiceSectionMeta{
-			ID:               sec.ID,
-			SectionType:      string(sec.SectionType),
-			DocumentNumber:   sec.DocumentNumber,
-			PaymentMethod:    sec.PaymentMethod,
-			AccountName:      sec.AccountName,
-			Bsb:              sec.Bsb,
-			AccountNumber:    sec.AccountNumber,
-			PaymentDate:      sec.PaymentDate,
-			PaymentReference: sec.PaymentReference,
-		})
-
-		for _, it := range sec.Entries {
-			if it == nil {
-				continue
-			}
-
-			desc := ""
-			if it.Description != nil {
-				desc = *it.Description
-			}
-
-			var basCode *string
-			if it.BASCode != nil {
-				s := string(*it.BASCode)
-				basCode = &s
-			}
-
-			entryType := ""
-			if it.EntryType != nil {
-				entryType = string(*it.EntryType)
-			}
-
-			items = append(items, template.InvoiceItem{
-				Name:        it.Name,
-				Description: desc,
-				Amount:      it.Amount,
-				BASCode:     basCode,
-				EntryType:   entryType,
-				SectionType: string(sec.SectionType),
-				FieldKey:    it.FieldKey,
-				IsFinal:     it.IsFinal,
-			})
-		}
-	}
-
-	return items, sections
 }

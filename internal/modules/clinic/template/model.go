@@ -293,29 +293,6 @@ type InvoiceData struct {
 	CustomFeeRateDisplay string `json:"custom_fee_rate_display"`
 }
 
-type invoiceCollections struct {
-	patientFeeItems []map[string]interface{}
-	serviceFeeItems []map[string]interface{}
-	settlementItems []map[string]interface{}
-	remittanceItems []map[string]interface{}
-
-	serviceFeeRateIntro     map[string]interface{}
-	serviceDescriptionItems []string
-
-	subtotal      float64
-	taxTotal      float64
-	grandTotal    float64
-	customFeeRate string
-}
-
-type invoicePaymentMeta struct {
-	paymentMethod string
-	accountName   string
-	bsb           string
-	accountNumber string
-	paymentDate   string
-}
-
 type PartyInfo struct {
 	Name          string `json:"name"`
 	Address       string `json:"address"`
@@ -384,7 +361,9 @@ type InvoiceItem struct {
 	EntryType   string    `db:"entry_type" json:"entry_type"`
 	SectionType string    `db:"section_type" json:"section_type"`
 	FieldKey    *string   `db:"field_key" json:"field_key"`
+	Expression  *string   `db:"expression" json:"expression"`
 	IsFinal     bool      `db:"is_final" json:"is_final"`
+	SortOrder   int       `db:"sort_order" json:"sort_order"`
 }
 
 // InvoiceToData works for external callers

@@ -386,6 +386,8 @@ func (r *Repository) GetInvoice(ctx context.Context, clinicId uuid.UUID, invoice
             COALESCE(ii.entry_type, '') AS entry_type,
             COALESCE(s.invoice_section::text, '') AS section_type,
             ii.field_key,
+			ii.expression,
+			ii.sort_order,
             COALESCE(ii.is_final, false) AS is_final
         FROM tbl_invoice_item ii
         INNER JOIN tbl_map_invoice_section s ON ii.invoice_section_id = s.id
