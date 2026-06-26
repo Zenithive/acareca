@@ -236,7 +236,7 @@ func RegisterRoutes(r *gin.Engine, cfg *config.Config, events sharedEvents.IEven
 	clinicAuthSvc := clinicauth.NewService(clinicAuthRepo, cfg, dbConn, auditSvc, tempSvc)
 
 	contactSvc := contact.NewService(contact.NewRepository(dbConn))
-	invoiceSvc := invoice.NewService(dbConn, invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc)
+	invoiceSvc := invoice.NewService(dbConn, invoice.NewRepository(dbConn), cfg, tempSvc, clinicAuthSvc, tmpRepo)
 	RegisterClinicRoutes(v1, cfg, contactSvc, invoiceSvc)
 
 	// Initialize notification consumer (separate from service)
