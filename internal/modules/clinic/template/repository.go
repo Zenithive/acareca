@@ -28,6 +28,7 @@ type IRepository interface {
 	GetSetting(ctx context.Context, templateId uuid.UUID) (*Setting, error)
 	UpdateSetting(ctx context.Context, st *Setting, templateId uuid.UUID) error
 	CreateSetting(ctx context.Context, st *Setting) error
+	GetMapping(ctx context.Context, id uuid.UUID) (*Mapping, error)
 	CreateMapping(ctx context.Context, m *Mapping) error
 	UpdateMapping(ctx context.Context, m *Mapping) error
 	GetDocumentByID(ctx context.Context, id uuid.UUID) (*file.Document, error)
@@ -264,6 +265,25 @@ func (r *Repository) CreateSetting(ctx context.Context, st *Setting) error {
 		return rows.StructScan(st)
 	}
 	return rows.Err()
+}
+
+func (r *Repository) GetMapping(ctx context.Context, id uuid.UUID) (*Mapping, error) {
+	const q = `
+		SELECT id, clinic_id, invoice_id, template_id, setting_id, created_at, updated_at
+		FROM tbl_invoice_template_mapping
+		WHERE id = $1 
+		LIMIT 1`
+
+	var m Mapping
+	err := r.db.GetContext(ctx, &m, q, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed locating existing context mapping: %w", err)
+	}
+
+	return &m, nil
 }
 
 func (r *Repository) CreateMapping(ctx context.Context, m *Mapping) error {

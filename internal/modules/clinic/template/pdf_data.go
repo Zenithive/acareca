@@ -45,12 +45,7 @@ func parseExpressionFormula(exprStr string) string {
 }
 
 // ApplyPDFCollections maps raw items into structured contexts sorted by SortOrder completely dynamically.
-func ApplyPDFCollections(
-	data *InvoiceData,
-	items []InvoiceItem,
-	sections []InvoiceSectionMeta,
-	fallbackInvoiceNumber string,
-) {
+func ApplyPDFCollections(data *InvoiceData, items []InvoiceItem, sections []InvoiceSectionMeta, fallbackInvoiceNumber string) {
 	data.PatientFeeItems = []map[string]interface{}{}
 	data.ServiceFeeItems = []map[string]interface{}{}
 	data.SettlementItems = []map[string]interface{}{}
@@ -189,6 +184,17 @@ func ApplyPDFCollections(
 			if cleanFormula := parseExpressionFormula(*item.Expression); cleanFormula != "" {
 				displayLabel = fmt.Sprintf("%s [ %s ]", item.Name, cleanFormula)
 			}
+		}
+
+		lowerName := strings.ToLower(strings.TrimSpace(item.Name))
+
+		if strings.Contains(lowerName, "net balance") {
+			displayLabel = "Net balance [ Total Income - Total Expenses ]"
+			valueClass = "amt-pos"
+		}
+
+		if item.FieldKey != nil && *item.FieldKey != "" {
+			displayLabel = fmt.Sprintf("(%s) %s", *item.FieldKey, displayLabel)
 		}
 
 		row := map[string]interface{}{
