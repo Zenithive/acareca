@@ -338,31 +338,28 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 		return nil
 	}
 
-	globalSetting, err := s.tplRepo.GetSetting(ctx, templateID)
-	if err != nil {
-		return fmt.Errorf("failed fetching central baseline blueprint: %w", err)
-	}
-
 	existingSetting, err := s.tplRepo.GetInvoiceSetting(ctx, clinicID, invoiceID, []uuid.UUID{templateID})
 	if err != nil {
 		return fmt.Errorf("failed verifying database settings mapping context: %w", err)
+	}
+
+	var existingMapping *template.Mapping
+	if existingSetting != nil && existingSetting.MappingId != nil {
+		existingMapping, err = s.tplRepo.GetMapping(ctx, *existingSetting.MappingId)
+		if err != nil {
+			return fmt.Errorf("failed verifying transactional database junction state: %w", err)
+		}
 	}
 
 	var targetSettingID uuid.UUID
 	var targetMappingID uuid.UUID
 	isNewOverride := true
 
-	// If a config exists AND it does not share the same ID as the fallback global setup,
-	// then it is already a dedicated custom override record for this specific instance!
-	if existingSetting != nil && (globalSetting == nil || existingSetting.Id != globalSetting.Id) {
+	if existingMapping != nil && existingMapping.InvoiceID != nil && *existingMapping.InvoiceID == invoiceID {
 		isNewOverride = false
-		targetSettingID = existingSetting.Id
-		if existingSetting.MappingId != nil {
-			targetMappingID = *existingSetting.MappingId
-		}
-	}
-
-	if isNewOverride {
+		targetMappingID = existingMapping.ID
+		targetSettingID = existingMapping.SettingID
+	} else {
 		targetSettingID = uuid.New()
 		targetMappingID = uuid.New()
 	}
@@ -383,17 +380,14 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 		WaterMarkText:    src.WatermarkText,
 		IsTax:            lo.FromPtr(src.IsTax),
 		TableStyle:       src.TableStyle,
+		MappingId:        &targetMappingID,
 	}
 
-	dbSetting.MappingId = &targetMappingID
-
 	if isNewOverride {
-		// First create the setting layout profile baseline row
 		if err := s.tplRepo.CreateSetting(ctx, &dbSetting); err != nil {
 			return fmt.Errorf("failed allocating specific template layout profile: %w", err)
 		}
 
-		// Next create the structural mapping junction record
 		m := template.Mapping{
 			ID:         targetMappingID,
 			InvoiceID:  &invoiceID,
@@ -405,10 +399,6 @@ func (s *Service) syncTemplateSettings(ctx context.Context, invoiceID uuid.UUID,
 			return fmt.Errorf("failed linking relational structural mapping context: %w", err)
 		}
 
-		// Trigger UpdateSetting so that the newly created mapping_id gets bound and updated inside tbl_template_setting
-		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, templateID); err != nil {
-			return fmt.Errorf("failed binding back mapping reference onto settings layer: %w", err)
-		}
 	} else {
 		if err := s.tplRepo.UpdateSetting(ctx, &dbSetting, templateID); err != nil {
 			return fmt.Errorf("failed overwriting specific layout configuration settings profile: %w", err)
