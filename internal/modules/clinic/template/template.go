@@ -236,6 +236,7 @@ body {
   background-color: var(--bg-input-blue) !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
+  margin-bottom: 2px !important;
 }
 
 .txt-blue-val {
