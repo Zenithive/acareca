@@ -405,12 +405,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 		return nil, "", fmt.Errorf("failed to fetch invoice sections: %w", err)
 	}
 
-	st, err := s.repo.GetInvoiceSetting(
-		ctx,
-		clinicId,
-		invoiceId,
-		templateIds,
-	)
+	st, err := s.repo.GetInvoiceSetting(ctx, clinicId, invoiceId, templateIds)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch invoice settings: %w", err)
 	}
@@ -424,12 +419,7 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 	// Build Invoice Data Structures
 	data := InvoiceToData(inv)
 
-	ApplyPDFCollections(
-		&data,
-		inv.Items,
-		sections,
-		inv.InvoiceNumber,
-	)
+	ApplyPDFCollections(&data, inv.Items, sections, inv.InvoiceNumber)
 
 	if data.PaymentDateDisplay == "" {
 		data.PaymentDateDisplay = data.IssueDateDisplay
@@ -463,35 +453,17 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 		t, err := s.repo.Get(ctx, id)
 		if err != nil {
-			return nil, "", fmt.Errorf(
-				"failed fetching template %s: %w",
-				id,
-				err,
-			)
+			return nil, "", fmt.Errorf("failed fetching template %s: %w", id, err)
 		}
 
-		html, err := crypto.DecryptAndDecompress(
-			t.Html,
-			s.encryptionKey,
-		)
+		html, err := crypto.DecryptAndDecompress(t.Html, s.encryptionKey)
 		if err != nil {
-			return nil, "", fmt.Errorf(
-				"failed decrypting html for template %s: %w",
-				t.Name,
-				err,
-			)
+			return nil, "", fmt.Errorf("failed decrypting html for template %s: %w", t.Name, err)
 		}
 
-		css, err := crypto.DecryptAndDecompress(
-			t.Css,
-			s.encryptionKey,
-		)
+		css, err := crypto.DecryptAndDecompress(t.Css, s.encryptionKey)
 		if err != nil {
-			return nil, "", fmt.Errorf(
-				"failed decrypting css for template %s: %w",
-				t.Name,
-				err,
-			)
+			return nil, "", fmt.Errorf("failed decrypting css for template %s: %w", t.Name, err)
 		}
 
 		order, ok := pageOrder[t.Name]
@@ -499,14 +471,11 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			continue
 		}
 
-		assets = append(
-			assets,
-			templateAsset{
-				Order: order,
-				HTML:  html,
-				CSS:   css,
-			},
-		)
+		assets = append(assets, templateAsset{
+			Order: order,
+			HTML:  html,
+			CSS:   css,
+		})
 	}
 
 	if len(assets) == 0 {
@@ -531,6 +500,18 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 			case 3:
 				dataMap["invoice_number"] = ts["remittance_invoice_number"]
 			}
+
+			// --- FIX: Translate style layout into explicit template-safe boolean flags ---
+			if styleStr, exists := ts["table_style"].(string); exists {
+				dataMap["table_style_bordered"] = (styleStr == "bordered")
+				dataMap["table_style_striped"] = (styleStr == "striped")
+			}
+		}
+
+		// Direct struct property fallback verification
+		if dataMap["table_style_bordered"] == nil && data.TableStyleClass != "" {
+			dataMap["table_style_bordered"] = (data.TableStyleClass == "bordered")
+			dataMap["table_style_striped"] = (data.TableStyleClass == "striped")
 		}
 
 		renderedHTML, err := raymond.Render(a.HTML, dataMap)
@@ -568,15 +549,10 @@ func (s *Service) DownloadPDF(ctx context.Context, clinicId uuid.UUID, templateI
 
 	pdf, err := chromepdf.Generate(ctx, document)
 	if err != nil {
-		return nil, "", fmt.Errorf(
-			"failed generating pdf: %w",
-			err,
-		)
+		return nil, "", fmt.Errorf("failed generating pdf: %w", err)
 	}
 
-	return pdf,
-		fmt.Sprintf("INVOICE_%s", data.InvoiceNumber),
-		nil
+	return pdf, fmt.Sprintf("INVOICE_%s", data.InvoiceNumber), nil
 }
 
 func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
@@ -621,17 +597,8 @@ func (s *Service) applyInvoiceSettings(data *InvoiceData, st *Setting) {
 
 	if st.IsLogo {
 		data.ShowLogo = true
-
-		if st.Logo != nil &&
-			st.Logo.ToRsDocument().FileKey != "" {
-
-			data.LogoURL =
-				strings.TrimRight(
-					s.cfg.R2StoragePrefix,
-					"/",
-				) +
-					"/" +
-					st.Logo.ToRsDocument().FileKey
+		if st.Logo != nil && st.Logo.ToRsDocument().FileKey != "" {
+			data.LogoURL = strings.TrimRight(s.cfg.R2StoragePrefix, "/") + "/" + st.Logo.ToRsDocument().FileKey
 		}
 	}
 

@@ -104,7 +104,6 @@ body {
   page-break-after: avoid;
 }
 
-/* Background watermark styling driven cleanly by frontend toggle context */
 {{#if template_settings.is_watermark}}
 .invoice-page::before {
   content: "{{#if template_settings.watermark_text}}{{template_settings.watermark_text}}{{else}}PAID{{/if}}";
@@ -293,16 +292,16 @@ body {
 }
 
 body .payment-details-table-bordered {
-  border: 1px solid #9ca3af !important; 
+  border: 1px solid var(--accent-color) !important; 
   border-collapse: collapse !important;
 }
 
 body .payment-details-table-bordered td {
-  border: 1px solid #9ca3af !important; 
+  border: 1px solid var(--accent-color) !important; 
 }
 
 body .payment-details-table-striped tr:nth-child(even) {
-  background-color: #9ca3af !important; 
+  background-color: rgb(from var(--accent-color) r g b / 0.22) !important; 
 }
 `
 }
@@ -523,7 +522,7 @@ func DefaultTemplates() []RqGlobalTemplate {
 
   <div class="payment-details-container">
     <div class="payment-details-header">PAYMENT DETAILS</div>
-    <table class="payment-details-table{{#if (eq template_settings.table_style 'bordered')}} payment-details-table-bordered{{else}}{{#if (eq template_settings.table_style 'striped')}} payment-details-table-striped{{/if}}{{/if}}">
+    <table class="payment-details-table{{#if table_style_bordered}} payment-details-table-bordered{{/if}}{{#if table_style_striped}} payment-details-table-striped{{/if}}">
       <tbody>
         <tr>
           <td style="font-weight: bold; width: 45%%;">Payment method</td>
